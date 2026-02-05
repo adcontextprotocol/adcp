@@ -178,6 +178,14 @@
           "$ref": "/schemas/core/media-buy-features.json",
           "description": "Optional media-buy protocol features for capability declarations and product filters"
         },
+        "brand-id": {
+          "$ref": "/schemas/core/brand-id.json",
+          "description": "Identifier for a brand within a house portfolio - lowercase alphanumeric with underscores only"
+        },
+        "brand-ref": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
+        },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
           "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
@@ -923,6 +931,12 @@
       "$ref": "/schemas/adagents.json",
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal catalogs and authorize signals agents to resell their data."
+    },
+    "brand": {
+      "description": "Brand identity claim file format specification",
+      "$ref": "/schemas/brand.json",
+      "file_location": "/.well-known/brand.json",
+      "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
     },
     "extensions": {
       "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",

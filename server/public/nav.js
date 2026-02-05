@@ -35,6 +35,7 @@
   const aaoBaseUrl = 'https://agenticadvertising.org';
   let docsUrl = 'https://docs.adcontextprotocol.org';
   let adagentsUrl = `${aaoBaseUrl}/adagents`;
+  let brandUrl = `${aaoBaseUrl}/brand`;
   let membersUrl = `${aaoBaseUrl}/members`;
   let homeUrl = aaoBaseUrl;
   let apiBaseUrl = '';
@@ -52,6 +53,7 @@
       // We're on docs site, link back to HTTP server
       docsUrl = `http://localhost:${currentPort}`;
       adagentsUrl = `http://localhost:${likelyHttpPort}/adagents`;
+      brandUrl = `http://localhost:${likelyHttpPort}/brand`;
       membersUrl = `http://localhost:${likelyHttpPort}/members`;
       homeUrl = `http://localhost:${likelyHttpPort}`;
       apiBaseUrl = `http://localhost:${likelyHttpPort}`;
@@ -59,6 +61,7 @@
       // We're on HTTP server, use relative links for same-server pages
       docsUrl = `http://localhost:${likelyMintlifyPort}`;
       adagentsUrl = '/adagents';
+      brandUrl = '/brand';
       membersUrl = '/members';
       homeUrl = '/';
       apiBaseUrl = '';
@@ -160,9 +163,9 @@
       : '';
 
     // Build Projects dropdown
-    const adagentsUrl = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
-    const salesAgentUrl = 'https://github.com/adcontextprotocol/salesagent';
-    const isProjectsActive = currentPath === '/adagents' ||
+    const adagentsUrlLocal = isLocal ? '/adagents' : `${aaoBaseUrl}/adagents`;
+    const brandUrlLocal = isLocal ? '/brand' : `${aaoBaseUrl}/brand`;
+    const isProjectsActive = currentPath === '/adagents' || currentPath === '/brand' ||
                              currentPath === '/members' || currentPath.startsWith('/members/') ||
                              currentPath === '/registry' || currentPath === '/publishers' || currentPath === '/properties';
     const projectsDropdown = `<div class="navbar__dropdown-wrapper">
@@ -174,8 +177,8 @@
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
             <a href="https://adcontextprotocol.org" class="navbar__dropdown-item">AdCP</a>
-            <a href="${adagentsUrl}" class="navbar__dropdown-item ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
-            <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__dropdown-item">Sales Agent</a>
+            <a href="${adagentsUrlLocal}" class="navbar__dropdown-item ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
+            <a href="${brandUrlLocal}" class="navbar__dropdown-item ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
             <div class="navbar__dropdown-divider"></div>
             <span class="navbar__dropdown-header-text">Registry</span>
             <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
@@ -282,7 +285,7 @@
           <span class="navbar__link navbar__link--header">Projects</span>
           <a href="https://adcontextprotocol.org" class="navbar__link navbar__link--indent">AdCP</a>
           <a href="${adagentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/adagents' ? 'active' : ''}">adagents.json</a>
-          <a href="${salesAgentUrl}" target="_blank" rel="noopener noreferrer" class="navbar__link navbar__link--indent">Sales Agent</a>
+          <a href="${brandUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
           <span class="navbar__link navbar__link--subheader">Registry</span>
           <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
@@ -958,6 +961,13 @@
               <ul class="aao-footer__list">
                 <li><a href="/adagents">Builder</a></li>
                 <li><a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer">Specification</a></li>
+              </ul>
+            </div>
+            <div class="aao-footer__column">
+              <div class="aao-footer__title">brand.json</div>
+              <ul class="aao-footer__list">
+                <li><a href="/brand">Builder</a></li>
+                <li><a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" target="_blank" rel="noopener noreferrer">Specification</a></li>
               </ul>
             </div>
             <div class="aao-footer__column">

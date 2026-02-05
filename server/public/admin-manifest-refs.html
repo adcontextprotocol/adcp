@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manifest Registry - Admin</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    .page-header {
+      padding: var(--space-8) var(--space-6);
+      background: var(--color-bg-card);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .page-header h1 {
+      margin: 0 0 var(--space-2) 0;
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+    }
+    .page-header p {
+      margin: 0;
+      color: var(--color-text-secondary);
+    }
+    .content {
+      padding: var(--space-6);
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+    }
+    .stat-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+    }
+    .stat-card .stat-value {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .stat-card .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .filters {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-4);
+      align-items: center;
+    }
+    .filters input, .filters select {
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .filters input {
+      min-width: 200px;
+    }
+    .ref-table {
+      width: 100%;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .ref-table th, .ref-table td {
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .ref-table th {
+      background: var(--color-bg-subtle);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .ref-table tr:last-child td {
+      border-bottom: none;
+    }
+    .ref-table tr:hover td {
+      background: var(--color-bg-subtle);
+    }
+    .badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .badge-brand { background: var(--color-primary-100); color: var(--color-primary-800); }
+    .badge-property { background: var(--color-warning-100); color: var(--color-warning-800); }
+    .badge-url { background: var(--color-gray-100); color: var(--color-gray-700); }
+    .badge-agent { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .badge-valid { background: var(--color-primary-100); color: var(--color-primary-800); }
+    .badge-pending { background: var(--color-warning-100); color: var(--color-warning-800); }
+    .badge-invalid { background: var(--color-error-100); color: var(--color-error-800); }
+    .actions-cell {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .btn-sm {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+    .btn-sm:hover {
+      background: var(--color-bg-subtle);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-weight: var(--font-semibold);
+      cursor: pointer;
+    }
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+    .modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-xl);
+      max-width: 500px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      padding: var(--space-4) var(--space-5);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h3 { margin: 0; }
+    .modal-body {
+      padding: var(--space-5);
+    }
+    .modal-footer {
+      padding: var(--space-4) var(--space-5);
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--space-2);
+    }
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-medium);
+      font-size: var(--text-sm);
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .form-group .hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .empty-state {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-muted);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+
+  <div class="page-header">
+    <h1>Manifest Registry</h1>
+    <p>Member-contributed references to brand.json and adagents.json files</p>
+  </div>
+
+  <div class="content">
+    <!-- Stats -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-total">-</div>
+        <div class="stat-label">Total References</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-brands">-</div>
+        <div class="stat-label">brand.json</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-properties">-</div>
+        <div class="stat-label">adagents.json</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-verified">-</div>
+        <div class="stat-label">Verified</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-domains">-</div>
+        <div class="stat-label">Unique Domains</div>
+      </div>
+    </div>
+
+    <!-- Filters and Actions -->
+    <div class="filters">
+      <input type="text" id="filter-domain" placeholder="Search by domain..." oninput="loadReferences()">
+      <select id="filter-type" onchange="loadReferences()">
+        <option value="">All Types</option>
+        <option value="brand.json">brand.json</option>
+        <option value="adagents.json">adagents.json</option>
+      </select>
+      <select id="filter-status" onchange="loadReferences()">
+        <option value="">All Status</option>
+        <option value="valid">Valid</option>
+        <option value="pending">Pending</option>
+        <option value="invalid">Invalid</option>
+      </select>
+      <div style="flex: 1"></div>
+      <button class="btn-primary" onclick="openAddModal()">+ Add Reference</button>
+    </div>
+
+    <!-- References Table -->
+    <table class="ref-table">
+      <thead>
+        <tr>
+          <th>Domain</th>
+          <th>Type</th>
+          <th>Reference</th>
+          <th>Status</th>
+          <th>Contributed By</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="refs-tbody">
+        <tr>
+          <td colspan="6" class="empty-state">Loading...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Add/Edit Modal -->
+  <div id="add-modal" class="modal hidden" onclick="if(event.target === this) closeModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Add Reference</h3>
+        <button onclick="closeModal()" style="background: none; border: none; font-size: 20px; cursor: pointer;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Domain</label>
+          <input type="text" id="ref-domain" placeholder="example.com">
+        </div>
+        <div class="form-group">
+          <label>Manifest Type</label>
+          <select id="ref-type">
+            <option value="brand.json">brand.json</option>
+            <option value="adagents.json">adagents.json</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Reference Type</label>
+          <select id="ref-ref-type" onchange="toggleRefFields()">
+            <option value="url">URL (direct link)</option>
+            <option value="agent">Agent (MCP endpoint)</option>
+          </select>
+        </div>
+        <div id="url-fields">
+          <div class="form-group">
+            <label>Manifest URL</label>
+            <input type="url" id="ref-url" placeholder="https://cdn.example.com/brand.json">
+            <p class="hint">Direct HTTPS URL to the hosted manifest file</p>
+          </div>
+        </div>
+        <div id="agent-fields" class="hidden">
+          <div class="form-group">
+            <label>Agent URL</label>
+            <input type="url" id="ref-agent-url" placeholder="https://agent.example.com/mcp">
+          </div>
+          <div class="form-group">
+            <label>Agent ID</label>
+            <input type="text" id="ref-agent-id" placeholder="brand_id or property_id">
+            <p class="hint">Identifier to pass to the agent when requesting manifest</p>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeModal()" class="btn-sm">Cancel</button>
+        <button onclick="saveReference()" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    let editingId = null;
+
+    async function loadStats() {
+      try {
+        const response = await AdminSidebar.fetch('/api/manifest-refs/stats');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.success) {
+          document.getElementById('stat-total').textContent = data.stats.total_references;
+          document.getElementById('stat-brands').textContent = data.stats.brand_json_count;
+          document.getElementById('stat-properties').textContent = data.stats.adagents_json_count;
+          document.getElementById('stat-verified').textContent = data.stats.verified_count;
+          document.getElementById('stat-domains').textContent = data.stats.unique_domains;
+        }
+      } catch (e) {
+        console.error('Failed to load stats:', e);
+      }
+    }
+
+    async function loadReferences() {
+      const tbody = document.getElementById('refs-tbody');
+      const domain = document.getElementById('filter-domain').value;
+      const type = document.getElementById('filter-type').value;
+      const status = document.getElementById('filter-status').value;
+
+      const params = new URLSearchParams();
+      if (domain) params.append('domain', domain);
+      if (type) params.append('manifest_type', type);
+      if (status) params.append('verification_status', status);
+
+      try {
+        const response = await AdminSidebar.fetch(`/api/manifest-refs?${params}`);
+        if (!response.ok) throw new Error('Failed to load');
+        const data = await response.json();
+
+        if (!data.references || data.references.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No references found</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.references.map(ref => `
+          <tr>
+            <td><strong>${escapeHtml(ref.domain)}</strong></td>
+            <td>
+              <span class="badge ${ref.manifest_type === 'brand.json' ? 'badge-brand' : 'badge-property'}">
+                ${ref.manifest_type}
+              </span>
+            </td>
+            <td>
+              <span class="badge ${ref.reference_type === 'url' ? 'badge-url' : 'badge-agent'}">
+                ${ref.reference_type}
+              </span>
+              <br>
+              <small style="color: var(--color-text-muted); word-break: break-all;">
+                ${ref.reference_type === 'url' ? escapeHtml(ref.manifest_url || '') : escapeHtml(ref.agent_url || '')}
+              </small>
+            </td>
+            <td>
+              <span class="badge badge-${ref.verification_status}">
+                ${ref.verification_status}
+              </span>
+            </td>
+            <td>
+              <small>${escapeHtml(ref.contributed_by_email || ref.contributed_by_org_id || 'System')}</small>
+            </td>
+            <td class="actions-cell">
+              <button class="btn-sm" onclick="verifyReference('${ref.id}')">Verify</button>
+              <button class="btn-sm" onclick="deleteReference('${ref.id}')">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error('Failed to load references:', e);
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Failed to load references</td></tr>';
+      }
+    }
+
+    function openAddModal() {
+      editingId = null;
+      document.getElementById('modal-title').textContent = 'Add Reference';
+      document.getElementById('ref-domain').value = '';
+      document.getElementById('ref-type').value = 'brand.json';
+      document.getElementById('ref-ref-type').value = 'url';
+      document.getElementById('ref-url').value = '';
+      document.getElementById('ref-agent-url').value = '';
+      document.getElementById('ref-agent-id').value = '';
+      toggleRefFields();
+      document.getElementById('add-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('add-modal').classList.add('hidden');
+    }
+
+    function toggleRefFields() {
+      const refType = document.getElementById('ref-ref-type').value;
+      document.getElementById('url-fields').classList.toggle('hidden', refType !== 'url');
+      document.getElementById('agent-fields').classList.toggle('hidden', refType !== 'agent');
+    }
+
+    async function saveReference() {
+      const domain = document.getElementById('ref-domain').value.trim();
+      const manifestType = document.getElementById('ref-type').value;
+      const refType = document.getElementById('ref-ref-type').value;
+
+      if (!domain) {
+        alert('Domain is required');
+        return;
+      }
+
+      const body = {
+        domain,
+        manifest_type: manifestType,
+        reference_type: refType
+      };
+
+      if (refType === 'url') {
+        const url = document.getElementById('ref-url').value.trim();
+        if (!url) {
+          alert('Manifest URL is required');
+          return;
+        }
+        body.manifest_url = url;
+      } else {
+        const agentUrl = document.getElementById('ref-agent-url').value.trim();
+        const agentId = document.getElementById('ref-agent-id').value.trim();
+        if (!agentUrl || !agentId) {
+          alert('Agent URL and ID are required');
+          return;
+        }
+        body.agent_url = agentUrl;
+        body.agent_id = agentId;
+      }
+
+      try {
+        const response = await AdminSidebar.fetch('/api/manifest-refs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await response.json();
+        if (data.success) {
+          closeModal();
+          loadReferences();
+          loadStats();
+        } else {
+          alert(data.error || 'Failed to save');
+        }
+      } catch (e) {
+        console.error('Failed to save:', e);
+        alert('Failed to save reference');
+      }
+    }
+
+    async function verifyReference(id) {
+      try {
+        const response = await AdminSidebar.fetch(`/api/manifest-refs/${id}/verify`, {
+          method: 'POST'
+        });
+        const data = await response.json();
+        if (data.success) {
+          loadReferences();
+          loadStats();
+        } else {
+          alert(data.error || 'Verification failed');
+        }
+      } catch (e) {
+        console.error('Failed to verify:', e);
+        alert('Failed to verify reference');
+      }
+    }
+
+    async function deleteReference(id) {
+      if (!confirm('Delete this reference?')) return;
+      try {
+        const response = await AdminSidebar.fetch(`/api/manifest-refs/${id}`, {
+          method: 'DELETE'
+        });
+        const data = await response.json();
+        if (data.success) {
+          loadReferences();
+          loadStats();
+        } else {
+          alert(data.error || 'Failed to delete');
+        }
+      } catch (e) {
+        console.error('Failed to delete:', e);
+        alert('Failed to delete reference');
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    loadStats();
+    loadReferences();
+  </script>
+</body>
+</html>

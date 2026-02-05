@@ -279,6 +279,172 @@ export interface PublisherConfig {
 }
 
 /**
+ * Brand architecture type from Keller's theory
+ */
+export type KellerType = 'master' | 'sub-brand' | 'endorsed' | 'independent';
+
+/**
+ * Brand configuration stored in member profiles
+ * Each brand has a canonical domain and visibility settings
+ */
+export interface BrandConfig {
+  canonical_domain: string;
+  is_public: boolean;
+  // Cached info from validation (optional, refreshed periodically)
+  name?: string;
+  keller_type?: KellerType;
+  house_domain?: string;
+  last_validated?: string;
+}
+
+/**
+ * Localized name entry (language code → name)
+ */
+export interface LocalizedName {
+  [languageCode: string]: string;
+}
+
+/**
+ * Brand property (digital touchpoint owned by a brand)
+ */
+export interface BrandProperty {
+  type: 'website' | 'mobile_app' | 'ctv_app' | 'desktop_app' | 'dooh' | 'podcast' | 'radio' | 'streaming_audio';
+  identifier: string;
+  store?: 'apple' | 'google' | 'amazon' | 'roku' | 'samsung' | 'lg' | 'other';
+  region?: string;
+  primary?: boolean;
+}
+
+/**
+ * Brand definition within a house portfolio
+ */
+export interface BrandDefinition {
+  canonical_domain: string;
+  names: LocalizedName[];
+  keller_type?: KellerType;
+  parent_brand?: string;
+  properties?: BrandProperty[];
+  brand_standards?: string;
+  brand_manifest?: Record<string, unknown> | string;
+}
+
+/**
+ * House definition (corporate entity that owns brands)
+ */
+export interface HouseDefinition {
+  canonical_domain: string;
+  name: string;
+  names?: LocalizedName[];
+  architecture?: 'branded_house' | 'house_of_brands' | 'hybrid';
+}
+
+/**
+ * Brand agent configuration
+ */
+export interface BrandAgentConfig {
+  url: string;
+  capabilities?: string[];
+}
+
+/**
+ * Hosted brand record
+ */
+export interface HostedBrand {
+  id: string;
+  workos_organization_id?: string;
+  created_by_user_id?: string;
+  created_by_email?: string;
+  brand_domain: string;
+  brand_json: Record<string, unknown>;
+  domain_verified: boolean;
+  verification_token?: string;
+  is_public: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Discovered brand record
+ */
+export interface DiscoveredBrand {
+  id: string;
+  domain: string;
+  canonical_domain?: string;
+  house_domain?: string;
+  brand_name?: string;
+  brand_names?: LocalizedName[];
+  keller_type?: KellerType;
+  parent_brand?: string;
+  brand_agent_url?: string;
+  brand_agent_capabilities?: string[];
+  has_brand_manifest: boolean;
+  brand_manifest?: Record<string, unknown>;
+  source_type: 'brand_json' | 'community' | 'enriched';
+  discovered_at: Date;
+  last_validated?: Date;
+  expires_at?: Date;
+}
+
+/**
+ * Resolved brand identity (result of resolving a domain to a brand)
+ */
+export interface ResolvedBrand {
+  canonical_id: string;  // e.g., "nike.com" or "nike.com#air-jordan"
+  canonical_domain: string;
+  brand_name: string;
+  names?: LocalizedName[];
+  keller_type?: KellerType;
+  parent_brand?: string;
+  house_domain?: string;
+  house_name?: string;
+  brand_agent_url?: string;
+  brand_manifest?: Record<string, unknown>;
+  source: 'brand_json' | 'community' | 'enriched';
+}
+
+/**
+ * Hosted property record (synthetic adagents.json we manage)
+ */
+export interface HostedProperty {
+  id: string;
+  workos_organization_id?: string;
+  created_by_user_id?: string;
+  created_by_email?: string;
+  publisher_domain: string;
+  adagents_json: Record<string, unknown>;
+  domain_verified: boolean;
+  verification_token?: string;
+  is_public: boolean;
+  source_type: 'community' | 'enriched';
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * Resolved property (result of resolving a domain to property info)
+ */
+export interface ResolvedProperty {
+  publisher_domain: string;
+  source: 'adagents_json' | 'hosted' | 'discovered';
+  authorized_agents?: Array<{
+    url: string;
+    authorized_for?: string;
+  }>;
+  properties?: Array<{
+    id?: string;
+    type: string;
+    name: string;
+    identifiers?: Array<{ type: string; value: string }>;
+    tags?: string[];
+  }>;
+  contact?: {
+    name: string;
+    email?: string;
+  };
+  verified: boolean;
+}
+
+/**
  * Data provider configuration stored in member profiles
  * Each data provider has a domain where their signal catalog is hosted via adagents.json
  */
@@ -310,6 +476,7 @@ export interface MemberProfile {
   offerings: MemberOffering[];
   agents: AgentConfig[];
   publishers: PublisherConfig[]; // Publishers with adagents.json
+  brands: BrandConfig[]; // Brands owned by this member
   data_providers: DataProviderConfig[]; // Data providers with signal catalogs
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
@@ -341,6 +508,7 @@ export interface CreateMemberProfileInput {
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
   publishers?: PublisherConfig[];
+  brands?: BrandConfig[];
   data_providers?: DataProviderConfig[];
   headquarters?: string;
   markets?: string[];
@@ -366,6 +534,7 @@ export interface UpdateMemberProfileInput {
   offerings?: MemberOffering[];
   agents?: AgentConfig[];
   publishers?: PublisherConfig[];
+  brands?: BrandConfig[];
   data_providers?: DataProviderConfig[];
   headquarters?: string;
   markets?: string[];

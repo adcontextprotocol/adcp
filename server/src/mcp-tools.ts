@@ -14,6 +14,8 @@ import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
+import { BrandManager } from "./brand-manager.js";
+import { fetchBrandData, isBrandfetchConfigured } from "./services/brandfetch.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -229,6 +231,75 @@ export const TOOL_DEFINITIONS = [
       required: ["agent_url"],
     },
   },
+  // Brand tools
+  {
+    name: "resolve_brand",
+    description:
+      "Resolve a domain to its canonical brand identity by following brand.json redirects and resolving through house portfolios",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Domain to resolve (e.g., 'jumpman23.com' or 'nike.com')",
+        },
+        fresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch fresh data (default: false)",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "validate_brand_json",
+    description:
+      "Validate a domain's /.well-known/brand.json file against the Brand Protocol schema",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Domain to validate (e.g., 'nike.com')",
+        },
+        fresh: {
+          type: "boolean",
+          description: "Bypass cache and fetch fresh data (default: false)",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "validate_brand_agent",
+    description:
+      "Validate that a brand agent is reachable and responding via MCP protocol",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_url: {
+          type: "string",
+          description: "Brand agent URL to validate (e.g., 'https://agent.nike.com/mcp')",
+        },
+      },
+      required: ["agent_url"],
+    },
+  },
+  {
+    name: "enrich_brand",
+    description:
+      "Fetch brand data (logo, colors, company info) from Brandfetch API when no brand.json exists. Returns enriched brand manifest.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Domain to enrich (e.g., 'nike.com')",
+        },
+      },
+      required: ["domain"],
+    },
+  },
 ];
 
 /**
@@ -288,12 +359,14 @@ export class MCPToolHandler {
   private memberDb: MemberDatabase;
   private validator: AgentValidator;
   private federatedIndex: FederatedIndexService;
+  private brandManager: BrandManager;
 
   constructor() {
     this.agentService = new AgentService();
     this.memberDb = new MemberDatabase();
     this.validator = new AgentValidator();
     this.federatedIndex = new FederatedIndexService();
+    this.brandManager = new BrandManager();
   }
 
   /**
@@ -769,6 +842,164 @@ export class MCPToolHandler {
                 uri: `federated://agent/${encodeURIComponent(agentUrl)}/domains`,
                 mimeType: "application/json",
                 text: JSON.stringify({ agent_url: agentUrl, domains, count: domains.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      // Brand tools
+      case "resolve_brand": {
+        const domain = args?.domain as string;
+        const fresh = args?.fresh as boolean | undefined;
+        if (!domain) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: domain" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: fresh });
+        if (!resolved) {
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `brand://${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    error: "Could not resolve brand",
+                    domain,
+                    hint: "Ensure the domain has a valid /.well-known/brand.json file",
+                  }, null, 2),
+                },
+              },
+            ],
+            isError: true,
+          };
+        }
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `brand://${encodeURIComponent(resolved.canonical_domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(resolved, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "validate_brand_json": {
+        const domain = args?.domain as string;
+        const fresh = args?.fresh as boolean | undefined;
+        if (!domain) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: domain" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        const validation = await this.brandManager.validateDomain(domain, { skipCache: fresh });
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `brand://validation/${encodeURIComponent(domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify(validation, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "validate_brand_agent": {
+        const agentUrl = args?.agent_url as string;
+        if (!agentUrl) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: agent_url" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+        const validation = await this.brandManager.validateBrandAgent(agentUrl);
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `brand://agent/${encodeURIComponent(agentUrl)}/validation`,
+                mimeType: "application/json",
+                text: JSON.stringify(validation, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      case "enrich_brand": {
+        const domain = args?.domain as string;
+        if (!domain) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: domain" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (!isBrandfetchConfigured()) {
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `brand://enrichment/${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    error: "Brandfetch not configured",
+                    hint: "Set BRANDFETCH_API_KEY environment variable",
+                  }, null, 2),
+                },
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const enrichment = await fetchBrandData(domain);
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `brand://enrichment/${encodeURIComponent(domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify({
+                  ...enrichment,
+                  source: "enriched",
+                  enrichment_provider: "brandfetch",
+                }, null, 2),
               },
             },
           ],

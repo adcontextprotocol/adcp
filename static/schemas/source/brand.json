@@ -1,0 +1,536 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand.json",
+  "title": "Brand Discovery",
+  "description": "Brand identity and discovery file. Hosted at /.well-known/brand.json on house domains. Contains the full brand portfolio with identity, creative assets, and digital properties. Brands are identified by house + brand_id (like properties are identified by publisher + property_id). Supports variants: house portfolio (full brand data), brand agent (agent provides brand info via MCP), house redirect (pointer to house domain), or authoritative location redirect.",
+  "definitions": {
+    "domain": {
+      "type": "string",
+      "description": "A valid domain name",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "localized_name": {
+      "type": "object",
+      "description": "A localized name with language code key and name value",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "keller_type": {
+      "type": "string",
+      "enum": ["master", "sub_brand", "endorsed", "independent"],
+      "description": "Brand architecture type from Keller's theory. master: primary brand of house. sub_brand: carries parent name (Nike SB). endorsed: independent identity backed by parent (Air Jordan 'by Nike'). independent: operates separately (Converse under Nike, Inc.)"
+    },
+    "logo": {
+      "type": "object",
+      "description": "Brand logo asset",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the logo asset"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Semantic tags (e.g., 'dark', 'light', 'square', 'horizontal', 'icon')",
+          "items": { "type": "string" }
+        },
+        "width": { "type": "integer", "description": "Width in pixels" },
+        "height": { "type": "integer", "description": "Height in pixels" }
+      },
+      "required": ["url"],
+      "additionalProperties": true
+    },
+    "colors": {
+      "type": "object",
+      "description": "Brand color palette",
+      "properties": {
+        "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "secondary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "text": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+      },
+      "additionalProperties": true
+    },
+    "fonts": {
+      "type": "object",
+      "description": "Brand typography",
+      "properties": {
+        "primary": { "type": "string", "description": "Primary font family" },
+        "secondary": { "type": "string", "description": "Secondary font family" },
+        "font_urls": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" },
+          "description": "URLs to web font files"
+        }
+      },
+      "additionalProperties": true
+    },
+    "asset": {
+      "type": "object",
+      "description": "Brand asset (image, video, audio)",
+      "properties": {
+        "asset_id": { "type": "string", "description": "Unique identifier" },
+        "asset_type": {
+          "type": "string",
+          "enum": ["image", "video", "audio", "text"],
+          "description": "Asset type"
+        },
+        "url": { "type": "string", "format": "uri", "description": "URL to asset" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product')"
+        },
+        "name": { "type": "string", "description": "Human-readable name" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "duration_seconds": { "type": "number" },
+        "format": { "type": "string", "description": "File format (jpg, mp4, etc.)" }
+      },
+      "required": ["asset_id", "asset_type", "url"],
+      "additionalProperties": true
+    },
+    "property": {
+      "type": "object",
+      "description": "A digital property owned by a brand",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"],
+          "description": "Property type"
+        },
+        "identifier": {
+          "type": "string",
+          "description": "Property identifier - domain for websites, bundle ID for apps",
+          "minLength": 1
+        },
+        "store": {
+          "type": "string",
+          "enum": ["apple", "google", "amazon", "roku", "samsung", "lg", "other"],
+          "description": "App store for mobile/CTV apps"
+        },
+        "region": {
+          "type": "string",
+          "description": "ISO 3166-1 alpha-2 country code or 'global'",
+          "pattern": "^([A-Z]{2}|global)$"
+        },
+        "primary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this is the primary property for the brand"
+        }
+      },
+      "required": ["type", "identifier"],
+      "additionalProperties": true
+    },
+    "product_catalog": {
+      "type": "object",
+      "description": "Product catalog for e-commerce brands",
+      "properties": {
+        "feed_url": { "type": "string", "format": "uri" },
+        "feed_format": {
+          "type": "string",
+          "enum": ["google_merchant_center", "facebook_catalog", "openai_product_feed", "custom"]
+        },
+        "categories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "update_frequency": {
+          "type": "string",
+          "enum": ["realtime", "hourly", "daily", "weekly"]
+        },
+        "agentic_checkout": {
+          "type": "object",
+          "properties": {
+            "endpoint": { "type": "string", "format": "uri" },
+            "spec": { "type": "string", "enum": ["openai_agentic_checkout_v1"] }
+          },
+          "required": ["endpoint", "spec"]
+        }
+      },
+      "required": ["feed_url"],
+      "additionalProperties": true
+    },
+    "brand": {
+      "type": "object",
+      "description": "A brand within a house portfolio. Combines identity (who) with creative assets (how to represent). Referenced as house + brand_id.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/brand_id",
+          "description": "Brand identifier within the house. House chooses this ID."
+        },
+        "names": {
+          "type": "array",
+          "description": "Localized brand names. Multiple entries per language allowed for aliases.",
+          "items": { "$ref": "#/definitions/localized_name" },
+          "minItems": 1
+        },
+        "keller_type": { "$ref": "#/definitions/keller_type" },
+        "parent_brand": {
+          "$ref": "#/definitions/brand_id",
+          "description": "Parent brand ID for sub-brands and endorsed brands"
+        },
+        "description": {
+          "type": "string",
+          "description": "Brand description"
+        },
+        "industry": {
+          "type": "string",
+          "description": "Industry or vertical (e.g., 'retail', 'automotive', 'cpg')"
+        },
+        "target_audience": {
+          "type": "string",
+          "description": "Primary target audience"
+        },
+        "logos": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/logo" },
+          "description": "Brand logo assets"
+        },
+        "colors": { "$ref": "#/definitions/colors" },
+        "fonts": { "$ref": "#/definitions/fonts" },
+        "tone": {
+          "type": "string",
+          "description": "Brand voice and messaging tone"
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Brand tagline or slogan"
+        },
+        "assets": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/asset" },
+          "description": "Brand asset library"
+        },
+        "properties": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/property" },
+          "description": "Digital properties owned by this brand"
+        },
+        "product_catalog": { "$ref": "#/definitions/product_catalog" },
+        "privacy_policy_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the brand's privacy policy"
+        },
+        "disclaimers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "context": { "type": "string" },
+              "required": { "type": "boolean", "default": true }
+            },
+            "required": ["text"]
+          },
+          "description": "Legal disclaimers for creatives"
+        },
+        "voice": {
+          "type": "object",
+          "description": "TTS voice configuration",
+          "properties": {
+            "provider": { "type": "string" },
+            "voice_id": { "type": "string" },
+            "settings": { "type": "object", "additionalProperties": true }
+          },
+          "additionalProperties": true
+        },
+        "avatar": {
+          "type": "object",
+          "description": "Visual avatar configuration",
+          "properties": {
+            "provider": { "type": "string" },
+            "avatar_id": { "type": "string" },
+            "settings": { "type": "object", "additionalProperties": true }
+          },
+          "additionalProperties": true
+        },
+        "brand_agent": {
+          "$ref": "#/definitions/brand_agent",
+          "description": "Brand agent that provides dynamic brand manifest data. Agent implements get_brand_manifest({ house, brand_id })."
+        }
+      },
+      "required": ["id", "names"],
+      "additionalProperties": true
+    },
+    "house": {
+      "type": "object",
+      "description": "Corporate or organizational entity that owns brands",
+      "properties": {
+        "domain": {
+          "$ref": "#/definitions/domain",
+          "description": "The house's domain where brand.json is hosted"
+        },
+        "name": {
+          "type": "string",
+          "description": "Primary display name of the house",
+          "minLength": 1
+        },
+        "names": {
+          "type": "array",
+          "description": "Localized house names including legal name, stock symbol, etc.",
+          "items": { "$ref": "#/definitions/localized_name" }
+        },
+        "architecture": {
+          "type": "string",
+          "enum": ["branded_house", "house_of_brands", "hybrid"],
+          "description": "Brand architecture model: branded_house (Google), house_of_brands (P&G), hybrid (Nike)"
+        }
+      },
+      "required": ["domain", "name"],
+      "additionalProperties": true
+    },
+    "brand_agent": {
+      "type": "object",
+      "description": "Reference to a brand agent that provides brand manifest data via MCP",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Brand agent MCP endpoint URL"
+        },
+        "id": {
+          "type": "string",
+          "description": "Agent identifier (useful for logging, multi-tenant DAMs)",
+          "pattern": "^[a-z0-9_]+$"
+        }
+      },
+      "required": ["url", "id"],
+      "additionalProperties": true
+    },
+    "contact": {
+      "type": "object",
+      "description": "Contact information",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "email": { "type": "string", "format": "email", "maxLength": 255 },
+        "domain": { "$ref": "#/definitions/domain" }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "title": "Authoritative Location Redirect",
+      "description": "Redirects to a hosted brand.json file at another URL",
+      "properties": {
+        "$schema": { "type": "string" },
+        "authoritative_location": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the authoritative brand.json file"
+        },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authoritative_location"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "House Redirect",
+      "description": "Redirects to the house domain that contains the full brand portfolio",
+      "properties": {
+        "$schema": { "type": "string" },
+        "house": {
+          "$ref": "#/definitions/domain",
+          "description": "House domain to fetch brand portfolio from"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code if this is a regional domain"
+        },
+        "note": { "type": "string" },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["house"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "Brand Agent",
+      "description": "Brand with an agent that provides brand info via MCP",
+      "properties": {
+        "$schema": { "type": "string" },
+        "version": { "type": "string" },
+        "brand_agent": { "$ref": "#/definitions/brand_agent" },
+        "contact": { "$ref": "#/definitions/contact" },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["brand_agent"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "House Portfolio",
+      "description": "Full house/brand portfolio with hierarchy, creative assets, and properties",
+      "properties": {
+        "$schema": { "type": "string" },
+        "version": { "type": "string" },
+        "house": { "$ref": "#/definitions/house" },
+        "brands": {
+          "type": "array",
+          "description": "Brands owned by this house",
+          "items": { "$ref": "#/definitions/brand" },
+          "minItems": 1
+        },
+        "contact": { "$ref": "#/definitions/contact" },
+        "trademarks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "registry": { "type": "string" },
+              "number": { "type": "string" },
+              "mark": { "type": "string" }
+            },
+            "required": ["registry", "number", "mark"],
+            "additionalProperties": true
+          }
+        },
+        "last_updated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["house", "brands"],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "$schema": "/schemas/brand.json",
+      "authoritative_location": "https://adcontextprotocol.org/brand/abc123/brand.json"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "house": "nikeinc.com",
+      "note": "Redirect to house domain for full brand portfolio"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "brand_agent": {
+        "url": "https://agent.acme.com/mcp",
+        "id": "acme_brand_agent"
+      }
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "house": {
+        "domain": "pg.com",
+        "name": "Procter & Gamble",
+        "architecture": "house_of_brands"
+      },
+      "brands": [
+        {
+          "id": "tide",
+          "names": [{"en": "Tide"}, {"es": "Tide"}, {"zh": "汰渍"}],
+          "keller_type": "master",
+          "industry": "cpg",
+          "description": "Laundry detergent brand",
+          "logos": [
+            {"url": "https://cdn.pg.com/tide/logo-square.png", "tags": ["square", "primary"]}
+          ],
+          "colors": {"primary": "#FF6600", "secondary": "#0066CC"},
+          "tone": "clean, fresh, trustworthy",
+          "tagline": "Tide's In, Dirt's Out",
+          "properties": [
+            {"type": "website", "identifier": "tide.com", "primary": true},
+            {"type": "mobile_app", "store": "apple", "identifier": "com.pg.tide"}
+          ]
+        },
+        {
+          "id": "pampers",
+          "names": [{"en": "Pampers"}],
+          "keller_type": "master",
+          "industry": "cpg",
+          "logos": [
+            {"url": "https://cdn.pg.com/pampers/logo.png", "tags": ["primary"]}
+          ],
+          "colors": {"primary": "#00A0D2"},
+          "properties": [
+            {"type": "website", "identifier": "pampers.com", "primary": true}
+          ]
+        }
+      ],
+      "contact": {
+        "name": "P&G Brand Team",
+        "email": "brands@pg.com"
+      },
+      "last_updated": "2026-01-15T10:00:00Z"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "house": {
+        "domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "id": "nike",
+          "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+          "keller_type": "master",
+          "logos": [
+            {"url": "https://cdn.nike.com/swoosh-dark.svg", "tags": ["dark", "icon"]},
+            {"url": "https://cdn.nike.com/logo-full.svg", "tags": ["full", "horizontal"]}
+          ],
+          "colors": {"primary": "#111111", "accent": "#FF6600"},
+          "tone": "inspirational, bold, athletic",
+          "tagline": "Just Do It",
+          "properties": [
+            {"type": "website", "identifier": "nike.com", "primary": true},
+            {"type": "website", "identifier": "nike.cn", "region": "CN"},
+            {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+          ]
+        },
+        {
+          "id": "air_jordan",
+          "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+          "keller_type": "endorsed",
+          "parent_brand": "nike",
+          "logos": [
+            {"url": "https://cdn.nike.com/jumpman.svg", "tags": ["icon"]}
+          ],
+          "colors": {"primary": "#CE1141", "secondary": "#111111"},
+          "properties": [
+            {"type": "website", "identifier": "jordan.com", "primary": true},
+            {"type": "website", "identifier": "jumpman23.com"}
+          ],
+          "brand_agent": {
+            "url": "https://dam.nike.com/mcp",
+            "id": "nike_dam"
+          }
+        },
+        {
+          "id": "converse",
+          "names": [{"en": "Converse"}],
+          "keller_type": "independent",
+          "logos": [
+            {"url": "https://cdn.converse.com/star.svg", "tags": ["icon"]}
+          ],
+          "properties": [
+            {"type": "website", "identifier": "converse.com", "primary": true}
+          ]
+        }
+      ],
+      "last_updated": "2026-01-15T10:00:00Z"
+    }
+  ]
+}
