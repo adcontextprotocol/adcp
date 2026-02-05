@@ -236,7 +236,10 @@ A single signal entry in a data provider's signal catalog, containing: `id` (uni
 The process of finding relevant data signals (audiences, contextual, geographical, temporal) using natural language descriptions or structured ID lookup.
 
 **Signal ID**
-A structured identifier referencing a signal in a data provider's catalog. Contains `data_provider_domain` (where the catalog is hosted) and `id` (signal identifier within that catalog). Example: `{ "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`.
+A structured identifier referencing a signal. Uses `source` as a discriminator with two variants: `catalog` signals reference a data provider's published catalog (`data_provider_domain` + `id`, verifiable); `agent` signals are native to the signals agent (`agent_url` + `id`, trust-based). Example catalog signal: `{ "source": "catalog", "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`. Example agent signal: `{ "source": "agent", "agent_url": "https://liveramp.com/signals", "id": "custom_segment" }`.
+
+**Signal Source**
+The origin type for a signal identifier: `catalog` (from a data provider's published catalog, authorization verifiable via adagents.json) or `agent` (native to the signals agent, not externally verifiable). See [Data Provider Guide](/docs/signals/data-providers).
 
 **Signal Tags**
 Tags used to group related signals within a data provider's catalog. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.

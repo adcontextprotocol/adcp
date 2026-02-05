@@ -276,25 +276,64 @@ Based on `value_type`, buyers construct targeting expressions:
 ```json
 // Binary targeting
 {
-  "signal_id": { "data_provider_domain": "acme-data.com", "id": "likely_tesla_buyers" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "likely_tesla_buyers" },
   "value_type": "binary",
   "value": true
 }
 
 // Categorical targeting
 {
-  "signal_id": { "data_provider_domain": "acme-data.com", "id": "vehicle_ownership" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "vehicle_ownership" },
   "value_type": "categorical",
   "values": ["tesla", "bmw"]
 }
 
 // Numeric targeting
 {
-  "signal_id": { "data_provider_domain": "acme-data.com", "id": "purchase_propensity" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "purchase_propensity" },
   "value_type": "numeric",
   "min_value": 0.7
 }
 ```
+
+## Agent-Native Signals
+
+Not all signals come from data provider catalogs. Signals agents may also offer **agent-native signals** - custom signals they've created themselves (proprietary models, first-party data, etc.).
+
+### Signal ID Structure
+
+Signal IDs use `source` as a discriminator:
+
+| Source | Fields | Verification |
+|--------|--------|--------------|
+| `catalog` | `data_provider_domain` + `id` | Verifiable via data provider's adagents.json |
+| `agent` | `agent_url` + `id` | Trust-based - buyer trusts the agent |
+
+### Example: Agent-Native Signal
+
+```json
+{
+  "signal_id": {
+    "source": "agent",
+    "agent_url": "https://liveramp.com/.well-known/adcp/signals",
+    "id": "custom_auto_intenders"
+  },
+  "value_type": "binary",
+  "value": true
+}
+```
+
+### When to Use Each
+
+**Use `source: "catalog"`** when:
+- Signal comes from an external data provider (Polk, Experian, etc.)
+- Authorization verification is important
+- You want to reference the canonical signal definition
+
+**Use `source: "agent"`** when:
+- Signal is proprietary to the signals agent
+- No external data provider to verify against
+- Agent has created custom models or first-party segments
 
 ## Complete Example
 

@@ -180,7 +180,7 @@
         },
         "signal-id": {
           "$ref": "/schemas/core/signal-id.json",
-          "description": "Universal signal identifier referencing a signal from a data provider's catalog (data_provider_domain + id)"
+          "description": "Universal signal identifier - discriminated union by source: 'catalog' (data_provider_domain + id, verifiable) or 'agent' (agent_url + id, trust-based)"
         },
         "signal-definition": {
           "$ref": "/schemas/core/signal-definition.json",
@@ -463,6 +463,10 @@
         "signal-category": {
           "$ref": "/schemas/enums/signal-category.json",
           "description": "High-level categories for classifying signals (purchase_intent, behavioral, ownership, etc.)"
+        },
+        "signal-source": {
+          "$ref": "/schemas/enums/signal-source.json",
+          "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
         }
       }
     },

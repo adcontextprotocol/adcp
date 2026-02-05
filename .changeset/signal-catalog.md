@@ -13,10 +13,10 @@ Data providers (Polk, Experian, Acxiom, etc.) can now publish signal catalogs vi
 - **Scalable partnerships**: Authorize agents once; as you add signals, authorized agents automatically have access
 
 **New schemas:**
-- `signal-id.json` - Universal signal identifier (`data_provider_domain` + `id`)
+- `signal-id.json` - Universal signal identifier with `source` discriminator: `catalog` (data_provider_domain + id, verifiable) or `agent` (agent_url + id, trust-based)
 - `signal-definition.json` - Signal spec in data provider's catalog
 - `signal-targeting.json` - Discriminated union for targeting by value_type
-- `signal-category.json` / `signal-value-type.json` - Enums
+- `signal-category.json` / `signal-value-type.json` / `signal-source.json` - Enums
 
 **Modified schemas:**
 - `adagents.json` - Added `signals` array, `signal_tags`, and signal authorization types
