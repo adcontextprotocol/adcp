@@ -274,9 +274,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'tag_insight',
       'list_pending_insights',
       'run_synthesis',
-      'send_member_dm',
     ],
     adminOnly: true,
+  },
+
+  collaboration: {
+    name: 'collaboration',
+    description: 'Send direct messages to other AgenticAdvertising.org members, forward conversation context, and collaborate across the community',
+    tools: [
+      'send_member_dm',
+    ],
   },
 };
 

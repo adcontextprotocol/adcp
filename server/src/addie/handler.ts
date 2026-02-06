@@ -55,6 +55,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  COLLABORATION_TOOLS,
+  createCollaborationToolHandlers,
+} from './mcp/collaboration-tools.js';
+import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
@@ -306,6 +310,15 @@ async function createUserScopedTools(
   allTools.push(...ESCALATION_TOOLS);
   for (const [name, handler] of escalationHandlers) {
     allHandlers.set(name, handler);
+  }
+
+  // Add collaboration tools (available to all members - DM other members, forward context)
+  if (memberContext?.is_member) {
+    const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
+    allTools.push(...COLLABORATION_TOOLS);
+    for (const [name, handler] of collaborationHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
