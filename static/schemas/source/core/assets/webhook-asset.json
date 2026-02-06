@@ -25,14 +25,20 @@
     "supported_macros": {
       "type": "array",
       "items": {
-        "type": "string"
+        "oneOf": [
+          { "$ref": "/schemas/enums/universal-macro.json" },
+          { "type": "string", "description": "Custom or publisher-specific macro name" }
+        ]
       },
-      "description": "Universal macros that can be passed to webhook (e.g., {DEVICE_TYPE}, {COUNTRY})"
+      "description": "Universal macros that can be passed to webhook (e.g., DEVICE_TYPE, COUNTRY). See docs/creative/universal-macros.mdx for full list."
     },
     "required_macros": {
       "type": "array",
       "items": {
-        "type": "string"
+        "oneOf": [
+          { "$ref": "/schemas/enums/universal-macro.json" },
+          { "type": "string", "description": "Custom or publisher-specific macro name" }
+        ]
       },
       "description": "Universal macros that must be provided for webhook to function"
     },

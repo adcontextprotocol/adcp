@@ -55,8 +55,12 @@ Different creative formats support different macros. Use `list_creative_formats`
 | `{GDPR}` | GDPR applicability flag | `1` (applies), `0` (doesn't apply) |
 | `{GDPR_CONSENT}` | IAB TCF 2.0 consent string | `CPc7TgPPc7TgPAGABC...` |
 | `{US_PRIVACY}` | US Privacy (CCPA) string | `1YNN` |
-| `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~1...` |
+| `{GPP_STRING}` | Global Privacy Platform consent string | `DBABMA~CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA` |
+| `{GPP_SID}` | GPP Section ID(s) indicating applicable sections | `7`, `7,8` (US National, US National + California) |
+| `{IP_ADDRESS}` | User IP address (often masked for privacy) | `203.0.113.42`, `""` (when restricted) |
 | `{LIMIT_AD_TRACKING}` | Limit Ad Tracking enabled | `1` (limited), `0` (allowed) |
+
+> **Privacy Warning**: `{IP_ADDRESS}` is considered personal data under GDPR and many privacy regulations. This macro may return an empty string or masked/truncated IP depending on user privacy settings, publisher policies, and regional regulations. Use geo macros (`{COUNTRY}`, `{REGION}`, `{CITY}`) instead when possible.
 
 **Example - Privacy-aware tracking**:
 ```javascript
@@ -146,6 +150,17 @@ For video ads in commercial breaks:
 | `{AD_BREAK_ID}` | Unique ad break identifier | `break_mid_1` |
 
 **Note**: Video formats also support all [IAB VAST 4.x macros](http://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html) like `[CACHEBUSTING]`, `[TIMESTAMP]`, `[DOMAIN]`, `[IFA]`, etc. These work natively in VAST XML.
+
+### Audio Content Macros
+
+For audio formats with content context:
+
+| Macro | Description | Example Value |
+|-------|-------------|---------------|
+| `{STATION_ID}` | Radio station or podcast identifier | `WXYZ-FM`, `pod_12345` |
+| `{SHOW_NAME}` | Program or show name | `Morning Drive`, `Tech Talk Daily` |
+| `{EPISODE_ID}` | Podcast episode identifier | `ep_2025_01_15` |
+| `{AUDIO_DURATION}` | Content duration in seconds | `3600` |
 
 ### AXE Integration
 
@@ -245,10 +260,14 @@ Not all macros are available in all inventory types. Check format specifications
 | `{PACKAGE_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{CREATIVE_ID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{CACHEBUSTER}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{TIMESTAMP}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Privacy** | | | | | | | | | |
 | `{GDPR}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{GDPR_CONSENT}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `{US_PRIVACY}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{GPP_STRING}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{GPP_SID}` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `{IP_ADDRESS}` | ✅‡ | ✅‡ | ✅‡ | ✅‡ | ✅‡ | ❌ | ✅‡ | ✅‡ | ✅‡ |
 | `{LIMIT_AD_TRACKING}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
 | **Identity** | | | | | | | | | |
 | `{DEVICE_ID}` | ✅* | ✅* | ✅* | ✅* | ✅ | ❌ | ✅ | ❌ | ❌ |
@@ -282,12 +301,16 @@ Not all macros are available in all inventory types. Check format specifications
 | `{POD_POSITION}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `{POD_SIZE}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `{AD_BREAK_ID}` | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Audio Content** | | | | | | | | | |
+| `{STATION_ID}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `{SHOW_NAME}` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **Legend**:
 - ✅ = Available
 - ❌ = Not available
 - ✅* = In-app only (not mobile web)
 - ✅† = When location permission granted
+- ✅‡ = Often restricted due to privacy regulations (may return empty or masked value)
 
 **Important Notes**:
 - Privacy macros (`{LIMIT_AD_TRACKING}`, `{DEVICE_ID}`) may return empty values based on user privacy settings
@@ -454,7 +477,7 @@ if (LIMIT_AD_TRACKING == 1 || DEVICE_ID == '' || DEVICE_ID == '00000000-0000-000
 **Empty Values**: Privacy-restricted macros return empty strings or zeros:
 - `{DEVICE_ID}` → `""` or `00000000-0000-0000-0000-000000000000` when LAT enabled
 - `{GDPR_CONSENT}` → `""` when no consent provided
-- `{IP_ADDRESS}` → `""` or masked IP when privacy restricted
+- `{IP_ADDRESS}` → `""` or masked/truncated IP when privacy restricted
 
 **Always test for empty values** before using privacy-sensitive macros.
 
