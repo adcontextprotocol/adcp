@@ -505,6 +505,7 @@ Key characteristics:
 - **Actionable**: Buyers execute proposals directly via `create_media_buy` with a `proposal_id`
 - **Refinable**: Buyers can request changes via natural language in subsequent `get_products` calls
 - **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
+- **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
 ### Proposal Structure
 
@@ -552,7 +553,15 @@ Key characteristics:
     "recommended": 50000,
     "currency": "USD"
   },
-  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)"
+  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
+  "forecast": {
+    "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
+    "reach": { "low": 400000, "mid": 600000, "high": 750000 },
+    "clicks": { "mid": 4800 },
+    "confidence": "modeled",
+    "currency": "USD",
+    "valid_until": "2025-04-15T00:00:00Z"
+  }
 }
 ```
 
@@ -616,6 +625,24 @@ Publishers include proposals when:
 - Multiple products work better together than individually
 
 Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+
+### Delivery Forecasts
+
+Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
+
+Forecasts include metric ranges (low/mid/high) for standard delivery metrics like impressions, reach, clicks, and spend. Each forecast declares a confidence level:
+
+- **`estimate`** — rough approximation, no delivery commitment
+- **`modeled`** — derived from predictive models or historical data
+- **`guaranteed`** — contractually committed delivery levels
+
+Forecasts can appear at two levels:
+- **Proposal-level**: aggregate forecast for the entire media plan
+- **Allocation-level**: per-product forecast for individual line items
+
+Allocation-level forecasts may not sum to the proposal-level forecast due to audience overlap and frequency capping. When both are present, the proposal-level forecast is authoritative for total delivery estimation.
+
+Publishers may also include a `curve` array showing how delivery scales with different budget levels, and a `demographic` field for GRP-based forecasts (linear TV, radio).
 
 ## Integration with Discovery
 

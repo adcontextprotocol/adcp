@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-point.json",
+  "title": "Forecast Point",
+  "description": "A single point on a budget-to-outcome curve. Points should be ordered by ascending budget to form a curve showing how delivery metrics scale with spend.",
+  "type": "object",
+  "properties": {
+    "budget": {
+      "type": "number",
+      "description": "Budget amount for this forecast point",
+      "minimum": 0
+    },
+    "reach": {
+      "type": "number",
+      "description": "Estimated unique reach at this budget level",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Estimated impressions at this budget level",
+      "minimum": 0
+    },
+    "clicks": {
+      "type": "number",
+      "description": "Estimated clicks at this budget level",
+      "minimum": 0
+    },
+    "views": {
+      "type": "number",
+      "description": "Estimated views at threshold at this budget level (for CPV)",
+      "minimum": 0
+    },
+    "conversions": {
+      "type": "number",
+      "description": "Estimated conversions at this budget level",
+      "minimum": 0
+    }
+  },
+  "required": ["budget"],
+  "additionalProperties": true
+}

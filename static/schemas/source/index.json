@@ -106,6 +106,18 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "delivery-forecast": {
+          "$ref": "/schemas/core/delivery-forecast.json",
+          "description": "Forecasted delivery metrics for a proposal or product allocation"
+        },
+        "forecast-range": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "A forecast value with optional low/high bounds"
+        },
+        "forecast-point": {
+          "$ref": "/schemas/core/forecast-point.json",
+          "description": "A single point on a budget-to-outcome curve"
+        },
         "promoted-offerings": {
           "$ref": "/schemas/core/promoted-offerings.json",
           "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
@@ -363,6 +375,10 @@
         "feedback-source": {
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
+        },
+        "forecast-confidence": {
+          "$ref": "/schemas/enums/forecast-confidence.json",
+          "description": "Confidence level of a delivery forecast (estimate, modeled, guaranteed)"
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",

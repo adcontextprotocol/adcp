@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-forecast.json",
+  "title": "Delivery Forecast",
+  "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach forecasts to help buyers evaluate expected campaign performance before purchase.",
+  "type": "object",
+  "properties": {
+    "audience_size": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated addressable audience size"
+    },
+    "reach": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated unique reach"
+    },
+    "frequency": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated average frequency per individual"
+    },
+    "impressions": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated impressions"
+    },
+    "clicks": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated clicks"
+    },
+    "spend": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated spend in the forecast currency"
+    },
+    "views": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated views at threshold (for CPV)"
+    },
+    "leads": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated leads generated"
+    },
+    "conversions": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated conversions"
+    },
+    "grps": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Estimated Gross Rating Points (for CPP). When present, the demographic field should specify the target demographic."
+    },
+    "confidence": {
+      "$ref": "/schemas/enums/forecast-confidence.json",
+      "description": "Confidence level of this forecast"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for spend values in this forecast"
+    },
+    "demographic": {
+      "type": "string",
+      "description": "Target demographic for GRP forecasts (e.g., 'A25-54', 'P18-49'). Uses Nielsen demographic notation."
+    },
+    "curve": {
+      "type": "array",
+      "description": "Budget-to-outcome curve showing how delivery metrics scale with spend. Points should be ordered by ascending budget.",
+      "items": {
+        "$ref": "/schemas/core/forecast-point.json"
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast was computed"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast expires. After this time, the forecast should be refreshed. Forecast expiry does not affect proposal executability."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["confidence", "currency"],
+  "additionalProperties": true
+}
