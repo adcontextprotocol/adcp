@@ -46,6 +46,7 @@
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
           { href: '/admin/email', label: 'Email', icon: '📧' },
           { href: '/admin/addie', label: 'Addie', icon: '🤖' },
+          { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
           { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
           { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
           { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
@@ -389,7 +390,12 @@
 
   // Shared fetch wrapper that handles 401 redirects automatically
   async function adminFetch(url, options = {}) {
-    const response = await fetch(url, options);
+    // Always include credentials to send session cookies
+    const fetchOptions = {
+      ...options,
+      credentials: 'include'
+    };
+    const response = await fetch(url, fetchOptions);
     if (response.status === 401) {
       redirectToLogin();
       // Return a never-resolving promise to prevent further processing

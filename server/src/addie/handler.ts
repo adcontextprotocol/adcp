@@ -55,6 +55,10 @@ import {
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
 import {
+  COLLABORATION_TOOLS,
+  createCollaborationToolHandlers,
+} from './mcp/collaboration-tools.js';
+import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
 } from './mcp/adcp-tools.js';
@@ -62,6 +66,14 @@ import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
 } from './mcp/schema-tools.js';
+import {
+  BRAND_TOOLS,
+  createBrandToolHandlers,
+} from './mcp/brand-tools.js';
+import {
+  PROPERTY_TOOLS,
+  createPropertyToolHandlers,
+} from './mcp/property-tools.js';
 import {
   COMMITTEE_LEADER_TOOLS,
   createCommitteeLeaderToolHandlers,
@@ -181,6 +193,24 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
+  // Register brand tools (research brands, resolve identities, save to registry)
+  const brandHandlers = createBrandToolHandlers();
+  for (const tool of BRAND_TOOLS) {
+    const handler = brandHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register property tools (validate adagents.json, resolve publishers, save hosted properties)
+  const propertyHandlers = createPropertyToolHandlers();
+  for (const tool of PROPERTY_TOOLS) {
+    const handler = propertyHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
   initialized = true;
   logger.info({ tools: claudeClient.getRegisteredTools() }, 'Addie: Ready');
 }
@@ -280,6 +310,15 @@ async function createUserScopedTools(
   allTools.push(...ESCALATION_TOOLS);
   for (const [name, handler] of escalationHandlers) {
     allHandlers.set(name, handler);
+  }
+
+  // Add collaboration tools (available to all members - DM other members, forward context)
+  if (memberContext?.is_member) {
+    const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
+    allTools.push(...COLLABORATION_TOOLS);
+    for (const [name, handler] of collaborationHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)

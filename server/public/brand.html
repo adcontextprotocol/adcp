@@ -1,0 +1,2192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>brand.json Builder - AdCP Brand Protocol</title>
+    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/design-system.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* CSS Custom Properties for Theming - mapped to design system */
+      :root {
+        --primary-gradient: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-600) 100%);
+        --success-gradient: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-500) 100%);
+        --warning-gradient: linear-gradient(135deg, var(--color-warning-400) 0%, var(--color-error-400) 100%);
+
+        --glass-bg: rgba(255, 255, 255, 0.1);
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --glass-shadow: var(--shadow-lg);
+
+        --surface-primary: var(--color-bg-card);
+        --surface-secondary: var(--color-bg-subtle);
+        --text-primary: var(--color-text-heading);
+        --text-secondary: var(--color-text-secondary);
+        --text-muted: var(--color-text-muted);
+
+        --accent-blue: var(--color-primary-700);
+        --accent-purple: var(--color-primary-600);
+        --accent-green: var(--color-primary-700);
+        --accent-orange: var(--color-warning-500);
+
+        --timing-fast: 0.2s;
+        --timing-normal: 0.4s;
+        --easing: var(--ease-out);
+      }
+
+      body {
+        font-family: var(--font-sans);
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        line-height: var(--leading-normal);
+        color: var(--text-primary);
+        font-weight: var(--font-normal);
+        margin: 0;
+        padding: 60px 0 0 0;
+        min-height: 100vh;
+        background: linear-gradient(135deg, var(--color-primary-700) 0%, var(--color-primary-600) 100%);
+        position: relative;
+      }
+
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background:
+          radial-gradient(circle at 20% 50%, rgba(164, 194, 244, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(164, 194, 244, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .main-content {
+        max-width: var(--container-wide);
+        margin: 0 auto;
+        padding: var(--space-10) var(--space-5);
+        position: relative;
+        z-index: 2;
+      }
+
+      .page-header {
+        text-align: center;
+        margin-bottom: var(--space-12);
+      }
+
+      .page-header h1 {
+        color: white;
+        font-size: var(--text-4xl);
+        font-weight: var(--font-bold);
+        margin: 0 0 var(--space-4) 0;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-header p {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: var(--text-lg);
+        margin: 0;
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      .section {
+        background: var(--surface-primary);
+        backdrop-filter: blur(10px);
+        border: var(--border-1) solid rgba(255, 255, 255, 0.2);
+        border-radius: var(--radius-xl);
+        padding: var(--space-8);
+        margin-bottom: var(--space-8);
+        box-shadow: var(--shadow-lg);
+        transition: var(--transition-all);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: var(--primary-gradient);
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+      }
+
+      .section h3 {
+        color: var(--text-primary);
+        margin: 0 0 var(--space-5) 0;
+        font-size: var(--text-2xl);
+        font-weight: var(--font-semibold);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+      }
+
+      .section h4 {
+        color: var(--text-secondary);
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-xl);
+        font-weight: var(--font-semibold);
+      }
+
+      .btn {
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        padding: var(--space-3) var(--space-6);
+        border-radius: var(--radius-md);
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+        cursor: pointer;
+        transition: var(--transition-all);
+        text-decoration: none;
+        display: inline-block;
+        text-align: center;
+        box-shadow: var(--shadow-primary-sm);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-primary-md);
+      }
+
+      .btn:active {
+        transform: translateY(0);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .btn-secondary {
+        background: var(--color-gray-500);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-secondary:hover {
+        box-shadow: var(--shadow-md);
+      }
+
+      input[type='text'],
+      input[type='url'],
+      select,
+      textarea {
+        width: 100%;
+        padding: var(--space-3) var(--space-4);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        transition: var(--transition-all);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+
+      input[type='text']:focus,
+      input[type='url']:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+        box-shadow: var(--ring-primary);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 120px;
+        font-family: var(--font-mono);
+      }
+
+      .form-group {
+        margin-bottom: var(--space-5);
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: var(--space-2);
+        font-weight: var(--font-semibold);
+        color: var(--text-primary);
+      }
+
+      .form-group .hint {
+        font-size: var(--text-sm);
+        color: var(--text-muted);
+        margin-top: var(--space-1);
+      }
+
+      .variant-selector {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-4);
+        margin-bottom: var(--space-6);
+      }
+
+      @media (max-width: 768px) {
+        .variant-selector {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .variant-card {
+        background: var(--color-bg-subtle);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        cursor: pointer;
+        transition: var(--transition-all);
+      }
+
+      .variant-card:hover {
+        border-color: var(--accent-blue);
+        background: var(--color-primary-50);
+      }
+
+      .variant-card.selected {
+        border-color: var(--accent-blue);
+        background: var(--color-primary-50);
+        box-shadow: var(--ring-primary);
+      }
+
+      .variant-card h4 {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-lg);
+        color: var(--text-primary);
+      }
+
+      .variant-card p {
+        margin: 0;
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+      }
+
+      .variant-card .icon {
+        font-size: 24px;
+        margin-bottom: var(--space-2);
+      }
+
+      .property-entry {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+        margin-bottom: var(--space-2);
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+      }
+
+      .property-entry select,
+      .property-entry input {
+        margin: 0;
+      }
+
+      .property-entry select {
+        width: auto;
+        min-width: 120px;
+      }
+
+      .property-entry input {
+        flex: 1;
+      }
+
+      .json-preview {
+        background: var(--color-gray-900);
+        color: var(--color-gray-100);
+        padding: var(--space-5);
+        border-radius: var(--radius-lg);
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .validation-result {
+        padding: var(--space-4);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-4);
+      }
+
+      .result-success {
+        background: var(--color-primary-50);
+        border: 1px solid var(--color-primary-200);
+        color: var(--color-primary-800);
+      }
+
+      .result-warning {
+        background: var(--color-warning-50);
+        border: 1px solid var(--color-warning-200);
+        color: var(--color-warning-800);
+      }
+
+      .result-error {
+        background: var(--color-error-50);
+        border: 1px solid var(--color-error-200);
+        color: var(--color-error-800);
+      }
+
+      .dashboard-header {
+        background: var(--color-primary-50);
+        border: 1px solid var(--color-primary-200);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-5);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+      }
+
+      .dashboard-header h4 {
+        margin: 0 0 var(--space-1) 0;
+        color: var(--color-primary-800);
+      }
+
+      .dashboard-header p {
+        margin: 0;
+        font-size: var(--text-sm);
+        color: var(--color-primary-800);
+      }
+
+      .dashboard-actions {
+        display: flex;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+      }
+
+      .dashboard-actions .btn {
+        padding: var(--space-2) var(--space-4);
+        font-size: var(--text-sm);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .keller-badge {
+        display: inline-block;
+        font-size: var(--text-xs);
+        padding: 1px 8px;
+        border-radius: var(--radius-full);
+        font-weight: var(--font-medium);
+        margin-left: var(--space-2);
+      }
+
+      .keller-badge.master { background: var(--color-primary-100); color: var(--color-primary-800); }
+      .keller-badge.sub_brand { background: var(--color-warning-100); color: var(--color-warning-700); }
+      .keller-badge.endorsed { background: var(--color-primary-200); color: var(--color-primary-900); }
+      .keller-badge.independent { background: var(--color-bg-subtle); color: var(--text-secondary); }
+
+      /* Decision Tree Styles */
+      .decision-step {
+        margin-bottom: var(--space-6);
+      }
+
+      .decision-step h4 {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-lg);
+      }
+
+      .step-hint {
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        margin: 0 0 var(--space-4) 0;
+      }
+
+      .decision-options {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+      }
+
+      .decision-option {
+        display: flex;
+        align-items: center;
+        gap: var(--space-4);
+        padding: var(--space-4);
+        border: 2px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-bg);
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.15s ease;
+      }
+
+      .decision-option:hover {
+        border-color: var(--color-brand);
+        background: var(--color-bg-subtle);
+      }
+
+      .decision-option.recommended {
+        position: relative;
+        border-color: var(--color-brand);
+      }
+
+      .option-badge {
+        position: absolute;
+        top: -10px;
+        right: var(--space-4);
+        background: var(--color-brand);
+        color: white;
+        font-size: var(--text-xs);
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        font-weight: var(--font-semibold);
+      }
+
+      .option-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        color: var(--color-brand);
+        flex-shrink: 0;
+      }
+
+      .option-content {
+        flex: 1;
+      }
+
+      .option-content strong {
+        display: block;
+        margin-bottom: var(--space-1);
+      }
+
+      .option-content span {
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+      }
+
+      .examples-row {
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+        margin-bottom: var(--space-1);
+      }
+
+      .example-label {
+        font-weight: var(--font-medium);
+        color: var(--text-primary);
+      }
+
+      .back-link {
+        background: none;
+        border: none;
+        color: var(--color-brand);
+        cursor: pointer;
+        padding: 0;
+        font-size: var(--text-sm);
+        margin-bottom: var(--space-4);
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+      }
+
+      .back-link:hover {
+        text-decoration: underline;
+      }
+
+      .info-callout {
+        background: var(--color-bg-subtle);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-top: var(--space-4);
+        font-size: var(--text-sm);
+      }
+
+      .info-callout strong {
+        display: block;
+        margin-bottom: var(--space-2);
+      }
+
+      .info-callout ol {
+        margin: 0;
+        padding-left: var(--space-5);
+      }
+
+      .info-callout li {
+        margin-bottom: var(--space-1);
+      }
+
+      /* Next Steps Styles */
+      .next-steps {
+        background: var(--color-success-50);
+        border: 1px solid var(--color-success-100);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-top: var(--space-6);
+      }
+
+      .next-steps h4 {
+        margin: 0 0 var(--space-4) 0;
+        color: var(--color-success-700);
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+      }
+
+      .next-steps ol {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step-counter;
+      }
+
+      .next-steps li {
+        counter-increment: step-counter;
+        display: flex;
+        gap: var(--space-3);
+        margin-bottom: var(--space-4);
+        align-items: flex-start;
+      }
+
+      .next-steps li:last-child {
+        margin-bottom: 0;
+      }
+
+      .step-number {
+        width: 28px;
+        height: 28px;
+        background: var(--color-success-700);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        flex-shrink: 0;
+      }
+
+      .step-content {
+        flex: 1;
+      }
+
+      .step-content strong {
+        display: block;
+        margin-bottom: var(--space-1);
+        color: var(--color-success-700);
+      }
+
+      .step-content p {
+        margin: 0 0 var(--space-2) 0;
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+      }
+
+      .step-content code {
+        background: white;
+        padding: var(--space-1) var(--space-2);
+        border-radius: var(--radius-sm);
+        font-size: var(--text-sm);
+        border: 1px solid var(--color-success-100);
+      }
+
+      .verify-result {
+        margin-top: var(--space-3);
+        padding: var(--space-3);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+      }
+
+      .verify-result.success {
+        background: var(--color-success-50);
+        border: 1px solid var(--color-success-100);
+        color: var(--color-success-700);
+      }
+
+      .verify-result.error {
+        background: var(--color-error-50);
+        border: 1px solid var(--color-error-100);
+        color: var(--color-error-700);
+      }
+
+      .verify-result.pending {
+        background: var(--color-warning-50);
+        border: 1px solid var(--color-warning-100);
+        color: var(--color-warning-700);
+      }
+
+      /* Portfolio Two-Panel Layout */
+      .portfolio-layout {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        gap: var(--space-6);
+        margin-bottom: var(--space-6);
+      }
+
+      @media (max-width: 1024px) {
+        .portfolio-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Brand Tree Navigator (Left Panel) */
+      .brand-tree-panel {
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        max-height: 600px;
+        overflow-y: auto;
+      }
+
+      .brand-tree-panel h4 {
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-lg);
+        color: var(--text-primary);
+      }
+
+      .brand-tree-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .brand-tree-item {
+        margin-bottom: var(--space-1);
+      }
+
+      .brand-tree-node {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: var(--transition-all);
+        font-size: var(--text-sm);
+      }
+
+      .brand-tree-node:hover {
+        background: var(--color-bg-card);
+      }
+
+      .brand-tree-node.selected {
+        background: var(--color-primary-100);
+        color: var(--color-brand);
+        font-weight: var(--font-semibold);
+      }
+
+      .brand-tree-node .expand-icon {
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: var(--text-muted);
+      }
+
+      .brand-tree-node .brand-name {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .brand-tree-node .add-child-btn {
+        opacity: 0;
+        background: var(--color-brand);
+        color: white;
+        border: none;
+        width: 20px;
+        height: 20px;
+        border-radius: var(--radius-full);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0;
+      }
+
+      .brand-tree-node:hover .add-child-btn {
+        opacity: 1;
+      }
+
+      .brand-tree-children {
+        margin-left: var(--space-6);
+      }
+
+      .add-root-brand-btn {
+        margin-top: var(--space-3);
+        width: 100%;
+      }
+
+      /* Brand Detail Editor (Right Panel) */
+      .brand-detail-panel {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-6);
+        max-height: 600px;
+        overflow-y: auto;
+      }
+
+      .brand-detail-empty {
+        text-align: center;
+        color: var(--text-muted);
+        padding: var(--space-12);
+      }
+
+      .brand-detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--space-5);
+        padding-bottom: var(--space-3);
+        border-bottom: var(--border-2) solid var(--color-border);
+      }
+
+      .brand-detail-header h4 {
+        margin: 0;
+        font-size: var(--text-xl);
+      }
+
+      /* Brand Files Dashboard */
+      .brand-files-dashboard {
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-top: var(--space-6);
+      }
+
+      .brand-files-dashboard h4 {
+        margin: 0 0 var(--space-4) 0;
+        font-size: var(--text-lg);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .file-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-3);
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        margin-bottom: var(--space-2);
+      }
+
+      .file-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .file-row .file-path {
+        flex: 1;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        color: var(--text-primary);
+      }
+
+      .file-row .file-type {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        text-transform: uppercase;
+        font-weight: var(--font-semibold);
+      }
+
+      .file-row .status-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        background: var(--color-gray-400);
+      }
+
+      .file-row .status-indicator.valid {
+        background: var(--color-success-500);
+      }
+
+      .file-row .status-indicator.missing {
+        background: var(--color-error-500);
+      }
+
+      .file-row .status-indicator.checking {
+        background: var(--color-warning-500);
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+
+      @media (max-width: 768px) {
+        .page-header h1 {
+          font-size: var(--text-3xl);
+        }
+
+        .section {
+          padding: var(--space-5);
+        }
+
+        .portfolio-layout {
+          grid-template-columns: 1fr;
+        }
+
+        .brand-tree-panel,
+        .brand-detail-panel {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <div class="main-content">
+      <!-- Page Header -->
+      <div class="page-header">
+        <h1>brand.json Builder</h1>
+        <p>
+          Make your brand discoverable by AI. When AI agents look up your domain,
+          they'll find your official brand name and identity instead of guessing.
+        </p>
+        <p style="font-size: var(--text-sm); opacity: 0.9; margin-top: var(--space-2);">
+          Similar to how robots.txt tells search engines how to crawl your site, brand.json tells AI agents who you are.
+        </p>
+      </div>
+
+      <!-- Domain Input Section -->
+      <div class="section">
+        <h3>Build Your brand.json</h3>
+        <p style="color: var(--text-secondary); margin-bottom: var(--space-5)">
+          Enter your domain to validate an existing brand.json or create a new one.
+        </p>
+
+        <div style="display: flex; gap: var(--space-3); margin-bottom: var(--space-5)">
+          <input
+            type="text"
+            id="domain-input"
+            placeholder="example.com"
+            style="flex: 1"
+            onkeypress="if(event.key === 'Enter') startBuilding()"
+          />
+          <button class="btn" onclick="startBuilding()" id="start-btn">Get Started</button>
+        </div>
+
+        <!-- Validation Results -->
+        <div id="validation-results" class="hidden"></div>
+
+        <!-- Builder Form (hidden initially) -->
+        <div id="builder-form" class="hidden">
+          <!-- Dashboard Header -->
+          <div class="dashboard-header">
+            <div>
+              <h4>brand.json for <span id="domain-display"></span></h4>
+              <p id="file-status">Creating new brand.json</p>
+            </div>
+            <div class="dashboard-actions">
+              <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
+              <button class="btn" onclick="downloadJson()">Download</button>
+            </div>
+          </div>
+
+          <!-- Decision Tree -->
+          <div id="decision-tree">
+            <!-- Step 1: Brand Count -->
+            <div id="step-brand-count" class="decision-step">
+              <h4>How many brands does your company have?</h4>
+              <p class="step-hint">If you're unsure, you probably have just one brand.</p>
+
+              <div class="decision-options">
+                <button class="decision-option" onclick="selectBrandCount('single')">
+                  <div class="option-icon">1</div>
+                  <div class="option-content">
+                    <strong>Just one brand</strong>
+                    <span>My company name IS my brand name</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectBrandCount('multiple')">
+                  <div class="option-icon">+</div>
+                  <div class="option-content">
+                    <strong>Multiple brands</strong>
+                    <span>We own several distinct brand names</span>
+                  </div>
+                </button>
+              </div>
+
+              <div class="examples-row">
+                <span class="example-label">Single brand:</span> Allbirds, Warby Parker, Stripe
+              </div>
+              <div class="examples-row">
+                <span class="example-label">Multiple brands:</span> Nike Inc (Nike, Jordan, Converse), P&G (Tide, Pampers)
+              </div>
+            </div>
+
+            <!-- Step 2a: Single Brand Hosting -->
+            <div id="step-single-hosting" class="decision-step hidden">
+              <button class="back-link" onclick="goBackTo('step-brand-count')">← Back</button>
+              <h4>Where will you host your brand.json file?</h4>
+
+              <div class="decision-options">
+                <button class="decision-option recommended" onclick="selectVariant('single')">
+                  <div class="option-badge">Recommended</div>
+                  <div class="option-icon">📄</div>
+                  <div class="option-content">
+                    <strong>On my website</strong>
+                    <span>I'll put the file at <span id="single-domain-hint"></span>/.well-known/brand.json</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('hosted')">
+                  <div class="option-icon">☁️</div>
+                  <div class="option-content">
+                    <strong>Hosted elsewhere</strong>
+                    <span>A CDN or managed service hosts it for me</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('agent')">
+                  <div class="option-icon">🤖</div>
+                  <div class="option-content">
+                    <strong>I have an MCP agent</strong>
+                    <span>My brand info is served dynamically by an AI agent</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2b: Multiple Brands - Which Domain -->
+            <div id="step-multiple-domain" class="decision-step hidden">
+              <button class="back-link" onclick="goBackTo('step-brand-count')">← Back</button>
+              <h4>Which domain are you setting up?</h4>
+              <p class="step-hint">Your domain: <strong id="multi-domain-hint"></strong></p>
+
+              <div class="decision-options">
+                <button class="decision-option" onclick="selectVariant('portfolio')">
+                  <div class="option-icon">🏢</div>
+                  <div class="option-content">
+                    <strong>This is the parent company domain</strong>
+                    <span>All brand info lives here (e.g., nikeinc.com for Nike Inc)</span>
+                  </div>
+                </button>
+
+                <button class="decision-option" onclick="selectVariant('redirect')">
+                  <div class="option-icon">↪️</div>
+                  <div class="option-content">
+                    <strong>This is one of our brand domains</strong>
+                    <span>This brand is owned by a larger company</span>
+                  </div>
+                </button>
+              </div>
+
+              <div class="info-callout">
+                <strong>How multi-brand setup works:</strong>
+                <ol>
+                  <li>Create the full portfolio on your parent company domain</li>
+                  <li>Add a small redirect file on each brand domain</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <!-- Single Brand Form (simplest case) -->
+          <div id="form-single">
+            <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
+            <h4 style="margin-bottom: var(--space-4)">Brand Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+              <div class="form-group" style="margin-bottom: 0">
+                <label>Brand Name</label>
+                <input
+                  type="text"
+                  id="single-brand-name"
+                  placeholder="Allbirds"
+                  oninput="autoGenerateBrandId('single'); updatePreview()"
+                />
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <label>Brand ID</label>
+                <input
+                  type="text"
+                  id="single-brand-id"
+                  placeholder="allbirds"
+                  oninput="updatePreview()"
+                  onchange="markBrandIdManuallyEdited('single')"
+                />
+                <p class="hint">Auto-generated from name</p>
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                Properties (websites, apps)
+                <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+              </label>
+              <div id="single-brand-properties">
+                <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Brand Portfolio Form (multi-brand) -->
+          <div id="form-portfolio" class="hidden">
+            <button class="back-link" onclick="goBackTo('step-multiple-domain')">← Back</button>
+            <h4 style="margin-bottom: var(--space-4)">House Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Domain</label>
+                <input
+                  type="text"
+                  id="portfolio-house-domain"
+                  placeholder="nikeinc.com"
+                  oninput="updatePreview()"
+                />
+                <p class="hint">Corporate/parent company domain</p>
+              </div>
+              <div class="form-group" style="margin-bottom: 0">
+                <label>House Name</label>
+                <input
+                  type="text"
+                  id="portfolio-house-name"
+                  placeholder="Nike, Inc."
+                  oninput="updatePreview()"
+                />
+              </div>
+            </div>
+
+            <h4 style="margin: var(--space-6) 0 var(--space-4) 0;">Brand Portfolio</h4>
+
+            <!-- Two-Panel Layout -->
+            <div class="portfolio-layout">
+              <!-- Left Panel: Brand Tree Navigator -->
+              <div class="brand-tree-panel">
+                <h4>Brands</h4>
+                <div id="brand-tree-container">
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); text-align: center;">No brands yet</p>
+                </div>
+                <button class="btn add-root-brand-btn" onclick="addBrand(null)">+ Add Brand</button>
+              </div>
+
+              <!-- Right Panel: Brand Detail Editor -->
+              <div class="brand-detail-panel">
+                <div id="brand-detail-content" class="brand-detail-empty">
+                  <p>Select a brand from the tree to edit its details</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Brand Files Dashboard -->
+            <div id="brand-files-dashboard" class="brand-files-dashboard hidden">
+              <h4>
+                <span>Brand Files</span>
+                <button class="btn" onclick="validateAllFiles()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-xs);">Validate All</button>
+              </h4>
+              <div id="brand-files-list"></div>
+            </div>
+          </div>
+
+          <!-- Brand Redirect Form -->
+          <div id="form-redirect" class="hidden">
+            <button class="back-link" onclick="goBackTo('step-multiple-domain')">← Back</button>
+            <div class="form-group">
+              <label>House Domain</label>
+              <input
+                type="text"
+                id="redirect-house-domain"
+                placeholder="nikeinc.com"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The corporate/house domain that contains the full brand portfolio</p>
+            </div>
+          </div>
+
+          <!-- Brand Agent Form -->
+          <div id="form-agent" class="hidden">
+            <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
+            <div class="form-group">
+              <label>Agent URL</label>
+              <input
+                type="url"
+                id="agent-url"
+                placeholder="https://agent.example.com/mcp"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The MCP endpoint URL for the brand agent</p>
+            </div>
+            <div class="form-group">
+              <label>Agent ID</label>
+              <input
+                type="text"
+                id="agent-id"
+                placeholder="my_brand_agent"
+                oninput="updatePreview()"
+              />
+              <p class="hint">Unique identifier for the agent</p>
+            </div>
+          </div>
+
+          <!-- Hosted Location Form -->
+          <div id="form-hosted" class="hidden">
+            <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
+            <div class="form-group">
+              <label>Hosted URL</label>
+              <input
+                type="url"
+                id="hosted-url"
+                placeholder="https://cdn.example.com/brands/brand.json"
+                oninput="updatePreview()"
+              />
+              <p class="hint">The HTTPS URL where your brand.json is hosted</p>
+            </div>
+          </div>
+
+          <!-- JSON Preview -->
+          <div style="margin-top: var(--space-6)">
+            <h4 style="margin-bottom: var(--space-3)">Generated brand.json</h4>
+            <pre class="json-preview" id="json-preview">{}</pre>
+          </div>
+
+          <!-- Next Steps / Success State -->
+          <div class="next-steps" id="next-steps">
+            <h4>✅ Next Steps</h4>
+            <ol>
+              <li>
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <strong>Download your file</strong>
+                  <p>Save the generated brand.json to your computer.</p>
+                  <button class="btn" onclick="downloadJson()" style="padding: var(--space-2) var(--space-4);">Download brand.json</button>
+                </div>
+              </li>
+              <li>
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <strong>Upload to your website</strong>
+                  <p>Place the file at this exact location on your server:</p>
+                  <code id="deploy-path">https://example.com/.well-known/brand.json</code>
+                  <p style="margin-top: var(--space-2);">Create the <code>.well-known</code> folder if it doesn't exist.</p>
+                </div>
+              </li>
+              <li>
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <strong>Verify it works</strong>
+                  <p>Test that your brand.json is accessible and valid.</p>
+                  <button class="btn btn-secondary" onclick="verifyDeployment()" id="verify-btn" style="padding: var(--space-2) var(--space-4);">Test My Domain</button>
+                  <div id="verify-result"></div>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help Section -->
+      <div class="section">
+        <h3>Need Help?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: var(--space-4)">
+          Learn more about the Brand Protocol and brand.json format:
+        </p>
+        <div style="display: flex; gap: var(--space-3); flex-wrap: wrap">
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol" target="_blank" class="btn" style="text-decoration: none">
+            Brand Protocol Docs
+          </a>
+          <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" target="_blank" class="btn btn-secondary" style="text-decoration: none">
+            brand.json Spec
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer (loaded by nav.js) -->
+    <div id="adcp-footer"></div>
+
+    <script>
+      // ============================================================================
+      // State
+      // ============================================================================
+
+      let currentDomain = '';
+      let currentVariant = 'single'; // single, portfolio, redirect, agent, hosted
+      let brands = [];
+      let brandIdCounter = 0;
+      let singleBrandProperties = [];
+      let selectedBrandId = null; // For portfolio mode
+      let brandIdManuallyEdited = { single: false }; // Track if user manually edited brand ID
+
+      // ============================================================================
+      // Main Functions
+      // ============================================================================
+
+      async function fetchBrandJson(domain) {
+        try {
+          const response = await fetch(`https://${domain}/.well-known/brand.json`);
+          if (!response.ok) return null;
+          return await response.json();
+        } catch {
+          return null;
+        }
+      }
+
+      async function resolveAndLoadBrandJson(domain) {
+        let data = await fetchBrandJson(domain);
+        if (!data) return null;
+
+        let houseDomain = domain;
+
+        // Follow redirect: if house is a string, it points to the real house domain
+        if (typeof data.house === 'string') {
+          houseDomain = data.house;
+          data = await fetchBrandJson(houseDomain);
+          if (!data) return null;
+        }
+
+        return { data, houseDomain, enteredDomain: domain };
+      }
+
+      function populateFromBrandJson(data, houseDomain, enteredDomain) {
+        // Reset state
+        brands = [];
+        brandIdCounter = 0;
+        singleBrandProperties = [];
+        selectedBrandId = null;
+        brandIdManuallyEdited = { single: false };
+
+        currentVariant = 'portfolio';
+
+        // Populate house fields
+        if (typeof data.house === 'object') {
+          document.getElementById('portfolio-house-domain').value = data.house.domain || houseDomain;
+          document.getElementById('portfolio-house-name').value = data.house.name || '';
+        } else {
+          document.getElementById('portfolio-house-domain').value = houseDomain;
+        }
+
+        // Populate brands
+        if (data.brands && data.brands.length > 0) {
+          data.brands.forEach(b => {
+            const id = ++brandIdCounter;
+            const primaryWebsite = (b.properties || []).find(p => p.primary && p.type === 'website');
+            const otherProps = (b.properties || []).filter(p => !(p.primary && p.type === 'website'));
+
+            brands.push({
+              id,
+              brand_id: b.id || '',
+              name: (b.names && b.names[0]) ? (b.names[0].en || '') : '',
+              domain: primaryWebsite ? primaryWebsite.identifier : '',
+              keller_type: b.keller_type || 'master',
+              parent_brand: b.parent_brand || '',
+              properties: otherProps.map(p => ({ type: p.type, identifier: p.identifier, primary: false })),
+              brandIdManuallyEdited: true
+            });
+          });
+
+          // Select the brand matching the entered domain, or first brand
+          const matchingBrand = brands.find(b => b.domain === enteredDomain);
+          selectedBrandId = matchingBrand ? matchingBrand.id : brands[0].id;
+        }
+
+        // Show portfolio form, hide decision tree
+        document.getElementById('decision-tree').classList.add('hidden');
+        document.getElementById('form-single').classList.add('hidden');
+        document.getElementById('form-portfolio').classList.remove('hidden');
+        document.getElementById('form-redirect').classList.add('hidden');
+        document.getElementById('form-agent').classList.add('hidden');
+        document.getElementById('form-hosted').classList.add('hidden');
+
+        // Update deploy path
+        document.getElementById('deploy-path').textContent = `https://${houseDomain}/.well-known/brand.json`;
+
+        renderBrandTree();
+        renderBrandDetail();
+        updateBrandFilesDashboard();
+        updatePreview();
+      }
+
+      async function startBuilding() {
+        const domain = document.getElementById('domain-input').value.trim().toLowerCase();
+        if (!domain) {
+          alert('Please enter a domain name');
+          return;
+        }
+
+        currentDomain = domain;
+        document.getElementById('domain-display').textContent = domain;
+        document.getElementById('portfolio-house-domain').value = domain;
+
+        const btn = document.getElementById('start-btn');
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        const validationResults = document.getElementById('validation-results');
+
+        // Try to fetch existing brand.json from the domain
+        const resolved = await resolveAndLoadBrandJson(domain);
+
+        if (resolved) {
+          const { data, houseDomain, enteredDomain } = resolved;
+          const isRedirect = houseDomain !== enteredDomain;
+          const brandCount = (data.brands || []).length;
+
+          validationResults.innerHTML = `
+            <div class="validation-result result-success">
+              <strong>Found existing brand.json</strong><br>
+              ${isRedirect
+                ? `${escapeHtml(enteredDomain)} redirects to <strong>${escapeHtml(houseDomain)}</strong>. Loaded portfolio with ${brandCount} brand${brandCount !== 1 ? 's' : ''}.`
+                : `Loaded portfolio from ${escapeHtml(houseDomain)} with ${brandCount} brand${brandCount !== 1 ? 's' : ''}.`
+              }
+            </div>
+          `;
+          validationResults.classList.remove('hidden');
+          document.getElementById('file-status').textContent = 'Editing existing brand.json';
+
+          btn.disabled = false;
+          btn.textContent = 'Get Started';
+
+          // Show builder and populate from loaded data
+          document.getElementById('builder-form').classList.remove('hidden');
+          populateFromBrandJson(data, houseDomain, enteredDomain);
+          return;
+        }
+
+        // No existing file found
+        validationResults.innerHTML = `
+          <div class="validation-result result-warning">
+            <strong>No brand.json found</strong><br>
+            Create a new brand.json for ${escapeHtml(domain)}
+          </div>
+        `;
+        validationResults.classList.remove('hidden');
+        document.getElementById('file-status').textContent = 'Creating new brand.json';
+
+        btn.disabled = false;
+        btn.textContent = 'Get Started';
+
+        // Show builder with fresh state
+        document.getElementById('builder-form').classList.remove('hidden');
+
+        // Reset state
+        brands = [];
+        brandIdCounter = 0;
+        singleBrandProperties = [];
+        selectedBrandId = null;
+        brandIdManuallyEdited = { single: false };
+
+        // Pre-fill brand ID from domain for single brand
+        const brandId = generateBrandIdFromText(currentDomain.split('.')[0]);
+        document.getElementById('single-brand-id').value = brandId;
+
+        // Reset decision tree to step 1 and populate domain hints
+        showDecisionStep('step-brand-count');
+        document.getElementById('single-domain-hint').textContent = currentDomain;
+        document.getElementById('multi-domain-hint').textContent = currentDomain;
+
+        // Hide all forms initially
+        document.getElementById('form-single').classList.add('hidden');
+        document.getElementById('form-portfolio').classList.add('hidden');
+        document.getElementById('form-redirect').classList.add('hidden');
+        document.getElementById('form-agent').classList.add('hidden');
+        document.getElementById('form-hosted').classList.add('hidden');
+
+        updatePreview();
+      }
+
+      // ============================================================================
+      // Decision Tree Functions
+      // ============================================================================
+
+      function showDecisionStep(stepId) {
+        // Hide all steps
+        document.querySelectorAll('.decision-step').forEach(step => {
+          step.classList.add('hidden');
+        });
+        // Show the requested step
+        const step = document.getElementById(stepId);
+        if (step) {
+          step.classList.remove('hidden');
+          step.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        // Show the decision tree container
+        document.getElementById('decision-tree').classList.remove('hidden');
+      }
+
+      function selectBrandCount(count) {
+        if (count === 'single') {
+          showDecisionStep('step-single-hosting');
+        } else {
+          showDecisionStep('step-multiple-domain');
+        }
+      }
+
+      function goBackTo(stepId) {
+        showDecisionStep(stepId);
+      }
+
+      function selectVariant(variant) {
+        currentVariant = variant;
+
+        // Hide decision tree, show selected form
+        document.getElementById('decision-tree').classList.add('hidden');
+
+        // Show/hide forms based on variant
+        document.getElementById('form-single').classList.toggle('hidden', variant !== 'single');
+        document.getElementById('form-portfolio').classList.toggle('hidden', variant !== 'portfolio');
+        document.getElementById('form-redirect').classList.toggle('hidden', variant !== 'redirect');
+        document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
+        document.getElementById('form-hosted').classList.toggle('hidden', variant !== 'hosted');
+
+        // Initialize portfolio with one brand if empty
+        if (variant === 'portfolio' && brands.length === 0) {
+          document.getElementById('portfolio-house-domain').value = currentDomain;
+          addBrand(null); // Add first root brand
+        }
+
+        // Update deploy path in next steps
+        document.getElementById('deploy-path').textContent = `https://${currentDomain}/.well-known/brand.json`;
+
+        // Clear any previous verification result
+        document.getElementById('verify-result').innerHTML = '';
+
+        updatePreview();
+
+        // Scroll to the form
+        const formElement = document.getElementById(`form-${variant}`);
+        if (formElement) {
+          setTimeout(() => {
+            formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
+      }
+
+      async function verifyDeployment() {
+        const btn = document.getElementById('verify-btn');
+        const resultDiv = document.getElementById('verify-result');
+
+        btn.disabled = true;
+        btn.textContent = 'Testing...';
+        resultDiv.innerHTML = '<div class="verify-result pending">🔍 Checking your domain...</div>';
+
+        try {
+          const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(currentDomain)}`);
+          const result = await response.json();
+
+          if (result.success && result.brand) {
+            const houseDomain = escapeHtml(result.brand.house_domain || currentDomain);
+            const brandId = result.brand.brand_id ? escapeHtml(result.brand.brand_id) : '';
+            resultDiv.innerHTML = `
+              <div class="verify-result success">
+                ✅ <strong>Success!</strong> Your brand.json is live and valid.<br>
+                <span style="font-size: 12px; opacity: 0.8;">
+                  House: ${houseDomain}
+                  ${brandId ? ` • Brand: ${brandId}` : ''}
+                </span>
+              </div>
+            `;
+          } else {
+            resultDiv.innerHTML = `
+              <div class="verify-result error">
+                ❌ <strong>Not found yet.</strong> Make sure you've uploaded the file to:<br>
+                <code style="background: white; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block;">
+                  https://${escapeHtml(currentDomain)}/.well-known/brand.json
+                </code>
+              </div>
+            `;
+          }
+        } catch (error) {
+          resultDiv.innerHTML = `
+            <div class="verify-result error">
+              ❌ <strong>Error checking domain.</strong> Please try again later.
+            </div>
+          `;
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Test My Domain';
+      }
+
+      // ============================================================================
+      // Brand ID Auto-generation
+      // ============================================================================
+
+      function generateBrandIdFromText(text) {
+        if (!text) return '';
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s_-]/g, '')
+          .replace(/[\s-]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+      }
+
+      function autoGenerateBrandId(context) {
+        if (context === 'single') {
+          if (brandIdManuallyEdited.single) return;
+          const name = document.getElementById('single-brand-name').value;
+          const generatedId = generateBrandIdFromText(name);
+          document.getElementById('single-brand-id').value = generatedId;
+        }
+      }
+
+      function markBrandIdManuallyEdited(context) {
+        if (context === 'single') {
+          brandIdManuallyEdited.single = true;
+        }
+      }
+
+      function autoGenerateBrandIdForBrand(brandId) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand || brand.brandIdManuallyEdited) return;
+
+        brand.brand_id = generateBrandIdFromText(brand.name);
+
+        // Update brand_id input in-place to avoid re-rendering the detail panel
+        const brandIdInput = document.querySelector('#brand-detail-content input[data-field="brand_id"]');
+        if (brandIdInput) brandIdInput.value = brand.brand_id;
+      }
+
+      // ============================================================================
+      // Single Brand Property Functions
+      // ============================================================================
+
+      function addSingleBrandProperty() {
+        singleBrandProperties.push({ type: 'website', identifier: '', primary: singleBrandProperties.length === 0 });
+        renderSingleBrandProperties();
+        updatePreview();
+      }
+
+      function removeSingleBrandProperty(index) {
+        singleBrandProperties.splice(index, 1);
+        renderSingleBrandProperties();
+        updatePreview();
+      }
+
+      function updateSingleBrandProperty(index, field, value) {
+        if (field === 'primary') {
+          value = value === 'true' || value === true;
+        }
+        singleBrandProperties[index][field] = value;
+        updatePreview();
+      }
+
+      function renderSingleBrandProperties() {
+        const container = document.getElementById('single-brand-properties');
+        if (singleBrandProperties.length === 0) {
+          container.innerHTML = `<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>`;
+          return;
+        }
+
+        container.innerHTML = singleBrandProperties.map((prop, i) => `
+          <div class="property-entry">
+            <select onchange="updateSingleBrandProperty(${i}, 'type', this.value)">
+              <option value="website" ${prop.type === 'website' ? 'selected' : ''}>Website</option>
+              <option value="mobile_app" ${prop.type === 'mobile_app' ? 'selected' : ''}>Mobile App</option>
+              <option value="ctv_app" ${prop.type === 'ctv_app' ? 'selected' : ''}>CTV App</option>
+              <option value="desktop_app" ${prop.type === 'desktop_app' ? 'selected' : ''}>Desktop App</option>
+              <option value="dooh" ${prop.type === 'dooh' ? 'selected' : ''}>DOOH</option>
+              <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
+              <option value="radio" ${prop.type === 'radio' ? 'selected' : ''}>Radio</option>
+              <option value="streaming_audio" ${prop.type === 'streaming_audio' ? 'selected' : ''}>Streaming Audio</option>
+            </select>
+            <input type="text" value="${prop.identifier}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateSingleBrandProperty(${i}, 'identifier', this.value)" />
+            <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
+              <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateSingleBrandProperty(${i}, 'primary', this.checked)" />
+              Primary
+            </label>
+            <button class="btn btn-secondary" onclick="removeSingleBrandProperty(${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+          </div>
+        `).join('');
+      }
+
+      // ============================================================================
+      // Portfolio Brand Management
+      // ============================================================================
+
+      function addBrand(parentBrandId) {
+        const brandId = ++brandIdCounter;
+        const newBrand = {
+          id: brandId,
+          brand_id: '',
+          name: '',
+          domain: '',
+          keller_type: parentBrandId ? 'sub_brand' : 'master',
+          parent_brand: parentBrandId || '',
+          properties: [],
+          brandIdManuallyEdited: false
+        };
+        brands.push(newBrand);
+
+        // Auto-select the new brand
+        selectedBrandId = brandId;
+
+        renderBrandTree();
+        renderBrandDetail();
+        updateBrandFilesDashboard();
+        updatePreview();
+      }
+
+      function removeBrand(brandId) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+
+        // Find children BEFORE clearing references
+        const childrenIds = brand.brand_id
+          ? brands.filter(b => b.parent_brand === brand.brand_id).map(b => b.id)
+          : [];
+
+        // Remove all children recursively
+        childrenIds.forEach(id => removeBrand(id));
+
+        brands = brands.filter(b => b.id !== brandId);
+
+        // Deselect if this was selected
+        if (selectedBrandId === brandId) {
+          selectedBrandId = null;
+        }
+
+        renderBrandTree();
+        renderBrandDetail();
+        updateBrandFilesDashboard();
+        updatePreview();
+      }
+
+      function selectBrand(brandId) {
+        selectedBrandId = brandId;
+        renderBrandTree(); // Re-render to update selected state
+        renderBrandDetail();
+      }
+
+      function updateBrand(brandId, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+
+        brand[field] = value;
+
+        // Auto-generate brand_id from name if not manually edited
+        if (field === 'name') {
+          autoGenerateBrandIdForBrand(brandId);
+          renderBrandTree();
+          // Update detail header in-place
+          const header = document.querySelector('#brand-detail-content .brand-detail-header h4');
+          if (header) header.textContent = brand.name || brand.brand_id || 'Untitled Brand';
+        }
+
+        if (field === 'brand_id') {
+          brand.brandIdManuallyEdited = true;
+          renderBrandTree();
+          // Update detail header in-place
+          const header = document.querySelector('#brand-detail-content .brand-detail-header h4');
+          if (header) header.textContent = brand.name || brand.brand_id || 'Untitled Brand';
+        }
+
+        // Re-render full detail panel only for structural changes (dropdowns don't lose focus)
+        if (field === 'keller_type' || field === 'parent_brand') {
+          renderBrandTree();
+          renderBrandDetail();
+        }
+
+        updateBrandFilesDashboard();
+        updatePreview();
+      }
+
+      function addProperty(brandId) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.properties.push({ type: 'website', identifier: '', primary: false });
+          renderBrandDetail();
+          updatePreview();
+        }
+      }
+
+      function removeProperty(brandId, propIndex) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.properties.splice(propIndex, 1);
+          renderBrandDetail();
+          updatePreview();
+        }
+      }
+
+      function updateProperty(brandId, propIndex, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand && brand.properties[propIndex]) {
+          if (field === 'primary') {
+            value = value === 'true' || value === true;
+          }
+          brand.properties[propIndex][field] = value;
+          updatePreview();
+        }
+      }
+
+      // ============================================================================
+      // Brand Tree Rendering
+      // ============================================================================
+
+      function buildBrandTree(brands) {
+        const roots = brands.filter(b => !b.parent_brand);
+        const childrenOf = (parentId) => brands.filter(b => b.parent_brand === parentId);
+        const result = [];
+        const visited = new Set();
+
+        function walk(brand, depth) {
+          if (visited.has(brand.id)) return; // Prevent circular references
+          visited.add(brand.id);
+          result.push({ brand, depth });
+          if (brand.brand_id) {
+            childrenOf(brand.brand_id).forEach(child => walk(child, depth + 1));
+          }
+        }
+
+        roots.forEach(r => walk(r, 0));
+
+        // Append orphans (parent_brand set but parent not found, or part of a cycle)
+        brands.filter(b => !visited.has(b.id)).forEach(b => result.push({ brand: b, depth: 0 }));
+
+        return result;
+      }
+
+      function renderBrandTree() {
+        const container = document.getElementById('brand-tree-container');
+
+        if (brands.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--text-sm); text-align: center;">No brands yet</p>';
+          return;
+        }
+
+        const tree = buildBrandTree(brands);
+
+        function renderNode(item) {
+          const { brand, depth } = item;
+          const isSelected = selectedBrandId === brand.id;
+          const displayName = brand.name || brand.brand_id || 'Untitled';
+          const kellerType = brand.keller_type || 'master';
+          const kellerLabels = {
+            master: 'Core',
+            sub_brand: 'Sub',
+            endorsed: 'Endorsed',
+            independent: 'Independent'
+          };
+
+          return `
+            <div class="brand-tree-node ${isSelected ? 'selected' : ''}" onclick="selectBrand(${brand.id})" style="margin-left: ${depth * 24}px;">
+              <span class="expand-icon">${depth > 0 ? '└' : ''}</span>
+              <span class="brand-name">${escapeHtml(displayName)}</span>
+              <span class="keller-badge ${kellerType}">${kellerLabels[kellerType]}</span>
+              <button class="add-child-btn" onclick="event.stopPropagation(); addBrand('${escapeAttr(brand.brand_id)}')" ${!brand.brand_id ? 'disabled' : ''} title="Add child brand">+</button>
+            </div>
+          `;
+        }
+
+        container.innerHTML = tree.map(renderNode).join('');
+      }
+
+      // ============================================================================
+      // Brand Detail Editor Rendering
+      // ============================================================================
+
+      function renderBrandDetail() {
+        const container = document.getElementById('brand-detail-content');
+
+        if (!selectedBrandId) {
+          container.innerHTML = '<div class="brand-detail-empty"><p>Select a brand from the tree to edit its details</p></div>';
+          container.className = 'brand-detail-empty';
+          return;
+        }
+
+        const brand = brands.find(b => b.id === selectedBrandId);
+        if (!brand) {
+          container.innerHTML = '<div class="brand-detail-empty"><p>Brand not found</p></div>';
+          container.className = 'brand-detail-empty';
+          return;
+        }
+
+        const kellerType = brand.keller_type || 'master';
+        const parentOptions = brands
+          .filter(b => b.brand_id && b.brand_id !== brand.brand_id && b.id !== brand.id)
+          .map(b => ({ id: b.brand_id, name: b.name || b.brand_id }));
+
+        container.className = '';
+        container.innerHTML = `
+          <div class="brand-detail-header">
+            <h4>${escapeHtml(brand.name || brand.brand_id || 'Untitled Brand')}</h4>
+            <button class="btn btn-secondary" onclick="removeBrand(${brand.id})" style="padding: var(--space-2) var(--space-3); font-size: var(--text-xs);">Remove</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Brand Name</label>
+              <input type="text" data-field="name" value="${escapeHtml(brand.name)}" placeholder="Nike" oninput="updateBrand(${brand.id}, 'name', this.value)" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Brand ID</label>
+              <input type="text" data-field="brand_id" value="${escapeHtml(brand.brand_id)}" placeholder="nike" oninput="updateBrand(${brand.id}, 'brand_id', this.value)" />
+              <p class="hint">Auto-generated from name</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Primary Website</label>
+            <input type="text" value="${escapeHtml(brand.domain || '')}" placeholder="nike.com" oninput="updateBrand(${brand.id}, 'domain', this.value)" />
+            <p class="hint">Added as primary property; a redirect file will be needed here</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Type</label>
+              <select onchange="updateBrand(${brand.id}, 'keller_type', this.value)">
+                <option value="master" ${kellerType === 'master' ? 'selected' : ''}>Core Brand</option>
+                <option value="sub_brand" ${kellerType === 'sub_brand' ? 'selected' : ''}>Division / Sub-brand</option>
+                <option value="endorsed" ${kellerType === 'endorsed' ? 'selected' : ''}>Standalone Brand</option>
+                <option value="independent" ${kellerType === 'independent' ? 'selected' : ''}>Separate Brand</option>
+              </select>
+              <p class="hint">
+                ${kellerType === 'master' ? 'The main brand of the company' : ''}
+                ${kellerType === 'sub_brand' ? 'A division or product line' : ''}
+                ${kellerType === 'endorsed' ? 'Its own brand backed by the parent' : ''}
+                ${kellerType === 'independent' ? 'Operates independently' : ''}
+              </p>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label>Parent Brand</label>
+              <select onchange="updateBrand(${brand.id}, 'parent_brand', this.value)">
+                <option value="">None (root brand)</option>
+                ${parentOptions.map(p => `<option value="${escapeHtml(p.id)}" ${brand.parent_brand === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+              Additional Properties (apps, other sites)
+              <button class="btn" onclick="addProperty(${brand.id})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+            </label>
+            <div>
+              ${brand.properties.length === 0 ? `
+                <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+              ` : brand.properties.map((prop, i) => `
+                <div class="property-entry">
+                  <select onchange="updateProperty(${brand.id}, ${i}, 'type', this.value)">
+                    <option value="website" ${prop.type === 'website' ? 'selected' : ''}>Website</option>
+                    <option value="mobile_app" ${prop.type === 'mobile_app' ? 'selected' : ''}>Mobile App</option>
+                    <option value="ctv_app" ${prop.type === 'ctv_app' ? 'selected' : ''}>CTV App</option>
+                    <option value="desktop_app" ${prop.type === 'desktop_app' ? 'selected' : ''}>Desktop App</option>
+                    <option value="dooh" ${prop.type === 'dooh' ? 'selected' : ''}>DOOH</option>
+                    <option value="podcast" ${prop.type === 'podcast' ? 'selected' : ''}>Podcast</option>
+                  </select>
+                  <input type="text" value="${escapeHtml(prop.identifier)}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateProperty(${brand.id}, ${i}, 'identifier', this.value)" />
+                  <button class="btn btn-secondary" onclick="removeProperty(${brand.id}, ${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // ============================================================================
+      // Brand Files Dashboard
+      // ============================================================================
+
+      function updateBrandFilesDashboard() {
+        const dashboard = document.getElementById('brand-files-dashboard');
+        const list = document.getElementById('brand-files-list');
+        const houseDomain = document.getElementById('portfolio-house-domain').value.trim();
+
+        if (!houseDomain) {
+          dashboard.classList.add('hidden');
+          return;
+        }
+
+        // Get all brand domains that need redirects
+        const brandDomains = brands
+          .filter(b => b.domain && b.domain !== houseDomain)
+          .map(b => b.domain);
+
+        const files = [];
+
+        // House domain file (always present)
+        files.push({
+          path: `${houseDomain}/.well-known/brand.json`,
+          type: 'house',
+          domain: houseDomain
+        });
+
+        // Brand redirect files
+        brandDomains.forEach(domain => {
+          files.push({
+            path: `${domain}/.well-known/brand.json`,
+            type: 'redirect',
+            domain: domain
+          });
+        });
+
+        if (files.length === 0) {
+          dashboard.classList.add('hidden');
+          return;
+        }
+
+        dashboard.classList.remove('hidden');
+        list.innerHTML = files.map(file => `
+          <div class="file-row">
+            <span class="file-type">${file.type}</span>
+            <span class="file-path">${file.path}</span>
+            <span class="status-indicator" id="status-${escapeHtml(file.domain).replace(/\./g, '-')}"></span>
+            <button class="btn btn-secondary" onclick="copyFileJson('${escapeAttr(file.type)}', '${escapeAttr(file.domain)}')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Copy JSON</button>
+            <button class="btn" onclick="validateFile('${escapeAttr(file.domain)}')" style="padding: var(--space-1) var(--space-3); font-size: var(--text-xs);">Validate</button>
+          </div>
+        `).join('');
+      }
+
+      async function validateFile(domain) {
+        const statusId = `status-${domain.replace(/\./g, '-')}`;
+        const indicator = document.getElementById(statusId);
+
+        if (!indicator) return;
+
+        indicator.className = 'status-indicator checking';
+
+        try {
+          const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(domain)}`);
+          const result = await response.json();
+
+          if (result.success && result.brand) {
+            indicator.className = 'status-indicator valid';
+            indicator.title = 'File found and valid';
+          } else {
+            indicator.className = 'status-indicator missing';
+            indicator.title = 'File not found or invalid';
+          }
+        } catch (error) {
+          indicator.className = 'status-indicator missing';
+          indicator.title = 'Error checking file';
+        }
+      }
+
+      async function validateAllFiles() {
+        const houseDomain = document.getElementById('portfolio-house-domain').value.trim();
+        const brandDomains = brands
+          .filter(b => b.domain && b.domain !== houseDomain)
+          .map(b => b.domain);
+
+        const allDomains = [houseDomain, ...brandDomains];
+
+        for (const domain of allDomains) {
+          await validateFile(domain);
+        }
+      }
+
+      function copyFileJson(type, domain) {
+        let json;
+
+        if (type === 'house') {
+          json = generateJson();
+        } else {
+          const houseDomain = document.getElementById('portfolio-house-domain').value.trim();
+          json = {
+            "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+            "house": houseDomain
+          };
+        }
+
+        navigator.clipboard.writeText(JSON.stringify(json, null, 2))
+          .then(() => alert(`Copied JSON for ${domain}!`))
+          .catch(() => alert('Failed to copy'));
+      }
+
+      // ============================================================================
+      // JSON Generation
+      // ============================================================================
+
+      function generateJson() {
+        const json = {
+          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json"
+        };
+
+        switch (currentVariant) {
+          case 'single':
+            // Single brand - simplest case
+            json.version = "1.0";
+
+            const singleBrandId = document.getElementById('single-brand-id').value.trim();
+            const singleBrandName = document.getElementById('single-brand-name').value.trim();
+
+            json.house = {
+              domain: currentDomain,
+              name: singleBrandName || currentDomain,
+              architecture: "branded_house"
+            };
+
+            const singleBrandObj = {
+              id: singleBrandId || 'unnamed',
+              names: singleBrandName ? [{ en: singleBrandName }] : [],
+              keller_type: 'master'
+            };
+
+            // Add domain as primary property
+            if (currentDomain) {
+              singleBrandObj.properties = [{ type: 'website', identifier: currentDomain, primary: true }];
+            }
+
+            // Add additional properties
+            if (singleBrandProperties.length > 0) {
+              if (!singleBrandObj.properties) singleBrandObj.properties = [];
+              singleBrandProperties
+                .filter(p => p.identifier)
+                .forEach(p => {
+                  singleBrandObj.properties.push({ type: p.type, identifier: p.identifier });
+                });
+            }
+
+            json.brands = [singleBrandObj];
+            break;
+
+          case 'portfolio':
+            // Multi-brand portfolio
+            json.version = "1.0";
+
+            const portfolioDomain = document.getElementById('portfolio-house-domain').value.trim();
+            const portfolioName = document.getElementById('portfolio-house-name').value.trim();
+
+            json.house = {
+              domain: portfolioDomain || currentDomain,
+              name: portfolioName || portfolioDomain || currentDomain,
+              architecture: "house_of_brands"
+            };
+
+            json.brands = brands
+              .filter(b => b.brand_id || b.name)
+              .map(brand => {
+                const brandObj = {
+                  id: brand.brand_id || 'unnamed',
+                  names: brand.name ? [{ en: brand.name }] : []
+                };
+
+                if (brand.keller_type) {
+                  brandObj.keller_type = brand.keller_type;
+                }
+                if (brand.parent_brand) {
+                  brandObj.parent_brand = brand.parent_brand;
+                }
+
+                // Build properties array starting with domain
+                const props = [];
+                if (brand.domain) {
+                  props.push({ type: 'website', identifier: brand.domain, primary: true });
+                }
+                if (brand.properties && brand.properties.length > 0) {
+                  brand.properties
+                    .filter(p => p.identifier)
+                    .forEach(p => props.push({ type: p.type, identifier: p.identifier }));
+                }
+                if (props.length > 0) {
+                  brandObj.properties = props;
+                }
+
+                return brandObj;
+              });
+            break;
+
+          case 'redirect':
+            // Simple redirect to house
+            const redirectHouse = document.getElementById('redirect-house-domain').value.trim();
+            if (redirectHouse) {
+              json.house = redirectHouse;
+            }
+            break;
+
+          case 'agent':
+            // Brand agent reference - schema requires both url and id
+            const agentUrl = document.getElementById('agent-url').value.trim();
+            const agentId = document.getElementById('agent-id').value.trim();
+            if (agentUrl && agentId) {
+              json.version = "1.0";
+              json.brand_agent = { url: agentUrl, id: agentId };
+            }
+            break;
+
+          case 'hosted':
+            // Hosted location redirect
+            const hostedUrl = document.getElementById('hosted-url').value.trim();
+            if (hostedUrl) {
+              json.authoritative_location = hostedUrl;
+            }
+            break;
+        }
+
+        return json;
+      }
+
+      function updatePreview() {
+        const json = generateJson();
+        document.getElementById('json-preview').textContent = JSON.stringify(json, null, 2);
+      }
+
+      // ============================================================================
+      // Export Functions
+      // ============================================================================
+
+      function copyJson() {
+        const json = generateJson();
+        navigator.clipboard.writeText(JSON.stringify(json, null, 2))
+          .then(() => alert('Copied to clipboard!'))
+          .catch(() => alert('Failed to copy'));
+      }
+
+      function downloadJson() {
+        const json = generateJson();
+        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'brand.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ============================================================================
+      // Utility Functions
+      // ============================================================================
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      function escapeAttr(str) {
+        if (!str) return '';
+        return escapeHtml(str).replace(/'/g, '&#39;');
+      }
+
+      // ============================================================================
+      // Initialize
+      // ============================================================================
+
+      document.addEventListener('DOMContentLoaded', () => {
+        // Check for domain in URL params
+        const params = new URLSearchParams(window.location.search);
+        const domain = params.get('domain');
+        if (domain) {
+          document.getElementById('domain-input').value = domain;
+          startBuilding();
+        }
+      });
+    </script>
+  </body>
+</html>

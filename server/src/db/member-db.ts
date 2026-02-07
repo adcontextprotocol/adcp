@@ -7,6 +7,7 @@ import type {
   MemberOffering,
   AgentConfig,
   PublisherConfig,
+  BrandConfig,
   DataProviderConfig,
 } from '../types.js';
 
@@ -130,6 +131,7 @@ export class MemberDatabase {
       offerings: 'offerings',
       agents: 'agents',
       publishers: 'publishers',
+      brands: 'brands',
       data_providers: 'data_providers',
       headquarters: 'headquarters',
       markets: 'markets',
@@ -150,7 +152,7 @@ export class MemberDatabase {
       }
 
       setClauses.push(`${columnName} = $${paramIndex++}`);
-      if (key === 'metadata' || key === 'agents' || key === 'publishers' || key === 'data_providers') {
+      if (key === 'metadata' || key === 'agents' || key === 'publishers' || key === 'brands' || key === 'data_providers') {
         params.push(JSON.stringify(value));
       } else {
         params.push(value);
@@ -366,6 +368,14 @@ export class MemberDatabase {
         : row.publishers;
     }
 
+    // Parse brands JSONB
+    let brands: BrandConfig[] = [];
+    if (row.brands) {
+      brands = typeof row.brands === 'string'
+        ? JSON.parse(row.brands)
+        : row.brands;
+    }
+
     // Parse data_providers JSONB
     let data_providers: DataProviderConfig[] = [];
     if (row.data_providers) {
@@ -378,6 +388,7 @@ export class MemberDatabase {
       ...row,
       agents,
       publishers,
+      brands,
       data_providers,
       markets: row.markets || [],
       metadata: typeof row.metadata === 'string'
