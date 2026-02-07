@@ -380,6 +380,10 @@
           "$ref": "/schemas/enums/forecast-method.json",
           "description": "Method used to produce a delivery forecast (estimate, modeled, guaranteed)"
         },
+        "forecastable-metric": {
+          "$ref": "/schemas/enums/forecastable-metric.json",
+          "description": "Standard metric names for delivery forecasts (audience_size, reach, impressions, clicks, spend, etc.)"
+        },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
           "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"

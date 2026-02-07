@@ -555,9 +555,11 @@ Key characteristics:
   },
   "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
   "forecast": {
-    "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
-    "reach": { "low": 400000, "mid": 600000, "high": 750000 },
-    "clicks": { "mid": 4800 },
+    "metrics": {
+      "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
+      "reach": { "low": 400000, "mid": 600000, "high": 750000 },
+      "clicks": { "mid": 4800 }
+    },
     "method": "modeled",
     "currency": "USD",
     "valid_until": "2025-04-15T00:00:00Z"
@@ -630,7 +632,7 @@ Proposals are optional - publishers may return only products if allocation guida
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Forecasts include metric ranges (low/mid/high) for standard delivery metrics like impressions, reach, clicks, and spend. Each forecast declares its method:
+Forecasts use a `metrics` map keyed by metric name (from the `forecastable-metric` enum), with each value being a range (low/mid/high). Standard metrics include impressions, reach, clicks, spend, views, conversions, leads, and grps. Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
 
 - **`estimate`** — rough approximation based on historical averages or heuristics
 - **`modeled`** — derived from predictive models or historical data

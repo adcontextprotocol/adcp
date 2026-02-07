@@ -5,45 +5,12 @@
   "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach forecasts to help buyers evaluate expected campaign performance before purchase.",
   "type": "object",
   "properties": {
-    "audience_size": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated addressable audience size"
-    },
-    "reach": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated unique reach"
-    },
-    "frequency": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated average frequency per individual"
-    },
-    "impressions": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated impressions"
-    },
-    "clicks": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated clicks"
-    },
-    "spend": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated spend in the forecast currency"
-    },
-    "views": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated views at threshold (for CPV)"
-    },
-    "leads": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated leads generated"
-    },
-    "conversions": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated conversions"
-    },
-    "grps": {
-      "$ref": "/schemas/core/forecast-range.json",
-      "description": "Estimated Gross Rating Points (for CPP). When present, the demographic field should specify the target demographic."
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted delivery metrics keyed by metric name. Keys should be values from the forecastable-metric enum. Values are ForecastRange objects (low/mid/high). Platform-specific metrics beyond the standard set are allowed.",
+      "additionalProperties": {
+        "$ref": "/schemas/core/forecast-range.json"
+      }
     },
     "method": {
       "$ref": "/schemas/enums/forecast-method.json",
@@ -51,7 +18,7 @@
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency code for spend values in this forecast"
+      "description": "ISO 4217 currency code for monetary values in this forecast (spend, budget)"
     },
     "demographic": {
       "type": "string",

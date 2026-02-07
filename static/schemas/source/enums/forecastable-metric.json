@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/forecastable-metric.json",
+  "title": "Forecastable Metric",
+  "description": "Standard metric names for delivery forecasts. Aligns with delivery-metrics.json vocabulary. Derived metrics (ctr, completion_rate) are excluded since they are calculated, not forecasted.",
+  "type": "string",
+  "enum": [
+    "audience_size",
+    "reach",
+    "frequency",
+    "impressions",
+    "clicks",
+    "spend",
+    "views",
+    "completed_views",
+    "leads",
+    "conversions",
+    "grps"
+  ],
+  "enumDescriptions": {
+    "audience_size": "Estimated addressable audience size",
+    "reach": "Estimated unique reach",
+    "frequency": "Estimated average frequency per individual",
+    "impressions": "Estimated impressions",
+    "clicks": "Estimated clicks",
+    "spend": "Estimated spend in the forecast currency",
+    "views": "Estimated views at threshold (for CPV)",
+    "completed_views": "Estimated 100% completions (for CPCV)",
+    "leads": "Estimated leads generated",
+    "conversions": "Estimated conversions",
+    "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic field on DeliveryForecast should specify the target demographic."
+  }
+}

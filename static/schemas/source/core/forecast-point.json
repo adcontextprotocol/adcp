@@ -10,40 +10,13 @@
       "description": "Budget amount for this forecast point",
       "minimum": 0
     },
-    "reach": {
-      "type": "number",
-      "description": "Estimated unique reach at this budget level",
-      "minimum": 0
-    },
-    "impressions": {
-      "type": "number",
-      "description": "Estimated impressions at this budget level",
-      "minimum": 0
-    },
-    "clicks": {
-      "type": "number",
-      "description": "Estimated clicks at this budget level",
-      "minimum": 0
-    },
-    "views": {
-      "type": "number",
-      "description": "Estimated views at threshold at this budget level (for CPV)",
-      "minimum": 0
-    },
-    "conversions": {
-      "type": "number",
-      "description": "Estimated conversions at this budget level",
-      "minimum": 0
-    },
-    "leads": {
-      "type": "number",
-      "description": "Estimated leads at this budget level",
-      "minimum": 0
-    },
-    "grps": {
-      "type": "number",
-      "description": "Estimated Gross Rating Points at this budget level (for CPP)",
-      "minimum": 0
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted metric values at this budget level. Keys should be values from the forecastable-metric enum (e.g., impressions, reach, spend). Values are point estimates (numbers). Include spend when the platform predicts it will differ from budget.",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0
+      }
     }
   },
   "required": ["budget"],
