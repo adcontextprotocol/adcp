@@ -471,6 +471,10 @@
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
           "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+        },
+        "universal-macro": {
+          "$ref": "/schemas/enums/universal-macro.json",
+          "description": "Standardized macro placeholders for dynamic value substitution in creative tracking URLs"
         }
       }
     },
