@@ -19,7 +19,7 @@
   ],
   "enumDescriptions": {
     "audience_size": "Estimated addressable audience size",
-    "reach": "Estimated unique reach",
+    "reach": "Estimated unique reach. Units depend on measurement methodology (individuals, households, devices, cookies). See the product's delivery_measurement.provider for context.",
     "frequency": "Estimated average frequency per individual",
     "impressions": "Estimated impressions",
     "clicks": "Estimated clicks",

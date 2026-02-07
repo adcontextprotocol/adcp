@@ -22,11 +22,12 @@
     },
     "demographic": {
       "type": "string",
-      "description": "Target demographic for GRP forecasts (e.g., 'A25-54', 'P18-49'). Uses Nielsen demographic notation."
+      "description": "Target demographic for GRP forecasts. Nielsen notation (e.g., 'P18-49', 'A25-54', 'W35+') is the standard format per cpp-option.json, but free-form strings are accepted for non-Nielsen markets (e.g., BARB in UK, AGF in Germany).",
+      "examples": ["P18-49", "A25-54", "W35+", "M18-34"]
     },
-    "curve": {
+    "budget_curve": {
       "type": "array",
-      "description": "Budget-to-outcome curve showing how delivery metrics scale with spend. Points should be ordered by ascending budget.",
+      "description": "Budget-to-outcome curve showing how delivery metrics scale with spend. Each point pairs a budget level with predicted metric values at that spend. Points should be ordered by ascending budget.",
       "items": {
         "$ref": "/schemas/core/forecast-point.json"
       },
