@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-measurement-events-response.json",
+  "title": "Sync Measurement Events Response",
+  "description": "Response from measurement ID sync operation. Returns either per-measurement results OR operation-level errors.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncMeasurementEventsSuccess",
+      "description": "Success response - sync operation processed measurement IDs",
+      "type": "object",
+      "properties": {
+        "measurements": {
+          "type": "array",
+          "description": "Results for each measurement ID processed",
+          "items": {
+            "type": "object",
+            "properties": {
+              "measurement_id": {
+                "type": "string",
+                "description": "Measurement ID from the request"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the measurement ID"
+              },
+              "platform_measurement_id": {
+                "type": "string",
+                "description": "Platform-assigned identifier for this measurement ID"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["created", "updated", "unchanged", "deleted", "failed"],
+                "description": "Action taken for this measurement ID"
+              },
+              "errors": {
+                "type": "array",
+                "description": "Errors for this measurement ID (only present when action='failed')",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["measurement_id", "action"],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["measurements"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "SyncMeasurementEventsError",
+      "description": "Error response - operation failed completely",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["measurements"]
+      }
+    }
+  ]
+}

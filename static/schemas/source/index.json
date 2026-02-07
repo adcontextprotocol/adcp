@@ -193,6 +193,18 @@
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "conversion-event": {
+          "$ref": "/schemas/core/conversion-event.json",
+          "description": "A marketing event (conversion, engagement, or custom) for attribution"
+        },
+        "user-match": {
+          "$ref": "/schemas/core/user-match.json",
+          "description": "Privacy-safe user identifiers for conversion attribution"
+        },
+        "event-custom-data": {
+          "$ref": "/schemas/core/event-custom-data.json",
+          "description": "Event-specific data for attribution and reporting"
         }
       },
       "requirements": {
@@ -302,7 +314,7 @@
         },
         "task-type": {
           "$ref": "/schemas/enums/task-type.json",
-          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals, create_property_list, get_property_list, update_property_list, list_property_lists, delete_property_list)"
+          "description": "Valid AdCP task types across all domains"
         },
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
@@ -463,6 +475,18 @@
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
           "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+        },
+        "event-type": {
+          "$ref": "/schemas/enums/event-type.json",
+          "description": "Standard marketing event types for conversion tracking (purchase, lead, add_to_cart, etc.)"
+        },
+        "uid-type": {
+          "$ref": "/schemas/enums/uid-type.json",
+          "description": "Universal ID types for privacy-safe user matching (rampid, id5, uid2, etc.)"
+        },
+        "action-source": {
+          "$ref": "/schemas/enums/action-source.json",
+          "description": "Where the conversion event originated (website, app, offline, etc.)"
         }
       }
     },
@@ -605,6 +629,26 @@
           "response": {
             "$ref": "/schemas/media-buy/provide-performance-feedback-response.json",
             "description": "Response payload for provide_performance_feedback task"
+          }
+        },
+        "sync-measurement-events": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-measurement-events-request.json",
+            "description": "Request parameters for configuring measurement IDs on an account"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-measurement-events-response.json",
+            "description": "Response payload for sync_measurement_events task"
+          }
+        },
+        "log-event": {
+          "request": {
+            "$ref": "/schemas/media-buy/log-event-request.json",
+            "description": "Request parameters for logging conversion or marketing events"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/log-event-response.json",
+            "description": "Response payload for log_event task"
           }
         }
       }
