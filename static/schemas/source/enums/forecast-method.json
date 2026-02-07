@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/enums/forecast-confidence.json",
-  "title": "Forecast Confidence",
-  "description": "Confidence level of a delivery forecast",
+  "$id": "/schemas/enums/forecast-method.json",
+  "title": "Forecast Method",
+  "description": "Method used to produce a delivery forecast",
   "type": "string",
   "enum": ["estimate", "modeled", "guaranteed"],
   "enumDescriptions": {

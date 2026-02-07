@@ -45,9 +45,9 @@
       "$ref": "/schemas/core/forecast-range.json",
       "description": "Estimated Gross Rating Points (for CPP). When present, the demographic field should specify the target demographic."
     },
-    "confidence": {
-      "$ref": "/schemas/enums/forecast-confidence.json",
-      "description": "Confidence level of this forecast"
+    "method": {
+      "$ref": "/schemas/enums/forecast-method.json",
+      "description": "Method used to produce this forecast"
     },
     "currency": {
       "type": "string",
@@ -79,6 +79,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["confidence", "currency"],
+  "required": ["method", "currency"],
   "additionalProperties": true
 }

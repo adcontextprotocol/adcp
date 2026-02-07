@@ -558,7 +558,7 @@ Key characteristics:
     "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
     "reach": { "low": 400000, "mid": 600000, "high": 750000 },
     "clicks": { "mid": 4800 },
-    "confidence": "modeled",
+    "method": "modeled",
     "currency": "USD",
     "valid_until": "2025-04-15T00:00:00Z"
   }
@@ -630,11 +630,13 @@ Proposals are optional - publishers may return only products if allocation guida
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Forecasts include metric ranges (low/mid/high) for standard delivery metrics like impressions, reach, clicks, and spend. Each forecast declares a confidence level:
+Forecasts include metric ranges (low/mid/high) for standard delivery metrics like impressions, reach, clicks, and spend. Each forecast declares its method:
 
-- **`estimate`** — rough approximation, no delivery commitment
+- **`estimate`** — rough approximation based on historical averages or heuristics
 - **`modeled`** — derived from predictive models or historical data
-- **`guaranteed`** — contractually committed delivery levels
+- **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
+
+Publishers can include additional platform-specific metrics (e.g., purchases, ROAS) via the `ext` field.
 
 Forecasts can appear at two levels:
 - **Proposal-level**: aggregate forecast for the entire media plan

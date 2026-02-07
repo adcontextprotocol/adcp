@@ -376,9 +376,9 @@
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
         },
-        "forecast-confidence": {
-          "$ref": "/schemas/enums/forecast-confidence.json",
-          "description": "Confidence level of a delivery forecast (estimate, modeled, guaranteed)"
+        "forecast-method": {
+          "$ref": "/schemas/enums/forecast-method.json",
+          "description": "Method used to produce a delivery forecast (estimate, modeled, guaranteed)"
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
