@@ -7,15 +7,18 @@
   "properties": {
     "low": {
       "type": "number",
-      "description": "Conservative (low-end) forecast value"
+      "description": "Conservative (low-end) forecast value",
+      "minimum": 0
     },
     "mid": {
       "type": "number",
-      "description": "Expected (most likely) forecast value"
+      "description": "Expected (most likely) forecast value",
+      "minimum": 0
     },
     "high": {
       "type": "number",
-      "description": "Optimistic (high-end) forecast value"
+      "description": "Optimistic (high-end) forecast value",
+      "minimum": 0
     }
   },
   "required": ["mid"],

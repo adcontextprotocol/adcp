@@ -34,6 +34,16 @@
       "type": "number",
       "description": "Estimated conversions at this budget level",
       "minimum": 0
+    },
+    "leads": {
+      "type": "number",
+      "description": "Estimated leads at this budget level",
+      "minimum": 0
+    },
+    "grps": {
+      "type": "number",
+      "description": "Estimated Gross Rating Points at this budget level (for CPP)",
+      "minimum": 0
     }
   },
   "required": ["budget"],

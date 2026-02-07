@@ -62,7 +62,8 @@
       "description": "Budget-to-outcome curve showing how delivery metrics scale with spend. Points should be ordered by ascending budget.",
       "items": {
         "$ref": "/schemas/core/forecast-point.json"
-      }
+      },
+      "minItems": 1
     },
     "generated_at": {
       "type": "string",
