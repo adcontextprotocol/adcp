@@ -14,3 +14,4 @@ Add delivery forecasting to the Media Buy protocol
 - Add `demographic_system` to CPP pricing option parameters
 - Add optional `forecast` field to `ProductAllocation`
 - Add optional `forecast` field to `Proposal`
+- Document forecast scenarios: budget curves, CTV with GRP demographics, retail media with outcomes, allocation-level forecasts

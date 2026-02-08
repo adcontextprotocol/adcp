@@ -657,6 +657,164 @@ Allocation-level forecasts may not sum to the proposal-level forecast due to aud
 
 For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing.
 
+#### Budget Curve
+
+Multiple forecast points at ascending budget levels show how metrics scale with spend, helping buyers find the optimal investment level:
+
+```json
+{
+  "points": [
+    {
+      "budget": 25000,
+      "metrics": {
+        "impressions": { "low": 400000, "mid": 500000, "high": 600000 },
+        "reach": { "mid": 180000 },
+        "clicks": { "mid": 2000 }
+      }
+    },
+    {
+      "budget": 50000,
+      "metrics": {
+        "impressions": { "low": 850000, "mid": 1050000, "high": 1200000 },
+        "reach": { "mid": 320000 },
+        "clicks": { "mid": 4200 }
+      }
+    },
+    {
+      "budget": 100000,
+      "metrics": {
+        "impressions": { "low": 1500000, "mid": 1900000, "high": 2200000 },
+        "reach": { "mid": 500000 },
+        "clicks": { "mid": 7600 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD",
+  "reach_unit": "individuals"
+}
+```
+
+The curve reveals diminishing returns — doubling budget from $50K to $100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
+
+#### CTV with GRP Demographics
+
+TV and audio forecasts use `demographic_system` and `demographic` to specify the target demo. This ensures buyer and seller agree on the measurement notation:
+
+```json
+{
+  "points": [
+    {
+      "budget": 75000,
+      "metrics": {
+        "grps": { "low": 45, "mid": 60, "high": 72 },
+        "impressions": { "mid": 3200000 },
+        "reach": { "low": 800000, "mid": 1100000, "high": 1300000 },
+        "frequency": { "mid": 2.9 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD",
+  "demographic_system": "nielsen",
+  "demographic": "P18-49",
+  "reach_unit": "households"
+}
+```
+
+The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
+
+#### Retail Media with Outcome Forecasts
+
+Retail media publishers can forecast both delivery metrics and conversion outcomes. Outcome metric keys use `event-type` values:
+
+```json
+{
+  "points": [
+    {
+      "budget": 30000,
+      "metrics": {
+        "impressions": { "low": 600000, "mid": 750000, "high": 900000 },
+        "clicks": { "mid": 6000 },
+        "purchase": { "low": 1200, "mid": 1800, "high": 2400 },
+        "add_to_cart": { "mid": 4500 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD"
+}
+```
+
+Here `impressions` and `clicks` are `forecastable-metric` values while `purchase` and `add_to_cart` are `event-type` values. Both use ForecastRange (low/mid/high) and coexist in the same metrics map.
+
+#### Allocation-Level Forecasts
+
+When a proposal includes per-allocation forecasts, buyers can evaluate each product independently:
+
+```json
+{
+  "proposal_id": "retail_holiday_v1",
+  "name": "Holiday Retail Campaign",
+  "allocations": [
+    {
+      "product_id": "sponsored_search",
+      "allocation_percentage": 40,
+      "forecast": {
+        "points": [
+          {
+            "budget": 20000,
+            "metrics": {
+              "impressions": { "mid": 500000 },
+              "clicks": { "mid": 15000 },
+              "purchase": { "mid": 900 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD"
+      }
+    },
+    {
+      "product_id": "offsite_display",
+      "allocation_percentage": 60,
+      "forecast": {
+        "points": [
+          {
+            "budget": 30000,
+            "metrics": {
+              "impressions": { "low": 1800000, "mid": 2200000, "high": 2600000 },
+              "reach": { "mid": 450000 },
+              "purchase": { "low": 400, "mid": 600, "high": 800 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "accounts"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 2100000, "mid": 2700000, "high": 3100000 },
+          "reach": { "mid": 520000 },
+          "purchase": { "low": 1100, "mid": 1500, "high": 1900 }
+        }
+      }
+    ],
+    "method": "modeled",
+    "currency": "USD",
+    "reach_unit": "accounts"
+  }
+}
+```
+
+Note that the allocation forecasts (900 + 600 = 1,500 purchases) happen to match the proposal forecast in this example, but they often won't — audience overlap and frequency capping mean the whole is typically less than the sum of its parts. The proposal-level forecast is authoritative for total delivery.
+
 ## Integration with Discovery
 
 Products are discovered through the [Product Discovery](/docs/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
