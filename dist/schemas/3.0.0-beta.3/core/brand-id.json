@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/brand-id.json",
+  "title": "Brand ID",
+  "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+  "type": "string",
+  "pattern": "^[a-z0-9_]+$",
+  "examples": [
+    "tide",
+    "cheerios",
+    "air_jordan",
+    "nike",
+    "pampers"
+  ]
+}

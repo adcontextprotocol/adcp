@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/sponsored-intelligence/si-initiate-session-request.json",
+  "title": "SI Initiate Session Request",
+  "description": "Host initiates a session with a brand agent",
+  "type": "object",
+  "properties": {
+    "context": {
+      "type": "string",
+      "description": "Conversation handoff from the host describing what the user needs"
+    },
+    "identity": {
+      "$ref": "/schemas/3.0.0-beta.3/sponsored-intelligence/si-identity.json"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "AdCP media buy ID if session was triggered by advertising"
+    },
+    "placement": {
+      "type": "string",
+      "description": "Where this session was triggered (e.g., 'chatgpt_search', 'claude_chat')"
+    },
+    "offering_id": {
+      "type": "string",
+      "description": "Brand-specific offering identifier to apply"
+    },
+    "supported_capabilities": {
+      "$ref": "/schemas/3.0.0-beta.3/sponsored-intelligence/si-capabilities.json",
+      "description": "What capabilities the host supports"
+    },
+    "offering_token": {
+      "type": "string",
+      "description": "Token from si_get_offering response for session continuity. Brand uses this to recall what products were shown to the user, enabling natural references like 'the second one' or 'that blue shoe'."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["context", "identity"],
+  "additionalProperties": true
+}

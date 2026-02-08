@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/property/base-property-source.json",
+  "title": "Base Property Source",
+  "description": "A source of properties for a property list. Supports three selection patterns: publisher with tags, publisher with property IDs, or direct identifiers.",
+  "discriminator": {
+    "propertyName": "selection_type"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "title": "Publisher Tags Source",
+      "description": "Select properties from a publisher by tag membership",
+      "properties": {
+        "selection_type": {
+          "type": "string",
+          "const": "publisher_tags",
+          "description": "Discriminator indicating selection by property tags within a publisher"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Property tags from the publisher's adagents.json. Selects all properties with these tags.",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.3/core/property-tag.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["selection_type", "publisher_domain", "tags"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "Publisher Property IDs Source",
+      "description": "Select specific properties from a publisher by ID",
+      "properties": {
+        "selection_type": {
+          "type": "string",
+          "const": "publisher_ids",
+          "description": "Discriminator indicating selection by specific property IDs within a publisher"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "property_ids": {
+          "type": "array",
+          "description": "Specific property IDs from the publisher's adagents.json",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.3/core/property-id.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["selection_type", "publisher_domain", "property_ids"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "title": "Direct Identifiers Source",
+      "description": "Select properties by direct identifiers (domains, app IDs, etc.) without publisher context",
+      "properties": {
+        "selection_type": {
+          "type": "string",
+          "const": "identifiers",
+          "description": "Discriminator indicating selection by direct identifiers"
+        },
+        "identifiers": {
+          "type": "array",
+          "description": "Direct property identifiers (domains, app IDs, etc.)",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.3/core/identifier.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["selection_type", "identifiers"],
+      "additionalProperties": false
+    }
+  ]
+}

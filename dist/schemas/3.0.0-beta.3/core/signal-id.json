@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/signal-id.json",
+  "title": "Signal ID",
+  "description": "Universal signal identifier. Uses 'source' as discriminator: 'catalog' for signals from a data provider's published catalog (verifiable), 'agent' for agent-native signals (not externally verifiable).",
+  "discriminator": {
+    "propertyName": "source"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "catalog",
+          "description": "Discriminator indicating this signal is from a data provider's published catalog"
+        },
+        "data_provider_domain": {
+          "type": "string",
+          "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+        }
+      },
+      "required": ["source", "data_provider_domain", "id"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Agent signal - references a signal native to the signals agent. Not externally verifiable; buyer trusts the agent's claim about the signal.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "agent",
+          "description": "Discriminator indicating this signal is native to the agent (not from a data provider catalog)"
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the signals agent that provides this signal (e.g., 'https://liveramp.com/.well-known/adcp/signals')"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+        }
+      },
+      "required": ["source", "agent_url", "id"],
+      "additionalProperties": true
+    }
+  ]
+}
