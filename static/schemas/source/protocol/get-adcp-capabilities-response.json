@@ -184,6 +184,60 @@
             }
           }
         },
+        "conversion_tracking": {
+          "type": "object",
+          "description": "Platform-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
+          "properties": {
+            "supported_event_types": {
+              "type": "array",
+              "description": "Event types this platform can track and attribute. If omitted, all standard event types are supported.",
+              "items": {
+                "$ref": "/schemas/enums/event-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for user matching",
+              "items": {
+                "$ref": "/schemas/enums/uid-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_action_sources": {
+              "type": "array",
+              "description": "Action sources this platform accepts events from",
+              "items": {
+                "$ref": "/schemas/enums/action-source.json"
+              },
+              "minItems": 1
+            },
+            "attribution_windows": {
+              "type": "array",
+              "description": "Attribution windows available on this platform",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "$ref": "/schemas/enums/event-type.json",
+                    "description": "Event type this window applies to, or omit for default window"
+                  },
+                  "click_through": {
+                    "type": "string",
+                    "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+                  },
+                  "view_through": {
+                    "type": "string",
+                    "description": "View-through attribution window (e.g. '1d', '7d')"
+                  }
+                },
+                "required": ["click_through"],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
         "portfolio": {
           "type": "object",
           "description": "Information about the seller's media inventory portfolio",

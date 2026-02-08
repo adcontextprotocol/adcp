@@ -105,54 +105,15 @@
     },
     "conversion_tracking": {
       "type": "object",
-      "description": "Conversion tracking capabilities for this product. Describes what event types, user matching methods, and attribution the platform supports. Presence indicates the product supports conversion tracking via sync_measurement_events and log_event.",
+      "description": "Conversion tracking for this product. Presence indicates the product supports conversion-optimized delivery. Platform-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
       "properties": {
-        "supported_event_types": {
+        "action_sources": {
           "type": "array",
-          "description": "Event types this product can track and attribute. If omitted, all standard event types are supported.",
-          "items": {
-            "$ref": "/schemas/enums/event-type.json"
-          },
-          "minItems": 1
-        },
-        "supported_uid_types": {
-          "type": "array",
-          "description": "Universal ID types accepted for user matching on this product",
-          "items": {
-            "$ref": "/schemas/enums/uid-type.json"
-          },
-          "minItems": 1
-        },
-        "supported_action_sources": {
-          "type": "array",
-          "description": "Action sources this product accepts events from (website, app, in_store, etc.)",
+          "description": "Action sources relevant to this product (e.g. a retail media product might have 'in_store' and 'website', while a display product might only have 'website')",
           "items": {
             "$ref": "/schemas/enums/action-source.json"
           },
           "minItems": 1
-        },
-        "attribution_windows": {
-          "type": "array",
-          "description": "Attribution windows available for this product",
-          "items": {
-            "type": "object",
-            "properties": {
-              "event_type": {
-                "$ref": "/schemas/enums/event-type.json",
-                "description": "Event type this window applies to, or omit for default window"
-              },
-              "click_through": {
-                "type": "string",
-                "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
-              },
-              "view_through": {
-                "type": "string",
-                "description": "View-through attribution window (e.g. '1d', '7d')"
-              }
-            },
-            "required": ["click_through"],
-            "additionalProperties": true
-          }
         },
         "supported_optimization_strategies": {
           "type": "array",
