@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/user-match.json",
+  "title": "User Match",
+  "description": "Privacy-safe user identifiers for conversion attribution. Uses universal IDs and click IDs only - no PII.",
+  "type": "object",
+  "properties": {
+    "uids": {
+      "type": "array",
+      "description": "Universal ID values for user matching",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "/schemas/enums/uid-type.json",
+            "description": "Universal ID type"
+          },
+          "value": {
+            "type": "string",
+            "description": "Universal ID value"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "click_id": {
+      "type": "string",
+      "description": "Platform click identifier (fbclid, gclid, ttclid, ScCid, etc.)"
+    },
+    "click_id_type": {
+      "type": "string",
+      "description": "Type of click identifier (e.g. fbclid, gclid, ttclid, msclkid, ScCid)"
+    },
+    "client_ip": {
+      "type": "string",
+      "description": "Client IP address for probabilistic matching"
+    },
+    "client_user_agent": {
+      "type": "string",
+      "description": "Client user agent string for probabilistic matching"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "anyOf": [
+    { "required": ["uids"] },
+    { "required": ["click_id"] },
+    { "required": ["client_ip", "client_user_agent"] }
+  ],
+  "additionalProperties": true
+}

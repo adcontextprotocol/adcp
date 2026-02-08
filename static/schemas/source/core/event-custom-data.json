@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/event-custom-data.json",
+  "title": "Event Custom Data",
+  "description": "Event-specific data for attribution and reporting",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "number",
+      "description": "Monetary value of the event (should be accompanied by currency)",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "ISO 4217 currency code"
+    },
+    "order_id": {
+      "type": "string",
+      "description": "Unique order or transaction identifier"
+    },
+    "content_ids": {
+      "type": "array",
+      "description": "Product or content identifiers",
+      "items": {
+        "type": "string"
+      }
+    },
+    "content_type": {
+      "type": "string",
+      "description": "Category of content (product, service, etc.)"
+    },
+    "content_name": {
+      "type": "string",
+      "description": "Name of the product or content"
+    },
+    "content_category": {
+      "type": "string",
+      "description": "Category of the product or content"
+    },
+    "num_items": {
+      "type": "integer",
+      "description": "Number of items in the event",
+      "minimum": 0
+    },
+    "search_string": {
+      "type": "string",
+      "description": "Search query for search events"
+    },
+    "contents": {
+      "type": "array",
+      "description": "Per-item details for e-commerce events",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Product or content identifier"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Quantity of this item",
+            "minimum": 1
+          },
+          "price": {
+            "type": "number",
+            "description": "Price per unit of this item",
+            "minimum": 0
+          },
+          "brand": {
+            "type": "string",
+            "description": "Brand name of this item"
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": true
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}
