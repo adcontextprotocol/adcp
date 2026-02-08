@@ -1,48 +1,52 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/sync-measurement-events-response.json",
-  "title": "Sync Measurement Events Response",
-  "description": "Response from measurement ID sync operation. Returns either per-measurement results OR operation-level errors.",
+  "$id": "/schemas/media-buy/sync-event-sources-response.json",
+  "title": "Sync Event Sources Response",
+  "description": "Response from event source sync operation. Returns either per-source results OR operation-level errors.",
   "type": "object",
   "oneOf": [
     {
-      "title": "SyncMeasurementEventsSuccess",
-      "description": "Success response - sync operation processed measurement IDs",
+      "title": "SyncEventSourcesSuccess",
+      "description": "Success response - sync operation processed event sources",
       "type": "object",
       "properties": {
-        "measurements": {
+        "event_sources": {
           "type": "array",
-          "description": "Results for each measurement ID, including both synced and platform-managed measurements on the account",
+          "description": "Results for each event source, including both synced and seller-managed sources on the account",
           "items": {
             "type": "object",
             "properties": {
-              "measurement_id": {
+              "event_source_id": {
                 "type": "string",
-                "description": "Measurement ID from the request"
+                "description": "Event source ID from the request"
               },
               "name": {
                 "type": "string",
-                "description": "Name of the measurement ID"
+                "description": "Name of the event source"
               },
-              "platform_measurement_id": {
+              "platform_id": {
                 "type": "string",
-                "description": "Platform-assigned identifier for this measurement ID"
+                "description": "Platform-assigned identifier for this event source"
               },
               "event_types": {
                 "type": "array",
-                "description": "Event types this measurement ID handles",
+                "description": "Event types this source handles",
                 "items": {
                   "$ref": "/schemas/enums/event-type.json"
                 }
               },
-              "source": {
+              "action_source": {
+                "$ref": "/schemas/enums/action-source.json",
+                "description": "Type of event source (website pixel, app SDK, in-store, etc.)"
+              },
+              "managed_by": {
                 "type": "string",
-                "enum": ["buyer", "platform"],
-                "description": "Who manages this measurement ID. 'buyer' = configured via this sync. 'platform' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
+                "enum": ["buyer", "seller"],
+                "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
               },
               "setup": {
                 "type": "object",
-                "description": "Implementation details for activating this measurement ID (e.g. JavaScript tag, pixel URL)",
+                "description": "Implementation details for activating this event source (e.g. JavaScript tag, pixel URL)",
                 "properties": {
                   "snippet": {
                     "type": "string",
@@ -63,17 +67,17 @@
               "action": {
                 "type": "string",
                 "enum": ["created", "updated", "unchanged", "deleted", "failed"],
-                "description": "Action taken for this measurement ID"
+                "description": "Action taken for this event source"
               },
               "errors": {
                 "type": "array",
-                "description": "Errors for this measurement ID (only present when action='failed')",
+                "description": "Errors for this event source (only present when action='failed')",
                 "items": {
                   "type": "string"
                 }
               }
             },
-            "required": ["measurement_id", "action"],
+            "required": ["event_source_id", "action"],
             "additionalProperties": true
           }
         },
@@ -84,14 +88,14 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["measurements"],
+      "required": ["event_sources"],
       "additionalProperties": true,
       "not": {
         "required": ["errors"]
       }
     },
     {
-      "title": "SyncMeasurementEventsError",
+      "title": "SyncEventSourcesError",
       "description": "Error response - operation failed completely",
       "type": "object",
       "properties": {
@@ -113,7 +117,7 @@
       "required": ["errors"],
       "additionalProperties": true,
       "not": {
-        "required": ["measurements"]
+        "required": ["event_sources"]
       }
     }
   ]

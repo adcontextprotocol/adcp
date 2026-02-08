@@ -7,7 +7,7 @@
   "properties": {
     "event_id": {
       "type": "string",
-      "description": "Unique identifier for deduplication (scoped to event_type + measurement_id)",
+      "description": "Unique identifier for deduplication (scoped to event_type + event_source_id)",
       "minLength": 1,
       "maxLength": 256
     },

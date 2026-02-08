@@ -77,9 +77,9 @@
             "$ref": "/schemas/enums/event-type.json",
             "description": "The event type"
           },
-          "measurement_id": {
+          "event_source_id": {
             "type": "string",
-            "description": "Measurement ID that produced these conversions (for disambiguation when multiple measurement IDs are configured)"
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
           },
           "count": {
             "type": "number",

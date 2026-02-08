@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-event-sources-request.json",
+  "title": "Sync Event Sources Request",
+  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, event sources on the account not in this request are removed. The response includes both synced and seller-managed event sources for full visibility.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account to configure event sources for"
+    },
+    "event_sources": {
+      "type": "array",
+      "description": "Event sources to sync (create or update)",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_source_id": {
+            "type": "string",
+            "description": "Unique identifier for this event source"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this event source"
+          },
+          "event_types": {
+            "type": "array",
+            "description": "Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.",
+            "items": {
+              "$ref": "/schemas/enums/event-type.json"
+            }
+          },
+          "allowed_domains": {
+            "type": "array",
+            "description": "Domains authorized to send events for this event source",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["event_source_id"],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, event sources not included in this sync will be removed"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["account_id", "event_sources"],
+  "additionalProperties": true
+}

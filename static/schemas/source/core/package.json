@@ -58,11 +58,11 @@
     },
     "optimization_goal": {
       "type": "object",
-      "description": "Conversion optimization goal for this package. Tells the seller which measurement ID and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the platform optimizes for maximum conversions within budget.",
+      "description": "Conversion optimization goal for this package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the platform optimizes for maximum conversions within budget.",
       "properties": {
-        "measurement_id": {
+        "event_source_id": {
           "type": "string",
-          "description": "Measurement ID to optimize against (must be configured on this account via sync_measurement_events)"
+          "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
         },
         "event_type": {
           "$ref": "/schemas/enums/event-type.json",
@@ -79,7 +79,7 @@
           "minimum": 0
         }
       },
-      "required": ["measurement_id", "event_type"],
+      "required": ["event_source_id", "event_type"],
       "additionalProperties": true
     },
     "paused": {

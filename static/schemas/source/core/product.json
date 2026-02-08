@@ -126,7 +126,7 @@
         },
         "platform_managed": {
           "type": "boolean",
-          "description": "Whether the platform provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_measurement_events response will include platform-managed measurements with source='platform'."
+          "description": "Whether the platform provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
         }
       },
       "additionalProperties": true

@@ -19,7 +19,7 @@
     },
     "conversion_tracking": {
       "type": "boolean",
-      "description": "Supports sync_measurement_events and log_event tasks for conversion event tracking"
+      "description": "Supports sync_event_sources and log_event tasks for conversion event tracking"
     }
   },
   "additionalProperties": {

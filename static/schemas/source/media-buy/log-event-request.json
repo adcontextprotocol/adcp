@@ -5,9 +5,9 @@
   "description": "Request parameters for logging conversion or marketing events",
   "type": "object",
   "properties": {
-    "measurement_id": {
+    "event_source_id": {
       "type": "string",
-      "description": "Measurement ID configured on the account via sync_measurement_events"
+      "description": "Event source configured on the account via sync_event_sources"
     },
     "test_event_code": {
       "type": "string",
@@ -29,6 +29,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["measurement_id", "events"],
+  "required": ["event_source_id", "events"],
   "additionalProperties": true
 }
