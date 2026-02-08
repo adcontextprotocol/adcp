@@ -16,8 +16,10 @@ import {
   formatRevenueRange,
   type LushaCompanyData,
 } from './lusha.js';
+import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 
 const logger = createLogger('enrichment-service');
+const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 // How old enrichment data can be before we refresh it (30 days)
 const ENRICHMENT_STALE_DAYS = 30;
@@ -110,6 +112,95 @@ async function saveEnrichmentToOrg(
     { orgId, companyName: enrichmentData.companyName, suggestedCompanyType, suggestedRevenueTier },
     'Saved enrichment data to organization'
   );
+
+  // Write enrichment data to org_knowledge for provenance tracking
+  const knowledgeWrites: Promise<unknown>[] = [];
+
+  if (enrichmentData.mainIndustry) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'industry',
+        value: enrichmentData.mainIndustry,
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment',
+        source_reference: enrichmentData.companyName || undefined,
+      })
+    );
+  }
+
+  if (enrichmentData.employeeCount) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'employee_count',
+        value: String(enrichmentData.employeeCount),
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment',
+      })
+    );
+  }
+
+  if (enrichmentData.revenue) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'revenue',
+        value: String(enrichmentData.revenue),
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment',
+      })
+    );
+  }
+
+  if (enrichmentData.description) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'description',
+        value: enrichmentData.description,
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment',
+      })
+    );
+  }
+
+  if (suggestedCompanyType) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'company_type',
+        value: suggestedCompanyType,
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment (industry mapping)',
+      })
+    );
+  }
+
+  if (suggestedRevenueTier) {
+    knowledgeWrites.push(
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id: orgId,
+        attribute: 'revenue_tier',
+        value: suggestedRevenueTier,
+        source: 'enrichment',
+        confidence: 'medium',
+        set_by_description: 'Lusha API enrichment (revenue mapping)',
+      })
+    );
+  }
+
+  // Fire and forget - don't block enrichment on knowledge writes
+  if (knowledgeWrites.length > 0) {
+    Promise.all(knowledgeWrites).catch(err => {
+      logger.warn({ err, orgId }, 'Failed to write enrichment data to org_knowledge');
+    });
+  }
 }
 
 /**

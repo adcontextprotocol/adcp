@@ -24,6 +24,9 @@ import { sendCommunityReplies } from '../services/community-articles.js';
 import { processFeedsToFetch } from '../services/feed-fetcher.js';
 import { processAlerts } from '../services/industry-alerts.js';
 import { sendChannelMessage } from '../../slack/client.js';
+import { runPersonaInferenceJob } from '../services/persona-inference.js';
+import { runJourneyComputationJob } from '../services/journey-computation.js';
+import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 
 /**
  * Composite runner for content curator that runs multiple sub-tasks sequentially.
@@ -201,6 +204,39 @@ export function registerAllJobs(): void {
     businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
     shouldLogResult: (r) => r.followUpsSent > 0 || r.goalsReconciled > 0,
   });
+
+  // Persona inference - infers personas from signals for unclassified orgs
+  jobScheduler.register({
+    name: 'persona-inference',
+    description: 'Persona inference',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    runner: runPersonaInferenceJob,
+    options: { limit: 50 },
+    shouldLogResult: (r) => r.inferred > 0,
+  });
+
+  // Journey stage computation - recomputes journey stages
+  jobScheduler.register({
+    name: 'journey-computation',
+    description: 'Journey stage computation',
+    interval: { value: 2, unit: 'hours' },
+    initialDelay: { value: 4, unit: 'minutes' },
+    runner: runJourneyComputationJob,
+    options: { limit: 100 },
+    shouldLogResult: (r) => r.transitions > 0,
+  });
+
+  // Knowledge staleness - detects stale org knowledge
+  jobScheduler.register({
+    name: 'knowledge-staleness',
+    description: 'Knowledge staleness check',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runKnowledgeStalenessJob,
+    options: { limit: 200 },
+    shouldLogResult: (r) => r.staleEntries > 0,
+  });
 }
 
 /**
@@ -219,4 +255,7 @@ export const JOB_NAMES = {
   TASK_REMINDER: 'task-reminder',
   ENGAGEMENT_SCORING: 'engagement-scoring',
   GOAL_FOLLOW_UP: 'goal-follow-up',
+  PERSONA_INFERENCE: 'persona-inference',
+  JOURNEY_COMPUTATION: 'journey-computation',
+  KNOWLEDGE_STALENESS: 'knowledge-staleness',
 } as const;
