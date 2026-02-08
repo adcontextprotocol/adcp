@@ -5,17 +5,13 @@
   "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach forecasts to help buyers evaluate expected campaign performance before purchase.",
   "type": "object",
   "properties": {
-    "metrics": {
-      "type": "object",
-      "description": "Forecasted delivery metrics keyed by metric name. Keys should be values from the forecastable-metric enum. Values are ForecastRange objects (low/mid/high). Platform-specific metrics beyond the standard set are allowed.",
-      "additionalProperties": {
-        "$ref": "/schemas/core/forecast-range.json"
-      }
-    },
-    "budget": {
-      "type": "number",
-      "description": "Budget amount this forecast was produced for. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When budget_curve is present, this indicates which curve point the top-level metrics correspond to.",
-      "minimum": 0
+    "budget_curve": {
+      "type": "array",
+      "description": "Forecasted delivery at one or more budget levels. A single point is a standard forecast; multiple points ordered by ascending budget form a curve showing how metrics scale with spend. Each point pairs a budget with metric ranges.",
+      "items": {
+        "$ref": "/schemas/core/forecast-point.json"
+      },
+      "minItems": 1
     },
     "method": {
       "$ref": "/schemas/enums/forecast-method.json",
@@ -38,14 +34,6 @@
       "$ref": "/schemas/enums/reach-unit.json",
       "description": "Unit of measurement for reach and audience_size metrics in this forecast. Required for cross-channel forecast comparison."
     },
-    "budget_curve": {
-      "type": "array",
-      "description": "Budget-to-outcome curve showing how delivery metrics scale with spend. Each point pairs a budget level with predicted metric values at that spend. Points should be ordered by ascending budget.",
-      "items": {
-        "$ref": "/schemas/core/forecast-point.json"
-      },
-      "minItems": 1
-    },
     "generated_at": {
       "type": "string",
       "format": "date-time",
@@ -60,6 +48,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["method", "currency"],
+  "required": ["budget_curve", "method", "currency"],
   "additionalProperties": true
 }

@@ -555,11 +555,16 @@ Key characteristics:
   },
   "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
   "forecast": {
-    "metrics": {
-      "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
-      "reach": { "low": 400000, "mid": 600000, "high": 750000 },
-      "clicks": { "mid": 4800 }
-    },
+    "budget_curve": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
+          "reach": { "low": 400000, "mid": 600000, "high": 750000 },
+          "clicks": { "mid": 4800 }
+        }
+      }
+    ],
     "method": "modeled",
     "currency": "USD",
     "valid_until": "2025-04-15T00:00:00Z"
@@ -632,7 +637,7 @@ Proposals are optional - publishers may return only products if allocation guida
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Forecasts use a `metrics` map keyed by metric name (from the `forecastable-metric` enum), with each value being a range (low/mid/high). Standard metrics include impressions, reach, clicks, spend, views, conversions, leads, and grps. Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
+Forecasts are structured as a `budget_curve` — one or more points, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points show how metrics scale with spend. Metric names come from the `forecastable-metric` enum (impressions, reach, clicks, spend, views, conversions, leads, grps, etc.). Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
 
 - **`estimate`** — rough approximation based on historical averages or heuristics
 - **`modeled`** — derived from predictive models or historical data
@@ -646,7 +651,7 @@ Forecasts can appear at two levels:
 
 Allocation-level forecasts may not sum to the proposal-level forecast due to audience overlap and frequency capping. When both are present, the proposal-level forecast is authoritative for total delivery estimation.
 
-For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing. Publishers may also include a `budget_curve` array showing how delivery metrics scale with different budget levels.
+For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing.
 
 ## Integration with Discovery
 

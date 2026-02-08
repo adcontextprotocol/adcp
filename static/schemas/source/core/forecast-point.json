@@ -2,23 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/forecast-point.json",
   "title": "Forecast Point",
-  "description": "A single point on a budget-to-outcome curve. Points should be ordered by ascending budget to form a curve showing how delivery metrics scale with spend.",
+  "description": "A forecast at a specific budget level. A single point represents a standard forecast; multiple points ordered by ascending budget form a curve showing how delivery metrics scale with spend.",
   "type": "object",
   "properties": {
     "budget": {
       "type": "number",
-      "description": "Budget amount for this forecast point",
+      "description": "Budget amount for this forecast point. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget.",
       "minimum": 0
     },
     "metrics": {
       "type": "object",
-      "description": "Forecasted metric values at this budget level. Keys should be values from the forecastable-metric enum (e.g., impressions, reach, spend). Values are point estimates (numbers). Include spend when the platform predicts it will differ from budget.",
+      "description": "Forecasted metric values at this budget level. Keys should be values from the forecastable-metric enum (e.g., impressions, reach, spend). Values are ForecastRange objects (low/mid/high). Use just { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget.",
       "additionalProperties": {
-        "type": "number",
-        "minimum": 0
+        "$ref": "/schemas/core/forecast-range.json"
       }
     }
   },
-  "required": ["budget"],
+  "required": ["budget", "metrics"],
   "additionalProperties": true
 }
