@@ -384,6 +384,14 @@
           "$ref": "/schemas/enums/forecastable-metric.json",
           "description": "Standard metric names for delivery forecasts (audience_size, reach, impressions, clicks, spend, etc.)"
         },
+        "demographic-system": {
+          "$ref": "/schemas/enums/demographic-system.json",
+          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+        },
+        "reach-unit": {
+          "$ref": "/schemas/enums/reach-unit.json",
+          "description": "Unit of measurement for reach metrics (individuals, households, devices, accounts, cookies, custom)"
+        },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
           "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"

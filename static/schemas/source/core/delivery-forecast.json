@@ -12,6 +12,11 @@
         "$ref": "/schemas/core/forecast-range.json"
       }
     },
+    "budget": {
+      "type": "number",
+      "description": "Budget amount this forecast was produced for. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When budget_curve is present, this indicates which curve point the top-level metrics correspond to.",
+      "minimum": 0
+    },
     "method": {
       "$ref": "/schemas/enums/forecast-method.json",
       "description": "Method used to produce this forecast"
@@ -20,10 +25,18 @@
       "type": "string",
       "description": "ISO 4217 currency code for monetary values in this forecast (spend, budget)"
     },
+    "demographic_system": {
+      "$ref": "/schemas/enums/demographic-system.json",
+      "description": "Measurement system for the demographic field. Ensures buyer and seller agree on demographic notation."
+    },
     "demographic": {
       "type": "string",
-      "description": "Target demographic for GRP forecasts. Nielsen notation (e.g., 'P18-49', 'A25-54', 'W35+') is the standard format per cpp-option.json, but free-form strings are accepted for non-Nielsen markets (e.g., BARB in UK, AGF in Germany).",
+      "description": "Target demographic code within the specified demographic_system. For Nielsen: P18-49, M25-54, W35+. For BARB: ABC1 Adults, 16-34. For AGF: E 14-49.",
       "examples": ["P18-49", "A25-54", "W35+", "M18-34"]
+    },
+    "reach_unit": {
+      "$ref": "/schemas/enums/reach-unit.json",
+      "description": "Unit of measurement for reach and audience_size metrics in this forecast. Required for cross-channel forecast comparison."
     },
     "budget_curve": {
       "type": "array",

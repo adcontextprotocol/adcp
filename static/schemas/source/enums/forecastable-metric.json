@@ -19,7 +19,7 @@
   ],
   "enumDescriptions": {
     "audience_size": "Estimated addressable audience size",
-    "reach": "Estimated unique reach. Units depend on measurement methodology (individuals, households, devices, cookies). See the product's delivery_measurement.provider for context.",
+    "reach": "Estimated unique reach. The reach_unit field on DeliveryForecast specifies the measurement unit (individuals, households, devices, etc.).",
     "frequency": "Estimated average frequency per individual",
     "impressions": "Estimated impressions",
     "clicks": "Estimated clicks",
@@ -28,6 +28,6 @@
     "completed_views": "Estimated 100% completions (for CPCV)",
     "leads": "Estimated leads generated",
     "conversions": "Estimated conversions",
-    "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic field on DeliveryForecast should specify the target demographic."
+    "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic_system and demographic fields on DeliveryForecast should specify the target demographic."
   }
 }
