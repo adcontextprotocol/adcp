@@ -475,6 +475,10 @@
         "universal-macro": {
           "$ref": "/schemas/enums/universal-macro.json",
           "description": "Standardized macro placeholders for dynamic value substitution in creative tracking URLs"
+        },
+        "wcag-level": {
+          "$ref": "/schemas/enums/wcag-level.json",
+          "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
         }
       }
     },

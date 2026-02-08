@@ -125,6 +125,24 @@
     "audio_true_peak_dbfs": {
       "type": "number",
       "description": "True peak level in dBFS"
+    },
+    "captions_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to captions file (WebVTT, SRT, etc.)",
+      "x-accessibility": true
+    },
+    "transcript_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to text transcript of the video content",
+      "x-accessibility": true
+    },
+    "audio_description_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to audio description track for visually impaired users",
+      "x-accessibility": true
     }
   },
   "required": [

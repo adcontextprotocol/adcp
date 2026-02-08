@@ -54,6 +54,12 @@
     "true_peak_dbfs": {
       "type": "number",
       "description": "True peak level in dBFS"
+    },
+    "transcript_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to text transcript of the audio content",
+      "x-accessibility": true
     }
   },
   "required": [
