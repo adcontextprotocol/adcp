@@ -555,7 +555,7 @@ Key characteristics:
   },
   "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
   "forecast": {
-    "budget_curve": [
+    "forecasts": [
       {
         "budget": 50000,
         "metrics": {
@@ -637,7 +637,7 @@ Proposals are optional - publishers may return only products if allocation guida
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Forecasts are structured as a `budget_curve` — one or more points, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points show how metrics scale with spend. Metric names come from the `forecastable-metric` enum (impressions, reach, clicks, spend, views, conversions, leads, grps, etc.). Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
+Each forecast contains a `forecasts` array of one or more points, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points ordered by ascending budget show how metrics scale with spend. Metric names come from the `forecastable-metric` enum (impressions, reach, clicks, spend, views, conversions, leads, grps, etc.). Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
 
 - **`estimate`** — rough approximation based on historical averages or heuristics
 - **`modeled`** — derived from predictive models or historical data

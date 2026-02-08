@@ -5,7 +5,7 @@
   "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach forecasts to help buyers evaluate expected campaign performance before purchase.",
   "type": "object",
   "properties": {
-    "budget_curve": {
+    "forecasts": {
       "type": "array",
       "description": "Forecasted delivery at one or more budget levels. A single point is a standard forecast; multiple points ordered by ascending budget form a curve showing how metrics scale with spend. Each point pairs a budget with metric ranges.",
       "items": {
@@ -48,6 +48,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["budget_curve", "method", "currency"],
+  "required": ["forecasts", "method", "currency"],
   "additionalProperties": true
 }
