@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-point.json",
+  "title": "Forecast Point",
+  "description": "A forecast at a specific budget level. A single point represents a standard forecast; multiple points ordered by ascending budget form a curve showing how delivery metrics scale with spend.",
+  "type": "object",
+  "properties": {
+    "budget": {
+      "type": "number",
+      "description": "Budget amount for this forecast point. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget.",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted metric values at this budget level. Keys are either forecastable-metric values for delivery/engagement (impressions, reach, spend, etc.) or event-type values for outcomes (purchase, lead, app_install, etc.). Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget.",
+      "additionalProperties": {
+        "$ref": "/schemas/core/forecast-range.json"
+      }
+    }
+  },
+  "required": ["budget", "metrics"],
+  "additionalProperties": true
+}

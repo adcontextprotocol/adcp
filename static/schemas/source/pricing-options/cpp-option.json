@@ -38,10 +38,13 @@
       "type": "object",
       "description": "CPP-specific parameters for demographic targeting",
       "properties": {
+        "demographic_system": {
+          "$ref": "/schemas/enums/demographic-system.json",
+          "description": "Measurement system for the demographic field. Defaults to nielsen when omitted."
+        },
         "demographic": {
           "type": "string",
-          "pattern": "^[PMWAC][0-9]{2}(-[0-9]{2}|\\+)$",
-          "description": "Target demographic in Nielsen format (P18-49, M25-54, W35+, etc.)"
+          "description": "Target demographic code within the specified demographic_system (e.g., P18-49 for Nielsen, ABC1 Adults for BARB)"
         },
         "min_points": {
           "type": "number",

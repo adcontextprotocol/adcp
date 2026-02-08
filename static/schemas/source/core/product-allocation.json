@@ -35,6 +35,10 @@
         "type": "string"
       }
     },
+    "forecast": {
+      "$ref": "/schemas/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this allocation"
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
