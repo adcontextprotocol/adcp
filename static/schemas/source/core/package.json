@@ -56,6 +56,32 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
+    "optimization_goal": {
+      "type": "object",
+      "description": "Conversion optimization goal for this package. Tells the seller which measurement ID and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the platform optimizes for maximum conversions within budget.",
+      "properties": {
+        "measurement_id": {
+          "type": "string",
+          "description": "Measurement ID to optimize against (must be configured on this account via sync_measurement_events)"
+        },
+        "event_type": {
+          "$ref": "/schemas/enums/event-type.json",
+          "description": "Event type to optimize for (e.g. purchase, lead)"
+        },
+        "target_roas": {
+          "type": "number",
+          "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent). Mutually exclusive with target_cpa.",
+          "minimum": 0
+        },
+        "target_cpa": {
+          "type": "number",
+          "description": "Target cost per acquisition in the buy currency. Mutually exclusive with target_roas.",
+          "minimum": 0
+        }
+      },
+      "required": ["measurement_id", "event_type"],
+      "additionalProperties": true
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",

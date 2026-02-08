@@ -103,6 +103,73 @@
       "default": false,
       "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
     },
+    "conversion_tracking": {
+      "type": "object",
+      "description": "Conversion tracking capabilities for this product. Describes what event types, user matching methods, and attribution the platform supports. Presence indicates the product supports conversion tracking via sync_measurement_events and log_event.",
+      "properties": {
+        "supported_event_types": {
+          "type": "array",
+          "description": "Event types this product can track and attribute. If omitted, all standard event types are supported.",
+          "items": {
+            "$ref": "/schemas/enums/event-type.json"
+          },
+          "minItems": 1
+        },
+        "supported_uid_types": {
+          "type": "array",
+          "description": "Universal ID types accepted for user matching on this product",
+          "items": {
+            "$ref": "/schemas/enums/uid-type.json"
+          },
+          "minItems": 1
+        },
+        "supported_action_sources": {
+          "type": "array",
+          "description": "Action sources this product accepts events from (website, app, in_store, etc.)",
+          "items": {
+            "$ref": "/schemas/enums/action-source.json"
+          },
+          "minItems": 1
+        },
+        "attribution_windows": {
+          "type": "array",
+          "description": "Attribution windows available for this product",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_type": {
+                "$ref": "/schemas/enums/event-type.json",
+                "description": "Event type this window applies to, or omit for default window"
+              },
+              "click_through": {
+                "type": "string",
+                "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+              },
+              "view_through": {
+                "type": "string",
+                "description": "View-through attribution window (e.g. '1d', '7d')"
+              }
+            },
+            "required": ["click_through"],
+            "additionalProperties": true
+          }
+        },
+        "supported_optimization_strategies": {
+          "type": "array",
+          "description": "Optimization strategies this product supports when an optimization_goal is set on a package",
+          "items": {
+            "type": "string",
+            "enum": ["maximize_conversions", "target_cpa", "target_roas"]
+          },
+          "minItems": 1
+        },
+        "platform_managed": {
+          "type": "boolean",
+          "description": "Whether the platform provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_measurement_events response will include platform-managed measurements with source='platform'."
+        }
+      },
+      "additionalProperties": true
+    },
     "brief_relevance": {
       "type": "string",
       "description": "Explanation of why this product matches the brief (only included when brief is provided)"
