@@ -62,6 +62,10 @@
       "type": "string",
       "description": "Search for formats by name (case-insensitive partial match)"
     },
+    "wcag_level": {
+      "$ref": "/schemas/enums/wcag-level.json",
+      "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
