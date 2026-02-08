@@ -628,6 +628,21 @@ export class HTTPServer {
 
     this.app.use('/schemas', express.static(schemasPath));
 
+    // Serve domain-specific brand.json for adcontextprotocol.org
+    // The static/.well-known/brand.json has the full house portfolio for agenticadvertising.org.
+    // AdCP domain gets a house redirect pointing to the AgenticAdvertising.org portfolio.
+    this.app.get('/.well-known/brand.json', (req, res, next) => {
+      if (this.isAdcpDomain(req)) {
+        return res.json({
+          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+          "house": "agenticadvertising.org",
+          "note": "AdCP is a sub-brand of AgenticAdvertising.org",
+          "last_updated": "2026-02-08T00:00:00Z"
+        });
+      }
+      next();
+    });
+
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")
@@ -1950,6 +1965,39 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/brands/brand-json - Fetch full raw brand.json for a domain
+    this.app.get('/api/brands/brand-json', async (req, res) => {
+      try {
+        const domain = (req.query.domain as string || '').toLowerCase();
+        const fresh = req.query.fresh === 'true';
+        const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+        if (!domain || !domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const result = await this.brandManager.validateDomain(domain, { skipCache: fresh });
+
+        if (!result.valid || !result.raw_data) {
+          return res.status(404).json({
+            error: 'Brand not found or invalid',
+            domain,
+            errors: result.errors,
+          });
+        }
+
+        return res.json({
+          domain: result.domain,
+          url: result.url,
+          variant: result.variant,
+          data: result.raw_data,
+          warnings: result.warnings,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to fetch brand.json');
+        return res.status(500).json({ error: 'Failed to fetch brand data' });
+      }
+    });
+
     // GET /api/brands/enrich - Enrich a brand using Brandfetch
     this.app.get('/api/brands/enrich', async (req, res) => {
       try {
@@ -2039,6 +2087,11 @@ export class HTTPServer {
         logger.error({ error }, 'Failed to delete hosted brand');
         return res.status(500).json({ error: 'Failed to delete brand' });
       }
+    });
+
+    // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
+    this.app.get('/brand/view/:domain(*)', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
     });
 
     // GET /brand/:id/brand.json - Serve hosted brand.json
