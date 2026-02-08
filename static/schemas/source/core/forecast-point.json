@@ -12,7 +12,7 @@
     },
     "metrics": {
       "type": "object",
-      "description": "Forecasted metric values at this budget level. Keys should be values from the forecastable-metric enum (e.g., impressions, reach, spend). Values are ForecastRange objects (low/mid/high). Use just { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget.",
+      "description": "Forecasted metric values at this budget level. Keys are either forecastable-metric values for delivery/engagement (impressions, reach, spend, etc.) or event-type values for outcomes (purchase, lead, app_install, etc.). Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget.",
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"
       }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/forecastable-metric.json",
   "title": "Forecastable Metric",
-  "description": "Standard metric names for delivery forecasts. Aligns with delivery-metrics.json vocabulary. Derived metrics (ctr, completion_rate) are excluded since they are calculated, not forecasted.",
+  "description": "Standard delivery and engagement metric names for forecasts. For outcome/conversion forecasts (purchases, leads, app installs, etc.), use event-type enum values as metric keys instead. The ForecastPoint metrics map accepts any string key, so both forecastable-metric and event-type values can be used together.",
   "type": "string",
   "enum": [
     "audience_size",
@@ -13,8 +13,6 @@
     "spend",
     "views",
     "completed_views",
-    "leads",
-    "conversions",
     "grps"
   ],
   "enumDescriptions": {
@@ -26,8 +24,6 @@
     "spend": "Estimated spend in the forecast currency",
     "views": "Estimated views at threshold (for CPV)",
     "completed_views": "Estimated 100% completions (for CPCV)",
-    "leads": "Estimated leads generated",
-    "conversions": "Estimated conversions",
     "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic_system and demographic fields on DeliveryForecast should specify the target demographic."
   }
 }

@@ -637,13 +637,17 @@ Proposals are optional - publishers may return only products if allocation guida
 
 Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
 
-Each forecast contains a `points` array of one or more ForecastPoints, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points ordered by ascending budget show how metrics scale with spend. Metric names come from the `forecastable-metric` enum (impressions, reach, clicks, spend, views, conversions, leads, grps, etc.). Platforms can include additional metrics beyond the standard set. Each forecast declares its method:
+Each forecast contains a `points` array of one or more ForecastPoints, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points ordered by ascending budget show how metrics scale with spend.
+
+Metric keys come from two vocabularies:
+- **Delivery/engagement**: `forecastable-metric` enum values (impressions, reach, clicks, spend, views, completed_views, grps, etc.)
+- **Outcomes**: `event-type` enum values (purchase, lead, app_install, add_to_cart, subscribe, etc.)
+
+This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,800 purchases") in a single forecast. Each forecast declares its method:
 
 - **`estimate`** — rough approximation based on historical averages or heuristics
 - **`modeled`** — derived from predictive models or historical data
 - **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
-
-Publishers can include additional platform-specific metrics (e.g., purchases, ROAS) via the `ext` field.
 
 Forecasts can appear at two levels:
 - **Proposal-level**: aggregate forecast for the entire media plan
