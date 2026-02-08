@@ -87,7 +87,7 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 
 ## Tasks
 
-The Media Buy Protocol defines eight tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines ten tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -199,6 +199,37 @@ Submit performance signals to enable publisher optimization.
 - Orchestrators MUST include `media_buy_id` and performance metrics
 - Sales agents MUST acknowledge receipt of feedback
 - Sales agents SHOULD use feedback to optimize delivery within campaign constraints
+
+### sync_event_sources
+
+**Schema**: [`media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-request.json) / [`media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-response.json)
+
+**Reference**: [`sync_event_sources` task](/docs/media-buy/task-reference/sync_event_sources)
+
+Configure event sources on a seller account for conversion tracking with upsert semantics.
+
+**Requirements:**
+- Orchestrators MUST include `account_id` and at least one event source
+- Sales agents MUST return per-source results with `action` indicating what happened
+- Sales agents MUST include seller-managed event sources in the response when present
+- Sales agents SHOULD return `setup` instructions for newly created event sources
+- Sales agents MAY include `seller_id` for cross-referencing in the seller's platform
+
+### log_event
+
+**Schema**: [`media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-request.json) / [`media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-response.json)
+
+**Reference**: [`log_event` task](/docs/media-buy/task-reference/log_event)
+
+Send conversion or marketing events for attribution and optimization.
+
+**Requirements:**
+- Orchestrators MUST include `event_source_id` referencing a configured event source
+- Orchestrators MUST include at least one event with `event_id`, `event_type`, and `event_time`
+- Sales agents MUST return `events_received` and `events_processed` counts
+- Sales agents MUST deduplicate events by `event_id` + `event_type` + `event_source_id`
+- Sales agents SHOULD report `partial_failures` for individually failed events
+- Sales agents SHOULD return `match_quality` score when user matching is attempted
 
 ## Error Handling
 

@@ -19,15 +19,21 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](/docs/media-buy/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
 | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
+| [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Submit performance signals for optimization | ~1s | Optimization |
+| [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Configure event sources for conversion tracking | ~1s | Conversion Tracking |
+| [`log_event`](/docs/media-buy/task-reference/log_event) | Send conversion events for attribution | ~1s | Conversion Tracking |
 
 ## Response Time Categories
 
 AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
-**Simple database lookups**
+**Simple lookups and event ingestion**
 - [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Format specifications
 - [`list_creatives`](/docs/media-buy/task-reference/list_creatives) - Creative library queries
+- [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission
+- [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) - Event source configuration
+- [`log_event`](/docs/media-buy/task-reference/log_event) - Conversion event ingestion
 
 ### 🟡 Processing (~60 seconds)  
 **AI/LLM inference with backend systems**
@@ -65,7 +71,13 @@ Handle creative assets throughout their lifecycle.
 Monitor and optimize campaign performance.
 
 - **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics
+- **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)** - Submit performance signals for publisher optimization
 
+### Conversion Tracking
+Configure event sources and send conversion events for attribution.
+
+- **[`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources)** - Configure event sources on seller accounts
+- **[`log_event`](/docs/media-buy/task-reference/log_event)** - Send conversion and marketing events
 
 ## Schema Reference
 

@@ -1,0 +1,525 @@
+---
+title: log_event
+testable: true
+---
+
+
+Send conversion or marketing events for attribution and optimization. Supports batch submissions, test events, and partial failure reporting.
+
+**Response Time**: ~1s (events are queued for processing)
+
+**Request Schema**: [`/schemas/v2/media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-response.json)
+
+## Quick Start
+
+Log a purchase event:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { LogEventResponseSchema } from "@adcp/client";
+
+const result = await testAgent.logEvent({
+  event_source_id: "website_pixel",
+  events: [
+    {
+      event_id: "evt_purchase_12345",
+      event_type: "purchase",
+      event_time: "2026-01-15T14:30:00Z",
+      action_source: "website",
+      event_source_url: "https://www.example.com/checkout/confirm",
+      user_match: {
+        click_id: "abc123def456",
+        click_id_type: "gclid",
+      },
+      custom_data: {
+        value: 149.99,
+        currency: "USD",
+        order_id: "order_98765",
+        num_items: 3,
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = LogEventResponseSchema.parse(result.data);
+
+// Check for operation-level errors first (discriminated union)
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("events_received" in validated) {
+  console.log(`Received: ${validated.events_received}, Processed: ${validated.events_processed}`);
+  if (validated.match_quality !== undefined) {
+    console.log(`Match quality: ${(validated.match_quality * 100).toFixed(0)}%`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.log_event(
+        event_source_id='website_pixel',
+        events=[{
+            'event_id': 'evt_purchase_12345',
+            'event_type': 'purchase',
+            'event_time': '2026-01-15T14:30:00Z',
+            'action_source': 'website',
+            'event_source_url': 'https://www.example.com/checkout/confirm',
+            'user_match': {
+                'click_id': 'abc123def456',
+                'click_id_type': 'gclid'
+            },
+            'custom_data': {
+                'value': 149.99,
+                'currency': 'USD',
+                'order_id': 'order_98765',
+                'num_items': 3
+            }
+        }]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Received: {result.events_received}, Processed: {result.events_processed}")
+    if hasattr(result, 'match_quality') and result.match_quality is not None:
+        print(f"Match quality: {result.match_quality * 100:.0f}%")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `event_source_id` | string | Yes | Event source configured on the account via `sync_event_sources` |
+| `events` | ConversionEvent[] | Yes | Events to log (min 1, max 10,000) |
+| `test_event_code` | string | No | Test event code for validation without affecting production data |
+
+### Conversion Event Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event_id` | string | Yes | Unique identifier for deduplication (scoped to event_type + event_source_id). Max 256 chars. |
+| `event_type` | EventType | Yes | Standard event type (e.g. `purchase`, `lead`, `add_to_cart`) |
+| `event_time` | date-time | Yes | ISO 8601 timestamp when the event occurred |
+| `user_match` | UserMatch | No | User identifiers for attribution matching |
+| `custom_data` | CustomData | No | Event-specific data (value, currency, items) |
+| `action_source` | ActionSource | No | Where the event occurred (`website`, `app`, `in_store`, etc.) |
+| `event_source_url` | uri | No | URL where the event occurred (required when action_source is `website`) |
+| `custom_event_name` | string | No | Name for custom events (used when event_type is `custom`) |
+
+### User Match Object
+
+At least one of `uids`, `click_id`, or `client_ip` + `client_user_agent` is required:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uids` | UID[] | Universal ID values (`rampid`, `id5`, `uid2`, `euid`, `pairid`) |
+| `click_id` | string | Platform click identifier (fbclid, gclid, ttclid, etc.) |
+| `click_id_type` | string | Type of click identifier |
+| `client_ip` | string | Client IP address for probabilistic matching |
+| `client_user_agent` | string | Client user agent string for probabilistic matching |
+
+**No PII:** AdCP does not support hashed email or phone for user matching. Use universal IDs and click IDs only.
+
+### Custom Data Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `value` | number | Monetary value of the event |
+| `currency` | string | ISO 4217 currency code (e.g. `USD`, `EUR`, `GBP`) |
+| `order_id` | string | Unique order or transaction identifier |
+| `content_ids` | string[] | Product or content identifiers |
+| `content_type` | string | Category of content (product, service, etc.) |
+| `num_items` | integer | Number of items in the event |
+| `contents` | Content[] | Per-item details (id, quantity, price, brand) |
+
+## Response
+
+**Success Response:**
+
+- `events_received` - Number of events received
+- `events_processed` - Number of events successfully queued
+- `partial_failures` - Events that failed validation (with event_id, code, message)
+- `warnings` - Non-fatal issues (low match quality, missing fields)
+- `match_quality` - Overall match quality score (0.0 to 1.0)
+
+**Error Response:**
+
+- `errors` - Array of operation-level errors (invalid event source, auth failure)
+
+**Note:** Responses use discriminated unions - you get either success fields OR errors, never both. Partial failures are reported per-event within the success response.
+
+## Common Scenarios
+
+### Batch Events
+
+Send multiple events in a single request:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { LogEventResponseSchema } from "@adcp/client";
+
+const result = await testAgent.logEvent({
+  event_source_id: "website_pixel",
+  events: [
+    {
+      event_id: "evt_purchase_001",
+      event_type: "purchase",
+      event_time: "2026-01-15T10:00:00Z",
+      action_source: "website",
+      user_match: {
+        uids: [{ type: "uid2", value: "AbC123XyZ..." }],
+      },
+      custom_data: {
+        value: 89.99,
+        currency: "USD",
+        order_id: "order_001",
+      },
+    },
+    {
+      event_id: "evt_lead_002",
+      event_type: "lead",
+      event_time: "2026-01-15T11:30:00Z",
+      action_source: "website",
+      user_match: {
+        click_id: "abc123def456",
+        click_id_type: "fbclid",
+      },
+    },
+    {
+      event_id: "evt_cart_003",
+      event_type: "add_to_cart",
+      event_time: "2026-01-15T12:15:00Z",
+      action_source: "app",
+      user_match: {
+        uids: [{ type: "rampid", value: "Def456Ghi..." }],
+      },
+      custom_data: {
+        content_ids: ["SKU-1234", "SKU-5678"],
+        num_items: 2,
+        value: 45.00,
+        currency: "USD",
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = LogEventResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("events_received" in validated) {
+  console.log(`${validated.events_processed}/${validated.events_received} events processed`);
+  if (validated.partial_failures?.length) {
+    for (const failure of validated.partial_failures) {
+      console.log(`  Failed: ${failure.event_id} - ${failure.message}`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.log_event(
+        event_source_id='website_pixel',
+        events=[
+            {
+                'event_id': 'evt_purchase_001',
+                'event_type': 'purchase',
+                'event_time': '2026-01-15T10:00:00Z',
+                'action_source': 'website',
+                'user_match': {
+                    'uids': [{'type': 'uid2', 'value': 'AbC123XyZ...'}]
+                },
+                'custom_data': {
+                    'value': 89.99,
+                    'currency': 'USD',
+                    'order_id': 'order_001'
+                }
+            },
+            {
+                'event_id': 'evt_lead_002',
+                'event_type': 'lead',
+                'event_time': '2026-01-15T11:30:00Z',
+                'action_source': 'website',
+                'user_match': {
+                    'click_id': 'abc123def456',
+                    'click_id_type': 'fbclid'
+                }
+            },
+            {
+                'event_id': 'evt_cart_003',
+                'event_type': 'add_to_cart',
+                'event_time': '2026-01-15T12:15:00Z',
+                'action_source': 'app',
+                'user_match': {
+                    'uids': [{'type': 'rampid', 'value': 'Def456Ghi...'}]
+                },
+                'custom_data': {
+                    'content_ids': ['SKU-1234', 'SKU-5678'],
+                    'num_items': 2,
+                    'value': 45.00,
+                    'currency': 'USD'
+                }
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"{result.events_processed}/{result.events_received} events processed")
+    if hasattr(result, 'partial_failures') and result.partial_failures:
+        for failure in result.partial_failures:
+            print(f"  Failed: {failure.event_id} - {failure.message}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Test Events
+
+Validate event integration without affecting production data:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { LogEventResponseSchema } from "@adcp/client";
+
+const result = await testAgent.logEvent({
+  event_source_id: "website_pixel",
+  test_event_code: "TEST_12345",
+  events: [
+    {
+      event_id: "test_evt_001",
+      event_type: "purchase",
+      event_time: new Date().toISOString(),
+      action_source: "website",
+      event_source_url: "https://www.example.com/checkout",
+      user_match: {
+        click_id: "test_click_abc",
+        click_id_type: "gclid",
+      },
+      custom_data: {
+        value: 99.99,
+        currency: "USD",
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = LogEventResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("events_received" in validated) {
+  console.log("Test event sent successfully");
+  if (validated.warnings?.length) {
+    console.log("Warnings:", validated.warnings);
+  }
+}
+```
+
+```python Python
+import asyncio
+from datetime import datetime, timezone
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.log_event(
+        event_source_id='website_pixel',
+        test_event_code='TEST_12345',
+        events=[{
+            'event_id': 'test_evt_001',
+            'event_type': 'purchase',
+            'event_time': datetime.now(timezone.utc).isoformat(),
+            'action_source': 'website',
+            'event_source_url': 'https://www.example.com/checkout',
+            'user_match': {
+                'click_id': 'test_click_abc',
+                'click_id_type': 'gclid'
+            },
+            'custom_data': {
+                'value': 99.99,
+                'currency': 'USD'
+            }
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print('Test event sent successfully')
+    if hasattr(result, 'warnings') and result.warnings:
+        print(f"Warnings: {result.warnings}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+Test events appear in the seller's test events UI but do not affect production attribution or reporting.
+
+### In-Store Conversions
+
+Report offline conversions using CRM data:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { LogEventResponseSchema } from "@adcp/client";
+
+const result = await testAgent.logEvent({
+  event_source_id: "crm_import",
+  events: [
+    {
+      event_id: "store_txn_20260115_001",
+      event_type: "purchase",
+      event_time: "2026-01-15T16:45:00Z",
+      action_source: "in_store",
+      user_match: {
+        uids: [{ type: "rampid", value: "XyZ789AbC..." }],
+      },
+      custom_data: {
+        value: 250.0,
+        currency: "USD",
+        order_id: "POS-2026-0115-001",
+        contents: [
+          { id: "SKU-JACKET-L", quantity: 1, price: 189.0 },
+          { id: "SKU-SCARF-01", quantity: 1, price: 61.0 },
+        ],
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = LogEventResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("events_received" in validated) {
+  console.log(`In-store events processed: ${validated.events_processed}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.log_event(
+        event_source_id='crm_import',
+        events=[{
+            'event_id': 'store_txn_20260115_001',
+            'event_type': 'purchase',
+            'event_time': '2026-01-15T16:45:00Z',
+            'action_source': 'in_store',
+            'user_match': {
+                'uids': [{'type': 'rampid', 'value': 'XyZ789AbC...'}]
+            },
+            'custom_data': {
+                'value': 250.00,
+                'currency': 'USD',
+                'order_id': 'POS-2026-0115-001',
+                'contents': [
+                    {'id': 'SKU-JACKET-L', 'quantity': 1, 'price': 189.00},
+                    {'id': 'SKU-SCARF-01', 'quantity': 1, 'price': 61.00}
+                ]
+            }
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"In-store events processed: {result.events_processed}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Event Deduplication
+
+Events are deduplicated by the combination of `event_id` + `event_type` + `event_source_id`. Sending the same event multiple times is safe - duplicates are silently ignored.
+
+Choose `event_id` values that are stable across retries:
+- Transaction IDs: `"order_98765"`
+- Composite keys: `"purchase_user123_20260115"`
+- UUIDs: `"550e8400-e29b-41d4-a716-446655440000"`
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `EVENT_SOURCE_NOT_FOUND` | Event source not configured | Run `sync_event_sources` first |
+| `INVALID_EVENT_TYPE` | Unrecognized or disallowed event type | Check event source's `event_types` configuration |
+| `INVALID_EVENT_TIME` | Event time too far in the past/future | Use timestamps within the seller's attribution window |
+| `MISSING_USER_MATCH` | No user identifiers provided | Include at least one of: uids, click_id, or client_ip + client_user_agent |
+| `BATCH_TOO_LARGE` | More than 10,000 events | Split into smaller batches |
+| `RATE_LIMIT_EXCEEDED` | Too many requests | Wait and retry with exponential backoff |
+
+## Best Practices
+
+1. **Configure sources first** - Always run `sync_event_sources` before sending events. Events sent to unconfigured sources are rejected.
+
+2. **Include user_match** - Events without user identifiers cannot be attributed. Provide the strongest identifiers available: UIDs > click IDs > IP/UA.
+
+3. **Use test events first** - Set `test_event_code` during integration to validate events appear correctly without affecting production data.
+
+4. **Batch when possible** - Send up to 10,000 events per request to reduce API calls. Events within a batch are processed independently.
+
+5. **Include value and currency** - For purchase events, always include `custom_data.value` and `custom_data.currency` to enable ROAS reporting and optimization.
+
+6. **Stable event IDs** - Use deterministic event IDs (order numbers, transaction IDs) rather than random UUIDs. This ensures safe retries without duplicate counting.
+
+7. **Send events promptly** - Log events as close to real-time as possible. Events outside the seller's attribution window may not be matched.
+
+## Next Steps
+
+- [sync_event_sources](/docs/media-buy/task-reference/sync_event_sources) - Configure event sources before logging events
+- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Set optimization goals on packages
+- [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor conversion metrics in delivery reports
