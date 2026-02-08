@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/creative-sort-field.json",
+  "title": "Creative Sort Field",
+  "description": "Fields available for sorting creative library listings",
+  "type": "string",
+  "enum": [
+    "created_date",
+    "updated_date",
+    "name",
+    "status",
+    "assignment_count",
+    "performance_score"
+  ]
+}

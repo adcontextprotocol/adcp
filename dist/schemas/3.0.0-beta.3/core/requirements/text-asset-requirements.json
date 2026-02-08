@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/requirements/text-asset-requirements.json",
+  "title": "Text Asset Requirements",
+  "description": "Requirements for text creative assets such as headlines, body copy, and CTAs.",
+  "type": "object",
+  "properties": {
+    "min_length": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Minimum character length"
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum character length"
+    },
+    "min_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of lines"
+    },
+    "max_lines": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of lines"
+    },
+    "character_pattern": {
+      "type": "string",
+      "description": "Regex pattern defining allowed characters (e.g., '^[a-zA-Z0-9 .,!?-]+$')"
+    },
+    "prohibited_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of prohibited words or phrases"
+    }
+  },
+  "additionalProperties": true
+}

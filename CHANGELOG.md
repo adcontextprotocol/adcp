@@ -1,5 +1,178 @@
 # Changelog
 
+## 3.0.0-beta.3
+
+### Major Changes
+
+- e81235c: Add structured tone guidelines and structured logo fields to Brand Manifest schema.
+
+  **BREAKING: Tone field changes:**
+
+  - Tone is now an object type only (string format removed)
+  - Structured tone includes `voice`, `attributes`, `dos`, and `donts` fields
+  - Existing string values should migrate to `{ "voice": "<previous-string>" }`
+  - Enables creative agents to generate brand-compliant copy programmatically
+
+  **Logo object changes:**
+
+  - Added `orientation` enum field: `square`, `horizontal`, `vertical`, `stacked`
+  - Added `background` enum field: `dark-bg`, `light-bg`, `transparent-bg`
+  - Added `variant` enum field: `primary`, `secondary`, `icon`, `wordmark`, `full-lockup`
+  - Added `usage` field for human-readable descriptions
+  - Kept `tags` array for additional custom categorization
+
+  These structured fields enable creative agents to reliably filter and select appropriate logo variants.
+
+  Closes #945
+
+### Minor Changes
+
+- 8a8e4e7: Add Brand Protocol for brand discovery and identity resolution
+
+  Schema:
+
+  - Add brand.json schema with 4 mutually exclusive variants:
+    - Authoritative location redirect
+    - House redirect (string domain)
+    - Brand agent (MCP-based)
+    - House portfolio (full brand hierarchy)
+  - Support House/Brand/Property hierarchy parallel to Publisher/Property/Inventory
+  - Add keller_type for brand architecture (master, sub-brand, endorsed, independent)
+  - Add flat names array for localized brand names and aliases
+  - Add parent_brand for sub-brand relationships
+  - Add properties array on brands for digital property ownership
+
+  Builder Tools:
+
+  - Add brand.html builder tool for creating brand.json files
+  - Supports all 4 variants: portfolio, house redirect, agent, authoritative location
+  - Live JSON preview with copy/download functionality
+  - Domain validation against existing brand.json files
+
+  Manifest Reference Registry:
+
+  - Add manifest_references table for member-contributed references (not content)
+  - References point to URLs or MCP agents where members host their own manifests
+  - Support both brand.json and adagents.json references
+  - Verification status tracking (pending, valid, invalid, unreachable)
+  - Completeness scoring for ranking when multiple refs exist for same domain
+
+  Infrastructure:
+
+  - Add BrandManager service for validation and resolution from well-known URLs
+  - Add MCP tools: resolve_brand, validate_brand_json, validate_brand_agent
+  - Add manifest reference API routes: list, lookup, create, verify, delete
+  - Add TypeScript types: BrandConfig, BrandDefinition, HouseDefinition, ResolvedBrand
+
+  Admin UI:
+
+  - Add /admin/manifest-refs page for unified manifest registry management
+  - Show all member-contributed references with verification status
+  - Add/verify/delete references to brand.json and adagents.json
+
+  Documentation:
+
+  - Add Brand Protocol section as standalone (not under Governance)
+  - Complete brand.json specification with all 4 variants documented
+
+- f37a00c: Deprecate FormatCategory enum and make `type` field optional in Format objects
+
+  The `type` field (FormatCategory) is now optional on Format objects. The `assets` array is the authoritative source for understanding creative requirements.
+
+  **Rationale:**
+
+  - Categories like "video", "display", "native" are lossy abstractions that don't scale to emerging formats
+  - Performance Max spans video, display, search, and native simultaneously
+  - Search ads (RSA) are text-only with high intent context - neither "display" nor "native" fits
+  - The `assets` array already provides precise information about what asset types are needed
+
+  **Migration:**
+
+  - Existing formats with `type` field continue to work
+  - New formats may omit `type` entirely
+  - Buyers should inspect the `assets` array to understand creative requirements
+
+- c8cdbca: Add Signal Catalog feature for data providers
+
+  Data providers (Polk, Experian, Acxiom, etc.) can now publish signal catalogs via `adagents.json`, enabling AI agents to discover, verify authorization, and activate their signals—without custom integrations.
+
+  **Why this matters:**
+
+  - **Discovery**: AI agents can find signals via natural language or structured lookup
+  - **Authorization verification**: Buyers can verify a signals agent is authorized by checking the data provider's domain directly
+  - **Typed targeting**: Signal definitions include value types (binary, categorical, numeric) so agents construct correct targeting expressions
+  - **Scalable partnerships**: Authorize agents once; as you add signals, authorized agents automatically have access
+
+  **New schemas:**
+
+  - `signal-id.json` - Universal signal identifier with `source` discriminator: `catalog` (data_provider_domain + id, verifiable) or `agent` (agent_url + id, trust-based)
+  - `signal-definition.json` - Signal spec in data provider's catalog
+  - `signal-targeting.json` - Discriminated union for targeting by value_type
+  - `signal-category.json` / `signal-value-type.json` / `signal-source.json` - Enums
+
+  **Modified schemas:**
+
+  - `adagents.json` - Added `signals` array, `signal_tags`, and signal authorization types
+  - `get-signals-request.json` / `get-signals-response.json` - Added `signal_ids` lookup and structured responses
+  - `product.json` - Added `signal_targeting_allowed` flag
+
+  **Server updates:**
+
+  - `AdAgentsManager` - Full signals validation, creation, and authorization verification
+  - AAO Registry - Data providers as first-class member type with federated discovery
+
+  See [Data Provider Guide](/docs/signals/data-providers) for implementation details.
+
+- e84aafd: Add functional restriction overlays: age_restriction (with verification methods for compliance), device_platform (technical compatibility using Sec-CH-UA-Platform values), and language (localization). These are compliance/technical restrictions, not audience targeting - demographic preferences should be expressed in briefs.
+- f543f44: Add typed asset requirements schemas for creative formats
+
+  Introduces explicit requirement schemas for every asset type with proper discriminated unions. In `format.json`, assets use `oneOf` with `asset_type` as the discriminator - each variant pairs a specific `asset_type` const with its typed requirements schema. This produces clean discriminated union types for code generation.
+
+  - **image-asset-requirements**: `min_width`, `max_width`, `min_height`, `max_height`, `formats`, `max_file_size_kb`, `animation_allowed`, etc.
+  - **video-asset-requirements**: dimensions, duration, `containers`, `codecs`, `max_bitrate_kbps`, etc.
+  - **audio-asset-requirements**: `min_duration_ms`, `max_duration_ms`, `formats`, `sample_rates`, `channels`, bitrate constraints
+  - **text-asset-requirements**: `min_length`, `max_length`, `min_lines`, `max_lines`, `character_pattern`, `prohibited_terms`
+  - **markdown-asset-requirements**: `max_length`
+  - **html-asset-requirements**: `sandbox` (none/iframe/safeframe/fencedframe), `external_resources_allowed`, `allowed_external_domains`, `max_file_size_kb`
+  - **css-asset-requirements**: `max_file_size_kb`
+  - **javascript-asset-requirements**: `module_type`, `external_resources_allowed`, `max_file_size_kb`
+  - **vast-asset-requirements**: `vast_version`
+  - **daast-asset-requirements**: `daast_version`
+  - **promoted-offerings-asset-requirements**: (extensible)
+  - **url-asset-requirements**: `protocols`, `allowed_domains`, `macro_support`, `role`
+  - **webhook-asset-requirements**: `methods`
+
+  This allows sales agents to declare execution environment constraints for HTML creatives (e.g., "must work in SafeFrame with no external JS") as part of the format definition.
+
+- efa8e6a: Add universal macro enum schema and improve macro documentation
+
+  Schema:
+
+  - Add universal-macro.json enum defining all 54 standard macros with descriptions
+  - Update format.json supported_macros to reference enum (backward compatible via oneOf)
+  - Update webhook-asset.json supported_macros and required_macros to reference enum
+  - Register universal-macro enum in schema index
+
+  New Macros:
+
+  - GPP_SID: Global Privacy Platform Section ID(s) for privacy framework identification
+  - IP_ADDRESS: User IP address with privacy warnings (often masked/restricted)
+  - STATION_ID: Radio station or podcast identifier
+  - SHOW_NAME: Program or show name
+  - EPISODE_ID: Podcast episode identifier
+  - AUDIO_DURATION: Audio content duration in seconds
+
+  Documentation:
+
+  - Add GPP_SID to Privacy & Compliance Macros section
+  - Add IP_ADDRESS with privacy warning callout
+  - Add Audio Content Macros section for audio-specific macros
+  - Add TIMESTAMP to availability table
+  - Add GPP_STRING and GPP_SID to availability table
+  - Add IP_ADDRESS to availability table with privacy restriction notation (✅‡)
+  - Add Audio Content macros to availability table
+  - Update legend with ✅‡ notation for privacy-restricted macros
+
 ## 3.0.0-beta.2
 
 ### Minor Changes

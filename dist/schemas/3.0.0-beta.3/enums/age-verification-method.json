@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/age-verification-method.json",
+  "title": "Age Verification Method",
+  "description": "Methods for verifying user age for compliance. Does not include 'inferred' as it is not accepted for regulatory compliance.",
+  "type": "string",
+  "enum": [
+    "facial_age_estimation",
+    "id_document",
+    "digital_id",
+    "credit_card",
+    "world_id"
+  ]
+}
