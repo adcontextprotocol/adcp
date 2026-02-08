@@ -161,11 +161,11 @@
                   "properties": {
                     "supported": {
                       "type": "boolean",
-                      "description": "Whether platform supports age restrictions"
+                      "description": "Whether seller supports age restrictions"
                     },
                     "verification_methods": {
                       "type": "array",
-                      "description": "Age verification methods this platform supports",
+                      "description": "Age verification methods this seller supports",
                       "items": {
                         "$ref": "/schemas/enums/age-verification-method.json"
                       }
@@ -174,11 +174,11 @@
                 },
                 "device_platform": {
                   "type": "boolean",
-                  "description": "Whether platform supports device platform targeting (Sec-CH-UA-Platform values)"
+                  "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
                 },
                 "language": {
                   "type": "boolean",
-                  "description": "Whether platform supports language targeting (ISO 639-1 codes)"
+                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
                 }
               }
             }
@@ -186,11 +186,11 @@
         },
         "conversion_tracking": {
           "type": "object",
-          "description": "Platform-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
+          "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
           "properties": {
             "supported_event_types": {
               "type": "array",
-              "description": "Event types this platform can track and attribute. If omitted, all standard event types are supported.",
+              "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
               "items": {
                 "$ref": "/schemas/enums/event-type.json"
               },
@@ -206,7 +206,7 @@
             },
             "supported_action_sources": {
               "type": "array",
-              "description": "Action sources this platform accepts events from",
+              "description": "Action sources this seller accepts events from",
               "items": {
                 "$ref": "/schemas/enums/action-source.json"
               },
@@ -214,7 +214,7 @@
             },
             "attribution_windows": {
               "type": "array",
-              "description": "Attribution windows available on this platform",
+              "description": "Attribution windows available from this seller",
               "items": {
                 "type": "object",
                 "properties": {

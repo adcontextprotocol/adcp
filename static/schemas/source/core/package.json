@@ -58,7 +58,7 @@
     },
     "optimization_goal": {
       "type": "object",
-      "description": "Conversion optimization goal for this package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the platform optimizes for maximum conversions within budget.",
+      "description": "Conversion optimization goal for this package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the seller optimizes for maximum conversions within budget.",
       "properties": {
         "event_source_id": {
           "type": "string",

@@ -105,7 +105,7 @@
     },
     "conversion_tracking": {
       "type": "object",
-      "description": "Conversion tracking for this product. Presence indicates the product supports conversion-optimized delivery. Platform-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
+      "description": "Conversion tracking for this product. Presence indicates the product supports conversion-optimized delivery. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
       "properties": {
         "action_sources": {
           "type": "array",
@@ -126,7 +126,7 @@
         },
         "platform_managed": {
           "type": "boolean",
-          "description": "Whether the platform provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
+          "description": "Whether the seller provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
         }
       },
       "additionalProperties": true

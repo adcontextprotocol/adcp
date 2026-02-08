@@ -24,9 +24,9 @@
                 "type": "string",
                 "description": "Name of the event source"
               },
-              "platform_id": {
+              "seller_id": {
                 "type": "string",
-                "description": "Platform-assigned identifier for this event source"
+                "description": "Seller-assigned identifier for this event source (the ID in the seller's ad platform)"
               },
               "event_types": {
                 "type": "array",
