@@ -12,7 +12,7 @@
       "properties": {
         "measurements": {
           "type": "array",
-          "description": "Results for each measurement ID processed",
+          "description": "Results for each measurement ID, including both synced and platform-managed measurements on the account",
           "items": {
             "type": "object",
             "properties": {
@@ -27,6 +27,38 @@
               "platform_measurement_id": {
                 "type": "string",
                 "description": "Platform-assigned identifier for this measurement ID"
+              },
+              "event_types": {
+                "type": "array",
+                "description": "Event types this measurement ID handles",
+                "items": {
+                  "$ref": "/schemas/enums/event-type.json"
+                }
+              },
+              "source": {
+                "type": "string",
+                "enum": ["buyer", "platform"],
+                "description": "Who manages this measurement ID. 'buyer' = configured via this sync. 'platform' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
+              },
+              "setup": {
+                "type": "object",
+                "description": "Implementation details for activating this measurement ID (e.g. JavaScript tag, pixel URL)",
+                "properties": {
+                  "snippet": {
+                    "type": "string",
+                    "description": "Code snippet to place on the site (JavaScript, HTML pixel, etc.)"
+                  },
+                  "snippet_type": {
+                    "type": "string",
+                    "enum": ["javascript", "html", "pixel_url", "server_only"],
+                    "description": "Type of implementation. 'server_only' means no client-side tag is needed."
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "Human/agent-readable setup instructions"
+                  }
+                },
+                "additionalProperties": true
               },
               "action": {
                 "type": "string",

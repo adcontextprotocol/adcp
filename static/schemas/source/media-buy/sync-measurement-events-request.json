@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-measurement-events-request.json",
   "title": "Sync Measurement Events Request",
-  "description": "Request parameters for configuring measurement IDs on an account with upsert semantics",
+  "description": "Request parameters for configuring measurement IDs on an account with upsert semantics. Existing measurement IDs matched by measurement_id are updated, new ones are created. When delete_missing is true, measurement IDs on the account not in this request are removed. The response includes both synced and platform-managed measurement IDs for full visibility.",
   "type": "object",
   "properties": {
     "account_id": {
@@ -23,6 +23,13 @@
           "name": {
             "type": "string",
             "description": "Human-readable name for this measurement ID"
+          },
+          "event_types": {
+            "type": "array",
+            "description": "Event types this measurement ID handles (e.g. purchase, lead). If omitted, accepts all event types.",
+            "items": {
+              "$ref": "/schemas/enums/event-type.json"
+            }
           },
           "allowed_domains": {
             "type": "array",
