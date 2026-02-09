@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/log-event-request.json",
   "title": "Log Event Request",
-  "description": "Request parameters for logging conversion or marketing events",
+  "description": "Request parameters for logging marketing events",
   "type": "object",
   "properties": {
     "event_source_id": {
@@ -17,7 +17,7 @@
       "type": "array",
       "description": "Events to log",
       "items": {
-        "$ref": "/schemas/core/conversion-event.json"
+        "$ref": "/schemas/core/event.json"
       },
       "minItems": 1,
       "maxItems": 10000

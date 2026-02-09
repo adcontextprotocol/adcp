@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/conversion-event.json",
-  "title": "Conversion Event",
+  "$id": "/schemas/core/event.json",
+  "title": "Event",
   "description": "A marketing event (conversion, engagement, or custom) for attribution and optimization",
   "type": "object",
   "properties": {
@@ -30,7 +30,7 @@
     },
     "action_source": {
       "$ref": "/schemas/enums/action-source.json",
-      "description": "Where the conversion event originated"
+      "description": "Where the event originated"
     },
     "event_source_url": {
       "type": "string",

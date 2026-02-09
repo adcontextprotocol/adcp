@@ -12,7 +12,7 @@ A billing relationship between a buyer and a seller. The account determines rate
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
 **Action Source**
-Where a conversion event physically occurred: `website`, `app`, `in_store`, `phone_call`, `crm`, `server`, or `other`. Set on each conversion event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
+Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `crm`, `server`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
 
 **Activation**
 The process of making a signal available for targeting on a specific platform and seat.
@@ -39,11 +39,8 @@ Total monetary allocation for a media buy, which can be distributed across multi
 
 ## C
 
-**Conversion Event**
-A marketing event (purchase, lead, registration, etc.) logged via `log_event` for attribution and optimization. Each event has an `event_id` (for deduplication), `event_type`, `event_time`, and optional `user_match` and `custom_data`.
-
 **Conversion Tracking**
-The system for logging conversion events and attributing them to ad delivery. Involves three steps: configure event sources (`sync_event_sources`), set optimization goals on packages (`optimization_goal`), and send events (`log_event`). Seller-level capabilities are declared in `get_adcp_capabilities`; product-level support is declared in `product.conversion_tracking`.
+The mechanism for sending buyer-side marketing events to a seller for attribution. Involves two steps: configure event sources on the seller account (`sync_event_sources`), then send events (`log_event`). Seller-level capabilities (supported event types, UID types, attribution windows) are declared in `get_adcp_capabilities`; product-level support is declared in `product.conversion_tracking`. See also [Event](#event) and [Optimization Goal](#optimization-goal).
 
 **CPC (Cost Per Click)**
 Pricing model based on cost per click on the advertisement.
@@ -99,6 +96,9 @@ Digital advertising displayed on screens in public spaces such as billboards, tr
 A type of decisioning platform that allows advertisers to buy advertising inventory programmatically.
 
 ## E
+
+**Event**
+A marketing event logged via `log_event` for attribution and optimization. Covers the full funnel from engagement (`page_view`, `view_content`, `search`) through intent (`add_to_cart`, `initiate_checkout`) to conversion (`purchase`, `lead`, `complete_registration`). Each event has an `event_id` (for deduplication), `event_type`, `event_time`, and optional `user_match` and `custom_data`. Defined in the `event.json` schema.
 
 **Event Source**
 A configured data channel that receives conversion or marketing events from a buyer. Event sources are set up on a seller account via `sync_event_sources` and referenced by `event_source_id` when logging events or setting optimization goals. Can be managed by the buyer (e.g. a website pixel) or by the seller (e.g. Amazon sales attribution).
@@ -174,7 +174,7 @@ The AI capability that allows audience discovery through conversational descript
 ## O
 
 **Optimization Goal**
-A package-level setting that tells the seller which event source and event type to optimize delivery against. Supports `maximize_conversions` (default), `target_cpa`, or `target_roas` strategies. Requires an event source configured via `sync_event_sources`.
+A package-level setting that tells the seller what to optimize delivery for. For conversion goals (purchases, leads, ROAS), the buyer specifies an event source and event type, with strategies `maximize_conversions` (default), `target_cpa`, or `target_roas`. Delivery goals (clicks, video completions) are implied by the pricing model — CPC optimizes for clicks, CPCV optimizes for completed views — and do not require an event source.
 
 **Owned Signal**
 First-party signal data belonging to the advertiser or platform.
@@ -294,13 +294,13 @@ Pricing structure based on duration (hourly, daily, or daypart) rather than impr
 ## U
 
 **UID (Universal ID)**
-A privacy-safe user identifier used for cross-platform attribution matching. AdCP supports standard UID types: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), and `pairid` (Publisher Advertiser Identity Reconciliation). Passed in `user_match.uids` on conversion events.
+A privacy-safe user identifier used for cross-platform attribution matching. AdCP supports standard UID types: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), and `pairid` (Publisher Advertiser Identity Reconciliation). Passed in `user_match.uids` on events logged via `log_event`.
 
 **Universal Commerce Protocol (UCP)**
 An open standard developed by Google with Shopify, Walmart, Target, and others for commerce in AI assistants. UCP defines primitives for checkout, payments, and fulfillment. Along with ACP (Agentic Commerce Protocol), UCP represents the commerce layer that complements AdCP's advertising layer.
 
 **User Match**
-The set of identifiers on a conversion event used to attribute it to ad delivery. Includes universal IDs (`uids`), `click_id` (platform-specific click identifiers like fbclid, gclid), and optional `client_ip` + `client_user_agent` for probabilistic matching. No PII (email, phone) is supported.
+The set of identifiers on an event used to attribute it to ad delivery. Includes universal IDs (`uids`), `click_id` (platform-specific click identifiers like fbclid, gclid), and optional `client_ip` + `client_user_agent` for probabilistic matching. No PII (email, phone) is supported.
 
 **Usage Reporting**
 Daily reporting of signal utilization for billing and optimization purposes.

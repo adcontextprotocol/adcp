@@ -202,8 +202,8 @@
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
         },
-        "conversion-event": {
-          "$ref": "/schemas/core/conversion-event.json",
+        "event": {
+          "$ref": "/schemas/core/event.json",
           "description": "A marketing event (conversion, engagement, or custom) for attribution"
         },
         "user-match": {

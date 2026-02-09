@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/event-type.json",
   "title": "Event Type",
-  "description": "Standard marketing event types for conversion tracking, aligned with IAB ECAPI",
+  "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
   "type": "string",
   "enum": [
     "page_view",
