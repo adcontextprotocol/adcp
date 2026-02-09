@@ -30,6 +30,7 @@ The buyer requests artifacts from the seller using the same media buy parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `account_id` | string | No | Filter to a specific account. Only returns artifacts for media buys belonging to this account. When omitted, returns artifacts across all accessible accounts. Optional if the agent has a single account. |
 | `media_buy_id` | string | Yes | Media buy to get artifacts from |
 | `package_ids` | array | No | Filter to specific packages |
 | `sampling` | object | No | Sampling parameters (defaults to media buy agreement) |
