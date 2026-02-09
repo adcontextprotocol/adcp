@@ -212,6 +212,15 @@
               },
               "minItems": 1
             },
+            "supported_hashed_identifiers": {
+              "type": "array",
+              "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
+              "items": {
+                "type": "string",
+                "enum": ["hashed_email", "hashed_phone"]
+              },
+              "minItems": 1
+            },
             "supported_action_sources": {
               "type": "array",
               "description": "Action sources this seller accepts events from",

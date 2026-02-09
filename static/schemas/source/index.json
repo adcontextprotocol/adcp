@@ -208,7 +208,7 @@
         },
         "user-match": {
           "$ref": "/schemas/core/user-match.json",
-          "description": "Privacy-safe user identifiers for conversion attribution"
+          "description": "User identifiers for attribution matching (UIDs, hashed identifiers, click IDs)"
         },
         "event-custom-data": {
           "$ref": "/schemas/core/event-custom-data.json",
@@ -494,7 +494,7 @@
         },
         "uid-type": {
           "$ref": "/schemas/enums/uid-type.json",
-          "description": "Universal ID types for privacy-safe user matching (rampid, id5, uid2, etc.)"
+          "description": "Universal ID types for user matching (rampid, id5, uid2, maid, etc.)"
         },
         "action-source": {
           "$ref": "/schemas/enums/action-source.json",

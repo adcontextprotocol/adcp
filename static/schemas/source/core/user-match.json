@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/user-match.json",
   "title": "User Match",
-  "description": "Privacy-safe user identifiers for conversion attribution. Uses universal IDs and click IDs only - no PII.",
+  "description": "User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs, and probabilistic matching.",
   "type": "object",
   "properties": {
     "uids": {
@@ -24,6 +24,16 @@
         "additionalProperties": true
       },
       "minItems": 1
+    },
+    "hashed_email": {
+      "type": "string",
+      "description": "SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before hashing: lowercase, trim whitespace.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "hashed_phone": {
+      "type": "string",
+      "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must normalize to E.164 before hashing.",
+      "pattern": "^[a-f0-9]{64}$"
     },
     "click_id": {
       "type": "string",
@@ -47,6 +57,8 @@
   },
   "anyOf": [
     { "required": ["uids"] },
+    { "required": ["hashed_email"] },
+    { "required": ["hashed_phone"] },
     { "required": ["click_id"] },
     { "required": ["client_ip", "client_user_agent"] }
   ],

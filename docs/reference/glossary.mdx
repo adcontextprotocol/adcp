@@ -294,13 +294,13 @@ Pricing structure based on duration (hourly, daily, or daypart) rather than impr
 ## U
 
 **UID (Universal ID)**
-A privacy-safe user identifier used for cross-platform attribution matching. AdCP supports standard UID types: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), and `pairid` (Publisher Advertiser Identity Reconciliation). Passed in `user_match.uids` on events logged via `log_event`.
+A user identifier used for cross-platform attribution matching. AdCP supports standard UID types: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), `pairid` (Publisher Advertiser Identity Reconciliation), and `maid` (Mobile Advertising ID — IDFA/GAID). Passed in `user_match.uids` on events logged via `log_event`.
 
 **Universal Commerce Protocol (UCP)**
 An open standard developed by Google with Shopify, Walmart, Target, and others for commerce in AI assistants. UCP defines primitives for checkout, payments, and fulfillment. Along with ACP (Agentic Commerce Protocol), UCP represents the commerce layer that complements AdCP's advertising layer.
 
 **User Match**
-The set of identifiers on an event used to attribute it to ad delivery. Includes universal IDs (`uids`), `click_id` (platform-specific click identifiers like fbclid, gclid), and optional `client_ip` + `client_user_agent` for probabilistic matching. No PII (email, phone) is supported.
+The set of identifiers on an event used to attribute it to ad delivery. Includes universal IDs (`uids`), hashed identifiers (`hashed_email`, `hashed_phone` — SHA-256, normalized before hashing), `click_id` (platform-specific click identifiers like fbclid, gclid), and optional `client_ip` + `client_user_agent` for probabilistic matching. At least one identifier is required.
 
 **Usage Reporting**
 Daily reporting of signal utilization for billing and optimization purposes.
