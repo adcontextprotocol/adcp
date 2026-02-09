@@ -371,6 +371,11 @@
         font-size: var(--text-sm);
       }
 
+      .dashboard-actions .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .hidden {
         display: none !important;
       }
@@ -903,7 +908,8 @@
             </div>
             <div class="dashboard-actions">
               <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
-              <button class="btn" onclick="downloadJson()">Download</button>
+              <button class="btn btn-secondary" onclick="downloadJson()">Download</button>
+              <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save to Registry</button>
             </div>
           </div>
 
@@ -1229,6 +1235,123 @@
       let singleBrandProperties = [];
       let selectedBrandId = null; // For portfolio mode
       let brandIdManuallyEdited = { single: false }; // Track if user manually edited brand ID
+      let autoSaveTimer = null;
+
+      // ============================================================================
+      // localStorage Auto-Save
+      // ============================================================================
+
+      function scheduleAutoSave() {
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(saveToLocalStorage, 500);
+      }
+
+      function saveToLocalStorage() {
+        if (!currentDomain) return;
+        try {
+          const state = collectBuilderState();
+          localStorage.setItem(`brand_builder_draft_${currentDomain}`, JSON.stringify(state));
+        } catch (e) {
+          // localStorage unavailable (private browsing, quota exceeded)
+        }
+      }
+
+      function collectBuilderState() {
+        return {
+          version: 1,
+          domain: currentDomain,
+          variant: currentVariant,
+          savedAt: new Date().toISOString(),
+          singleBrand: {
+            name: document.getElementById('single-brand-name')?.value || '',
+            id: document.getElementById('single-brand-id')?.value || '',
+            idManuallyEdited: brandIdManuallyEdited.single || false,
+            properties: singleBrandProperties.map(p => ({ ...p }))
+          },
+          portfolio: {
+            houseDomain: document.getElementById('portfolio-house-domain')?.value || '',
+            houseName: document.getElementById('portfolio-house-name')?.value || '',
+            brands: brands.map(b => ({ ...b, properties: (b.properties || []).map(p => ({ ...p })) })),
+            brandIdCounter: brandIdCounter,
+            selectedBrandId: selectedBrandId
+          },
+          redirect: {
+            houseDomain: document.getElementById('redirect-house-domain')?.value || ''
+          },
+          agent: {
+            url: document.getElementById('agent-url')?.value || '',
+            id: document.getElementById('agent-id')?.value || ''
+          },
+          hosted: {
+            url: document.getElementById('hosted-url')?.value || ''
+          }
+        };
+      }
+
+      function loadFromLocalStorage(domain) {
+        try {
+          const saved = localStorage.getItem(`brand_builder_draft_${domain}`);
+          if (!saved) return null;
+          const state = JSON.parse(saved);
+          if (state.version !== 1) return null;
+          return state;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function restoreBuilderState(state) {
+        currentVariant = state.variant || 'single';
+
+        // Restore single brand fields
+        if (state.singleBrand) {
+          document.getElementById('single-brand-name').value = state.singleBrand.name || '';
+          document.getElementById('single-brand-id').value = state.singleBrand.id || '';
+          brandIdManuallyEdited.single = state.singleBrand.idManuallyEdited || false;
+          singleBrandProperties = (state.singleBrand.properties || []).map(p => ({ ...p }));
+        }
+
+        // Restore portfolio fields
+        if (state.portfolio) {
+          document.getElementById('portfolio-house-domain').value = state.portfolio.houseDomain || '';
+          document.getElementById('portfolio-house-name').value = state.portfolio.houseName || '';
+          brands = (state.portfolio.brands || []).map(b => ({ ...b, properties: (b.properties || []).map(p => ({ ...p })) }));
+          brandIdCounter = state.portfolio.brandIdCounter || 0;
+          selectedBrandId = state.portfolio.selectedBrandId || null;
+        }
+
+        // Restore other variant fields
+        if (state.redirect) {
+          document.getElementById('redirect-house-domain').value = state.redirect.houseDomain || '';
+        }
+        if (state.agent) {
+          document.getElementById('agent-url').value = state.agent.url || '';
+          document.getElementById('agent-id').value = state.agent.id || '';
+        }
+        if (state.hosted) {
+          document.getElementById('hosted-url').value = state.hosted.url || '';
+        }
+
+        // Show the correct form, hide decision tree
+        document.getElementById('decision-tree').classList.add('hidden');
+        document.getElementById('form-single').classList.toggle('hidden', currentVariant !== 'single');
+        document.getElementById('form-portfolio').classList.toggle('hidden', currentVariant !== 'portfolio');
+        document.getElementById('form-redirect').classList.toggle('hidden', currentVariant !== 'redirect');
+        document.getElementById('form-agent').classList.toggle('hidden', currentVariant !== 'agent');
+        document.getElementById('form-hosted').classList.toggle('hidden', currentVariant !== 'hosted');
+
+        // Re-render dynamic parts
+        if (currentVariant === 'single') {
+          renderSingleBrandProperties();
+        }
+        if (currentVariant === 'portfolio') {
+          renderBrandTree();
+          renderBrandDetail();
+          updateBrandFilesDashboard();
+        }
+
+        updatePreview();
+      }
 
       // ============================================================================
       // Main Functions
@@ -1327,6 +1450,9 @@
         }
 
         currentDomain = domain;
+        const url = new URL(window.location);
+        url.searchParams.set('domain', domain);
+        window.history.replaceState({}, '', url);
         document.getElementById('domain-display').textContent = domain;
         document.getElementById('portfolio-house-domain').value = domain;
 
@@ -1361,11 +1487,57 @@
 
           // Show builder and populate from loaded data
           document.getElementById('builder-form').classList.remove('hidden');
+          updateRegistryButton();
           populateFromBrandJson(data, houseDomain, enteredDomain);
           return;
         }
 
-        // No existing file found
+        // No live brand.json on domain - check registry
+        const registryResult = await loadFromRegistry(domain);
+        if (registryResult && registryResult.data) {
+          validationResults.innerHTML = `
+            <div class="validation-result result-success">
+              <strong>Found in registry</strong><br>
+              Loaded brand data for ${escapeHtml(domain)} from the AgenticAdvertising.org registry.
+            </div>
+          `;
+          validationResults.classList.remove('hidden');
+          document.getElementById('file-status').textContent = 'Editing from registry';
+
+          btn.disabled = false;
+          btn.textContent = 'Get Started';
+
+          document.getElementById('builder-form').classList.remove('hidden');
+          updateRegistryButton();
+          populateFromBrandJson(registryResult.data, registryResult.domain || domain, domain);
+          return;
+        }
+
+        // No live or registry brand.json - check for saved draft
+        btn.disabled = false;
+        btn.textContent = 'Get Started';
+        document.getElementById('builder-form').classList.remove('hidden');
+        updateRegistryButton();
+
+        const savedDraft = loadFromLocalStorage(domain);
+        if (savedDraft && savedDraft.variant) {
+          try {
+            const savedDate = new Date(savedDraft.savedAt).toLocaleString();
+            validationResults.innerHTML = `
+              <div class="validation-result result-warning">
+                <strong>No brand.json found</strong><br>
+                Restored your previous draft for ${escapeHtml(domain)} (saved ${escapeHtml(savedDate)})
+              </div>
+            `;
+            validationResults.classList.remove('hidden');
+            document.getElementById('file-status').textContent = 'Restored from draft';
+            restoreBuilderState(savedDraft);
+            return;
+          } catch (e) {
+            console.warn('Failed to restore draft, starting fresh:', e);
+          }
+        }
+
         validationResults.innerHTML = `
           <div class="validation-result result-warning">
             <strong>No brand.json found</strong><br>
@@ -1374,12 +1546,6 @@
         `;
         validationResults.classList.remove('hidden');
         document.getElementById('file-status').textContent = 'Creating new brand.json';
-
-        btn.disabled = false;
-        btn.textContent = 'Get Started';
-
-        // Show builder with fresh state
-        document.getElementById('builder-form').classList.remove('hidden');
 
         // Reset state
         brands = [];
@@ -1405,6 +1571,7 @@
         document.getElementById('form-hosted').classList.add('hidden');
 
         updatePreview();
+        updateRegistryButton();
       }
 
       // ============================================================================
@@ -1602,7 +1769,7 @@
               <option value="radio" ${prop.type === 'radio' ? 'selected' : ''}>Radio</option>
               <option value="streaming_audio" ${prop.type === 'streaming_audio' ? 'selected' : ''}>Streaming Audio</option>
             </select>
-            <input type="text" value="${prop.identifier}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateSingleBrandProperty(${i}, 'identifier', this.value)" />
+            <input type="text" value="${escapeHtml(prop.identifier)}" placeholder="${prop.type === 'website' ? 'example.com' : 'com.example.app'}" oninput="updateSingleBrandProperty(${i}, 'identifier', this.value)" />
             <label style="display: flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--text-sm);">
               <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateSingleBrandProperty(${i}, 'primary', this.checked)" />
               Primary
@@ -2132,6 +2299,7 @@
       function updatePreview() {
         const json = generateJson();
         document.getElementById('json-preview').textContent = JSON.stringify(json, null, 2);
+        scheduleAutoSave();
       }
 
       // ============================================================================
@@ -2156,6 +2324,83 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+      }
+
+      // ============================================================================
+      // Registry Functions
+      // ============================================================================
+
+      function updateRegistryButton() {
+        const btn = document.getElementById('save-registry-btn');
+        if (!btn) return;
+        const config = window.__APP_CONFIG__;
+        if (!config?.user) {
+          btn.disabled = true;
+          btn.title = 'Log in to save to registry';
+        } else if (!config.user.isMember) {
+          btn.disabled = true;
+          btn.title = 'Members only';
+        } else {
+          btn.disabled = false;
+          btn.title = 'Save brand.json to the AgenticAdvertising.org registry';
+        }
+      }
+
+      async function saveToRegistry() {
+        if (!currentDomain) return;
+        const btn = document.getElementById('save-registry-btn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+          const json = generateJson();
+
+          // Try to create first
+          let response = await fetch('/api/brands/hosted', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ brand_domain: currentDomain, brand_json: json })
+          });
+
+          // If already exists, update instead
+          if (response.status === 409) {
+            response = await fetch(`/api/brands/hosted/${encodeURIComponent(currentDomain)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ brand_json: json })
+            });
+          }
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to save');
+          }
+
+          btn.textContent = 'Saved!';
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }, 2000);
+        } catch (error) {
+          alert(error.message || 'Failed to save to registry');
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      async function loadFromRegistry(domain) {
+        try {
+          const response = await fetch(`/api/brands/hosted/${encodeURIComponent(domain)}`);
+          if (!response.ok) return null;
+          const result = await response.json();
+          if (!result.data) return null;
+          return result;
+        } catch {
+          return null;
+        }
       }
 
       // ============================================================================
