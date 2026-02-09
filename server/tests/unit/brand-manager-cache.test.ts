@@ -24,12 +24,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'acme.com',
+          domain: 'acme.com',
           name: 'Acme Corp',
         },
         brands: [
           {
-            canonical_domain: 'acme.com',
+            id: 'acme',
             names: [{ en: 'Acme' }],
             keller_type: 'master',
           },
@@ -77,12 +77,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'fresh.com',
+          domain: 'fresh.com',
           name: 'Fresh Corp',
         },
         brands: [
           {
-            canonical_domain: 'fresh.com',
+            id: 'fresh',
             names: [{ en: 'Fresh' }],
             keller_type: 'master',
           },
@@ -110,12 +110,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'example.com',
+          domain: 'example.com',
           name: 'Example Corp',
         },
         brands: [
           {
-            canonical_domain: 'example.com',
+            id: 'example',
             names: [{ en: 'Example' }],
             keller_type: 'master',
           },
@@ -165,12 +165,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'bypass.com',
+          domain: 'bypass.com',
           name: 'Bypass Corp',
         },
         brands: [
           {
-            canonical_domain: 'bypass.com',
+            id: 'bypass',
             names: [{ en: 'Bypass' }],
             keller_type: 'master',
           },
@@ -199,12 +199,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'stats.com',
+          domain: 'stats.com',
           name: 'Stats Corp',
         },
         brands: [
           {
-            canonical_domain: 'stats.com',
+            id: 'stats',
             names: [{ en: 'Stats' }],
             keller_type: 'master',
           },
@@ -238,12 +238,12 @@ describe('BrandManager caching', () => {
         $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
         version: '1.0',
         house: {
-          canonical_domain: 'clear.com',
+          domain: 'clear.com',
           name: 'Clear Corp',
         },
         brands: [
           {
-            canonical_domain: 'clear.com',
+            id: 'clear',
             names: [{ en: 'Clear' }],
             keller_type: 'master',
           },
