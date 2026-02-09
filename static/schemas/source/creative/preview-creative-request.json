@@ -159,6 +159,41 @@
         "requests"
       ],
       "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Variant preview request - retrieve a post-flight preview of a specific creative variant that was served during delivery",
+      "properties": {
+        "request_type": {
+          "type": "string",
+          "const": "variant",
+          "description": "Discriminator indicating this is a variant preview request"
+        },
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned variant identifier from get_creative_delivery response"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative identifier for context"
+        },
+        "output_format": {
+          "$ref": "/schemas/enums/preview-output-format.json",
+          "default": "url",
+          "description": "Output format for the preview. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "request_type",
+        "variant_id"
+      ],
+      "additionalProperties": true
     }
   ]
 }

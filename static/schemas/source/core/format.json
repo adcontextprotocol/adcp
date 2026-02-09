@@ -332,6 +332,15 @@
                 "description": "Maximum number of repetitions allowed",
                 "minimum": 1
               },
+              "selection_mode": {
+                "type": "string",
+                "description": "How the platform uses repetitions of this group. 'sequential' means all items display in order (carousels, playlists). 'optimize' means the platform selects the best-performing combination from alternatives (asset group optimization like Meta Advantage+ or Google Pmax).",
+                "enum": [
+                  "sequential",
+                  "optimize"
+                ],
+                "default": "sequential"
+              },
               "assets": {
                 "type": "array",
                 "description": "Assets within each repetition of this group",

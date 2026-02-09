@@ -1,0 +1,284 @@
+---
+title: get_creative_delivery
+---
+
+
+Retrieve creative delivery data from a creative agent, including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
+
+**Request Schema**: [`/schemas/v2/creative/get-creative-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/creative/get-creative-delivery-request.json)
+**Response Schema**: [`/schemas/v2/creative/get-creative-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/creative/get-creative-delivery-response.json)
+
+## Request Parameters
+
+At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids`) should be provided.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account_id` | string | No | Account context for routing and scoping. Limits results to creatives within this account. |
+| `media_buy_ids` | string[] | No | Filter to specific media buys by publisher ID |
+| `media_buy_buyer_refs` | string[] | No | Filter to specific media buys by buyer reference ID |
+| `creative_ids` | string[] | No | Filter to specific creatives by ID |
+| `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
+| `end_date` | string | No | End date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
+| `max_variants` | integer | No | Maximum variants to return per creative. Useful for generative creatives with large variant counts. |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `account_id` | Account identifier (present when scoped to a specific account) |
+| `media_buy_id` | Publisher's media buy identifier (present when request was scoped to a single buy) |
+| `media_buy_buyer_ref` | Buyer's reference for the media buy — echoed back so the buyer can correlate without mapping publisher IDs |
+| `currency` | ISO 4217 currency code for monetary values (e.g., 'USD', 'EUR') |
+| `reporting_period` | Date range with start/end timestamps and `timezone` (IANA identifier — platforms report in their native timezone) |
+| `creatives` | Array of creative delivery data with variant breakdowns |
+
+### Creative Object
+
+| Field | Description |
+|-------|-------------|
+| `creative_id` | Creative identifier |
+| `format_id` | Format of this creative |
+| `totals` | Aggregate delivery metrics across all variants |
+| `variant_count` | Total number of variants (may exceed `variants` array length when `max_variants` is used) |
+| `variants` | Array of variant-level delivery data (empty if creative has no variants yet) |
+
+### Variant Object
+
+Each variant represents a specific execution: a fixed creative (Tier 1), an asset combination the platform selected (Tier 2), or a generated variant (Tier 3).
+
+| Field | Description |
+|-------|-------------|
+| `variant_id` | Platform-assigned variant identifier |
+| `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
+| Standard metrics | All delivery metrics (impressions, spend, clicks, ctr, etc.) |
+
+## Tier Behavior
+
+### Tier 1: Standard Creatives
+
+One creative maps 1:1 to one variant. The variant metrics match the creative totals.
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "currency": "USD",
+  "reporting_period": {
+    "start": "2026-01-20T00:00:00-05:00",
+    "end": "2026-01-27T23:59:59-05:00",
+    "timezone": "America/New_York"
+  },
+  "creatives": [
+    {
+      "creative_id": "hero_video_30s",
+      "totals": {
+        "impressions": 150000,
+        "spend": 7500,
+        "clicks": 4500,
+        "ctr": 0.03,
+        "completion_rate": 0.72
+      },
+      "variants": [
+        {
+          "variant_id": "hero_video_30s",
+          "impressions": 150000,
+          "spend": 7500,
+          "clicks": 4500,
+          "ctr": 0.03,
+          "completion_rate": 0.72
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Tier 2: Asset Group Optimization
+
+Buyer provides multiple asset alternatives using a format with `selection_mode: "optimize"`. Platform tests combinations and returns the manifest for each variant showing which assets were selected.
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "currency": "USD",
+  "reporting_period": {
+    "start": "2026-01-20T00:00:00-05:00",
+    "end": "2026-01-27T23:59:59-05:00",
+    "timezone": "America/New_York"
+  },
+  "creatives": [
+    {
+      "creative_id": "summer_campaign_assets",
+      "totals": {
+        "impressions": 200000,
+        "spend": 10000,
+        "clicks": 8000,
+        "ctr": 0.04
+      },
+      "variants": [
+        {
+          "variant_id": "var_headline_a_image_c",
+          "manifest": {
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250"
+            },
+            "assets": {
+              "headline_0_text": {
+                "asset_type": "text",
+                "content": "Summer Sale - 50% Off"
+              },
+              "image_0_url": {
+                "asset_type": "image",
+                "url": "https://cdn.brand.com/beach_hero.jpg",
+                "width": 300,
+                "height": 250
+              }
+            }
+          },
+          "impressions": 120000,
+          "spend": 6000,
+          "clicks": 6000,
+          "ctr": 0.05
+        },
+        {
+          "variant_id": "var_headline_b_image_d",
+          "manifest": {
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250"
+            },
+            "assets": {
+              "headline_0_text": {
+                "asset_type": "text",
+                "content": "Shop Summer Styles"
+              },
+              "image_0_url": {
+                "asset_type": "image",
+                "url": "https://cdn.brand.com/sunset_hero.jpg",
+                "width": 300,
+                "height": 250
+              }
+            }
+          },
+          "impressions": 80000,
+          "spend": 4000,
+          "clicks": 2000,
+          "ctr": 0.025
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Tier 3: Generative Creative
+
+Platform generates variants from brand manifest and input contexts. The `manifest` contains the generated assets — which may differ entirely from what the buyer submitted.
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "currency": "USD",
+  "reporting_period": {
+    "start": "2026-01-20T00:00:00-05:00",
+    "end": "2026-01-27T23:59:59-05:00",
+    "timezone": "America/New_York"
+  },
+  "creatives": [
+    {
+      "creative_id": "generative_banner",
+      "totals": {
+        "impressions": 300000,
+        "spend": 15000,
+        "clicks": 12000,
+        "ctr": 0.04
+      },
+      "variants": [
+        {
+          "variant_id": "gen_mobile_morning",
+          "manifest": {
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250_generative"
+            },
+            "assets": {
+              "hero_image": {
+                "asset_type": "image",
+                "url": "https://cdn.creative.example.com/generated/mobile_morning_v1.jpg",
+                "width": 300,
+                "height": 250
+              },
+              "headline": {
+                "asset_type": "text",
+                "content": "Start Your Summer Right"
+              }
+            }
+          },
+          "impressions": 180000,
+          "spend": 9000,
+          "clicks": 9000,
+          "ctr": 0.05
+        },
+        {
+          "variant_id": "gen_desktop_evening",
+          "manifest": {
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_728x90_generative"
+            },
+            "assets": {
+              "hero_image": {
+                "asset_type": "image",
+                "url": "https://cdn.creative.example.com/generated/desktop_evening_v1.jpg",
+                "width": 728,
+                "height": 90
+              },
+              "headline": {
+                "asset_type": "text",
+                "content": "Evening Deals Await"
+              }
+            }
+          },
+          "impressions": 120000,
+          "spend": 6000,
+          "clicks": 3000,
+          "ctr": 0.025
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Previewing Variants
+
+Use `preview_creative` with `request_type: "variant"` to see what a specific variant looked like when served:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_mobile_morning"
+}
+```
+
+Since each variant includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
+
+## Relationship to Delivery Reporting
+
+| Data Source | Task | What It Provides |
+|---|---|---|
+| Sales agent | `get_media_buy_delivery` | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
+| Creative agent | `get_creative_delivery` | WHAT RAN and HOW: variant manifests and variant-level metrics |
+
+Use `media_buy_id` + `creative_id` as join keys to correlate data across both sources.
+
+## Creative Agent Capability
+
+Creative agents that support this task declare `"delivery"` in their capabilities:
+
+```json
+{
+  "capabilities": ["validation", "assembly", "preview", "delivery"]
+}
+```

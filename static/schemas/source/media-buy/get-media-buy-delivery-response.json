@@ -209,6 +209,37 @@
                     "paused": {
                       "type": "boolean",
                       "description": "Whether this package is currently paused by the buyer"
+                    },
+                    "by_creative": {
+                      "type": "array",
+                      "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "creative_id": {
+                                "type": "string",
+                                "description": "Creative identifier matching the creative assignment"
+                              },
+                              "weight": {
+                                "type": "number",
+                                "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
+                                "minimum": 0,
+                                "maximum": 100
+                              }
+                            },
+                            "required": [
+                              "creative_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
                     }
                   },
                   "required": [

@@ -480,6 +480,53 @@ The `by_package` array provides per-package delivery details with these key fiel
 
 **Key Distinction**: `paused` reflects buyer control, while `delivery_status` reflects system reality. A package can be not paused but have `delivery_status: "budget_exhausted"`.
 
+## Creative-Level Metrics
+
+When the seller supports creative-level reporting (`supports_creative_breakdown` in reporting capabilities), each package includes a `by_creative` array with per-creative delivery metrics.
+
+Each creative entry includes:
+- **`creative_id`**: Creative identifier matching the creative assignment
+- **`weight`**: Delivery weight for this creative during the reporting period (0-100)
+- All standard delivery metrics (impressions, spend, clicks, ctr, etc.)
+
+```json
+{
+  "by_package": [
+    {
+      "package_id": "pkg_001",
+      "spend": 5000,
+      "impressions": 100000,
+      "pricing_model": "cpm",
+      "rate": 50,
+      "currency": "USD",
+      "delivery_status": "delivering",
+      "by_creative": [
+        {
+          "creative_id": "hero_video_30s",
+          "weight": 60,
+          "impressions": 60000,
+          "spend": 3000,
+          "clicks": 3000,
+          "ctr": 0.05,
+          "completion_rate": 0.72
+        },
+        {
+          "creative_id": "hero_video_15s",
+          "weight": 40,
+          "impressions": 40000,
+          "spend": 2000,
+          "clicks": 1200,
+          "ctr": 0.03,
+          "completion_rate": 0.85
+        }
+      ]
+    }
+  ]
+}
+```
+
+For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) on the creative agent.
+
 ## Best Practices
 
 **1. Use Date Ranges for Analysis**

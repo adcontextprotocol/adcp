@@ -58,6 +58,10 @@
           "conversions"
         ]
       ]
+    },
+    "supports_creative_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
     }
   },
   "required": [

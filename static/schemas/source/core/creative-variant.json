@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-variant.json",
+  "title": "Creative Variant",
+  "description": "A specific execution variant of a creative with delivery metrics. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative itself.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/delivery-metrics.json"
+    },
+    {
+      "properties": {
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned identifier for this variant"
+        },
+        "manifest": {
+          "$ref": "/schemas/core/creative-manifest.json",
+          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. Contains format_id and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand manifest. Pass to preview_creative to re-render."
+        }
+      },
+      "required": [
+        "variant_id"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}
