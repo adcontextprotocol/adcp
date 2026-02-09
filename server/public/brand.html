@@ -179,6 +179,8 @@
 
       input[type='text'],
       input[type='url'],
+      input[type='email'],
+      input[type='number'],
       select,
       textarea {
         width: 100%;
@@ -193,11 +195,13 @@
 
       input[type='text']:focus,
       input[type='url']:focus,
+      input[type='email']:focus,
+      input[type='number']:focus,
       select:focus,
       textarea:focus {
         outline: none;
         border-color: var(--accent-blue);
-        box-shadow: var(--ring-primary);
+        box-shadow: 0 0 0 3px rgba(26, 54, 180, 0.15);
       }
 
       textarea {
@@ -856,6 +860,146 @@
         .brand-detail-panel {
           max-height: none;
         }
+
+        .contact-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Collapsible sections in brand forms */
+      .brand-section-toggle {
+        width: 100%;
+        cursor: default;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--space-4);
+        background: var(--color-bg-card);
+      }
+
+      .brand-section-toggle summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-3) var(--space-4);
+        font-weight: var(--font-semibold);
+        font-size: var(--text-sm);
+        color: var(--text-primary);
+        cursor: pointer;
+      }
+
+      .brand-section-toggle summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .brand-section-toggle summary::after {
+        content: '\25B6';
+        font-size: var(--text-xs);
+        transition: transform 0.2s;
+        color: var(--text-muted);
+      }
+
+      .brand-section-toggle[open] summary::after {
+        transform: rotate(90deg);
+      }
+
+      .brand-section-content {
+        padding: 0 var(--space-4) var(--space-4);
+      }
+
+      /* Color picker row */
+      .color-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-3);
+      }
+
+      .color-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .color-label {
+        min-width: 80px;
+        font-size: var(--text-sm);
+        font-weight: var(--font-medium);
+        color: var(--text-secondary);
+        text-transform: capitalize;
+      }
+
+      .color-picker-wrapper {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        flex: 1;
+      }
+
+      .color-picker-wrapper input[type="color"] {
+        width: 36px;
+        height: 36px;
+        padding: 2px;
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        background: none;
+      }
+
+      .color-picker-wrapper input[type="text"] {
+        flex: 1;
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+      }
+
+      /* Logo entry */
+      .logo-entry {
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-3);
+        margin-bottom: var(--space-2);
+      }
+
+      .logo-entry:last-child {
+        margin-bottom: 0;
+      }
+
+      .logo-entry-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+      }
+
+      .logo-entry-row + .logo-entry-row {
+        margin-top: var(--space-2);
+      }
+
+      .logo-entry-row input {
+        flex: 1;
+      }
+
+      .logo-entry-row input[type="number"] {
+        width: 80px;
+        flex: none;
+      }
+
+      /* View brand link */
+      .btn-view-brand {
+        background: var(--color-primary-50);
+        color: var(--color-brand);
+        border: var(--border-1) solid var(--color-primary-200);
+        text-decoration: none;
+        display: inline-block;
+      }
+
+      .btn-view-brand:hover {
+        background: var(--color-primary-100);
+      }
+
+      /* Contact grid */
+      .contact-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: var(--space-3);
       }
     </style>
   </head>
@@ -907,6 +1051,7 @@
               <p id="file-status">Creating new brand.json</p>
             </div>
             <div class="dashboard-actions">
+              <a id="view-brand-link" class="btn btn-view-brand" href="#" target="_blank" style="display:none;">View Brand</a>
               <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
               <button class="btn btn-secondary" onclick="downloadJson()">Download</button>
               <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save to Registry</button>
@@ -1048,6 +1193,68 @@
                 <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
               </div>
             </div>
+
+            <details class="brand-section-toggle" style="margin-top: var(--space-5);">
+              <summary>Brand Identity</summary>
+              <div class="brand-section-content">
+                <div class="form-group">
+                  <label>Description</label>
+                  <textarea id="single-description" rows="2" placeholder="Brief description of the brand" oninput="updateSingleIdentity('description', this.value)"></textarea>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Tagline</label>
+                    <input type="text" id="single-tagline" placeholder="Just Do It" oninput="updateSingleIdentity('tagline', this.value)" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Tone</label>
+                    <input type="text" id="single-tone" placeholder="professional, bold, friendly" oninput="updateSingleIdentity('tone', this.value)" />
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Industry</label>
+                    <input type="text" id="single-industry" placeholder="retail, automotive, cpg" oninput="updateSingleIdentity('industry', this.value)" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Target Audience</label>
+                    <input type="text" id="single-target_audience" placeholder="Young professionals" oninput="updateSingleIdentity('target_audience', this.value)" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Privacy Policy URL</label>
+                  <input type="url" id="single-privacy_policy_url" placeholder="https://example.com/privacy" oninput="updateSingleIdentity('privacy_policy_url', this.value)" />
+                </div>
+              </div>
+            </details>
+
+            <details class="brand-section-toggle">
+              <summary>Creative Assets</summary>
+              <div class="brand-section-content">
+                <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                  Logos
+                  <button class="btn" onclick="addSingleLogo()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+                </label>
+                <div id="single-logos-container">
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 var(--space-4) 0;">No logos yet</p>
+                </div>
+
+                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Colors</label>
+                <div id="single-colors-container" style="margin-bottom: var(--space-4);"></div>
+
+                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Fonts</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <input type="text" id="single-font-primary" placeholder="Primary font family" oninput="updateSingleFont('primary', this.value)" />
+                    <p class="hint">Primary</p>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <input type="text" id="single-font-secondary" placeholder="Secondary font family" oninput="updateSingleFont('secondary', this.value)" />
+                    <p class="hint">Secondary</p>
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
 
           <!-- Brand Portfolio Form (multi-brand) -->
@@ -1162,6 +1369,29 @@
             </div>
           </div>
 
+          <!-- Contact Information (root-level, shown for single + portfolio) -->
+          <div id="contact-section" class="hidden" style="margin-top: var(--space-5);">
+            <details class="brand-section-toggle">
+              <summary>Contact Information</summary>
+              <div class="brand-section-content">
+                <div class="contact-grid">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Name</label>
+                    <input type="text" id="contact-name" placeholder="Brand Team" oninput="updateContact('name', this.value)" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Email</label>
+                    <input type="email" id="contact-email" placeholder="brands@example.com" oninput="updateContact('email', this.value)" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Domain</label>
+                    <input type="text" id="contact-domain" placeholder="example.com" oninput="updateContact('domain', this.value)" />
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+
           <!-- JSON Preview -->
           <div style="margin-top: var(--space-6)">
             <h4 style="margin-bottom: var(--space-3)">Generated brand.json</h4>
@@ -1196,6 +1426,14 @@
                   <p>Test that your brand.json is accessible and valid.</p>
                   <button class="btn btn-secondary" onclick="verifyDeployment()" id="verify-btn" style="padding: var(--space-2) var(--space-4);">Test My Domain</button>
                   <div id="verify-result"></div>
+                </div>
+              </li>
+              <li>
+                <div class="step-number">4</div>
+                <div class="step-content">
+                  <strong>Preview your brand</strong>
+                  <p>See how AI agents will view your brand identity.</p>
+                  <a id="next-steps-view-link" class="btn btn-view-brand" href="#" target="_blank" style="padding: var(--space-2) var(--space-4);">Open Brand Viewer</a>
                 </div>
               </li>
             </ol>
@@ -1353,6 +1591,18 @@
         updatePreview();
       }
 
+      // Identity fields for single brand mode
+      let singleBrandIdentity = {
+        description: '', industry: '', target_audience: '',
+        tagline: '', tone: '', privacy_policy_url: '',
+        logos: [],
+        colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
+        fonts: { primary: '', secondary: '' }
+      };
+
+      // Root-level contact info
+      let contactInfo = { name: '', email: '', domain: '' };
+
       // ============================================================================
       // Main Functions
       // ============================================================================
@@ -1390,6 +1640,14 @@
         singleBrandProperties = [];
         selectedBrandId = null;
         brandIdManuallyEdited = { single: false };
+        singleBrandIdentity = {
+          description: '', industry: '', target_audience: '',
+          tagline: '', tone: '', privacy_policy_url: '',
+          logos: [],
+          colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
+          fonts: { primary: '', secondary: '' }
+        };
+        contactInfo = { name: '', email: '', domain: '' };
 
         currentVariant = 'portfolio';
 
@@ -1399,6 +1657,16 @@
           document.getElementById('portfolio-house-name').value = data.house.name || '';
         } else {
           document.getElementById('portfolio-house-domain').value = houseDomain;
+        }
+
+        // Populate contact info
+        if (data.contact) {
+          contactInfo.name = data.contact.name || '';
+          contactInfo.email = data.contact.email || '';
+          contactInfo.domain = data.contact.domain || '';
+          document.getElementById('contact-name').value = contactInfo.name;
+          document.getElementById('contact-email').value = contactInfo.email;
+          document.getElementById('contact-domain').value = contactInfo.domain;
         }
 
         // Populate brands
@@ -1416,7 +1684,30 @@
               keller_type: b.keller_type || 'master',
               parent_brand: b.parent_brand || '',
               properties: otherProps.map(p => ({ type: p.type, identifier: p.identifier, primary: false })),
-              brandIdManuallyEdited: true
+              brandIdManuallyEdited: true,
+              description: b.description || '',
+              industry: b.industry || '',
+              target_audience: b.target_audience || '',
+              tagline: b.tagline || '',
+              tone: b.tone || '',
+              privacy_policy_url: b.privacy_policy_url || '',
+              logos: (b.logos || []).map(l => ({
+                url: l.url || '',
+                tags: l.tags || [],
+                width: l.width || null,
+                height: l.height || null
+              })),
+              colors: {
+                primary: (b.colors && b.colors.primary) || '',
+                secondary: (b.colors && b.colors.secondary) || '',
+                accent: (b.colors && b.colors.accent) || '',
+                background: (b.colors && b.colors.background) || '',
+                text: (b.colors && b.colors.text) || ''
+              },
+              fonts: {
+                primary: (b.fonts && b.fonts.primary) || '',
+                secondary: (b.fonts && b.fonts.secondary) || ''
+              }
             });
           });
 
@@ -1432,6 +1723,13 @@
         document.getElementById('form-redirect').classList.add('hidden');
         document.getElementById('form-agent').classList.add('hidden');
         document.getElementById('form-hosted').classList.add('hidden');
+
+        // Show contact section and viewer link
+        document.getElementById('contact-section').classList.remove('hidden');
+        const viewLink = document.getElementById('view-brand-link');
+        viewLink.href = '/brand/view/' + encodeURIComponent(houseDomain);
+        viewLink.style.display = '';
+        document.getElementById('next-steps-view-link').href = '/brand/view/' + encodeURIComponent(houseDomain);
 
         // Update deploy path
         document.getElementById('deploy-path').textContent = `https://${houseDomain}/.well-known/brand.json`;
@@ -1553,6 +1851,22 @@
         singleBrandProperties = [];
         selectedBrandId = null;
         brandIdManuallyEdited = { single: false };
+        singleBrandIdentity = {
+          description: '', industry: '', target_audience: '',
+          tagline: '', tone: '', privacy_policy_url: '',
+          logos: [],
+          colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
+          fonts: { primary: '', secondary: '' }
+        };
+        contactInfo = { name: '', email: '', domain: '' };
+
+        // Reset contact form inputs
+        document.getElementById('contact-name').value = '';
+        document.getElementById('contact-email').value = '';
+        document.getElementById('contact-domain').value = '';
+
+        // Hide view brand link (no existing brand.json)
+        document.getElementById('view-brand-link').style.display = 'none';
 
         // Pre-fill brand ID from domain for single brand
         const brandId = generateBrandIdFromText(currentDomain.split('.')[0]);
@@ -1618,10 +1932,26 @@
         document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
         document.getElementById('form-hosted').classList.toggle('hidden', variant !== 'hosted');
 
+        // Show contact section for single/portfolio
+        const showContact = variant === 'single' || variant === 'portfolio';
+        document.getElementById('contact-section').classList.toggle('hidden', !showContact);
+
+        // Update viewer link href but keep it hidden for new brands
+        // (only shown after successful verification or when editing existing)
+        if (showContact && currentDomain) {
+          document.getElementById('next-steps-view-link').href = '/brand/view/' + encodeURIComponent(currentDomain);
+        }
+
         // Initialize portfolio with one brand if empty
         if (variant === 'portfolio' && brands.length === 0) {
           document.getElementById('portfolio-house-domain').value = currentDomain;
           addBrand(null); // Add first root brand
+        }
+
+        // Initialize single brand color pickers
+        if (variant === 'single') {
+          renderSingleColors();
+          renderSingleLogos();
         }
 
         // Update deploy path in next steps
@@ -1656,15 +1986,21 @@
           if (result.success && result.brand) {
             const houseDomain = escapeHtml(result.brand.house_domain || currentDomain);
             const brandId = result.brand.brand_id ? escapeHtml(result.brand.brand_id) : '';
+            const viewUrl = '/brand/view/' + encodeURIComponent(result.brand.house_domain || currentDomain);
             resultDiv.innerHTML = `
               <div class="verify-result success">
                 ✅ <strong>Success!</strong> Your brand.json is live and valid.<br>
                 <span style="font-size: 12px; opacity: 0.8;">
                   House: ${houseDomain}
                   ${brandId ? ` • Brand: ${brandId}` : ''}
-                </span>
+                </span><br>
+                <a href="${escapeHtml(viewUrl)}" target="_blank" class="btn btn-view-brand" style="margin-top: var(--space-2); display: inline-block; padding: var(--space-1) var(--space-3); font-size: var(--text-sm);">View in Brand Viewer</a>
               </div>
             `;
+            // Also show the header view link
+            const viewLink = document.getElementById('view-brand-link');
+            viewLink.href = viewUrl;
+            viewLink.style.display = '';
           } else {
             resultDiv.innerHTML = `
               <div class="verify-result error">
@@ -1780,6 +2116,165 @@
       }
 
       // ============================================================================
+      // Single Brand Identity Functions
+      // ============================================================================
+
+      function updateSingleIdentity(field, value) {
+        singleBrandIdentity[field] = value;
+        updatePreview();
+      }
+
+      function addSingleLogo() {
+        singleBrandIdentity.logos.push({ url: '', tags: [], width: null, height: null });
+        renderSingleLogos();
+        updatePreview();
+      }
+
+      function removeSingleLogo(index) {
+        singleBrandIdentity.logos.splice(index, 1);
+        renderSingleLogos();
+        updatePreview();
+      }
+
+      function updateSingleLogo(index, field, value) {
+        if (field === 'tags') {
+          singleBrandIdentity.logos[index].tags = value.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (field === 'width' || field === 'height') {
+          singleBrandIdentity.logos[index][field] = value ? parseInt(value) : null;
+        } else {
+          singleBrandIdentity.logos[index][field] = value;
+        }
+        updatePreview();
+      }
+
+      function renderSingleLogos() {
+        const container = document.getElementById('single-logos-container');
+        if (singleBrandIdentity.logos.length === 0) {
+          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 var(--space-4) 0;">No logos yet</p>';
+          return;
+        }
+        container.innerHTML = singleBrandIdentity.logos.map((logo, i) => `
+          <div class="logo-entry">
+            <div class="logo-entry-row">
+              <input type="url" value="${escapeHtml(logo.url)}" placeholder="https://example.com/logo.svg" oninput="updateSingleLogo(${i}, 'url', this.value)" />
+              <button class="btn btn-secondary" onclick="removeSingleLogo(${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+            </div>
+            <div class="logo-entry-row">
+              <input type="text" value="${escapeHtml((logo.tags || []).join(', '))}" placeholder="Tags: icon, dark-bg, square" oninput="updateSingleLogo(${i}, 'tags', this.value)" style="flex: 1;" />
+              <input type="number" value="${logo.width || ''}" placeholder="W" oninput="updateSingleLogo(${i}, 'width', this.value)" />
+              <input type="number" value="${logo.height || ''}" placeholder="H" oninput="updateSingleLogo(${i}, 'height', this.value)" />
+            </div>
+          </div>
+        `).join('') + '<div style="margin-bottom: var(--space-4);"></div>';
+      }
+
+      function updateSingleColor(colorName, value, source) {
+        singleBrandIdentity.colors[colorName] = value;
+        // Sync the other input
+        if (source === 'picker') {
+          const textInput = document.getElementById('single-color-text-' + colorName);
+          if (textInput) textInput.value = value;
+        } else if (source === 'text' && /^#[0-9A-Fa-f]{6}$/.test(value)) {
+          const picker = document.getElementById('single-color-picker-' + colorName);
+          if (picker) picker.value = value;
+        }
+        updatePreview();
+      }
+
+      function updateSingleFont(role, value) {
+        singleBrandIdentity.fonts[role] = value;
+        updatePreview();
+      }
+
+      function renderSingleColors() {
+        const container = document.getElementById('single-colors-container');
+        const colorNames = ['primary', 'secondary', 'accent', 'background', 'text'];
+        container.innerHTML = colorNames.map(name => `
+          <div class="color-row">
+            <span class="color-label">${name}</span>
+            <div class="color-picker-wrapper">
+              <input type="color" id="single-color-picker-${name}" value="${singleBrandIdentity.colors[name] || '#000000'}" oninput="updateSingleColor('${name}', this.value, 'picker')" />
+              <input type="text" id="single-color-text-${name}" value="${escapeHtml(singleBrandIdentity.colors[name])}" placeholder="#000000" oninput="updateSingleColor('${name}', this.value, 'text')" />
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // ============================================================================
+      // Contact Functions
+      // ============================================================================
+
+      function updateContact(field, value) {
+        contactInfo[field] = value;
+        updatePreview();
+      }
+
+      // ============================================================================
+      // Portfolio Brand Identity Functions
+      // ============================================================================
+
+      function updateBrandIdentity(brandId, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand[field] = value;
+          updatePreview();
+        }
+      }
+
+      function addBrandLogo(brandId) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.logos.push({ url: '', tags: [], width: null, height: null });
+          renderBrandDetail();
+          updatePreview();
+        }
+      }
+
+      function removeBrandLogo(brandId, index) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.logos.splice(index, 1);
+          renderBrandDetail();
+          updatePreview();
+        }
+      }
+
+      function updateBrandLogo(brandId, index, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand || !brand.logos[index]) return;
+        if (field === 'tags') {
+          brand.logos[index].tags = value.split(',').map(t => t.trim()).filter(Boolean);
+        } else if (field === 'width' || field === 'height') {
+          brand.logos[index][field] = value ? parseInt(value) : null;
+        } else {
+          brand.logos[index][field] = value;
+        }
+        updatePreview();
+      }
+
+      function updateBrandColor(brandId, colorName, value, source) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+        brand.colors[colorName] = value;
+        if (source === 'picker') {
+          const textInput = document.getElementById('brand-color-text-' + colorName);
+          if (textInput) textInput.value = value;
+        } else if (source === 'text' && /^#[0-9A-Fa-f]{6}$/.test(value)) {
+          const picker = document.getElementById('brand-color-picker-' + colorName);
+          if (picker) picker.value = value;
+        }
+        updatePreview();
+      }
+
+      function updateBrandFont(brandId, role, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          brand.fonts[role] = value;
+          updatePreview();
+        }
+      }
+
+      // ============================================================================
       // Portfolio Brand Management
       // ============================================================================
 
@@ -1793,7 +2288,12 @@
           keller_type: parentBrandId ? 'sub_brand' : 'master',
           parent_brand: parentBrandId || '',
           properties: [],
-          brandIdManuallyEdited: false
+          brandIdManuallyEdited: false,
+          description: '', industry: '', target_audience: '',
+          tagline: '', tone: '', privacy_policy_url: '',
+          logos: [],
+          colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
+          fonts: { primary: '', secondary: '' }
         };
         brands.push(newBrand);
 
@@ -2060,6 +2560,92 @@
               `).join('')}
             </div>
           </div>
+
+          <details class="brand-section-toggle" style="margin-top: var(--space-5);">
+            <summary>Brand Identity</summary>
+            <div class="brand-section-content">
+              <div class="form-group">
+                <label>Description</label>
+                <textarea rows="2" placeholder="Brief description of the brand" oninput="updateBrandIdentity(${brand.id}, 'description', this.value)">${escapeHtml(brand.description || '')}</textarea>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Tagline</label>
+                  <input type="text" value="${escapeHtml(brand.tagline || '')}" placeholder="Just Do It" oninput="updateBrandIdentity(${brand.id}, 'tagline', this.value)" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Tone</label>
+                  <input type="text" value="${escapeHtml(brand.tone || '')}" placeholder="professional, bold, friendly" oninput="updateBrandIdentity(${brand.id}, 'tone', this.value)" />
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Industry</label>
+                  <input type="text" value="${escapeHtml(brand.industry || '')}" placeholder="retail, automotive, cpg" oninput="updateBrandIdentity(${brand.id}, 'industry', this.value)" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Target Audience</label>
+                  <input type="text" value="${escapeHtml(brand.target_audience || '')}" placeholder="Young professionals" oninput="updateBrandIdentity(${brand.id}, 'target_audience', this.value)" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Privacy Policy URL</label>
+                <input type="url" value="${escapeHtml(brand.privacy_policy_url || '')}" placeholder="https://example.com/privacy" oninput="updateBrandIdentity(${brand.id}, 'privacy_policy_url', this.value)" />
+              </div>
+            </div>
+          </details>
+
+          <details class="brand-section-toggle">
+            <summary>Creative Assets</summary>
+            <div class="brand-section-content">
+              <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
+                Logos
+                <button class="btn" onclick="addBrandLogo(${brand.id})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+              </label>
+              <div style="margin-bottom: var(--space-4);">
+                ${brand.logos.length === 0 ? `
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No logos yet</p>
+                ` : brand.logos.map((logo, i) => `
+                  <div class="logo-entry">
+                    <div class="logo-entry-row">
+                      <input type="url" value="${escapeHtml(logo.url)}" placeholder="https://example.com/logo.svg" oninput="updateBrandLogo(${brand.id}, ${i}, 'url', this.value)" />
+                      <button class="btn btn-secondary" onclick="removeBrandLogo(${brand.id}, ${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+                    </div>
+                    <div class="logo-entry-row">
+                      <input type="text" value="${escapeHtml((logo.tags || []).join(', '))}" placeholder="Tags: icon, dark-bg, square" oninput="updateBrandLogo(${brand.id}, ${i}, 'tags', this.value)" style="flex: 1;" />
+                      <input type="number" value="${logo.width || ''}" placeholder="W" oninput="updateBrandLogo(${brand.id}, ${i}, 'width', this.value)" />
+                      <input type="number" value="${logo.height || ''}" placeholder="H" oninput="updateBrandLogo(${brand.id}, ${i}, 'height', this.value)" />
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+
+              <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Colors</label>
+              <div style="margin-bottom: var(--space-4);">
+                ${['primary', 'secondary', 'accent', 'background', 'text'].map(name => `
+                  <div class="color-row">
+                    <span class="color-label">${name}</span>
+                    <div class="color-picker-wrapper">
+                      <input type="color" id="brand-color-picker-${name}" value="${brand.colors[name] || '#000000'}" oninput="updateBrandColor(${brand.id}, '${name}', this.value, 'picker')" />
+                      <input type="text" id="brand-color-text-${name}" value="${escapeHtml(brand.colors[name] || '')}" placeholder="#000000" oninput="updateBrandColor(${brand.id}, '${name}', this.value, 'text')" />
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+
+              <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Fonts</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <input type="text" value="${escapeHtml(brand.fonts.primary || '')}" placeholder="Primary font family" oninput="updateBrandFont(${brand.id}, 'primary', this.value)" />
+                  <p class="hint">Primary</p>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <input type="text" value="${escapeHtml(brand.fonts.secondary || '')}" placeholder="Secondary font family" oninput="updateBrandFont(${brand.id}, 'secondary', this.value)" />
+                  <p class="hint">Secondary</p>
+                </div>
+              </div>
+            </div>
+          </details>
         `;
       }
 
@@ -2202,6 +2788,36 @@
               keller_type: 'master'
             };
 
+            // Add identity text fields
+            const identityTextFields = ['description', 'industry', 'target_audience', 'tagline', 'tone', 'privacy_policy_url'];
+            identityTextFields.forEach(f => {
+              if (singleBrandIdentity[f]) singleBrandObj[f] = singleBrandIdentity[f];
+            });
+
+            // Add logos (only those with URLs)
+            const singleLogos = singleBrandIdentity.logos.filter(l => l.url);
+            if (singleLogos.length > 0) {
+              singleBrandObj.logos = singleLogos.map(l => {
+                const logo = { url: l.url };
+                if (l.tags && l.tags.length > 0) logo.tags = l.tags;
+                if (l.width) logo.width = l.width;
+                if (l.height) logo.height = l.height;
+                return logo;
+              });
+            }
+
+            // Add colors (only if any are set)
+            const singleColors = Object.entries(singleBrandIdentity.colors).filter(([, v]) => v);
+            if (singleColors.length > 0) {
+              singleBrandObj.colors = Object.fromEntries(singleColors);
+            }
+
+            // Add fonts (only if any are set)
+            const singleFonts = Object.entries(singleBrandIdentity.fonts).filter(([, v]) => v);
+            if (singleFonts.length > 0) {
+              singleBrandObj.fonts = Object.fromEntries(singleFonts);
+            }
+
             // Add domain as primary property
             if (currentDomain) {
               singleBrandObj.properties = [{ type: 'website', identifier: currentDomain, primary: true }];
@@ -2246,6 +2862,36 @@
                 }
                 if (brand.parent_brand) {
                   brandObj.parent_brand = brand.parent_brand;
+                }
+
+                // Add identity text fields
+                const identityFields = ['description', 'industry', 'target_audience', 'tagline', 'tone', 'privacy_policy_url'];
+                identityFields.forEach(f => {
+                  if (brand[f]) brandObj[f] = brand[f];
+                });
+
+                // Add logos (only those with URLs)
+                const brandLogos = (brand.logos || []).filter(l => l.url);
+                if (brandLogos.length > 0) {
+                  brandObj.logos = brandLogos.map(l => {
+                    const logo = { url: l.url };
+                    if (l.tags && l.tags.length > 0) logo.tags = l.tags;
+                    if (l.width) logo.width = l.width;
+                    if (l.height) logo.height = l.height;
+                    return logo;
+                  });
+                }
+
+                // Add colors (only if any are set)
+                const brandColors = Object.entries(brand.colors || {}).filter(([, v]) => v);
+                if (brandColors.length > 0) {
+                  brandObj.colors = Object.fromEntries(brandColors);
+                }
+
+                // Add fonts (only if any are set)
+                const brandFonts = Object.entries(brand.fonts || {}).filter(([, v]) => v);
+                if (brandFonts.length > 0) {
+                  brandObj.fonts = Object.fromEntries(brandFonts);
                 }
 
                 // Build properties array starting with domain
@@ -2293,6 +2939,25 @@
             break;
         }
 
+        // Add contact info for single/portfolio variants
+        if ((currentVariant === 'single' || currentVariant === 'portfolio') &&
+            (contactInfo.name || contactInfo.email || contactInfo.domain)) {
+          json.contact = {};
+          if (contactInfo.name) json.contact.name = contactInfo.name;
+          if (contactInfo.email) json.contact.email = contactInfo.email;
+          if (contactInfo.domain) json.contact.domain = contactInfo.domain;
+        }
+
+        return json;
+      }
+
+      function finalizeJson() {
+        const json = generateJson();
+        // Set last_updated at export time (not on every preview render)
+        if (currentVariant === 'single' || currentVariant === 'portfolio') {
+          json.last_updated = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        }
+
         return json;
       }
 
@@ -2307,14 +2972,14 @@
       // ============================================================================
 
       function copyJson() {
-        const json = generateJson();
+        const json = finalizeJson();
         navigator.clipboard.writeText(JSON.stringify(json, null, 2))
           .then(() => alert('Copied to clipboard!'))
           .catch(() => alert('Failed to copy'));
       }
 
       function downloadJson() {
-        const json = generateJson();
+        const json = finalizeJson();
         const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
