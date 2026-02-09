@@ -73,7 +73,7 @@ import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { InsightsDatabase } from "./db/insights-db.js";
-import { serveHtmlWithMetaTags } from "./utils/html-config.js";
+import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -689,6 +689,7 @@ export class HTTPServer {
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
 
         // Read and inject config
         let html = await fs.readFile(filePath, 'utf-8');
@@ -738,6 +739,7 @@ export class HTTPServer {
     try {
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
       const user = await getUserFromRequest(req, res);
+      await enrichUserWithMembership(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -1287,6 +1289,7 @@ export class HTTPServer {
 
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -1324,6 +1327,7 @@ export class HTTPServer {
 
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -2042,13 +2046,40 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/hosted - Create a hosted brand
-    this.app.post('/api/brands/hosted', optionalAuth, async (req, res) => {
+    const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+    const MAX_BRAND_JSON_SIZE = 100_000; // 100KB
+
+    function validateBrandJson(brand_json: unknown, res: import('express').Response): boolean {
+      if (typeof brand_json !== 'object' || Array.isArray(brand_json) || brand_json === null) {
+        res.status(400).json({ error: 'brand_json must be a JSON object' });
+        return false;
+      }
+      if (JSON.stringify(brand_json).length > MAX_BRAND_JSON_SIZE) {
+        res.status(400).json({ error: 'brand_json exceeds maximum size (100KB)' });
+        return false;
+      }
+      return true;
+    }
+
+    // POST /api/brands/hosted - Create a hosted brand (members only)
+    this.app.post('/api/brands/hosted', requireAuth, async (req, res) => {
       try {
+        // Membership check
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to save brands to registry' });
+        }
+
         const { brand_domain, brand_json } = req.body;
         if (!brand_domain || !brand_json) {
           return res.status(400).json({ error: 'brand_domain and brand_json required' });
         }
+
+        if (!domainPattern.test(brand_domain.toLowerCase())) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        if (!validateBrandJson(brand_json, res)) return;
 
         const brand = await this.brandDb.createHostedBrand({
           brand_domain: brand_domain.toLowerCase(),
@@ -2058,9 +2089,72 @@ export class HTTPServer {
         });
 
         return res.json(brand);
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.constraint === 'hosted_brands_brand_domain_key') {
+          return res.status(409).json({ error: 'Brand already exists for this domain' });
+        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
+      }
+    });
+
+    // PUT /api/brands/hosted/:domain - Update a hosted brand (members only, owner or admin)
+    this.app.put('/api/brands/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        // Membership check
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to update brands in registry' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const brand = await this.brandDb.getHostedBrandByDomain(domain);
+
+        if (!brand) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        // Check ownership - user must be creator or admin
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
+        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        if (!isCreator && !isAdmin) {
+          return res.status(403).json({ error: 'Not authorized to update this brand' });
+        }
+
+        const { brand_json } = req.body;
+        if (!brand_json) {
+          return res.status(400).json({ error: 'brand_json required' });
+        }
+
+        if (!validateBrandJson(brand_json, res)) return;
+
+        const updated = await this.brandDb.updateHostedBrand(brand.id, { brand_json });
+        return res.json(updated);
+      } catch (error) {
+        logger.error({ error }, 'Failed to update hosted brand');
+        return res.status(500).json({ error: 'Failed to update brand' });
+      }
+    });
+
+    // GET /api/brands/hosted/:domain - Get a hosted brand by domain
+    this.app.get('/api/brands/hosted/:domain', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+        const brand = await this.brandDb.getHostedBrandByDomain(domain);
+        if (!brand || !brand.is_public) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+        return res.json({ domain: brand.brand_domain, data: brand.brand_json });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get hosted brand');
+        return res.status(500).json({ error: 'Failed to get brand' });
       }
     });
 
@@ -2075,7 +2169,7 @@ export class HTTPServer {
         }
 
         // Check ownership - user must be creator or admin
-        const isCreator = brand.created_by_email && brand.created_by_email === req.user?.email;
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
         const isAdmin = req.user && await isWebUserAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
