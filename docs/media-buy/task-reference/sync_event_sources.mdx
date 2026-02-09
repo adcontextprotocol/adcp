@@ -89,8 +89,8 @@ asyncio.run(main())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account_id` | string | Yes | Account to configure event sources for |
-| `event_sources` | EventSource[] | Yes | Event sources to sync (min 1) |
-| `delete_missing` | boolean | No | When true, event sources on the account not in this request are removed (default: false) |
+| `event_sources` | EventSource[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
+| `delete_missing` | boolean | No | When true, buyer-managed event sources on the account not in this request are removed (default: false) |
 
 ### Event Source Object
 
@@ -126,6 +126,57 @@ asyncio.run(main())
 **See schema for complete field list**: [sync-event-sources-response.json](https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-response.json)
 
 ## Common Scenarios
+
+### Discovery Only
+
+Discover all event sources on an account (including seller-managed sources) without making changes. Useful for platform-managed conversion tracking where the seller provides always-on attribution:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncEventSources({
+  account_id: "acct_12345",
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncEventSourcesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("event_sources" in validated) {
+  for (const source of validated.event_sources) {
+    console.log(`${source.event_source_id} (${source.managed_by}): ${source.name}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_event_sources(
+        account_id='acct_12345'
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for source in result.event_sources:
+        print(f"{source.event_source_id} ({source.managed_by}): {source.name}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
 
 ### Multiple Event Sources
 

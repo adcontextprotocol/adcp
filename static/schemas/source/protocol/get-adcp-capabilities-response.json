@@ -19,14 +19,22 @@
           "minItems": 1
         }
       },
-      "required": ["major_versions"]
+      "required": [
+        "major_versions"
+      ]
     },
     "supported_protocols": {
       "type": "array",
       "description": "Which AdCP domain protocols this seller supports",
       "items": {
         "type": "string",
-        "enum": ["media_buy", "signals", "governance", "sponsored_intelligence", "creative"]
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative"
+        ]
       },
       "minItems": 1
     },
@@ -214,7 +222,7 @@
             },
             "attribution_windows": {
               "type": "array",
-              "description": "Attribution windows available from this seller",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via optimization_goal.attribution_window on packages.",
               "items": {
                 "type": "object",
                 "properties": {
@@ -223,15 +231,25 @@
                     "description": "Event type this window applies to, or omit for default window"
                   },
                   "click_through": {
-                    "type": "string",
-                    "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+                    "type": "array",
+                    "description": "Available click-through attribution windows (e.g. [\"7d\"], [\"7d\", \"14d\", \"30d\"])",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
                   },
                   "view_through": {
-                    "type": "string",
-                    "description": "View-through attribution window (e.g. '1d', '7d')"
+                    "type": "array",
+                    "description": "Available view-through attribution windows (e.g. [\"1d\"], [\"1d\", \"7d\", \"14d\"])",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
                   }
                 },
-                "required": ["click_through"],
+                "required": [
+                  "click_through"
+                ],
                 "additionalProperties": true
               }
             }
@@ -277,7 +295,9 @@
               "maxLength": 10000
             }
           },
-          "required": ["publisher_domains"]
+          "required": [
+            "publisher_domains"
+          ]
         }
       }
     },
@@ -325,7 +345,11 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -341,7 +365,10 @@
                     "description": "Maximum value"
                   }
                 },
-                "required": ["min", "max"]
+                "required": [
+                  "min",
+                  "max"
+                ]
               },
               "categories": {
                 "type": "array",
@@ -360,7 +387,10 @@
                 "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
               }
             },
-            "required": ["feature_id", "type"]
+            "required": [
+              "feature_id",
+              "type"
+            ]
           }
         }
       }
@@ -381,7 +411,10 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["mcp", "a2a"],
+                    "enum": [
+                      "mcp",
+                      "a2a"
+                    ],
                     "description": "Protocol transport type"
                   },
                   "url": {
@@ -390,18 +423,26 @@
                     "description": "Agent endpoint URL for this transport"
                   }
                 },
-                "required": ["type", "url"],
+                "required": [
+                  "type",
+                  "url"
+                ],
                 "additionalProperties": true
               },
               "minItems": 1
             },
             "preferred": {
               "type": "string",
-              "enum": ["mcp", "a2a"],
+              "enum": [
+                "mcp",
+                "a2a"
+              ],
               "description": "Preferred transport when host supports multiple"
             }
           },
-          "required": ["transports"]
+          "required": [
+            "transports"
+          ]
         },
         "capabilities": {
           "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
@@ -413,7 +454,10 @@
           "description": "URL to brand manifest with colors, fonts, logos, tone"
         }
       },
-      "required": ["endpoint", "capabilities"]
+      "required": [
+        "endpoint",
+        "capabilities"
+      ]
     },
     "extensions_supported": {
       "type": "array",
@@ -444,6 +488,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["adcp", "supported_protocols"],
+  "required": [
+    "adcp",
+    "supported_protocols"
+  ],
   "additionalProperties": true
 }

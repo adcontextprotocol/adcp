@@ -209,7 +209,9 @@ Submit performance signals to enable publisher optimization.
 Configure event sources on a seller account for conversion tracking with upsert semantics.
 
 **Requirements:**
-- Orchestrators MUST include `account_id` and at least one event source
+- Orchestrators MUST include `account_id`
+- When `event_sources` is provided, it MUST contain at least one event source
+- When `event_sources` is omitted, the call is discovery-only and returns all event sources on the account without modification
 - Sales agents MUST return per-source results with `action` indicating what happened
 - Sales agents MUST include seller-managed event sources in the response when present
 - Sales agents SHOULD return `setup` instructions for newly created event sources

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-event-sources-request.json",
   "title": "Sync Event Sources Request",
-  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, event sources on the account not in this request are removed. The response includes both synced and seller-managed event sources for full visibility.",
+  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, buyer-managed event sources on the account not in this request are removed. When event_sources is omitted, the call is discovery-only: it returns all event sources on the account without modification. The response always includes both synced and seller-managed event sources for full visibility.",
   "type": "object",
   "properties": {
     "account_id": {
@@ -11,8 +11,7 @@
     },
     "event_sources": {
       "type": "array",
-      "description": "Event sources to sync (create or update)",
-      "minItems": 1,
+      "description": "Event sources to sync (create or update). When omitted, the call is discovery-only and returns all existing event sources on the account without modification.",
       "items": {
         "type": "object",
         "properties": {
@@ -39,7 +38,9 @@
             }
           }
         },
-        "required": ["event_source_id"],
+        "required": [
+          "event_source_id"
+        ],
         "additionalProperties": true
       }
     },
@@ -55,6 +56,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account_id", "event_sources"],
+  "required": [
+    "account_id"
+  ],
   "additionalProperties": true
 }

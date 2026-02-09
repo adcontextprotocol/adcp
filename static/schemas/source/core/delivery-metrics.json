@@ -92,7 +92,10 @@
             "minimum": 0
           }
         },
-        "required": ["event_type", "count"],
+        "required": [
+          "event_type",
+          "count"
+        ],
         "additionalProperties": true
       }
     },
@@ -209,6 +212,38 @@
         }
       },
       "additionalProperties": true
+    },
+    "by_action_source": {
+      "type": "array",
+      "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_source": {
+            "$ref": "/schemas/enums/action-source.json",
+            "description": "Where the conversion occurred"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of conversions from this action source",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of conversions from this action source",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "action_source",
+          "count"
+        ],
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true
