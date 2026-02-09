@@ -1983,16 +1983,16 @@
           const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(currentDomain)}`);
           const result = await response.json();
 
-          if (result.success && result.brand) {
-            const houseDomain = escapeHtml(result.brand.house_domain || currentDomain);
-            const brandId = result.brand.brand_id ? escapeHtml(result.brand.brand_id) : '';
-            const viewUrl = '/brand/view/' + encodeURIComponent(result.brand.house_domain || currentDomain);
+          if (response.ok && result.canonical_domain) {
+            const houseDomain = escapeHtml(result.house_domain || currentDomain);
+            const brandName = result.brand_name ? escapeHtml(result.brand_name) : '';
+            const viewUrl = '/brand/view/' + encodeURIComponent(result.house_domain || currentDomain);
             resultDiv.innerHTML = `
               <div class="verify-result success">
                 ✅ <strong>Success!</strong> Your brand.json is live and valid.<br>
                 <span style="font-size: 12px; opacity: 0.8;">
                   House: ${houseDomain}
-                  ${brandId ? ` • Brand: ${brandId}` : ''}
+                  ${brandName ? ` • ${brandName}` : ''}
                 </span><br>
                 <a href="${escapeHtml(viewUrl)}" target="_blank" class="btn btn-view-brand" style="margin-top: var(--space-2); display: inline-block; padding: var(--space-1) var(--space-3); font-size: var(--text-sm);">View in Brand Viewer</a>
               </div>
@@ -2715,12 +2715,12 @@
           const response = await fetch(`/api/brands/resolve?domain=${encodeURIComponent(domain)}`);
           const result = await response.json();
 
-          if (result.success && result.brand) {
+          if (response.ok && result.canonical_domain) {
             indicator.className = 'status-indicator valid';
             indicator.title = 'File found and valid';
           } else {
             indicator.className = 'status-indicator missing';
-            indicator.title = 'File not found or invalid';
+            indicator.title = result.error || 'File not found or invalid';
           }
         } catch (error) {
           indicator.className = 'status-indicator missing';
