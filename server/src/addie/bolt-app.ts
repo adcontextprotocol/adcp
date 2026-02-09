@@ -690,7 +690,7 @@ async function createUserScopedTools(
   const allHandlers = new Map(memberHandlers);
 
   // Add billing tools for all users (membership signup assistance)
-  const billingHandlers = createBillingToolHandlers();
+  const billingHandlers = createBillingToolHandlers(memberContext);
   allTools.push(...BILLING_TOOLS);
   for (const [name, handler] of billingHandlers) {
     allHandlers.set(name, handler);

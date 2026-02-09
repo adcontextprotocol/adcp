@@ -1,4 +1,5 @@
 import { describe, test, expect, jest, beforeEach } from '@jest/globals';
+import type { MemberContext } from '../../server/src/addie/member-context.js';
 
 // Mock the stripe-client module
 jest.mock('../../server/src/billing/stripe-client.js', () => ({
@@ -8,10 +9,35 @@ jest.mock('../../server/src/billing/stripe-client.js', () => ({
   getPriceByLookupKey: jest.fn(),
 }));
 
+// Mock the organization-db module
+const mockGetOrganization = jest.fn();
+const mockSearchOrganizations = jest.fn();
+jest.mock('../../server/src/db/organization-db.js', () => ({
+  OrganizationDatabase: jest.fn().mockImplementation(() => ({
+    getOrganization: mockGetOrganization,
+    searchOrganizations: mockSearchOrganizations,
+  })),
+}));
+
+/** Member context with an organization for payment link tests */
+const mockMemberContext: MemberContext = {
+  is_mapped: true,
+  is_member: true,
+  slack_linked: false,
+  organization: {
+    workos_organization_id: 'org_test_123',
+    name: 'Test Corp',
+    subscription_status: 'active',
+    is_personal: false,
+  },
+};
+
 describe('billing-tools', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
+    mockGetOrganization.mockResolvedValue(null);
+    mockSearchOrganizations.mockResolvedValue([]);
   });
 
   describe('find_membership_products', () => {
@@ -146,6 +172,21 @@ describe('billing-tools', () => {
   });
 
   describe('create_payment_link', () => {
+    test('returns error when no account context is provided', async () => {
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers();
+      const createLink = handlers.get('create_payment_link')!;
+
+      const result = await createLink({
+        lookup_key: 'aao_membership_corporate_5m',
+        customer_email: 'test@example.com',
+      });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Cannot create a payment link without an account');
+    });
+
     test('creates payment link successfully', async () => {
       const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
@@ -154,7 +195,7 @@ describe('billing-tools', () => {
       });
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
       const result = await createLink({
@@ -168,12 +209,14 @@ describe('billing-tools', () => {
       expect(parsed.message).toContain('Payment link created successfully');
 
       expect(getPriceByLookupKey).toHaveBeenCalledWith('aao_membership_corporate_5m');
-      expect(createCheckoutSession).toHaveBeenCalledWith({
-        priceId: 'price_abc123',
-        customerEmail: 'test@example.com',
-        successUrl: 'https://agenticadvertising.org/dashboard?payment=success',
-        cancelUrl: 'https://agenticadvertising.org/join?payment=cancelled',
-      });
+      expect(createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          priceId: 'price_abc123',
+          customerEmail: 'test@example.com',
+          workosOrganizationId: 'org_test_123',
+          isPersonalWorkspace: false,
+        })
+      );
     });
 
     test('returns error when price not found', async () => {
@@ -181,7 +224,7 @@ describe('billing-tools', () => {
       (getPriceByLookupKey as jest.Mock).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
       const result = await createLink({ lookup_key: 'invalid_key' });
@@ -198,7 +241,7 @@ describe('billing-tools', () => {
       (createCheckoutSession as jest.Mock).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const handlers = createBillingToolHandlers();
+      const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
       const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
