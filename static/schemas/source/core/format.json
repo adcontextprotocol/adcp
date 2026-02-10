@@ -520,6 +520,15 @@
         "manifest"
       ],
       "additionalProperties": true
+    },
+    "reported_metrics": {
+      "type": "array",
+      "description": "Metrics this format can produce in delivery reporting. Buyers receive the intersection of format reported_metrics and product available_metrics. If omitted, the format defers entirely to product-level metric declarations.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     }
   },
   "required": [

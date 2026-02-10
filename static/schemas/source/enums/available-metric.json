@@ -16,6 +16,14 @@
     "roas",
     "cost_per_acquisition",
     "viewability",
-    "engagement_rate"
+    "engagement_rate",
+    "views",
+    "completed_views",
+    "leads",
+    "reach",
+    "frequency",
+    "grps",
+    "quartile_data",
+    "dooh_metrics"
   ]
 }
