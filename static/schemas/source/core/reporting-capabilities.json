@@ -62,6 +62,12 @@
     "supports_creative_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
+    },
+    "date_range_support": {
+      "type": "string",
+      "enum": ["date_range", "lifetime_only"],
+      "description": "Whether delivery data can be filtered to arbitrary date ranges. 'date_range' means the platform supports start_date/end_date parameters. 'lifetime_only' means the platform returns campaign lifetime totals and date range parameters are not accepted.",
+      "default": "date_range"
     }
   },
   "required": [
@@ -69,7 +75,8 @@
     "expected_delay_minutes",
     "timezone",
     "supports_webhooks",
-    "available_metrics"
+    "available_metrics",
+    "date_range_support"
   ],
   "additionalProperties": true
 }

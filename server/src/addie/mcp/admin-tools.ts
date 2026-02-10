@@ -1085,6 +1085,34 @@ Examples:
 ];
 
 /**
+ * Format membership tier for display
+ */
+function formatMembershipTier(tier: string): string {
+  const labels: Record<string, string> = {
+    individual_professional: 'Professional ($250/yr)',
+    individual_academic: 'Academic ($50/yr)',
+    company_standard: 'Company Standard ($2.5K or $10K/yr based on revenue)',
+    company_icl: 'Industry Council Leader ($50K/yr)',
+  };
+  return labels[tier] || tier;
+}
+
+/**
+ * Format revenue tier for display
+ */
+function formatRevenueTier(tier: string): string {
+  const labels: Record<string, string> = {
+    under_1m: 'Under $1M',
+    '1m_5m': '$1M - $5M',
+    '5m_50m': '$5M - $50M',
+    '50m_250m': '$50M - $250M',
+    '250m_1b': '$250M - $1B',
+    '1b_plus': 'Over $1B',
+  };
+  return labels[tier] || tier;
+}
+
+/**
  * Format currency for display
  */
 function formatCurrency(cents: number, currency = 'usd'): string {
@@ -1277,6 +1305,7 @@ export function createAdminToolHandlers(
         activitiesResult,
         engagementSignals,
         pendingInvoicesResult,
+        subscriptionHistoryResult,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1331,6 +1360,16 @@ export function createAdminToolHandlers(
         orgDb.getEngagementSignals(orgId),
         // Get pending invoices if they have a Stripe customer
         org.stripe_customer_id ? getPendingInvoices(org.stripe_customer_id) : Promise.resolve([]),
+        // Subscription history (cancellations, renewals, signups)
+        pool.query(
+          `SELECT activity_type, description, activity_date, logged_by_name
+           FROM org_activities
+           WHERE organization_id = $1
+             AND activity_type IN ('subscription', 'subscription_cancelled', 'payment')
+           ORDER BY activity_date DESC
+           LIMIT 10`,
+          [orgId]
+        ),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -1340,6 +1379,7 @@ export function createAdminToolHandlers(
       const workingGroups = workingGroupsResult.rows;
       const recentActivities = activitiesResult.rows;
       const pendingInvoices = pendingInvoicesResult;
+      const subscriptionHistory = subscriptionHistoryResult.rows;
 
       // Build comprehensive response
       let response = `## ${org.name}\n\n`;
@@ -1351,6 +1391,8 @@ export function createAdminToolHandlers(
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
+      if (org.membership_tier) response += `**Membership Tier:** ${formatMembershipTier(org.membership_tier)}\n`;
+      if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
       response += '\n';
 
@@ -1359,20 +1401,57 @@ export function createAdminToolHandlers(
         response += `### Membership\n`;
         if (org.subscription_status === 'active') {
           response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          if (org.subscription_amount) {
+            const amount = formatCurrency(org.subscription_amount);
+            const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
+            response += `**Amount:** ${amount}${interval}\n`;
+          }
           if (org.subscription_current_period_end) {
             response += `**Renews:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
           }
+          if (org.subscription_canceled_at) {
+            response += `**Cancels at period end:** Yes (canceled ${formatDate(new Date(org.subscription_canceled_at))})\n`;
+          }
         } else if (org.subscription_status === 'canceled') {
           response += `**Status:** Canceled\n`;
+          if (org.subscription_canceled_at) {
+            response += `**Canceled:** ${formatDate(new Date(org.subscription_canceled_at))}\n`;
+          }
+          if (org.subscription_current_period_end) {
+            response += `**Access until:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+          }
         } else if (org.subscription_status === 'past_due') {
           response += `**Status:** Past due - payment needed\n`;
         }
+
+        // Subscription history from org_activities
+        if (subscriptionHistory.length > 0) {
+          response += `**Subscription history:**\n`;
+          for (const event of subscriptionHistory) {
+            const date = formatDate(new Date(event.activity_date));
+            response += `  - ${date}: ${event.description || event.activity_type}`;
+            if (event.logged_by_name) response += ` (${event.logged_by_name})`;
+            response += '\n';
+          }
+        }
+
         if (pendingInvoices.length > 0) {
           response += `**Pending invoices:** ${pendingInvoices.length}\n`;
           for (const inv of pendingInvoices.slice(0, 3)) {
             response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
           }
         }
+
+        // Discount info
+        if (org.discount_percent || org.discount_amount_cents) {
+          const discount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `${formatCurrency(org.discount_amount_cents!)} off`;
+          response += `**Discount:** ${discount}`;
+          if (org.stripe_promotion_code) response += ` (code: ${org.stripe_promotion_code})`;
+          response += '\n';
+        }
+
         response += '\n';
       }
 
@@ -1464,10 +1543,14 @@ export function createAdminToolHandlers(
         response += '\n';
       }
 
-      // Recent activities
-      if (recentActivities.length > 0) {
+      // Recent activities (excluding subscription events shown in Membership section)
+      const SUBSCRIPTION_ACTIVITY_TYPES = new Set(['subscription', 'subscription_cancelled', 'payment']);
+      const nonSubscriptionActivities = recentActivities.filter(
+        (a: { activity_type: string }) => !SUBSCRIPTION_ACTIVITY_TYPES.has(a.activity_type)
+      );
+      if (nonSubscriptionActivities.length > 0) {
         response += `### Recent Activity\n`;
-        for (const activity of recentActivities) {
+        for (const activity of nonSubscriptionActivities) {
           const date = formatDate(new Date(activity.activity_date));
           response += `- ${date}: ${activity.activity_type}`;
           if (activity.description) response += ` - ${activity.description}`;
