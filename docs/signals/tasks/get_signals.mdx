@@ -19,7 +19,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `signal_spec` | string | Yes | Natural language description of the desired signals |
 | `deliver_to` | DeliverTo | Yes | Deployment targets where signals need to be activated (see Deliver To Object below) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
-| `pagination` | object | No | Pagination parameters: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
+| `max_results` | number | No | Maximum number of results to return |
 
 ### Deliver To Object
 
@@ -168,9 +168,7 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
     },
-    "pagination": {
-      "max_results": 5
-    }
+    "max_results": 5
   }
 }
 ```
@@ -239,9 +237,7 @@ A buyer checking availability across multiple DSP platforms:
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
     },
-    "pagination": {
-      "max_results": 5
-    }
+    "max_results": 5
   }
 }
 ```
@@ -331,9 +327,7 @@ await a2a.send({
             max_cpm: 5.0,
             catalog_types: ["marketplace"]
           },
-          pagination: {
-            max_results: 5
-          }
+          max_results: 5
         }
       }
     }]

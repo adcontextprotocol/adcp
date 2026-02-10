@@ -47,8 +47,10 @@
     "filters": {
       "$ref": "/schemas/core/signal-filters.json"
     },
-    "pagination": {
-      "$ref": "/schemas/core/pagination-request.json"
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
     },
     "context": {
       "$ref": "/schemas/core/context.json"
