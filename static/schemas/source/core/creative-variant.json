@@ -17,6 +17,17 @@
         "manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. Contains format_id and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand manifest. Pass to preview_creative to re-render."
+        },
+        "generation_context": {
+          "type": "object",
+          "description": "Input signals that triggered generation of this variant (Tier 3). Describes why the platform created this specific variant. Platforms should provide summarized or anonymized signals rather than raw user input. For web contexts, may include page topic or URL. For conversational contexts, an anonymized content signal. For search, query category or intent.",
+          "properties": {
+            "context_type": {
+              "type": "string",
+              "description": "Type of context that triggered generation (e.g., 'web_page', 'conversational', 'search', 'app', 'dooh')"
+            }
+          },
+          "additionalProperties": true
         }
       },
       "required": [

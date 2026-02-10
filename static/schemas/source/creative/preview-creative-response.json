@@ -304,8 +304,7 @@
       "required": [
         "response_type",
         "variant_id",
-        "previews",
-        "expires_at"
+        "previews"
       ],
       "additionalProperties": true
     }

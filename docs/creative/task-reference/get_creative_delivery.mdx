@@ -52,7 +52,10 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 |-------|-------------|
 | `variant_id` | Platform-assigned variant identifier |
 | `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
+| `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. |
 | Standard metrics | All delivery metrics (impressions, spend, clicks, ctr, etc.) |
+
+Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
 
 ## Tier Behavior
 
@@ -198,6 +201,11 @@ Platform generates variants from brand manifest and input contexts. The `manifes
       "variants": [
         {
           "variant_id": "gen_mobile_morning",
+          "generation_context": {
+            "context_type": "web_page",
+            "topic": "technology, semiconductors",
+            "device_class": "mobile"
+          },
           "manifest": {
             "format_id": {
               "agent_url": "https://creative.example.com",
@@ -223,6 +231,11 @@ Platform generates variants from brand manifest and input contexts. The `manifes
         },
         {
           "variant_id": "gen_desktop_evening",
+          "generation_context": {
+            "context_type": "web_page",
+            "topic": "lifestyle, evening entertainment",
+            "device_class": "desktop"
+          },
           "manifest": {
             "format_id": {
               "agent_url": "https://creative.example.com",
