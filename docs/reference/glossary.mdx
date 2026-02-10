@@ -104,7 +104,7 @@ A marketing event logged via `log_event` for attribution and optimization. Cover
 A configured data channel that receives conversion or marketing events from a buyer. Event sources are set up on a seller account via `sync_event_sources` and referenced by `event_source_id` when logging events or setting optimization goals. Can be managed by the buyer (e.g. a website pixel) or by the seller (e.g. Amazon sales attribution).
 
 **Event Type**
-A standardized classification for conversion or marketing events (e.g. `purchase`, `lead`, `add_to_cart`, `page_view`). Used to categorize events logged via `log_event` and to specify optimization goals on packages.
+A standardized classification for marketing events (e.g. `purchase`, `lead`, `add_to_cart`, `page_view`, `refund`). Covers the full lifecycle: engagement (`select_content`, `share`), e-commerce (`add_to_cart`, `remove_from_cart`, `viewed_cart`, `purchase`, `refund`), lead management (`lead`, `qualify_lead`, `close_convert_lead`, `disqualify_lead`), and app events. Used to categorize events logged via `log_event` and to specify optimization goals on packages. Aligned with IAB ECAPI.
 
 **Estimated Activation Time**
 Predicted timeframe for signal deployment, typically 24-48 hours for new activations.
