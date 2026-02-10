@@ -192,12 +192,12 @@ export const STATUS_MESSAGES = {
  * Build dynamic suggested prompts based on user context, role, and active goals
  *
  * @param memberContext - User's member context (or null if lookup failed)
- * @param isAdmin - Whether the user has admin privileges
+ * @param isAAOAdmin - Whether the user is an AAO platform admin
  * @returns Array of suggested prompts tailored to the user
  */
 export async function buildDynamicSuggestedPrompts(
   memberContext: MemberContext | null,
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): Promise<SuggestedPrompt[]> {
   const isMapped = !!memberContext?.workos_user?.workos_user_id;
 
@@ -223,7 +223,7 @@ export async function buildDynamicSuggestedPrompts(
   }
 
   // Admin users get admin-specific suggestions
-  if (isAdmin) {
+  if (isAAOAdmin) {
     return [
       {
         title: 'Pending invoices',

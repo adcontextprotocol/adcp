@@ -8,7 +8,7 @@
 import type { HomeContent, GreetingSection } from './types.js';
 import { getHomeContentCache } from './cache.js';
 import { getMemberContext, type MemberContext } from '../member-context.js';
-import { isSlackUserAdmin } from '../mcp/admin-tools.js';
+import { isSlackUserAAOAdmin } from '../mcp/admin-tools.js';
 import { buildAlerts } from './builders/alerts.js';
 import { buildQuickActions } from './builders/quick-actions.js';
 import { buildActivityFeed } from './builders/activity.js';
@@ -45,21 +45,21 @@ export async function getHomeContent(
   const memberContext = await getMemberContext(slackUserId);
 
   // Check if user is admin
-  const isAdmin = await isSlackUserAdmin(slackUserId);
+  const isAAOAdmin = await isSlackUserAAOAdmin(slackUserId);
 
   // Get admin user ID for prospect stats (if admin)
-  const adminUserId = isAdmin ? memberContext?.workos_user?.workos_user_id : undefined;
+  const adminUserId = isAAOAdmin ? memberContext?.workos_user?.workos_user_id : undefined;
 
   // Build all sections in parallel for speed
   const [alerts, activity, adminPanel] = await Promise.all([
     buildAlerts(memberContext),
     buildActivityFeed(memberContext),
-    isAdmin ? buildAdminPanel(adminUserId) : Promise.resolve(null),
+    isAAOAdmin ? buildAdminPanel(adminUserId) : Promise.resolve(null),
   ]);
 
   // Build synchronous sections
   const greeting = buildGreeting(memberContext);
-  const quickActions = buildQuickActions(memberContext, isAdmin);
+  const quickActions = buildQuickActions(memberContext, isAAOAdmin);
   const stats = buildStats(memberContext);
 
   const content: HomeContent = {
@@ -79,7 +79,7 @@ export async function getHomeContent(
     {
       slackUserId,
       isMember: memberContext.is_member,
-      isAdmin,
+      isAAOAdmin,
       alertCount: alerts.length,
       activityCount: activity.length,
     },
