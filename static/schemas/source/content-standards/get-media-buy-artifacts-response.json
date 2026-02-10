@@ -91,18 +91,7 @@
           }
         },
         "pagination": {
-          "type": "object",
-          "description": "Pagination information for large result sets",
-          "properties": {
-            "cursor": {
-              "type": "string",
-              "description": "Cursor for fetching the next page"
-            },
-            "has_more": {
-              "type": "boolean",
-              "description": "Whether more results are available"
-            }
-          }
+          "$ref": "/schemas/core/pagination-response.json"
         },
         "errors": {
           "not": {},
