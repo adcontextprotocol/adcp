@@ -9,6 +9,82 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.0-beta.3
+
+**Status:** Upcoming | [Migration Guide](/docs/reference/migrating-to-v3)
+
+### What's New
+
+1. **Brand Protocol** - Brand discovery and identity resolution via `brand.json`. Four manifest variants (authoritative redirect, house redirect, brand agent, house portfolio) with builder tools, registry, and admin UI.
+
+2. **Conversion Tracking** - New events protocol with `sync_event_sources` and `log_event` tasks for attribution and measurement.
+
+3. **Signal Catalog** - Data providers become first-class members with signal definitions, categories, targeting schemas, and value types. New schemas for signal discovery and integration into products.
+
+4. **Cursor-Based Pagination** - All list operations (`list_creatives`, `tasks_list`, `list_property_lists`, `get_property_list`, `get_media_buy_artifacts`) standardized on cursor-based pagination with shared `pagination-request.json` and `pagination-response.json` schemas.
+
+5. **Targeting Restrictions** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. These are compliance/technical restrictions, not audience targeting.
+
+6. **Typed Asset Requirements** - Discriminated union schemas for all 13 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, promoted offerings, URL, webhook) using `asset_type` as discriminator.
+
+7. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `SHOW_NAME`, `EPISODE_ID`, `AUDIO_DURATION`.
+
+8. **Brand Manifest Improvements** - Structured tone object with `voice`, `attributes`, `dos`, `donts` fields. Logo objects gain `orientation`, `background`, `variant`, `usage` fields.
+
+### Breaking Changes
+
+| Change | beta.2 | beta.3 |
+|--------|--------|--------|
+| Pagination | `limit`/`offset` | Cursor-based `pagination` object |
+| Brand manifest tone | `string \| object` | Object only with structured fields |
+
+### Other Changes
+
+- `account_id` added to `get_media_buy_delivery` and `get_media_buy_artifacts` requests
+- `FormatCategory` enum deprecated; `type` field on Format objects now optional
+- `format_id` optional in `preview_creative` (falls back to `creative_manifest.format_id`)
+- Session ID fallback recommendation for MCP agent `context_id`
+
+---
+
+## Version 3.0.0-beta.2
+
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta2) | [Migration Guide](/docs/reference/migrating-to-v3)
+
+Building on beta.1, this release adds account-level billing, property targeting controls, CTV technical specs, and agent-driven UI rendering for Sponsored Intelligence.
+
+### What's New
+
+1. **Accounts & Agents** - AdCP now distinguishes Brand (whose products are advertised), Account (who gets billed), and Agent (who places the buy). New `account_id` field on media buys, product queries, and creative operations enables multi-account billing with rate cards and credit limits.
+
+2. **Property Targeting** - Products can declare `property_targeting_allowed` to let buyers target a subset of publisher properties. When enabled, buyers pass a `property_list` in their targeting overlay and the package runs on the intersection.
+
+3. **A2UI for Sponsored Intelligence** - Sponsored Intelligence sessions now support agent-driven UI rendering via MCP Apps, enabling rich interactive experiences within AI assistants.
+
+4. **CTV & Streaming Constraints** - Video formats gain technical constraint fields for frame rate, HDR, GOP structure, and moov atom position. Audio formats add codec, sampling rate, channel layout, and loudness normalization (LUFS/true peak) fields.
+
+5. **Creative Protocol Discovery** - `get_adcp_capabilities` now includes `"creative"` in `supported_protocols`, letting agents discover creative services at runtime.
+
+### Schema Changes
+
+- New `account.json`, `list-accounts-request.json`, `list-accounts-response.json` schemas
+- `account_id` added to `create-media-buy-request`, `get-products-request`, `sync-creatives-request`, and their responses
+- Shared `price-guidance.json` schema extracted to fix duplicate type generation across pricing options
+- `property_targeting_allowed` and `property_list` fields added to product and targeting overlay schemas
+- Video/audio asset schemas extended with CTV technical constraint fields
+
+### Removed
+
+| Removed | Replacement |
+|---------|-------------|
+| `list_property_features` task | `get_adcp_capabilities` |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `adcp-extension.json` schema | `get_adcp_capabilities` task |
+| `assets_required` format field | `assets` array with `required` boolean |
+| `preview_image` format field | `format_card` object |
+
+---
+
 ## Version 3.0.0-beta.1
 
 **Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/docs/reference/migrating-to-v3)
