@@ -17,6 +17,7 @@ import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
@@ -996,6 +997,24 @@ Roles: member (default), admin (can manage team)`,
       required: ['query'],
     },
   },
+  {
+    name: 'list_paying_members',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB). Defaults to corporate members only.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, or membership revenue by tier.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        include_individual: {
+          type: 'boolean',
+          description: 'Include individual (personal) memberships (default: false, corporate only)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 50)',
+        },
+      },
+    },
+  },
 
   // ============================================
   // INSIGHT SYNTHESIS TOOLS
@@ -1095,6 +1114,30 @@ function formatMembershipTier(tier: string): string {
     company_icl: 'Industry Council Leader ($50K/yr)',
   };
   return labels[tier] || tier;
+}
+
+/**
+ * Infer membership tier from subscription amount and organization type.
+ * Amounts are in cents. Monthly amounts are annualized for comparison.
+ */
+function inferMembershipTier(
+  amountCents: number | null,
+  interval: string | null,
+  isPersonal: boolean
+): MembershipTier | null {
+  if (amountCents == null || amountCents === 0) return null;
+
+  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
+
+  if (isPersonal) {
+    if (annualCents >= 25000) return 'individual_professional';
+    if (annualCents >= 5000) return 'individual_academic';
+    return null;
+  }
+
+  // company_standard covers both $2.5K and $10K pricing tiers
+  if (annualCents >= 5000000) return 'company_icl';
+  return 'company_standard';
 }
 
 /**
@@ -1391,7 +1434,12 @@ export function createAdminToolHandlers(
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
-      if (org.membership_tier) response += `**Membership Tier:** ${formatMembershipTier(org.membership_tier)}\n`;
+      const displayTier = org.membership_tier
+        || inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+      if (displayTier) {
+        const inferred = !org.membership_tier ? ' _(inferred from amount)_' : '';
+        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${inferred}\n`;
+      }
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
       response += '\n';
@@ -5761,6 +5809,118 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error listing organizations by users');
       return '❌ Failed to list organizations by user count. Please try again.';
+    }
+  });
+
+  // List paying members grouped by subscription level
+  handlers.set('list_paying_members', async (input) => {
+    try {
+      const pool = getPool();
+      const includeIndividual = (input.include_individual as boolean) || false;
+      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
+
+      const result = await pool.query(
+        `SELECT
+          o.name,
+          o.is_personal,
+          o.subscription_amount,
+          o.subscription_currency,
+          o.subscription_interval,
+          o.subscription_status,
+          o.membership_tier,
+          o.company_type,
+          o.created_at,
+          o.subscription_current_period_end
+        FROM organizations o
+        WHERE o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+          AND ($1 = true OR o.is_personal = false)
+        ORDER BY o.subscription_amount DESC NULLS LAST, o.name ASC
+        LIMIT $2`,
+        [includeIndividual, limit]
+      );
+
+      if (result.rows.length === 0) {
+        return `No active members found${includeIndividual ? '' : ' (corporate only)'}.`;
+      }
+
+      // Group by annual subscription amount level.
+      // Subdivides company_standard ($2.5K and $10K) into separate display groups.
+      const groups: Record<string, typeof result.rows> = {
+        icl: [],
+        corporate: [],
+        smb: [],
+        other: [],
+        individual: [],
+      };
+
+      for (const org of result.rows) {
+        const amount = org.subscription_amount || 0;
+        const annualCents = org.subscription_interval === 'month' ? amount * 12 : amount;
+
+        if (org.is_personal) {
+          groups.individual.push(org);
+        } else if (annualCents >= 5000000) {
+          groups.icl.push(org);
+        } else if (annualCents >= 1000000) {
+          groups.corporate.push(org);
+        } else if (annualCents >= 250000) {
+          groups.smb.push(org);
+        } else {
+          groups.other.push(org);
+        }
+      }
+
+      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date }) => {
+        const amount = org.subscription_amount
+          ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
+          : 'Comped';
+        const interval = org.subscription_amount
+          ? (org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '')
+          : '';
+        const since = formatDate(org.created_at);
+        return `- **${org.name}** — ${amount}${interval} (since ${since})\n`;
+      };
+
+      let response = `## Active Members\n\n`;
+      response += `**${result.rows.length} active member${result.rows.length !== 1 ? 's' : ''}**`;
+      if (!includeIndividual) response += ` (corporate only)`;
+      response += `\n\n`;
+
+      if (groups.icl.length > 0) {
+        response += `### Industry Council Leaders ($50K/yr)\n`;
+        for (const org of groups.icl) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.corporate.length > 0) {
+        response += `### Corporate ($10K/yr)\n`;
+        for (const org of groups.corporate) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.smb.length > 0) {
+        response += `### Startup/SMB ($2.5K/yr)\n`;
+        for (const org of groups.smb) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.other.length > 0) {
+        response += `### Other\n`;
+        for (const org of groups.other) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.individual.length > 0) {
+        response += `### Individual\n`;
+        for (const org of groups.individual) response += formatRow(org);
+        response += `\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing members');
+      return '❌ Failed to list members. Please try again.';
     }
   });
 
