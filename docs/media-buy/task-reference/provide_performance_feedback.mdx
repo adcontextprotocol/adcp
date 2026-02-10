@@ -232,30 +232,51 @@ A2A returns results as artifacts:
 }
 ```
 
-### Example 4: Multiple Performance Metrics (Future)
+### Example 4: Multiple Performance Metrics
 
-#### Request - Batch Feedback (Not Implemented Yet)
+To report multiple metrics for the same media buy, send one request per metric type:
+
+#### Request - Viewability Feedback
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-14T23:59:59Z"
   },
-  "feedback_metrics": [
-    {
-      "metric_type": "viewability",
-      "performance_index": 1.15
-    },
-    {
-      "metric_type": "completion_rate",
-      "performance_index": 0.92
-    },
-    {
-      "metric_type": "brand_safety",
-      "performance_index": 1.05
-    }
-  ],
+  "metric_type": "viewability",
+  "performance_index": 1.15,
+  "feedback_source": "verification_partner"
+}
+```
+
+#### Request - Completion Rate Feedback
+```json
+{
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "media_buy_id": "ttd_5555555555",
+  "measurement_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-14T23:59:59Z"
+  },
+  "metric_type": "completion_rate",
+  "performance_index": 0.92,
+  "feedback_source": "verification_partner"
+}
+```
+
+#### Request - Brand Safety Feedback
+```json
+{
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "media_buy_id": "ttd_5555555555",
+  "measurement_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-14T23:59:59Z"
+  },
+  "metric_type": "brand_safety",
+  "performance_index": 1.05,
   "feedback_source": "verification_partner"
 }
 ```

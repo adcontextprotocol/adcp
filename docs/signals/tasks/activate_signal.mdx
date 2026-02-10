@@ -408,28 +408,26 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
     "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
+    "is_live": true,
     "activation_key": {
       "type": "segment_id",
       "segment_id": "pm_brand456_peer39_lux_auto"
     },
     "deployed_at": "2025-01-15T14:30:00Z"
-  }],
-  "errors": [
-    {
-      "code": "SUBOPTIMAL_CONFIGURATION",
-      "message": "Account frequency cap settings may limit signal reach",
-      "field": "account.frequency_settings",
-      "suggestion": "Contact your PubMatic account manager to review frequency cap settings for optimal performance"
-    }
-  ]
+  }]
 }
 ```
+
+<Note>
+Warnings about suboptimal configuration are conveyed in the `message` field. The `errors` array is reserved for actual failures — the activate_signal response uses a strict success/error discriminated union where `deployments` and `errors` are mutually exclusive.
+</Note>
 
 ### Error Response (Failed)
 **Message**: "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again."

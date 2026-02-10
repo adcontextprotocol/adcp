@@ -192,6 +192,7 @@ Generate multiple preview variants by providing different contexts:
 
 ```json
 {
+  "$schema": "/schemas/creative/preview-creative-request.json",
   "request_type": "single",
   "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
   "creative_manifest": {
@@ -233,6 +234,7 @@ Preview multiple creatives for a grid layout:
 
 ```json
 {
+  "$schema": "/schemas/creative/preview-creative-request.json",
   "request_type": "single",
   "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
   "creative_manifest": {
