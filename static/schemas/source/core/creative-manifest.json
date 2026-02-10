@@ -15,10 +15,10 @@
     },
     "assets": {
       "type": "object",
-      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nIMPORTANT: Creative manifest validation MUST be performed in the context of the format specification. The format defines what type each asset_id should be, which eliminates any validation ambiguity.",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nIMPORTANT: Full validation requires format context. The format defines what type each asset_id should be. Standalone schema validation only checks structural conformance — each asset must match at least one valid asset type schema.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
-          "oneOf": [
+          "anyOf": [
             {
               "$ref": "/schemas/core/assets/image-asset.json"
             },

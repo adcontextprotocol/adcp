@@ -72,6 +72,7 @@ Uses higher limits than standard pagination because artifact result sets can be 
 
 ```json
 {
+  "$schema": "/schemas/content-standards/get-media-buy-artifacts-response.json",
   "media_buy_id": "mb_nike_reddit_q1",
   "artifacts": [
     {
@@ -83,7 +84,7 @@ Uses higher limits than standard pagination because artifact result sets can be 
         "artifact_id": "r_fitness_abc123",
         "assets": [
           {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
-          {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
+          {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources for recovery", "language": "en"},
           {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
         ]
       },
@@ -101,7 +102,7 @@ Uses higher limits than standard pagination because artifact result sets can be 
         "artifact_id": "r_news_politics_456",
         "assets": [
           {"type": "text", "role": "title", "content": "Election Results Analysis", "language": "en"},
-          {"type": "text", "role": "paragraph", "content": "The latest polling data shows...", "language": "en"}
+          {"type": "text", "role": "paragraph", "content": "The latest polling data shows a tight race between candidates", "language": "en"}
         ]
       },
       "country": "US",
