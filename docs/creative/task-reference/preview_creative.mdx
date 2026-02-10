@@ -12,11 +12,7 @@ Generate preview renderings of creative manifests. Supports both single creative
 ```json
 {
   "request_type": "single",
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "native_responsive"
-  },
-  "creative_manifest": { /* your creative */ }
+  "creative_manifest": { /* includes format_id, assets */ }
 }
 ```
 
@@ -49,8 +45,7 @@ For faster rendering without iframe overhead, request HTML directly:
 ```json
 {
   "request_type": "single",
-  "format_id": { "agent_url": "...", "id": "native_responsive" },
-  "creative_manifest": { /* your creative */ },
+  "creative_manifest": { /* includes format_id, assets */ },
   "output_format": "html"
 }
 ```
@@ -81,8 +76,8 @@ Preview multiple creatives in one API call (5-10x faster):
 {
   "request_type": "batch",
   "requests": [
-    { "format_id": {...}, "creative_manifest": { /* creative 1 */ } },
-    { "format_id": {...}, "creative_manifest": { /* creative 2 */ } }
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
@@ -106,7 +101,7 @@ Response contains results in order:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `request_type` | string | Yes | `"single"` |
-| `format_id` | FormatID | Yes | Format identifier (agent_url + id) |
+| `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
 | `creative_manifest` | object | Yes | Complete creative manifest |
 | `inputs` | array | No | Array of input sets for multiple preview variants |
 | `output_format` | string | No | `"url"` (default) or `"html"` |
@@ -193,7 +188,6 @@ Generate multiple preview variants by providing different contexts:
 ```json
 {
   "request_type": "single",
-  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
   "creative_manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
     "assets": {
@@ -217,14 +211,8 @@ Preview multiple creatives for a grid layout:
   "request_type": "batch",
   "output_format": "html",
   "requests": [
-    {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
-      "creative_manifest": { /* creative 1 */ }
-    },
-    {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
-      "creative_manifest": { /* creative 2 */ }
-    }
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
@@ -234,7 +222,6 @@ Preview multiple creatives for a grid layout:
 ```json
 {
   "request_type": "single",
-  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
   "creative_manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
     "assets": {

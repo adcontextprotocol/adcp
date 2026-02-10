@@ -212,7 +212,6 @@ previews = []
 for format in formats:
     preview = await client.preview_creative(
         request_type="single",
-        format_id=format.format_id,
         creative_manifest=format.format_card.manifest
     )
     previews.append(preview)
@@ -225,10 +224,7 @@ response = await client.preview_creative(
     request_type="batch",
     output_format="html",
     requests=[
-        {
-            "format_id": fmt.format_id,
-            "creative_manifest": fmt.format_card.manifest
-        }
+        {"creative_manifest": fmt.format_card.manifest}
         for fmt in formats
     ]
 )

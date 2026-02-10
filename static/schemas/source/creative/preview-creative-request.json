@@ -15,7 +15,7 @@
         },
         "format_id": {
           "$ref": "/schemas/core/format-id.json",
-          "description": "Format identifier for rendering the preview"
+          "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
         },
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
@@ -67,7 +67,6 @@
       },
       "required": [
         "request_type",
-        "format_id",
         "creative_manifest"
       ],
       "additionalProperties": true
@@ -89,7 +88,7 @@
             "properties": {
               "format_id": {
                 "$ref": "/schemas/core/format-id.json",
-                "description": "Format identifier for rendering the preview"
+                "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
               },
               "creative_manifest": {
                 "$ref": "/schemas/core/creative-manifest.json",
@@ -134,7 +133,6 @@
               }
             },
             "required": [
-              "format_id",
               "creative_manifest"
             ],
             "additionalProperties": true
