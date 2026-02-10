@@ -482,6 +482,7 @@
             "meta_network",
             "social_media"
           ],
+          "supported_channels": ["social", "display", "olv"],
           "publisher_domain": "instagram.com"
         },
         {
@@ -501,6 +502,7 @@
             "meta_network",
             "social_media"
           ],
+          "supported_channels": ["social", "display", "olv"],
           "publisher_domain": "facebook.com"
         },
         {
@@ -520,6 +522,7 @@
             "meta_network",
             "messaging"
           ],
+          "supported_channels": ["social", "display"],
           "publisher_domain": "whatsapp.com"
         }
       ],

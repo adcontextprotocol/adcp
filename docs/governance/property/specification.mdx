@@ -69,11 +69,12 @@ Properties are identified using the standard AdCP property model:
   "name": "Example News",
   "identifiers": [
     { "type": "domain", "value": "example.com" }
-  ]
+  ],
+  "supported_channels": ["display", "olv"]
 }
 ```
 
-Property types include: `website`, `mobile_app`, `ctv_app`, `dooh`, `podcast`, `radio`, `streaming_audio`.
+Property types include: `website`, `mobile_app`, `ctv_app`, `dooh`, `podcast`, `radio`, `streaming_audio`. Properties may also declare `supported_channels` to indicate which advertising channels their inventory aligns with.
 
 ### Property List References
 
