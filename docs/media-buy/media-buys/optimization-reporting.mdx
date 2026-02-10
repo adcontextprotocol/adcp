@@ -129,7 +129,7 @@ Metric availability is declared at two levels:
 1. **Product level**: `reporting_capabilities.available_metrics` declares what the platform can report
 2. **Format level**: `reported_metrics` on a creative format declares what the format can produce (see [Reported Metrics](/docs/creative/formats#reported-metrics))
 
-Buyers receive the intersection of both. Standard metrics include:
+Buyers receive the intersection of both. `impressions` and `spend` are always reported regardless of the intersection. Standard metrics include:
 
 - **`impressions`**: Ad views (always available)
 - **`spend`**: Amount spent (always available)
@@ -151,6 +151,7 @@ Buyers receive the intersection of both. Standard metrics include:
 - **`engagement_rate`**: Platform-specific engagement metric
 - **`quartile_data`**: Video quartile completion data (q1-q4)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
+- **`cost_per_click`**: Cost per click
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 

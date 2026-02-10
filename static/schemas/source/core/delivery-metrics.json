@@ -213,6 +213,23 @@
       },
       "additionalProperties": true
     },
+    "viewability": {
+      "type": "number",
+      "description": "Viewable impression rate (0.0 to 1.0), measured per MRC or GroupM standards depending on publisher",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "engagement_rate": {
+      "type": "number",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Definition varies by platform (e.g., likes+comments+shares/impressions on social, interactions/impressions on rich media).",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_per_click": {
+      "type": "number",
+      "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
     "by_action_source": {
       "type": "array",
       "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",

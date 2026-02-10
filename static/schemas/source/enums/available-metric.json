@@ -24,6 +24,7 @@
     "frequency",
     "grps",
     "quartile_data",
-    "dooh_metrics"
+    "dooh_metrics",
+    "cost_per_click"
   ]
 }

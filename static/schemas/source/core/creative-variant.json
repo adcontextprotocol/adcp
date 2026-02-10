@@ -23,6 +23,5 @@
         "variant_id"
       ]
     }
-  ],
-  "additionalProperties": true
+  ]
 }

@@ -613,6 +613,8 @@ Formats can declare which metrics they produce in delivery reporting via the `re
 
 Products declare their available metrics via `reporting_capabilities.available_metrics`. The buyer receives the **intersection** of format `reported_metrics` and product `available_metrics`.
 
+`impressions` and `spend` are always reported regardless of the intersection — they are implicit in every delivery response. The intersection applies to all other metrics.
+
 For example, if a video format declares `quartile_data` but the product only reports `impressions`, `spend`, and `clicks`, the buyer will not receive quartile data for that product.
 
 ### When to Omit

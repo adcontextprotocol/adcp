@@ -57,6 +57,10 @@
             "type": "string",
             "description": "Creative identifier"
           },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's media buy identifier for this creative. Present when the request spanned multiple media buys, so the buyer can correlate each creative to its media buy."
+          },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
             "description": "Format of this creative"
