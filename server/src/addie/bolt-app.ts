@@ -94,6 +94,11 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
+import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
+import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
+import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
+import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
+import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
@@ -757,6 +762,41 @@ async function createUserScopedTools(
       allHandlers.set(name, handler);
     }
     logger.debug('Addie Bolt: Moltbook tools enabled');
+  }
+
+  // Add brand tools (brand research and registry management)
+  const brandHandlers = createBrandToolHandlers();
+  allTools.push(...BRAND_TOOLS);
+  for (const [name, handler] of brandHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add collaboration tools (DMs between members)
+  const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
+  allTools.push(...COLLABORATION_TOOLS);
+  for (const [name, handler] of collaborationHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add committee leader tools (co-leader management, self-enforcing permissions)
+  const committeeLeaderHandlers = createCommitteeLeaderToolHandlers(memberContext, slackUserId);
+  allTools.push(...COMMITTEE_LEADER_TOOLS);
+  for (const [name, handler] of committeeLeaderHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add property tools (adagents.json validation, publisher resolution)
+  const propertyHandlers = createPropertyToolHandlers();
+  allTools.push(...PROPERTY_TOOLS);
+  for (const [name, handler] of propertyHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add schema tools (JSON schema validation and lookup)
+  const schemaHandlers = createSchemaToolHandlers();
+  allTools.push(...SCHEMA_TOOLS);
+  for (const [name, handler] of schemaHandlers) {
+    allHandlers.set(name, handler);
   }
 
   // Override bookmark_resource handler with user-scoped version (for attribution)

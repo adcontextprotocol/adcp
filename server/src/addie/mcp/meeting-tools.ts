@@ -209,7 +209,9 @@ export const MEETING_TOOLS: AddieTool[] = [
   {
     name: 'schedule_meeting',
     description: `Schedule a new working group meeting. Use this when someone asks to schedule a meeting, call, or discussion.
-The meeting will be created with a Zoom link and calendar invites will be sent to working group members.
+The meeting will be created with a Zoom link. For one-time meetings, calendar invites are sent to working group members by default.
+
+For recurring meetings, meetings are created as opt-in (no calendar invites sent). The meetings will be visible on the working group page where members can find them and ask to be added. This prevents spamming large groups with many calendar invites.
 
 If the user is in a channel associated with a working group, you can omit working_group_slug and it will be inferred from the channel context.
 
@@ -600,7 +602,6 @@ export function createMeetingToolHandlers(
 
     // Check if meeting is in the future (comparing in the specified timezone)
     if (!isFutureTimeInTimezone(startTimeStr, timezone)) {
-      const nowInTz = getNowInTimezone(timezone);
       return `❌ Meeting time must be in the future. Current time in ${timezone}: ${formatTime(new Date(), timezone)}`;
     }
 
@@ -639,8 +640,9 @@ export function createMeetingToolHandlers(
           count: recurrenceInput.count,
         };
 
-        // Extract time from start_time for default_start_time
-        const defaultStartTime = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}:00`;
+        // Extract time-of-day from the original string (already in user's timezone)
+        const timePart = startTimeStr.split('T')[1] || '14:00:00';
+        const defaultStartTime = timePart.substring(0, 8).padEnd(8, ':00');
 
         // Create the meeting series
         const seriesInput: CreateMeetingSeriesInput = {
@@ -658,9 +660,9 @@ export function createMeetingToolHandlers(
         const series = await meetingsDb.createSeries(seriesInput);
         logger.info({ seriesId: series.id, workingGroupSlug, recurrence: recurrenceRule }, 'Meeting series created');
 
-        // Generate the first batch of meetings
+        // Generate the first batch of meetings, anchored to the user's requested start date
         const meetingsToGenerate = recurrenceInput.count || 4;
-        const meetings = await meetingService.generateMeetingsFromSeries(series.id, Math.min(meetingsToGenerate, 8));
+        const seriesResult = await meetingService.generateMeetingsFromSeries(series.id, Math.min(meetingsToGenerate, 8), startTime);
 
         // Build response
         let response = `✅ Created recurring meeting series: **${title}**\n\n`;
@@ -668,26 +670,31 @@ export function createMeetingToolHandlers(
         response += `**Recurrence:** ${formatRecurrence(recurrenceRule)}\n`;
         response += `**Duration:** ${durationMinutes} minutes\n\n`;
 
-        if (meetings.length > 0) {
-          response += `**Scheduled ${meetings.length} meeting${meetings.length > 1 ? 's' : ''}:**\n`;
-          for (const meeting of meetings.slice(0, 5)) {
+        if (seriesResult.meetings.length > 0) {
+          response += `**Scheduled ${seriesResult.meetings.length} meeting${seriesResult.meetings.length > 1 ? 's' : ''}:**\n`;
+          for (const meeting of seriesResult.meetings.slice(0, 5)) {
             response += `• ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, timezone)}`;
             if (meeting.zoom_join_url) {
               response += ` - [Zoom](${meeting.zoom_join_url})`;
             }
             response += '\n';
           }
-          if (meetings.length > 5) {
-            response += `• _...and ${meetings.length - 5} more_\n`;
+          if (seriesResult.meetings.length > 5) {
+            response += `• _...and ${seriesResult.meetings.length - 5} more_\n`;
           }
         }
 
-        response += `\n📧 Calendar invites have been sent to working group members.`;
+        if (seriesResult.errors.length > 0) {
+          response += `\n⚠️ Some integrations had issues:\n`;
+          response += seriesResult.errors.map(e => `• ${e}`).join('\n');
+        }
+
+        response += `\n📋 These meetings are visible on the [${workingGroup.name} page](${process.env.BASE_URL || ''}/working-groups/${workingGroupSlug}). Members can join via the Zoom link or ask to be added to receive calendar invites.`;
 
         logger.info({
           seriesId: series.id,
           workingGroupSlug,
-          meetingsCreated: meetings.length,
+          meetingsCreated: seriesResult.meetings.length,
           scheduledBy: getUserId(),
         }, 'Recurring meeting series scheduled via Addie');
 
