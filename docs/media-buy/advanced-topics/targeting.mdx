@@ -1,5 +1,6 @@
 ---
 title: Targeting
+testable: true
 ---
 
 
@@ -147,12 +148,12 @@ Use geo fields **only** for:
 - **Product refinement**: When a product spans multiple regions and you need to restrict to a subset
 
 **Available fields**:
-- `geo_country_any_of`: ISO country codes
-- `geo_region_any_of`: State/region identifiers
-- `geo_metro_any_of`: DMA codes (not all publishers support metro-level targeting)
-- `geo_postal_code_any_of`: ZIP/postal codes (not all publishers support postal-level targeting)
+- `geo_countries`: ISO 3166-1 alpha-2 country codes (e.g., `["US", "GB"]`)
+- `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
+- `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
+- `geo_postal_areas`: Structured postal areas with explicit system (e.g., `us_zip`, `gb_outward`) — not all publishers support postal-level targeting
 
-**Note**: Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
+**Note**: Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
 ### Age Restrictions (Compliance)
 Use for **legal compliance** requirements:
@@ -162,17 +163,16 @@ Use for **legal compliance** requirements:
 
 ```json
 {
-  "targeting_overlay": {
-    "age_restriction": {
-      "min": 21,
-      "verification_required": true,
-      "accepted_methods": ["facial_age_estimation", "id_document", "world_id"]
-    }
+  "$schema": "/schemas/core/targeting.json",
+  "age_restriction": {
+    "min": 21,
+    "verification_required": true,
+    "accepted_methods": ["facial_age_estimation", "id_document", "world_id"]
   }
 }
 ```
 
-**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/v2/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
+**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/latest/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
 - `facial_age_estimation` - AI-based age estimation (Yoti, etc.)
 - `id_document` - Government ID scan
 - `digital_id` - Verified digital identity credentials
@@ -188,13 +188,12 @@ Use for **technical requirements**:
 
 ```json
 {
-  "targeting_overlay": {
-    "device_platform": ["ios", "android"]
-  }
+  "$schema": "/schemas/core/targeting.json",
+  "device_platform": ["ios", "android"]
 }
 ```
 
-**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v2/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
+**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/latest/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
 - Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
 - CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
 - Other: `unknown`
@@ -206,9 +205,8 @@ Use for **localization requirements**:
 
 ```json
 {
-  "targeting_overlay": {
-    "language": ["es", "en"]
-  }
+  "$schema": "/schemas/core/targeting.json",
+  "language": ["es", "en"]
 }
 ```
 
@@ -218,15 +216,17 @@ Use for **localization requirements**:
 Basic impression suppression controls:
 ```json
 {
-  "targeting_overlay": {
-    "frequency_cap": {
-      "suppress_minutes": 60  // Suppress for 60 minutes after impression
-    }
+  "$schema": "/schemas/core/targeting.json",
+  "frequency_cap": {
+    "suppress_minutes": 60
   }
 }
 ```
 
 ### Example Geographic Overlay (RCT Testing)
+
+Test group targeting uses structured metro areas with explicit classification system:
+
 ```json
 {
   "packages": [
@@ -234,14 +234,18 @@ Basic impression suppression controls:
       "buyer_ref": "test_group_a",
       "product_id": "national_video",
       "targeting_overlay": {
-        "geo_metro_any_of": ["501", "602", "803"]  // Test DMAs
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["501", "602", "803"] }
+        ]
       }
     },
     {
       "buyer_ref": "test_group_b",
       "product_id": "national_video",
       "targeting_overlay": {
-        "geo_metro_any_of": ["504", "505", "506"]  // Control DMAs
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["504", "505", "506"] }
+        ]
       }
     }
   ]
@@ -275,34 +279,35 @@ Basic impression suppression controls:
 
 ## Available Targeting Overlay Parameters
 
-All targeting parameters use the `any_of` operator pattern for inclusive targeting.
+All geographic targeting uses inclusive matching.
 
-### geo_country_any_of
+### geo_countries
 - **Description**: Restrict delivery to specific countries
 - **Format**: ISO 3166-1 alpha-2 country codes
 - **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
 - **Use cases**: Regulatory compliance, country-specific campaigns
 
-### geo_region_any_of
+### geo_regions
 - **Description**: Restrict delivery to specific regions/states
-- **Format**: Region codes (interpretation depends on country)
-- **Examples**: `["NY", "CA"]`, `["ON", "BC"]`
+- **Format**: ISO 3166-2 subdivision codes
+- **Examples**: `["US-CA", "US-NY"]`, `["GB-SCT", "GB-ENG"]`
 - **Use cases**: State-level compliance, regional testing
-- **Note**: Not all publishers support all region formats
 
-### geo_metro_any_of
+### geo_metros
 - **Description**: Restrict delivery to specific metro areas
-- **Format**: DMA codes (US) or metro identifiers
-- **Examples**: `["501", "803"]` (New York, Los Angeles DMAs)
+- **Format**: Array of objects, each with a `system` and `values`
+- **Systems**: `nielsen_dma` (US), `uk_itl1` / `uk_itl2` (UK), `eurostat_nuts2` (EU), `custom`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"] }]`
 - **Use cases**: Local campaigns, metro-level RCT testing
-- **Note**: Not all publishers support metro-level targeting
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
-### geo_postal_code_any_of
-- **Description**: Restrict delivery to specific postal/ZIP codes
-- **Format**: Country-specific postal codes
-- **Examples**: `["10001", "10002"]`, `["90210"]`
-- **Use cases**: Hyper-local campaigns, ZIP-level restrictions
-- **Note**: Not all publishers support postal-level targeting
+### geo_postal_areas
+- **Description**: Restrict delivery to specific postal areas
+- **Format**: Array of objects, each with a `system` and `values`
+- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`
+- **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
+- **Use cases**: Hyper-local campaigns, postal-level restrictions
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
 ### axe_include_segment
 - **Description**: AXE segment ID for inclusion targeting
@@ -320,9 +325,9 @@ All targeting parameters use the `any_of` operator pattern for inclusive targeti
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per user
-- **Format**: Frequency cap object with impressions, duration, and scope
-- **Use cases**: Brand safety, user experience management
-- **Example**: `{"impressions": 5, "duration_seconds": 86400, "scope": "creative"}`
+- **Format**: Frequency cap object with `suppress_minutes` (required)
+- **Use cases**: User experience management, ad fatigue prevention
+- **Example**: `{"suppress_minutes": 60}`
 
 ### age_restriction
 - **Description**: Require minimum age for compliance
@@ -395,7 +400,7 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 
 ### Publishers MUST:
 
-1. **Support Geographic Targeting**: Handle all four geographic parameters (country, region, metro, postal) to the extent your platform supports them
+1. **Support Geographic Targeting**: Handle geographic parameters (`geo_countries`, `geo_regions`, `geo_metros`, `geo_postal_areas`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
 2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
 3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
 4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions
