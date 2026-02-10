@@ -408,13 +408,20 @@ function buildCalendarDescription(
   return parts.join('\n');
 }
 
+export interface GenerateSeriesResult {
+  meetings: Meeting[];
+  errors: string[];
+}
+
 /**
- * Generate upcoming meetings from a series
+ * Generate upcoming meetings from a series.
+ * @param startFrom - Anchor date for the first occurrence. If omitted, calculates from today.
  */
 export async function generateMeetingsFromSeries(
   seriesId: string,
-  count: number = 4
-): Promise<Meeting[]> {
+  count: number = 4,
+  startFrom?: Date
+): Promise<GenerateSeriesResult> {
   const series = await meetingsDb.getSeriesById(seriesId);
   if (!series) {
     throw new Error(`Series not found: ${seriesId}`);
@@ -426,18 +433,19 @@ export async function generateMeetingsFromSeries(
 
   const rule = series.recurrence_rule as RecurrenceRule;
   const meetings: Meeting[] = [];
+  const errors: string[] = [];
 
-  // Calculate next occurrence dates
-  const dates = calculateNextOccurrences(rule, series.default_start_time, series.timezone, count);
+  // Calculate next occurrence dates, anchored to startFrom if provided
+  const dates = calculateNextOccurrences(rule, series.default_start_time, series.timezone, count, startFrom);
+
+  // Pre-fetch existing meetings to avoid N+1 queries inside the loop
+  const existing = await meetingsDb.listMeetings({
+    series_id: seriesId,
+    upcoming_only: true,
+  });
+  const existingDates = new Set(existing.map(m => m.start_time.toISOString().split('T')[0]));
 
   for (const date of dates) {
-    // Check if meeting already exists for this date
-    const existing = await meetingsDb.listMeetings({
-      series_id: seriesId,
-      upcoming_only: true,
-    });
-
-    const existingDates = new Set(existing.map(m => m.start_time.toISOString().split('T')[0]));
     const dateStr = date.toISOString().split('T')[0];
 
     if (existingDates.has(dateStr)) {
@@ -453,35 +461,48 @@ export async function generateMeetingsFromSeries(
       durationMinutes: series.duration_minutes,
       timezone: series.timezone,
       seriesId,
+      inviteMode: 'none',
+      sendCalendarInvites: false,
     });
 
     meetings.push(result.meeting);
+    errors.push(...result.errors);
+    existingDates.add(dateStr);
   }
 
-  return meetings;
+  return { meetings, errors };
 }
 
 /**
- * Calculate next occurrence dates based on recurrence rule
+ * Calculate next occurrence dates based on recurrence rule.
+ * @param startFrom - If provided, use this as the first occurrence date.
+ *                    Otherwise, calculate from today using the time-of-day from startTime.
  */
 function calculateNextOccurrences(
   rule: RecurrenceRule,
   startTime: string | undefined,
   timezone: string,
-  count: number
+  count: number,
+  startFrom?: Date
 ): Date[] {
   const dates: Date[] = [];
   const now = new Date();
 
-  // Parse start time (e.g., "14:00:00")
-  const [hours, minutes] = (startTime || '14:00:00').split(':').map(Number);
+  let current: Date;
 
-  let current = new Date(now);
-  current.setHours(hours, minutes, 0, 0);
+  if (startFrom) {
+    // Use the provided start date as the anchor
+    current = new Date(startFrom);
+  } else {
+    // No anchor date - calculate from today using just the time
+    const [hours, minutes] = (startTime || '14:00:00').split(':').map(Number);
+    current = new Date(now);
+    current.setHours(hours, minutes, 0, 0);
 
-  // If today's time has passed, start from next occurrence
-  if (current <= now) {
-    current = getNextOccurrence(current, rule);
+    // If today's time has passed, start from next occurrence
+    if (current <= now) {
+      current = getNextOccurrence(current, rule);
+    }
   }
 
   while (dates.length < count) {

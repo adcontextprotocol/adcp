@@ -85,7 +85,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   directory: {
     name: 'directory',
-    description: 'Find member organizations, request introductions, search for vendors/partners, and explore the member directory',
+    description: 'Find member organizations, request introductions, search for vendors/partners, explore the member directory, and research or manage brands',
     tools: [
       'search_members',
       'request_introduction',
@@ -96,18 +96,25 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_agent',
       'list_publishers',
       'lookup_domain',
+      'research_brand',
+      'resolve_brand',
+      'save_brand',
+      'list_brands',
     ],
   },
 
   agent_testing: {
     name: 'agent_testing',
-    description: 'Validate and test AdCP agent implementations - check adagents.json, probe endpoints, verify publisher authorization, run compliance tests',
+    description: 'Validate and test AdCP agent implementations - check adagents.json, probe endpoints, verify publisher authorization, run compliance tests, resolve and manage properties',
     tools: [
       'validate_adagents',
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
       'validate_agent',
+      'resolve_property',
+      'save_property',
+      'list_properties',
     ],
   },
 
@@ -195,10 +202,18 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   meetings: {
     name: 'meetings',
-    description: 'Schedule meetings and manage calendar - check availability, create calendar events',
+    description: 'Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links',
     tools: [
       'schedule_meeting',
-      'check_availability',
+      'list_upcoming_meetings',
+      'get_my_meetings',
+      'get_meeting_details',
+      'rsvp_to_meeting',
+      'cancel_meeting',
+      'update_meeting',
+      'add_meeting_attendee',
+      'update_topic_subscriptions',
+      'manage_committee_topics',
     ],
   },
 
