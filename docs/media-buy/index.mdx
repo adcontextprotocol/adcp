@@ -7,7 +7,7 @@ keywords: [media buy protocol, advertising automation, AI advertising workflows,
 
 AI is buying ads. The Media Buy protocol ensures it can buy yours.
 
-This is AdCP's core advertising automation interface, providing 8 standardized tasks for managing the complete advertising lifecycle—from inventory discovery through campaign optimization.
+This is AdCP's core advertising automation interface, providing 10 standardized tasks for managing the complete advertising lifecycle—from inventory discovery through conversion tracking.
 
 ## Protocol Access
 
@@ -18,7 +18,7 @@ Media Buy tasks are accessible through multiple protocols:
 
 All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for guidance.
 
-## The 8 Core Media Buy Tasks
+## The 10 Core Media Buy Tasks
 
 The Media Buy protocol provides these essential operations:
 
@@ -37,6 +37,11 @@ The Media Buy protocol provides these essential operations:
 
 ### Performance Optimization
 - **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)**: Track performance metrics and campaign delivery
+- **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)**: Submit performance signals to enable publisher optimization
+
+### Conversion Tracking
+- **[`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources)**: Configure event sources on seller accounts for attribution
+- **[`log_event`](/docs/media-buy/task-reference/log_event)**: Send conversion and marketing events for attribution and optimization
 
 ## Key Design Principles
 
@@ -244,7 +249,7 @@ sequenceDiagram
 ## Documentation Structure
 
 ### [Task Reference](/docs/media-buy/task-reference/) 🔗
-Complete API reference for all 8 media buying operations, from product discovery and creative management to campaign creation and optimization.
+Complete API reference for all 10 media buying operations, from product discovery and creative management to campaign creation and conversion tracking.
 
 ### [Capability Discovery](/docs/media-buy/capability-discovery/) 🔍
 Foundation concepts including creative format specifications and property authorization. Learn about preventing unauthorized resale and understanding format requirements.

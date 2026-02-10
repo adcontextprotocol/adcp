@@ -151,6 +151,150 @@ async function runTests() {
     'get_signals request'
   );
 
+  // Conversion tracking examples
+  await validateExample(
+    {
+      "account_id": "acct_12345",
+      "event_sources": [
+        {
+          "event_source_id": "website_pixel",
+          "name": "Main Website Pixel",
+          "event_types": ["purchase", "lead", "add_to_cart", "page_view"],
+          "allowed_domains": ["www.example.com", "shop.example.com"]
+        },
+        {
+          "event_source_id": "crm_import",
+          "name": "CRM Offline Events",
+          "event_types": ["purchase", "qualify_lead", "close_convert_lead"]
+        }
+      ]
+    },
+    '/schemas/media-buy/sync-event-sources-request.json',
+    'sync_event_sources request'
+  );
+
+  await validateExample(
+    {
+      "event_sources": [
+        {
+          "event_source_id": "website_pixel",
+          "name": "Main Website Pixel",
+          "seller_id": "px_abc123",
+          "event_types": ["purchase", "lead", "add_to_cart", "page_view"],
+          "managed_by": "buyer",
+          "action": "created",
+          "setup": {
+            "snippet_type": "javascript",
+            "snippet": "<script>/* pixel code */</script>",
+            "instructions": "Place in the <head> of all pages."
+          }
+        },
+        {
+          "event_source_id": "amazon_attribution",
+          "name": "Amazon Sales Attribution",
+          "seller_id": "amz_attr_001",
+          "managed_by": "seller",
+          "action": "unchanged"
+        }
+      ]
+    },
+    '/schemas/media-buy/sync-event-sources-response.json',
+    'sync_event_sources response (success)'
+  );
+
+  await validateExample(
+    {
+      "errors": [
+        { "code": "AUTHENTICATION_FAILED", "message": "Invalid or expired credentials" }
+      ]
+    },
+    '/schemas/media-buy/sync-event-sources-response.json',
+    'sync_event_sources response (error)'
+  );
+
+  await validateExample(
+    {
+      "event_source_id": "website_pixel",
+      "events": [
+        {
+          "event_id": "evt_purchase_12345",
+          "event_type": "purchase",
+          "event_time": "2026-01-15T14:30:00Z",
+          "action_source": "website",
+          "event_source_url": "https://www.example.com/checkout/confirm",
+          "user_match": {
+            "hashed_email": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "click_id": "abc123def456",
+            "click_id_type": "gclid"
+          },
+          "custom_data": {
+            "value": 149.99,
+            "currency": "USD",
+            "order_id": "order_98765",
+            "num_items": 3,
+            "contents": [
+              { "id": "SKU-1234", "quantity": 2, "price": 49.99 },
+              { "id": "SKU-5678", "quantity": 1, "price": 50.01 }
+            ]
+          }
+        },
+        {
+          "event_id": "evt_lead_67890",
+          "event_type": "lead",
+          "event_time": "2026-01-15T15:00:00Z",
+          "action_source": "website",
+          "user_match": {
+            "uids": [{ "type": "uid2", "value": "AbC123XyZ..." }]
+          }
+        },
+        {
+          "event_id": "evt_refund_001",
+          "event_type": "refund",
+          "event_time": "2026-01-16T10:00:00Z",
+          "action_source": "system_generated",
+          "user_match": {
+            "hashed_phone": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3"
+          },
+          "custom_data": {
+            "value": 49.99,
+            "currency": "USD",
+            "order_id": "order_98765"
+          }
+        }
+      ]
+    },
+    '/schemas/media-buy/log-event-request.json',
+    'log_event request (batch with purchase, lead, refund)'
+  );
+
+  await validateExample(
+    {
+      "events_received": 3,
+      "events_processed": 2,
+      "partial_failures": [
+        {
+          "event_id": "evt_refund_001",
+          "code": "INVALID_EVENT_TIME",
+          "message": "Event time is outside the attribution window"
+        }
+      ],
+      "warnings": ["Low match quality on 1 event — consider adding hashed_email or UIDs"],
+      "match_quality": 0.67
+    },
+    '/schemas/media-buy/log-event-response.json',
+    'log_event response (success with partial failure)'
+  );
+
+  await validateExample(
+    {
+      "errors": [
+        { "code": "EVENT_SOURCE_NOT_FOUND", "message": "Event source 'unknown_pixel' not found on this account" }
+      ]
+    },
+    '/schemas/media-buy/log-event-response.json',
+    'log_event response (error)'
+  );
+
   // Print results
   log('\n===========================================');
   log(`Tests completed: ${totalTests}`);

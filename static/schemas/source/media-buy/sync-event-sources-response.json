@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-event-sources-response.json",
+  "title": "Sync Event Sources Response",
+  "description": "Response from event source sync operation. Returns either per-source results OR operation-level errors.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncEventSourcesSuccess",
+      "description": "Success response - sync operation processed event sources",
+      "type": "object",
+      "properties": {
+        "event_sources": {
+          "type": "array",
+          "description": "Results for each event source, including both synced and seller-managed sources on the account",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_source_id": {
+                "type": "string",
+                "description": "Event source ID from the request"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the event source"
+              },
+              "seller_id": {
+                "type": "string",
+                "description": "Seller-assigned identifier for this event source (the ID in the seller's ad platform)"
+              },
+              "event_types": {
+                "type": "array",
+                "description": "Event types this source handles",
+                "items": {
+                  "$ref": "/schemas/enums/event-type.json"
+                }
+              },
+              "action_source": {
+                "$ref": "/schemas/enums/action-source.json",
+                "description": "Type of event source (website pixel, app SDK, in-store, etc.)"
+              },
+              "managed_by": {
+                "type": "string",
+                "enum": ["buyer", "seller"],
+                "description": "Who manages this event source. 'buyer' = configured via this sync. 'seller' = always-on, managed by the seller (e.g. Amazon sales attribution for Amazon advertisers)."
+              },
+              "setup": {
+                "type": "object",
+                "description": "Implementation details for activating this event source (e.g. JavaScript tag, pixel URL)",
+                "properties": {
+                  "snippet": {
+                    "type": "string",
+                    "description": "Code snippet to place on the site (JavaScript, HTML pixel, etc.)"
+                  },
+                  "snippet_type": {
+                    "type": "string",
+                    "enum": ["javascript", "html", "pixel_url", "server_only"],
+                    "description": "Type of implementation. 'server_only' means no client-side tag is needed."
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "Human/agent-readable setup instructions"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "action": {
+                "type": "string",
+                "enum": ["created", "updated", "unchanged", "deleted", "failed"],
+                "description": "Action taken for this event source"
+              },
+              "errors": {
+                "type": "array",
+                "description": "Errors for this event source (only present when action='failed')",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["event_source_id", "action"],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["event_sources"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "SyncEventSourcesError",
+      "description": "Error response - operation failed completely",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["event_sources"]
+      }
+    }
+  ]
+}
