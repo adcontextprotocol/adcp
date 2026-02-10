@@ -66,6 +66,14 @@
           "$ref": "/schemas/core/error.json",
           "description": "Standard error structure"
         },
+        "pagination-request": {
+          "$ref": "/schemas/core/pagination-request.json",
+          "description": "Standard cursor-based pagination parameters for list request schemas"
+        },
+        "pagination-response": {
+          "$ref": "/schemas/core/pagination-response.json",
+          "description": "Standard cursor-based pagination metadata for list response schemas"
+        },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
           "description": "Sub-asset for multi-asset creative formats"

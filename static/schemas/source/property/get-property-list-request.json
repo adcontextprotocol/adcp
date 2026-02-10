@@ -14,14 +14,23 @@
       "description": "Whether to apply filters and return resolved identifiers (default: true)",
       "default": true
     },
-    "max_results": {
-      "type": "integer",
-      "description": "Maximum identifiers to return (for large lists)",
-      "minimum": 1
-    },
-    "cursor": {
-      "type": "string",
-      "description": "Pagination cursor for large result sets"
+    "pagination": {
+      "type": "object",
+      "description": "Pagination parameters. Uses higher limits than standard pagination because property lists can contain tens of thousands of identifiers.",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 1000,
+          "description": "Maximum number of identifiers to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
     },
     "context": {
       "$ref": "/schemas/core/context.json"

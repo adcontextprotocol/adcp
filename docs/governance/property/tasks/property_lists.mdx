@@ -454,7 +454,9 @@ Retrieve a property list with optional resolution of filters.
   "arguments": {
     "list_id": "pl_abc123",
     "resolve": true,
-    "max_results": 100
+    "pagination": {
+      "max_results": 1000
+    }
   }
 }
 ```
@@ -474,11 +476,10 @@ The response returns a compact list of **identifiers only** (not full property o
     { "type": "domain", "value": "ft.com" },
     { "type": "domain", "value": "theguardian.com" }
   ],
-  "total_count": 847,
-  "returned_count": 100,
   "pagination": {
     "has_more": true,
-    "cursor": "eyJvZmZzZXQiOjEwMH0="
+    "cursor": "eyJvZmZzZXQiOjEwMH0=",
+    "total_count": 847
   },
   "resolved_at": "2026-01-03T17:15:00Z",
   "cache_valid_until": "2026-01-04T17:15:00Z"
@@ -545,7 +546,9 @@ List all property lists accessible to the authenticated principal.
   "tool": "list_property_lists",
   "arguments": {
     "name_contains": "UK",
-    "max_results": 50
+    "pagination": {
+      "max_results": 50
+    }
   }
 }
 ```
@@ -574,10 +577,9 @@ List all property lists accessible to the authenticated principal.
       "property_count": 156
     }
   ],
-  "total_count": 3,
-  "returned_count": 3,
   "pagination": {
-    "has_more": false
+    "has_more": false,
+    "total_count": 3
   }
 }
 ```

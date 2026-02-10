@@ -130,6 +130,7 @@ asyncio.run(discover_with_filters())
 | `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
+| `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
 
 ### Filters Object
 
@@ -187,6 +188,23 @@ Publishers may return proposals alongside products - structured media plans with
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
 | `expires_at` | string | ISO 8601 timestamp when this proposal expires |
+
+### Pagination
+
+For large product catalogs, use cursor-based pagination:
+
+| Request Parameter | Type | Description |
+|---|---|---|
+| `pagination.max_results` | integer | Maximum products per page (1-100, default: 50) |
+| `pagination.cursor` | string | Cursor from previous response for next page |
+
+| Response Field | Type | Description |
+|---|---|---|
+| `pagination.has_more` | boolean | Whether more products are available |
+| `pagination.cursor` | string | Cursor to pass for the next page |
+| `pagination.total_count` | integer | Total matching products (optional, not all backends support this) |
+
+Pagination is optional. When omitted, the server returns all results (or a server-chosen default page). When the response includes `pagination.has_more: true`, pass `pagination.cursor` in the next request to get the next page.
 
 ### Response Metadata
 
