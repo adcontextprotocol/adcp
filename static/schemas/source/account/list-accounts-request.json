@@ -11,6 +11,9 @@
       "default": "active",
       "description": "Filter accounts by status"
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

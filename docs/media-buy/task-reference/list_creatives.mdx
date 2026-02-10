@@ -137,13 +137,13 @@ Sort results by various fields with ascending or descending order:
 
 ## Pagination
 
-Control result set size and navigation:
+Control result set size with cursor-based pagination:
 
 ```json
 {
   "pagination": {
-    "limit": 50,                          // Max results per page (1-100, default: 50)
-    "offset": 0                           // Results to skip (default: 0)
+    "max_results": 50,                    // Max results per page (1-100, default: 50)
+    "cursor": "eyJjcmVhdGVkX2RhdGUiOi4uLn0"  // Cursor from previous response (omit for first page)
   }
 }
 ```
@@ -162,11 +162,9 @@ The response provides comprehensive creative data with optional enrichment:
     "filters_applied": ["format=video", "status=approved"]
   },
   "pagination": {
-    "limit": 10,
-    "offset": 0,
     "has_more": true,
-    "total_pages": 3,
-    "current_page": 1
+    "cursor": "eyJjcmVhdGVkX2RhdGUiOiIyMDI0LTAxLTE1VDEwOjMwOjAwWiJ9",
+    "total_count": 25
   },
   "creatives": [
     {
@@ -216,7 +214,7 @@ List all approved video creatives:
     "direction": "desc"
   },
   "pagination": {
-    "limit": 20
+    "max_results": 20
   }
 }
 ```
@@ -255,7 +253,7 @@ Get creatives ready for assignment to new campaigns:
     "direction": "desc"
   },
   "pagination": {
-    "limit": 50
+    "max_results": 50
   }
 }
 ```
@@ -347,7 +345,7 @@ Analyze creative uploads over a specific quarter:
     "direction": "asc"
   },
   "pagination": {
-    "limit": 100
+    "max_results": 100
   }
 }
 ```
@@ -502,10 +500,10 @@ For queries returning very large result sets:
 - Use format and status filters to reduce result sets
 - Combine date ranges with other filters for efficiency
 
-### 2. Paginate Appropriately  
+### 2. Paginate Appropriately
 - Avoid very large page sizes (>100) which may timeout
-- Use offset-based pagination for consistent results
-- Consider cursor-based pagination for very large libraries
+- Use the `cursor` from the previous response to fetch the next page
+- Cursor-based pagination handles data changes between requests
 
 ### 3. Field Selection
 - Request only needed fields using the `fields` parameter
@@ -537,7 +535,7 @@ const response = await adcp.list_creatives({
   },
   sort: { field: "performance_score", direction: "desc" },
   include_performance: true,
-  pagination: { limit: 10 }
+  pagination: { max_results: 10 }
 });
 ```
 

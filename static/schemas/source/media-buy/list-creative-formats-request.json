@@ -47,6 +47,9 @@
       "type": "string",
       "description": "Search for formats by name (case-insensitive partial match)"
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
