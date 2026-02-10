@@ -18,6 +18,9 @@
           "not": {},
           "description": "Field must not be present in success response"
         },
+        "pagination": {
+          "$ref": "/schemas/core/pagination-response.json"
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },

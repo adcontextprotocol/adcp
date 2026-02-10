@@ -13,15 +13,8 @@
       "type": "string",
       "description": "Filter to lists whose name contains this string"
     },
-    "max_results": {
-      "type": "integer",
-      "description": "Maximum lists to return",
-      "minimum": 1,
-      "default": 100
-    },
-    "cursor": {
-      "type": "string",
-      "description": "Pagination cursor"
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

@@ -66,6 +66,9 @@
       "$ref": "/schemas/enums/wcag-level.json",
       "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

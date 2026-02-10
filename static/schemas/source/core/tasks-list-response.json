@@ -73,10 +73,7 @@
           "additionalProperties": true
         }
       },
-      "required": [
-        "total_matching",
-        "returned"
-      ],
+      "required": [],
       "additionalProperties": true
     },
     "tasks": {
@@ -137,35 +134,7 @@
       }
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination information",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "description": "Limit that was applied to this query",
-          "minimum": 1
-        },
-        "offset": {
-          "type": "integer",
-          "description": "Offset that was applied to this query",
-          "minimum": 0
-        },
-        "has_more": {
-          "type": "boolean",
-          "description": "Whether there are more tasks beyond this page"
-        },
-        "next_offset": {
-          "type": "integer",
-          "description": "Offset to use for next page (only present if has_more is true)",
-          "minimum": 0
-        }
-      },
-      "required": [
-        "limit",
-        "offset",
-        "has_more"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/pagination-response.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

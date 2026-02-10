@@ -20,6 +20,9 @@
       "items": { "type": "string" },
       "description": "Filter by ISO 3166-1 alpha-2 country codes"
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

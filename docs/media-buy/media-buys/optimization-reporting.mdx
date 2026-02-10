@@ -193,7 +193,8 @@ Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](
 {
   "reporting_capabilities": {
     "timezone": "UTC",
-    "available_reporting_frequencies": ["daily"]
+    "available_reporting_frequencies": ["daily"],
+    "date_range_support": "date_range"
   }
 }
 ```
@@ -469,7 +470,8 @@ Publishers declare support for offline delivery in product capabilities:
   "reporting_capabilities": {
     "supports_webhooks": true,
     "supports_offline_delivery": true,
-    "offline_delivery_protocols": ["s3", "gcs"]
+    "offline_delivery_protocols": ["s3", "gcs"],
+    "date_range_support": "date_range"
   }
 }
 ```

@@ -26,24 +26,7 @@
       "additionalProperties": true
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination parameters",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 50,
-          "description": "Maximum number of creatives to return"
-        },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 0,
-          "description": "Number of creatives to skip"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "include_assignments": {
       "type": "boolean",
@@ -118,7 +101,7 @@
           "direction": "desc"
         },
         "pagination": {
-          "limit": 20
+          "max_results": 20
         }
       }
     },
