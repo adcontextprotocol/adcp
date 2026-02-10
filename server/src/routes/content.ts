@@ -12,7 +12,7 @@ import { Router } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
-import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
+import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { notifyPublishedPost } from '../notifications/slack.js';
 
@@ -213,7 +213,7 @@ export async function proposeContentForUser(
 
   // Check if user can submit to this collection
   const userIsLead = await isCommitteeLead(committeeId, user.id);
-  const userIsAdmin = await isWebUserAdmin(user.id);
+  const userIsAdmin = await isWebUserAAOAdmin(user.id);
 
   // For non-public collections, user must be a member
   if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
@@ -451,7 +451,7 @@ export function createContentRouter(): Router {
       const ledCommitteeIds = ledCommittees.map(c => c.id);
 
       // Check if admin
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
 
       if (!userIsAdmin && ledCommitteeIds.length === 0) {
         return res.json({
@@ -573,7 +573,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -767,7 +767,7 @@ export function createContentRouter(): Router {
       }
 
       // Check permission
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
       const userIsLead = content.working_group_id
         ? await isCommitteeLead(content.working_group_id, user.id)
         : false;
@@ -980,7 +980,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1092,7 +1092,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1162,7 +1162,7 @@ export function createMyContentRouter(): Router {
       const userIsLead = contentItem.working_group_id
         ? await isCommitteeLead(contentItem.working_group_id, user.id)
         : false;
-      const userIsAdmin = await isWebUserAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(user.id);
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({

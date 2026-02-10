@@ -6,8 +6,8 @@
  * - Managing prospects and enrichment
  *
  * AAO platform admins are determined by membership in the "aao-admin" working group:
- * - Slack users: via isSlackUserAdmin() which looks up WorkOS user ID from Slack mapping
- * - Web users: via isWebUserAdmin() which checks working group membership directly
+ * - Slack users: via isSlackUserAAOAdmin() which looks up WorkOS user ID from Slack mapping
+ * - Web users: via isWebUserAAOAdmin() which checks working group membership directly
  *
  * Note: This is distinct from WorkOS organization admins, who are admins within their
  * own company's organization but do not have AAO platform-wide admin access.
@@ -95,7 +95,7 @@ const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
  * Results are cached for 30 minutes to reduce DB load
  */
-export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
+export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean> {
   // Check cache first
   const cached = adminStatusCache.get(slackUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -174,7 +174,7 @@ export function invalidateAllAdminCaches(): void {
  * Checks membership in aao-admin working group by WorkOS user ID
  * Results are cached for 30 minutes to reduce DB load
  */
-export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
+export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
   // Check cache first
   const cached = webAdminStatusCache.get(workosUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -206,13 +206,6 @@ export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
   }
 }
 
-/**
- * Check if a web user has admin privileges (via member context org role)
- * @deprecated Use isWebUserAdmin() for AAO admin checks - this only checks WorkOS org role
- */
-export function isAdmin(memberContext: MemberContext | null): boolean {
-  return memberContext?.org_membership?.role === 'admin';
-}
 
 /**
  * Compute the unified lifecycle stage for an organization.
@@ -1146,21 +1139,14 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
 }
 
 /**
- * Admin tool handler implementations
- * Includes both billing/invoice tools and prospect management tools
+ * Admin tool handler implementations.
+ * Callers must gate access via isSlackUserAAOAdmin/isWebUserAAOAdmin before registering these handlers.
  */
 export function createAdminToolHandlers(
   memberContext?: MemberContext | null
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // Helper for prospect tools that need member context for admin check
-  const requireAdminFromContext = (): string | null => {
-    if (memberContext && !isAdmin(memberContext)) {
-      return '⚠️ This tool requires admin access. If you believe you should have admin access, please contact your organization administrator.';
-    }
-    return null;
-  };
 
   // ============================================
   // BILLING & INVOICE HANDLERS
@@ -1168,8 +1154,6 @@ export function createAdminToolHandlers(
 
   // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = (input.limit as number) || 20;
 
@@ -1232,8 +1216,6 @@ export function createAdminToolHandlers(
 
   // Shared handler for get_account and get_organization_details
   const getAccountHandler = async (input: Record<string, unknown>) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const query = input.query as string;
@@ -1516,8 +1498,6 @@ export function createAdminToolHandlers(
 
   // Add prospect
   handlers.set('add_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = input.name as string;
     const companyType = (input.company_type as string) || undefined;
@@ -1589,8 +1569,6 @@ export function createAdminToolHandlers(
 
   // Update prospect
   handlers.set('update_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const orgId = input.org_id as string;
@@ -1682,8 +1660,6 @@ export function createAdminToolHandlers(
 
   // Enrich company
   handlers.set('enrich_company', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     if (!isLushaConfigured()) {
       return '❌ Enrichment is not configured (LUSHA_API_KEY not set).';
@@ -1761,8 +1737,6 @@ export function createAdminToolHandlers(
 
   // List prospects
   handlers.set('list_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const status = input.status as string | undefined;
@@ -1838,8 +1812,6 @@ export function createAdminToolHandlers(
 
   // Send payment request - the unified tool for getting prospects to pay
   handlers.set('send_payment_request', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const companyName = input.company_name as string;
     const domain = input.domain as string | undefined;
@@ -2424,8 +2396,6 @@ export function createAdminToolHandlers(
 
   // Search Lusha for prospects
   handlers.set('prospect_search_lusha', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     if (!isLushaConfigured()) {
       return '❌ Lusha is not configured (LUSHA_API_KEY not set).';
@@ -2478,8 +2448,6 @@ export function createAdminToolHandlers(
 
   // Search industry feeds
   handlers.set('search_industry_feeds', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const query = (input.query as string)?.toLowerCase().trim() || '';
     const status = (input.status as string) || 'all';
@@ -2556,8 +2524,6 @@ export function createAdminToolHandlers(
 
   // Add industry feed
   handlers.set('add_industry_feed', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const feedUrl = (input.feed_url as string)?.trim();
@@ -2625,8 +2591,6 @@ export function createAdminToolHandlers(
 
   // Get feed stats
   handlers.set('get_feed_stats', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const stats = await getFeedStats();
@@ -2660,8 +2624,6 @@ export function createAdminToolHandlers(
 
   // List pending proposals
   handlers.set('list_feed_proposals', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 50);
 
@@ -2699,8 +2661,6 @@ export function createAdminToolHandlers(
 
   // Approve a proposal
   handlers.set('approve_feed_proposal', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const proposalId = Number(input.proposal_id);
     const feedName = (input.feed_name as string)?.trim();
@@ -2769,8 +2729,6 @@ export function createAdminToolHandlers(
 
   // Reject a proposal
   handlers.set('reject_feed_proposal', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const proposalId = Number(input.proposal_id);
     const reason = input.reason as string | undefined;
@@ -2802,8 +2760,6 @@ export function createAdminToolHandlers(
 
   // Add media contact
   handlers.set('add_media_contact', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const slackUserId = input.slack_user_id as string | undefined;
     const email = input.email as string | undefined;
@@ -2852,8 +2808,6 @@ export function createAdminToolHandlers(
 
   // List flagged conversations
   handlers.set('list_flagged_conversations', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const unreviewedOnly = input.unreviewed_only !== false; // Default to true
     const severity = input.severity as 'high' | 'medium' | 'low' | undefined;
@@ -2912,8 +2866,6 @@ export function createAdminToolHandlers(
 
   // Review flagged conversation
   handlers.set('review_flagged_conversation', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const flaggedId = input.flagged_id as number;
     const notes = input.notes as string | undefined;
@@ -2948,8 +2900,6 @@ export function createAdminToolHandlers(
 
   // Grant discount to an organization
   handlers.set('grant_discount', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
@@ -3062,8 +3012,6 @@ export function createAdminToolHandlers(
 
   // Remove discount from an organization
   handlers.set('remove_discount', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
@@ -3119,8 +3067,6 @@ export function createAdminToolHandlers(
 
   // List organizations with active discounts
   handlers.set('list_discounts', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = (input.limit as number) || 20;
 
@@ -3170,8 +3116,6 @@ export function createAdminToolHandlers(
 
   // Create standalone promotion code
   handlers.set('create_promotion_code', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const code = input.code as string;
     const name = input.name as string | undefined;
@@ -3268,8 +3212,6 @@ export function createAdminToolHandlers(
 
   // Create chapter
   handlers.set('create_chapter', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const region = (input.region as string)?.trim();
@@ -3347,8 +3289,6 @@ export function createAdminToolHandlers(
 
   // List chapters
   handlers.set('list_chapters', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const chapters = await wgDb.getChapters();
@@ -3392,8 +3332,6 @@ export function createAdminToolHandlers(
 
   // Create industry gathering
   handlers.set('create_industry_gathering', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const startDateStr = input.start_date as string;
@@ -3506,8 +3444,6 @@ export function createAdminToolHandlers(
 
   // List industry gatherings
   handlers.set('list_industry_gatherings', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const gatherings = await wgDb.getIndustryGatherings();
@@ -3559,8 +3495,6 @@ export function createAdminToolHandlers(
 
   // Add committee leader
   handlers.set('add_committee_leader', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
@@ -3633,8 +3567,6 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
 
   // Remove committee leader
   handlers.set('remove_committee_leader', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
@@ -3685,8 +3617,6 @@ They are still a member but no longer have management access.`;
 
   // List committee leaders
   handlers.set('list_committee_leaders', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
 
@@ -3738,8 +3668,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
@@ -4000,8 +3928,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Find duplicate organizations
   handlers.set('find_duplicate_orgs', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const searchType = (input.search_type as string) || 'all';
     const pool = getPool();
@@ -4076,8 +4002,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Manage organization domains
   handlers.set('manage_organization_domains', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const action = input.action as string;
     const organizationId = input.organization_id as string;
@@ -4363,8 +4287,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Update organization member role
   handlers.set('update_org_member_role', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = (input.org_id as string)?.trim();
     const userId = (input.user_id as string)?.trim();
@@ -4453,8 +4375,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Check domain health
   handlers.set('check_domain_health', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const checkType = (input.check_type as string) || 'all';
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
@@ -4651,8 +4571,6 @@ Use add_committee_leader to assign a leader.`;
 
   // My engaged prospects - list owned prospects sorted by engagement
   handlers.set('my_engaged_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4735,8 +4653,6 @@ Use add_committee_leader to assign a leader.`;
 
   // My followups needed - list owned prospects needing attention
   handlers.set('my_followups_needed', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4826,8 +4742,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Unassigned prospects - list high-engagement prospects without owners
   handlers.set('unassigned_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4888,8 +4802,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Claim prospect - assign self as owner
   handlers.set('claim_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string;
@@ -4983,8 +4895,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Suggest prospects - find unmapped domains and Lusha results
   handlers.set('suggest_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
@@ -5079,8 +4989,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Set reminder - create a next step/reminder for a prospect
   handlers.set('set_reminder', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string;
@@ -5216,8 +5124,6 @@ Use add_committee_leader to assign a leader.`;
 
   // My upcoming tasks - list future scheduled tasks
   handlers.set('my_upcoming_tasks', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 20, 50);
@@ -5349,8 +5255,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Log conversation - record an interaction and analyze for task management
   handlers.set('log_conversation', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string | undefined;
@@ -5506,8 +5410,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Get insight summary
   handlers.set('get_insight_summary', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const insightType = input.insight_type as string | undefined;
     const limit = (input.limit as number) || 5;
@@ -5561,8 +5463,6 @@ Use add_committee_leader to assign a leader.`;
   // MEMBER SEARCH ANALYTICS HANDLERS
   // ============================================
   handlers.set('get_member_search_analytics', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
@@ -5673,8 +5573,6 @@ Use add_committee_leader to assign a leader.`;
   // ORGANIZATION ANALYTICS HANDLERS
   // ============================================
   handlers.set('list_organizations_by_users', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const pool = getPool();
@@ -5785,8 +5683,6 @@ Use add_committee_leader to assign a leader.`;
 
   // List Slack users for a specific organization
   handlers.set('list_slack_users_by_org', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const pool = getPool();
@@ -5937,8 +5833,6 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
 
   handlers.set('tag_insight', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const content = input.content as string;
@@ -5993,8 +5887,6 @@ Use add_committee_leader to assign a leader.`;
   });
 
   handlers.set('list_pending_insights', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const topic = (input.topic as string) || undefined;
@@ -6043,8 +5935,6 @@ Use add_committee_leader to assign a leader.`;
   });
 
   handlers.set('run_synthesis', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const topic = (input.topic as string) || undefined;
@@ -6126,8 +6016,6 @@ Use add_committee_leader to assign a leader.`;
   // LIST ESCALATIONS
   // ============================================
   handlers.set('list_escalations', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const status = (input.status as EscalationStatus) || 'open';
@@ -6187,8 +6075,6 @@ Use add_committee_leader to assign a leader.`;
   // RESOLVE ESCALATION
   // ============================================
   handlers.set('resolve_escalation', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     const escalationId = input.escalation_id;
     if (typeof escalationId !== 'number' || !Number.isInteger(escalationId) || escalationId < 1) {

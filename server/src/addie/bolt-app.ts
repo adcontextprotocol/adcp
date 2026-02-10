@@ -44,7 +44,7 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isSlackUserAdmin,
+  isSlackUserAAOAdmin,
 } from './mcp/admin-tools.js';
 import {
   EVENT_TOOLS,
@@ -606,7 +606,7 @@ export function invalidateAddieRulesCache(): void {
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
-    const userIsAdmin = await isSlackUserAdmin(userId);
+    const userIsAdmin = await isSlackUserAAOAdmin(userId);
     return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to build dynamic prompts, using defaults');
@@ -714,7 +714,7 @@ async function createUserScopedTools(
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
 
   // Check if user is AAO admin (based on aao-admin working group membership)
-  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
+  const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
@@ -782,7 +782,7 @@ async function createUserScopedTools(
       tools: allTools,
       handlers: allHandlers,
     },
-    isAdmin: userIsAdmin,
+    isAAOAdmin: userIsAdmin,
   };
 }
 
@@ -792,16 +792,16 @@ async function createUserScopedTools(
  *
  * @param userTools - All tools available to the user
  * @param selectedSets - Tool set names from the router's execution plan
- * @param isAdmin - Whether the user is an admin (affects which sets are valid)
+ * @param isAAOAdmin - Whether the user is an AAO admin (affects which sets are valid)
  * @returns Filtered tools and a hint about unavailable sets
  */
 function filterToolsBySet(
   userTools: RequestTools,
   selectedSets: string[],
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): { filteredTools: RequestTools; unavailableHint: string } {
   // Get all tool names that should be available based on selected sets
-  const allowedToolNames = new Set(getToolsForSets(selectedSets, isAdmin));
+  const allowedToolNames = new Set(getToolsForSets(selectedSets, isAAOAdmin));
 
   // Filter tools to only those allowed
   const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
@@ -815,7 +815,7 @@ function filterToolsBySet(
   }
 
   // Build hint about unavailable tool sets
-  const unavailableHint = buildUnavailableSetsHint(selectedSets, isAdmin);
+  const unavailableHint = buildUnavailableSetsHint(selectedSets, isAAOAdmin);
 
   logger.debug({
     selectedSets,
@@ -1111,7 +1111,7 @@ async function handleUserMessage({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -1536,7 +1536,7 @@ async function handleAppMention({
   });
 
   // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, mentionChannelContext);
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, mentionChannelContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2000,7 +2000,7 @@ async function handleDirectMessage(
   });
 
   // Create user-scoped tools
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2292,7 +2292,7 @@ async function handleActiveThreadReply({
   });
 
   // Create user-scoped tools (pass channel context for working group auto-detection)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -2564,11 +2564,12 @@ async function handleChannelMessage({
       logger.debug({ error, channelId }, 'Addie Bolt: Could not get channel context');
     }
 
-    // Fetch member context and insights in parallel (both are independent)
+    // Fetch member context, insights, and admin status in parallel (all independent)
     // Insights use a cache with 5-minute TTL to reduce DB load
-    const [memberContext, memberInsights] = await Promise.all([
+    const [memberContext, memberInsights, isAdminForRouting] = await Promise.all([
       getMemberContext(userId),
       getCachedInsights(userId),
+      isSlackUserAAOAdmin(userId),
     ]);
 
     if (memberInsights && memberInsights.length > 0) {
@@ -2585,6 +2586,7 @@ async function handleChannelMessage({
       memberContext,
       isThread: isInThread,
       memberInsights,
+      isAAOAdmin: isAdminForRouting,
     };
 
     // Quick match first (no API call for obvious cases)
@@ -2691,7 +2693,7 @@ async function handleChannelMessage({
     );
 
     // Get all user-scoped tools then filter by selected tool sets
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
     const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin);
 
     // Build SI context from retrieved agents
@@ -2996,7 +2998,7 @@ async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
   logger.debug({ userId }, 'Addie Bolt: View Flagged clicked');
 
   // Verify admin status
-  const admin = await isSlackUserAdmin(userId);
+  const admin = await isSlackUserAAOAdmin(userId);
   if (!admin) {
     logger.warn({ userId }, 'Addie Bolt: Non-admin tried to view flagged threads');
     return;
@@ -3176,7 +3178,7 @@ async function handleReactionAdded({
   );
 
   // Create user-scoped tools (pass channel context for working group auto-detection)
-  const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
   const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;

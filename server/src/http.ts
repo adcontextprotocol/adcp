@@ -52,7 +52,7 @@ import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
-import { isWebUserAdmin } from "./addie/mcp/admin-tools.js";
+import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -2120,7 +2120,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to update this brand' });
         }
@@ -2170,7 +2170,7 @@ export class HTTPServer {
 
         // Check ownership - user must be creator or admin
         const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
@@ -2342,7 +2342,7 @@ export class HTTPServer {
 
         // Check ownership
         const isCreator = property.created_by_email && property.created_by_email === req.user?.email;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
@@ -2526,7 +2526,7 @@ export class HTTPServer {
         // Check if user can delete (admin or creator)
         const devUser = getDevUser(req);
         const isDevAdmin = devUser?.isAdmin === true;
-        const isDbAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isDbAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
