@@ -44,13 +44,60 @@
     },
     "conversions": {
       "type": "number",
-      "description": "Conversions (reserved for future CPA pricing support)",
+      "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
+      "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Total monetary value of attributed conversions (in the reporting currency)",
+      "minimum": 0
+    },
+    "roas": {
+      "type": "number",
+      "description": "Return on ad spend (conversion_value / spend)",
+      "minimum": 0
+    },
+    "cost_per_acquisition": {
+      "type": "number",
+      "description": "Cost per conversion (spend / conversions)",
       "minimum": 0
     },
     "leads": {
       "type": "number",
-      "description": "Leads generated (reserved for future CPL pricing support)",
+      "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
       "minimum": 0
+    },
+    "by_event_type": {
+      "type": "array",
+      "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "$ref": "/schemas/enums/event-type.json",
+            "description": "The event type"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of events of this type",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of events of this type",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "event_type",
+          "count"
+        ],
+        "additionalProperties": true
+      }
     },
     "grps": {
       "type": "number",
@@ -165,6 +212,38 @@
         }
       },
       "additionalProperties": true
+    },
+    "by_action_source": {
+      "type": "array",
+      "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_source": {
+            "$ref": "/schemas/enums/action-source.json",
+            "description": "Where the conversion occurred"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of conversions from this action source",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of conversions from this action source",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "action_source",
+          "count"
+        ],
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true

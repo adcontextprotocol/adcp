@@ -384,6 +384,14 @@ export class BrandManager {
       return;
     }
 
+    if (!data.brand_agent.id) {
+      result.errors.push({
+        field: 'brand_agent.id',
+        message: 'brand_agent.id is required',
+        severity: 'error',
+      });
+    }
+
     if (!data.brand_agent.url) {
       result.errors.push({
         field: 'brand_agent.url',
@@ -438,10 +446,10 @@ export class BrandManager {
       return;
     }
 
-    if (!data.house.canonical_domain) {
+    if (!data.house.domain) {
       result.errors.push({
-        field: 'house.canonical_domain',
-        message: 'house.canonical_domain is required',
+        field: 'house.domain',
+        message: 'house.domain is required',
         severity: 'error',
       });
     }
@@ -478,24 +486,24 @@ export class BrandManager {
       this.validateBrand(brand, index, result);
     });
 
-    // Check for duplicate canonical_domains
-    const seenDomains = new Set<string>();
+    // Check for duplicate brand IDs
+    const seenIds = new Set<string>();
     data.brands.forEach((brand, index) => {
-      if (brand.canonical_domain) {
-        if (seenDomains.has(brand.canonical_domain)) {
+      if (brand.id) {
+        if (seenIds.has(brand.id)) {
           result.errors.push({
-            field: `brands[${index}].canonical_domain`,
-            message: `Duplicate canonical_domain: ${brand.canonical_domain}`,
+            field: `brands[${index}].id`,
+            message: `Duplicate brand id: ${brand.id}`,
             severity: 'error',
           });
         }
-        seenDomains.add(brand.canonical_domain);
+        seenIds.add(brand.id);
       }
     });
 
     // Validate parent_brand references
     data.brands.forEach((brand, index) => {
-      if (brand.parent_brand && !seenDomains.has(brand.parent_brand)) {
+      if (brand.parent_brand && !seenIds.has(brand.parent_brand)) {
         result.warnings.push({
           field: `brands[${index}].parent_brand`,
           message: `parent_brand "${brand.parent_brand}" not found in this portfolio`,
@@ -515,10 +523,10 @@ export class BrandManager {
   ): void {
     const prefix = `brands[${index}]`;
 
-    if (!brand.canonical_domain) {
+    if (!brand.id) {
       result.errors.push({
-        field: `${prefix}.canonical_domain`,
-        message: 'canonical_domain is required',
+        field: `${prefix}.id`,
+        message: 'id is required',
         severity: 'error',
       });
     }
@@ -533,7 +541,7 @@ export class BrandManager {
 
     // Validate keller_type if present
     if (brand.keller_type) {
-      const validTypes: KellerType[] = ['master', 'sub-brand', 'endorsed', 'independent'];
+      const validTypes: KellerType[] = ['master', 'sub_brand', 'endorsed', 'independent'];
       if (!validTypes.includes(brand.keller_type)) {
         result.errors.push({
           field: `${prefix}.keller_type`,
@@ -671,14 +679,14 @@ export class BrandManager {
             const primaryName = this.getPrimaryName(brand.names);
             const result: ResolvedBrand = {
               canonical_id: brand.parent_brand
-                ? `${brand.parent_brand}#${brand.canonical_domain}`
-                : brand.canonical_domain,
-              canonical_domain: brand.canonical_domain,
-              brand_name: primaryName || brand.canonical_domain,
+                ? `${brand.parent_brand}#${brand.id}`
+                : brand.id,
+              canonical_domain: brand.id,
+              brand_name: primaryName || brand.id,
               names: brand.names,
               keller_type: brand.keller_type,
               parent_brand: brand.parent_brand,
-              house_domain: portfolioData.house.canonical_domain,
+              house_domain: portfolioData.house.domain,
               house_name: portfolioData.house.name,
               brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
               source: 'brand_json',
@@ -688,18 +696,18 @@ export class BrandManager {
           }
 
           // Check if the query domain is the house domain itself
-          if (currentDomain === portfolioData.house.canonical_domain) {
+          if (currentDomain === portfolioData.house.domain) {
             // Return the master brand if there is one
             const masterBrand = portfolioData.brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {
               const primaryName = this.getPrimaryName(masterBrand.names);
               const result: ResolvedBrand = {
-                canonical_id: masterBrand.canonical_domain,
-                canonical_domain: masterBrand.canonical_domain,
-                brand_name: primaryName || masterBrand.canonical_domain,
+                canonical_id: masterBrand.id,
+                canonical_domain: masterBrand.id,
+                brand_name: primaryName || masterBrand.id,
                 names: masterBrand.names,
                 keller_type: masterBrand.keller_type,
-                house_domain: portfolioData.house.canonical_domain,
+                house_domain: portfolioData.house.domain,
                 house_name: portfolioData.house.name,
                 source: 'brand_json',
               };
@@ -730,8 +738,8 @@ export class BrandManager {
     identifier: string
   ): BrandDefinition | null {
     for (const brand of portfolio.brands) {
-      // Check if identifier matches canonical_domain
-      if (brand.canonical_domain === identifier) {
+      // Check if identifier matches brand id
+      if (brand.id === identifier) {
         return brand;
       }
 
@@ -854,6 +862,7 @@ export class BrandManager {
    */
   createBrandAgentFile(
     agentUrl: string,
+    agentId: string,
     capabilities?: string[],
     auth?: BrandAgentVariant['auth']
   ): string {
@@ -862,6 +871,7 @@ export class BrandManager {
       version: '1.0',
       brand_agent: {
         url: agentUrl,
+        id: agentId,
         capabilities: capabilities || [],
       },
       last_updated: new Date().toISOString(),

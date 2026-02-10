@@ -298,14 +298,14 @@ export function getToolsInSet(setName: string): string[] {
 /**
  * Get all tool names for multiple sets, including always-available tools
  */
-export function getToolsForSets(setNames: string[], isAdmin: boolean = false): string[] {
+export function getToolsForSets(setNames: string[], isAAOAdmin: boolean = false): string[] {
   const tools = new Set<string>(ALWAYS_AVAILABLE_TOOLS);
 
   for (const setName of setNames) {
     const toolSet = TOOL_SETS[setName];
     if (toolSet) {
       // Skip admin-only sets if user is not admin
-      if (toolSet.adminOnly && !isAdmin) {
+      if (toolSet.adminOnly && !isAAOAdmin) {
         continue;
       }
       for (const tool of toolSet.tools) {
@@ -320,10 +320,10 @@ export function getToolsForSets(setNames: string[], isAdmin: boolean = false): s
 /**
  * Get tool set names that were NOT selected (for hinting to Sonnet)
  */
-export function getUnavailableSets(selectedSets: string[], isAdmin: boolean = false): string[] {
+export function getUnavailableSets(selectedSets: string[], isAAOAdmin: boolean = false): string[] {
   return Object.keys(TOOL_SETS).filter(setName => {
     // Don't mention admin set to non-admins
-    if (TOOL_SETS[setName].adminOnly && !isAdmin) {
+    if (TOOL_SETS[setName].adminOnly && !isAAOAdmin) {
       return false;
     }
     return !selectedSets.includes(setName);
@@ -334,8 +334,8 @@ export function getUnavailableSets(selectedSets: string[], isAdmin: boolean = fa
  * Build a hint message about unavailable tool sets
  * This helps Sonnet know it can redirect the user if needed
  */
-export function buildUnavailableSetsHint(selectedSets: string[], isAdmin: boolean = false): string {
-  const unavailable = getUnavailableSets(selectedSets, isAdmin);
+export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boolean = false): string {
+  const unavailable = getUnavailableSets(selectedSets, isAAOAdmin);
 
   if (unavailable.length === 0) {
     return '';
@@ -368,9 +368,9 @@ export function requiresPrecision(selectedSets: string[]): boolean {
 /**
  * Get tool set descriptions for the router prompt
  */
-export function getToolSetDescriptionsForRouter(isAdmin: boolean = false): string {
+export function getToolSetDescriptionsForRouter(isAAOAdmin: boolean = false): string {
   return Object.entries(TOOL_SETS)
-    .filter(([_, set]) => !set.adminOnly || isAdmin)
+    .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
     .map(([name, set]) => `- **${name}**: ${set.description}`)
     .join('\n');
 }

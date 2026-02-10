@@ -13,7 +13,7 @@ import type { MemberContext } from '../../member-context.js';
  */
 export function buildQuickActions(
   memberContext: MemberContext,
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): QuickAction[] {
   const actions: QuickAction[] = [];
 
@@ -45,7 +45,7 @@ export function buildQuickActions(
   });
 
   // Admin: View Flagged Threads
-  if (isAdmin) {
+  if (isAAOAdmin) {
     actions.push({
       id: 'view-flagged',
       label: 'Flagged Threads',

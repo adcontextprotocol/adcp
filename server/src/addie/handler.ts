@@ -30,7 +30,7 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isSlackUserAdmin,
+  isSlackUserAAOAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -330,7 +330,7 @@ async function createUserScopedTools(
   }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
-  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
+  const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
@@ -398,7 +398,7 @@ async function createUserScopedTools(
       tools: allTools,
       handlers: allHandlers,
     },
-    isAdmin: userIsAdmin,
+    isAAOAdmin: userIsAdmin,
   };
 }
 
@@ -408,7 +408,7 @@ async function createUserScopedTools(
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
-    const userIsAdmin = await isSlackUserAdmin(userId);
+    const userIsAdmin = await isSlackUserAAOAdmin(userId);
     return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
@@ -462,9 +462,9 @@ export async function handleAssistantMessage(
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
-  // Check if user is an admin (for admin-only tools access)
-  const isAdmin = await isSlackUserAdmin(event.user);
-  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status');
+  // Check if user is an AAO admin (for admin-only tools access)
+  const isAAOAdmin = await isSlackUserAAOAdmin(event.user);
+  logger.debug({ userId: event.user, isAAOAdmin }, 'Addie: Checked admin status');
 
   // Resolve user mentions to include names (e.g., <@U123> -> <@U123|John>)
   const textWithResolvedMentions = await resolveSlackMentions(event.text, lookupSlackUserName);
@@ -483,7 +483,7 @@ export async function handleAssistantMessage(
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
     inputValidation.sanitized,
-    isAdmin
+    isAAOAdmin
   );
 
   // Check for sensitive topics before processing
@@ -512,7 +512,7 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
@@ -616,9 +616,9 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
-  // Check if user is an admin (for admin-only tools access)
-  const isAdmin = await isSlackUserAdmin(event.user);
-  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status for mention');
+  // Check if user is an AAO admin (for admin-only tools access)
+  const isAAOAdmin = await isSlackUserAAOAdmin(event.user);
+  logger.debug({ userId: event.user, isAAOAdmin }, 'Addie: Checked admin status for mention');
 
   // Strip bot mention
   const rawText = botUserId ? stripBotMention(event.text, botUserId) : event.text;
@@ -633,7 +633,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
     event.user,
     inputValidation.sanitized,
-    isAdmin
+    isAAOAdmin
   );
 
   // Check for sensitive topics before processing (channel mentions are more public)
@@ -663,7 +663,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;

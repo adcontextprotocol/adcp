@@ -168,8 +168,8 @@ const TEST_CASES = [
 /**
  * Build the router prompt
  */
-function buildRouterPrompt(message: string, isAdmin = false): string {
-  const toolSetsSection = getToolSetDescriptionsForRouter(isAdmin);
+function buildRouterPrompt(message: string, isAAOAdmin = false): string {
+  const toolSetsSection = getToolSetDescriptionsForRouter(isAAOAdmin);
 
   return `You are Addie's router. Analyze this message and select the appropriate tool SETS.
 
@@ -195,7 +195,7 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 
 ## Instructions
 Respond with a JSON object: {"tool_sets": ["set1", "set2"], "reason": "brief reason"}
-Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAdmin ? ', admin' : ''}
+Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
 Empty array [] means respond without tools (general knowledge)
 
 Respond with ONLY the JSON object, no other text.`;

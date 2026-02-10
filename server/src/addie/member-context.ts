@@ -32,7 +32,7 @@ const joinRequestDb = new JoinRequestDatabase();
  */
 async function getPendingContentForUser(
   workosUserId: string,
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): Promise<{ total: number; by_committee: Record<string, number> }> {
   const pool = getPool();
 
@@ -48,7 +48,7 @@ async function getPendingContentForUser(
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
 
-  if (!isAdmin && ledCommitteeIds.length === 0) {
+  if (!isAAOAdmin && ledCommitteeIds.length === 0) {
     return { total: 0, by_committee: {} };
   }
 
@@ -61,7 +61,7 @@ async function getPendingContentForUser(
   `;
   const params: (string | string[])[] = [];
 
-  if (!isAdmin) {
+  if (!isAAOAdmin) {
     // Non-admins only see pending for committees they lead
     params.push(ledCommitteeIds);
     query += ` AND p.working_group_id = ANY($${params.length})`;
@@ -474,15 +474,18 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       };
     }
 
-    // Get pending content for committee leads and admins
+    // Get pending content for committee leads and AAO admins
     const ledCommitteeIds = context.working_groups
       ?.filter(wg => wg.is_leader)
       .map(wg => wg.name) || [];
-    const userIsAdmin = context.org_membership?.role === 'admin';
 
-    if (ledCommitteeIds.length > 0 || userIsAdmin) {
+    // Check AAO admin status (aao-admin working group membership)
+    const adminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
+    const isAAOAdmin = adminGroup ? await workingGroupDb.isMember(adminGroup.id, workosUserId) : false;
+
+    if (ledCommitteeIds.length > 0 || isAAOAdmin) {
       try {
-        const pendingContent = await getPendingContentForUser(workosUserId, userIsAdmin);
+        const pendingContent = await getPendingContentForUser(workosUserId, isAAOAdmin);
         if (pendingContent.total > 0) {
           context.pending_content = pendingContent;
         }
@@ -491,8 +494,9 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
-    // Get pending join requests count for org admins
-    if (userIsAdmin && organizationId) {
+    // Get pending join requests count for org admins (WorkOS org role - admin within their company)
+    const isOrgAdmin = context.org_membership?.role === 'admin';
+    if (isOrgAdmin && organizationId) {
       try {
         const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
         if (pendingJoinRequestsCount > 0) {
@@ -757,13 +761,16 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
-    // Step 13: Get pending content for committee leads and admins
+    // Step 13: Get pending content for committee leads and AAO admins
     const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
-    const webUserIsAdmin = context.org_membership?.role === 'admin';
 
-    if (leadsCommittees.length > 0 || webUserIsAdmin) {
+    // Check AAO admin status (aao-admin working group membership)
+    const webAdminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
+    const webIsAAOAdmin = webAdminGroup ? await workingGroupDb.isMember(webAdminGroup.id, workosUserId) : false;
+
+    if (leadsCommittees.length > 0 || webIsAAOAdmin) {
       try {
-        const pendingContent = await getPendingContentForUser(workosUserId, webUserIsAdmin);
+        const pendingContent = await getPendingContentForUser(workosUserId, webIsAAOAdmin);
         if (pendingContent.total > 0) {
           context.pending_content = pendingContent;
         }
@@ -772,8 +779,9 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
-    // Step 14: Get pending join requests count for org admins
-    if (webUserIsAdmin && organizationId) {
+    // Step 14: Get pending join requests count for org admins (WorkOS org role - admin within their company)
+    const webIsOrgAdmin = context.org_membership?.role === 'admin';
+    if (webIsOrgAdmin && organizationId) {
       try {
         const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
         if (pendingJoinRequestsCount > 0) {
