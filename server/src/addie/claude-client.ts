@@ -93,7 +93,7 @@ export interface RequestTools {
  */
 export interface UserScopedToolsResult {
   tools: RequestTools;
-  isAdmin: boolean;
+  isAAOAdmin: boolean;
 }
 
 /**

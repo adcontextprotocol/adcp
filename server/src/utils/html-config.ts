@@ -9,6 +9,7 @@ import type { Request, Response } from "express";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getPool } from "../db/client.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,7 @@ interface AppUser {
   email: string;
   firstName?: string | null;
   lastName?: string | null;
+  isMember?: boolean;
 }
 
 /**
@@ -37,7 +39,7 @@ interface AppUser {
  */
 export function buildAppConfig(user?: AppUser | null): {
   authEnabled: boolean;
-  user: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean } | null;
+  user: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isAdmin: boolean; isMember: boolean } | null;
   posthog: { apiKey: string; host: string } | null;
 } {
   let isAdmin = false;
@@ -54,6 +56,7 @@ export function buildAppConfig(user?: AppUser | null): {
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
+      isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
       apiKey: POSTHOG_API_KEY,
@@ -123,6 +126,24 @@ export function getPublicFilePath(filename: string): string {
 }
 
 /**
+ * Enrich a user object with membership status from the database.
+ */
+export async function enrichUserWithMembership(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
+  if (!user?.id || user.isMember !== undefined) return user;
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      [user.id]
+    );
+    user.isMember = !!result.rows[0]?.primary_organization_id;
+  } catch {
+    user.isMember = false;
+  }
+  return user;
+}
+
+/**
  * Serve an HTML file with app config injected.
  * Use after optionalAuth middleware to have req.user populated.
  *
@@ -136,6 +157,7 @@ export async function serveHtmlWithConfig(
 ): Promise<void> {
   const filePath = getPublicFilePath(filename);
 
+  await enrichUserWithMembership(req.user);
   const html = await fs.readFile(filePath, "utf-8");
   const injectedHtml = injectConfigIntoHtml(html, req.user);
 
@@ -307,6 +329,7 @@ export async function serveHtmlWithMetaTags(
 ): Promise<void> {
   const filePath = getPublicFilePath(filename);
 
+  await enrichUserWithMembership(req.user);
   let html = await fs.readFile(filePath, "utf-8");
 
   // Inject meta tags first (if provided)

@@ -281,7 +281,7 @@ export interface PublisherConfig {
 /**
  * Brand architecture type from Keller's theory
  */
-export type KellerType = 'master' | 'sub-brand' | 'endorsed' | 'independent';
+export type KellerType = 'master' | 'sub_brand' | 'endorsed' | 'independent';
 
 /**
  * Brand configuration stored in member profiles
@@ -319,7 +319,7 @@ export interface BrandProperty {
  * Brand definition within a house portfolio
  */
 export interface BrandDefinition {
-  canonical_domain: string;
+  id: string;
   names: LocalizedName[];
   keller_type?: KellerType;
   parent_brand?: string;
@@ -332,7 +332,7 @@ export interface BrandDefinition {
  * House definition (corporate entity that owns brands)
  */
 export interface HouseDefinition {
-  canonical_domain: string;
+  domain: string;
   name: string;
   names?: LocalizedName[];
   architecture?: 'branded_house' | 'house_of_brands' | 'hybrid';
@@ -343,6 +343,7 @@ export interface HouseDefinition {
  */
 export interface BrandAgentConfig {
   url: string;
+  id: string;
   capabilities?: string[];
 }
 

@@ -13,7 +13,7 @@
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
-import { isSlackUserAdmin } from './admin-tools.js';
+import { isSlackUserAAOAdmin } from './admin-tools.js';
 import { eventsDb } from '../../db/events-db.js';
 import { query } from '../../db/client.js';
 import {
@@ -287,7 +287,7 @@ async function getPersonalizedEvents(
  */
 export async function canCreateEvents(slackUserId: string): Promise<boolean> {
   // Admins can always create events
-  const isAdmin = await isSlackUserAdmin(slackUserId);
+  const isAdmin = await isSlackUserAAOAdmin(slackUserId);
   if (isAdmin) return true;
 
   // TODO: Check committee membership when that's implemented

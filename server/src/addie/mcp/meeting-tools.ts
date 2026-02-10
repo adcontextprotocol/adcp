@@ -15,7 +15,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { RecurrenceRule, CreateMeetingSeriesInput } from '../../types.js';
-import { isSlackUserAdmin } from './admin-tools.js';
+import { isSlackUserAAOAdmin, isWebUserAAOAdmin } from './admin-tools.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import * as meetingService from '../../services/meeting-service.js';
@@ -33,7 +33,7 @@ const workingGroupDb = new WorkingGroupDatabase();
  */
 export async function canScheduleMeetings(slackUserId: string): Promise<boolean> {
   // Admins can always schedule
-  const isAdmin = await isSlackUserAdmin(slackUserId);
+  const isAdmin = await isSlackUserAAOAdmin(slackUserId);
   if (isAdmin) return true;
 
   // Check if user is a leader of any working group
@@ -574,15 +574,15 @@ export function createMeetingToolHandlers(
     // This check runs for both Slack and web channels
     const userId = getUserId();
     if (userId) {
-      // Determine admin status from either Slack or web context
-      let isAdmin = false;
+      // Determine AAO admin status from either Slack or web context
+      let isAAOAdmin = false;
       if (slackUserId) {
-        isAdmin = await isSlackUserAdmin(slackUserId);
-      } else if (memberContext?.org_membership?.role === 'admin') {
-        isAdmin = true;
+        isAAOAdmin = await isSlackUserAAOAdmin(slackUserId);
+      } else if (memberContext?.workos_user?.workos_user_id) {
+        isAAOAdmin = await isWebUserAAOAdmin(memberContext.workos_user.workos_user_id);
       }
 
-      if (!isAdmin) {
+      if (!isAAOAdmin) {
         const isGroupLeader = await workingGroupDb.isLeader(workingGroup.id, userId);
         if (!isGroupLeader) {
           return `⚠️ You can only schedule meetings for committees you lead. You're not a leader of "${workingGroup.name}".`;

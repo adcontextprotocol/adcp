@@ -56,6 +56,53 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
+    "optimization_goal": {
+      "type": "object",
+      "description": "Conversion optimization goal for this package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the seller optimizes for maximum conversions within budget.",
+      "properties": {
+        "event_source_id": {
+          "type": "string",
+          "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
+        },
+        "event_type": {
+          "$ref": "/schemas/enums/event-type.json",
+          "description": "Event type to optimize for (e.g. purchase, lead)"
+        },
+        "target_roas": {
+          "type": "number",
+          "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent). Mutually exclusive with target_cpa.",
+          "minimum": 0
+        },
+        "target_cpa": {
+          "type": "number",
+          "description": "Target cost per acquisition in the buy currency. Mutually exclusive with target_roas.",
+          "minimum": 0
+        },
+        "attribution_window": {
+          "type": "object",
+          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. When omitted, the seller uses their default window.",
+          "properties": {
+            "click_through": {
+              "type": "string",
+              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            },
+            "view_through": {
+              "type": "string",
+              "description": "View-through attribution window (e.g. '1d', '7d')"
+            }
+          },
+          "required": [
+            "click_through"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_source_id",
+        "event_type"
+      ],
+      "additionalProperties": true
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",

@@ -84,6 +84,16 @@
           "description": "Total video completions across all media buys (if applicable)",
           "minimum": 0
         },
+        "conversions": {
+          "type": "number",
+          "description": "Total conversions across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "conversion_value": {
+          "type": "number",
+          "description": "Total conversion value across all media buys (if applicable)",
+          "minimum": 0
+        },
         "media_buy_count": {
           "type": "integer",
           "description": "Number of media buys included in the response",
@@ -272,6 +282,16 @@
                 "spend": {
                   "type": "number",
                   "description": "Daily spend",
+                  "minimum": 0
+                },
+                "conversions": {
+                  "type": "number",
+                  "description": "Daily conversions",
+                  "minimum": 0
+                },
+                "conversion_value": {
+                  "type": "number",
+                  "description": "Daily conversion value",
                   "minimum": 0
                 }
               },

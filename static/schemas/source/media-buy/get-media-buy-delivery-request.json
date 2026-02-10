@@ -5,6 +5,10 @@
   "description": "Request parameters for retrieving comprehensive delivery metrics",
   "type": "object",
   "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Filter delivery data to a specific account. When provided, only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account."
+    },
     "media_buy_ids": {
       "type": "array",
       "description": "Array of publisher media buy IDs to get delivery data for",

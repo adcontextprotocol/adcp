@@ -15,6 +15,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `account_id` | string | No | Filter to a specific account. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
@@ -402,6 +403,63 @@ async def main():
         if delivery.totals.impressions > 0:
             cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000
             print(f"{delivery.buyer_ref}: CPM ${cpm:.2f}, CTR {delivery.totals.ctr * 100:.2f}%")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Account-Scoped Query
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+
+// Get delivery for a specific advertiser account
+const result = await testAgent.getMediaBuyDelivery({
+  account_id: 'acc_coke_publicis',
+  status_filter: 'active',
+  start_date: '2024-02-01',
+  end_date: '2024-02-07'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuyDeliveryResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log(`${validated.aggregated_totals.media_buy_count} campaigns for account`);
+console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import GetMediaBuyDeliveryRequest
+
+async def main():
+    # Get delivery for a specific advertiser account
+    result = await test_agent.get_media_buy_delivery(
+        GetMediaBuyDeliveryRequest(
+            account_id='acc_coke_publicis',
+            status_filter='active',
+            start_date='2024-02-01',
+            end_date='2024-02-07'
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    print(f"{result.aggregated_totals.media_buy_count} campaigns for account")
+    print(f"Total spend: ${result.aggregated_totals.spend:.2f}")
 
 asyncio.run(main())
 ```
