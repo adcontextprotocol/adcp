@@ -145,6 +145,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 Immediate response with activation key:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -180,6 +181,7 @@ Immediate response with activation key:
 Initial response:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -195,6 +197,7 @@ Initial response:
 After polling for completion:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -340,12 +343,14 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
     "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
+    "is_live": false,
     "estimated_activation_duration_minutes": 60
   }]
 }
@@ -357,12 +362,14 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
     "type": "platform",
     "platform": "pubmatic",
     "account": "brand-456-pm",
+    "is_live": true,
     "activation_key": {
       "type": "segment_id",
       "segment_id": "pm_brand456_peer39_lux_auto"
@@ -378,11 +385,13 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
   "context_id": "ctx-signals-ghi789",
   "deployments": [{
     "type": "agent",
     "agent_url": "https://wonderstruck.salesagents.com",
+    "is_live": true,
     "activation_key": {
       "type": "key_value",
       "key": "audience_segment",
@@ -428,6 +437,7 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
+  "$schema": "/schemas/signals/activate-signal-response.json",
   "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
   "context_id": "ctx-signals-def456",
   "errors": [

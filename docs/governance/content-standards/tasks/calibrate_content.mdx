@@ -32,11 +32,12 @@ An artifact represents content context where ad placements occur - identified by
 
 ```json
 {
+  "$schema": "/schemas/content-standards/artifact.json",
   "property_id": {"type": "domain", "value": "reddit.com"},
   "artifact_id": "r_fitness_abc123",
   "assets": [
     {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
-    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources for recovery", "language": "en"},
     {"type": "text", "role": "paragraph", "content": "I've been lifting for 6 months and want to optimize my diet.", "language": "en"},
     {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
   ]
@@ -51,6 +52,7 @@ An artifact represents content context where ad placements occur - identified by
 
 ```json
 {
+  "$schema": "/schemas/content-standards/calibrate-content-response.json",
   "verdict": "pass",
   "explanation": "This content aligns well with the brand's fitness-focused positioning. Health and fitness content is explicitly marked as 'ideal' in the policy. The discussion is constructive and educational.",
   "features": [
@@ -72,6 +74,7 @@ An artifact represents content context where ad placements occur - identified by
 
 ```json
 {
+  "$schema": "/schemas/content-standards/calibrate-content-response.json",
   "verdict": "fail",
   "explanation": "This content discusses political topics which the policy explicitly excludes. While the article itself is balanced journalism, the brand has requested to avoid all controversial political content regardless of tone.",
   "features": [

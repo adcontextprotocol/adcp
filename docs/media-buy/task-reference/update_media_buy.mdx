@@ -334,8 +334,8 @@ const result = await testAgent.updateMediaBuy({
   packages: [{
     buyer_ref: 'ctv_package',
     targeting_overlay: {
-      geo_country_any_of: ['US', 'CA'],
-      geo_region_any_of: ['CA', 'NY', 'TX', 'ON', 'QC']
+      geo_countries: ['US', 'CA'],
+      geo_regions: ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
     }
   }]
 });
@@ -366,8 +366,8 @@ async def update_targeting():
                 {
                     'buyer_ref': 'ctv_package',
                     'targeting_overlay': {
-                        'geo_country_any_of': ['US', 'CA'],
-                        'geo_region_any_of': ['CA', 'NY', 'TX', 'ON', 'QC']
+                        'geo_countries': ['US', 'CA'],
+                        'geo_regions': ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
                     }
                 }
             ]

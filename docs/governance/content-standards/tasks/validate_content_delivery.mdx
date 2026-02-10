@@ -85,17 +85,16 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
 
 ```json
 {
+  "$schema": "/schemas/content-standards/validate-content-delivery-response.json",
   "summary": {
     "total_records": 1000,
     "passed_records": 950,
-    "failed_records": 50,
-    "total_features": 5000,
-    "passed_features": 4750,
-    "failed_features": 250
+    "failed_records": 50
   },
   "results": [
     {
       "record_id": "imp_12345",
+      "verdict": "pass",
       "features": [
         {
           "feature_id": "brand_safety",
@@ -106,6 +105,7 @@ This keeps responsibilities clear: sellers provide content samples via `get_medi
     },
     {
       "record_id": "imp_12346",
+      "verdict": "fail",
       "features": [
         {
           "feature_id": "brand_safety",

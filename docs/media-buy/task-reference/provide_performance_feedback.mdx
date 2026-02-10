@@ -148,6 +148,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "gam_1234567890",
   "measurement_period": {
     "start": "2024-01-01T00:00:00Z",
@@ -165,6 +166,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Performance feedback processed successfully. Optimization algorithms updated."
 }
@@ -175,6 +177,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "meta_9876543210",
   "package_id": "pkg_social_feed",
   "measurement_period": {
@@ -193,6 +196,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Exceptional performance noted. Increasing allocation to similar segments."
 }
@@ -203,6 +207,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "creative_id": "creative_video_123",
   "measurement_period": {
@@ -221,6 +226,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Creative performance feedback recorded. Consider creative optimization."
 }
