@@ -80,6 +80,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
+import { isMultiPartyThread, isDirectedAtAddie } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
@@ -2537,6 +2538,20 @@ async function handleChannelMessage({
     );
 
     if (participated) {
+      // When multiple humans are in the thread, only respond if the message
+      // is clearly directed at Addie (mentions her name, or replies to her).
+      if (isMultiPartyThread(slackThreadMessages, context.botUserId)
+          && !isDirectedAtAddie(messageText, slackThreadMessages, event.ts, userId, context.botUserId)) {
+        const uniqueHumans = new Set(
+          slackThreadMessages.map(msg => msg.user).filter(u => u && u !== context.botUserId)
+        ).size;
+        logger.info(
+          { channelId, userId, threadTs: threadTsForCheck, uniqueHumans },
+          'Addie Bolt: Skipping auto-response in multi-party thread (message not directed at Addie)'
+        );
+        return;
+      }
+
       logger.info({ channelId, userId, threadTs: threadTsForCheck },
         'Addie Bolt: Responding to active thread reply (Addie already participating)');
 
