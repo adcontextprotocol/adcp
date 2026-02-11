@@ -1,7 +1,7 @@
 ---
 title: Pricing Models
-description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, and DOOH support
-keywords: [pricing models, CPM, CPCV, CPP, CPC, CPV, GRP, video pricing, DOOH, share of voice, measurement]
+description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, CPA, and DOOH support
+keywords: [pricing models, CPM, CPCV, CPP, CPC, CPA, CPV, GRP, video pricing, DOOH, share of voice, measurement, conversions]
 ---
 
 
@@ -237,6 +237,50 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 ---
 
+### CPA (Cost Per Acquisition)
+**Cost per conversion event** - Advertiser pays when a defined conversion occurs.
+
+**Use Cases**: Retail media (pay per order), lead generation, app install campaigns, commerce media
+
+**Example** (fixed pricing):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpa-option.json",
+  "pricing_option_id": "cpa_usd_purchase",
+  "pricing_model": "cpa",
+  "fixed_price": 5.00,
+  "currency": "USD"
+}
+```
+
+**Example** (auction pricing):
+```json
+{
+  "pricing_option_id": "cpa_usd_auction",
+  "pricing_model": "cpa",
+  "currency": "USD",
+  "floor_price": 2.00,
+  "price_guidance": {
+    "p25": 3.00,
+    "p50": 5.00,
+    "p75": 8.00,
+    "p90": 12.00
+  }
+}
+```
+
+**Billing**: Charged when a conversion event fires. The specific event type (purchase, lead, signup, etc.) is defined by the package's `optimization_goal.event_type`, which ties to event sources configured via `sync_event_sources`.
+
+**How CPA connects to conversion tracking:**
+1. Buyer configures event sources via `sync_event_sources` (e.g., a pixel tracking purchases)
+2. Buyer sets `optimization_goal` on the package with `event_source_id` and `event_type`
+3. Events fire via `log_event` as conversions occur
+4. Delivery reports include `conversions`, `conversion_value`, `cost_per_acquisition`, and `roas`
+
+**Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. Use `optimization_goal.event_type` to specify the conversion type: `purchase` for CPO equivalents, `lead` for CPL equivalents, etc.
+
+---
+
 ### Flat Rate
 **Fixed cost** - Single payment regardless of delivery volume.
 
@@ -402,6 +446,7 @@ Different pricing models report different primary metrics:
 | CPV | views | impressions, quartile_data, spend |
 | CPP | grps | reach, frequency, spend |
 | CPC | clicks | impressions, ctr, spend |
+| CPA | conversions | conversion_value, cost_per_acquisition, roas, spend |
 | Flat Rate | N/A | impressions, reach, frequency |
 
 ## Example: Multi-Model CTV Product

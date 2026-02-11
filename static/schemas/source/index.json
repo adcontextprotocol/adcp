@@ -537,6 +537,10 @@
           "$ref": "/schemas/pricing-options/cpp-option.json",
           "description": "Cost Per Point (CPP) pricing for TV/audio with demographic measurement - supports fixed rate and auction modes"
         },
+        "cpa-option": {
+          "$ref": "/schemas/pricing-options/cpa-option.json",
+          "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - supports fixed rate and auction modes"
+        },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
           "description": "Flat rate pricing for DOOH and sponsorships - supports fixed rate and auction modes"
