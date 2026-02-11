@@ -672,7 +672,13 @@ export function createMeetingToolHandlers(
         const duplicate = existingSeries.find(s => s.title === title);
         if (duplicate) {
           const seriesMeetings = await meetingsDb.listMeetings({ series_id: duplicate.id, upcoming_only: true });
-          return `❌ A recurring series "${title}" already exists for ${workingGroup.name} with ${seriesMeetings.length} upcoming meeting(s). To start fresh, cancel the existing series first using cancel_meeting_series.`;
+          if (seriesMeetings.length === 0) {
+            // All meetings cancelled — auto-archive the stale series
+            await meetingsDb.updateSeries(duplicate.id, { status: 'archived' });
+            logger.info({ seriesId: duplicate.id }, 'Auto-archived stale series with no upcoming meetings');
+          } else {
+            return `❌ A recurring series "${title}" already exists for ${workingGroup.name} with ${seriesMeetings.length} upcoming meeting(s) (series_id: ${duplicate.id}). To start fresh, cancel the existing series first using cancel_meeting_series with series_id "${duplicate.id}".`;
+          }
         }
 
         // Create the meeting series
@@ -1074,11 +1080,19 @@ export function createMeetingToolHandlers(
     const permCheck = await checkSchedulePermission();
     if (permCheck) return permCheck;
 
-    const seriesId = input.series_id as string;
+    let seriesId = input.series_id as string;
 
-    const series = await meetingsDb.getSeriesById(seriesId);
+    let series = await meetingsDb.getSeriesById(seriesId);
     if (!series) {
-      return `❌ Meeting series not found: "${seriesId}".`;
+      // Maybe they passed a meeting ID — look up the parent series
+      const meeting = await meetingsDb.getMeetingById(seriesId);
+      if (meeting?.series_id) {
+        seriesId = meeting.series_id;
+        series = await meetingsDb.getSeriesById(seriesId);
+      }
+      if (!series) {
+        return `❌ Meeting series not found: "${input.series_id}". Use list_upcoming_meetings to find meetings, then check series_id from get_meeting_details.`;
+      }
     }
 
     if (series.status === 'archived') {
