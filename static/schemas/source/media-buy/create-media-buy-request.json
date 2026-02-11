@@ -143,6 +143,7 @@
   },
   "required": [
     "buyer_ref",
+    "account_id",
     "brand_manifest",
     "start_time",
     "end_time"

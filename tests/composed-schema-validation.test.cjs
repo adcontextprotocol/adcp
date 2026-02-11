@@ -162,6 +162,7 @@ async function runTests() {
     '/schemas/media-buy/create-media-buy-request.json',
     {
       buyer_ref: 'campaign-2024-q4',
+      account_id: 'acc_test_001',
       packages: [
         {
           buyer_ref: 'pkg-001',
@@ -193,6 +194,7 @@ async function runTests() {
     '/schemas/media-buy/create-media-buy-request.json',
     {
       buyer_ref: 'campaign-simple',
+      account_id: 'acc_test_001',
       packages: [
         {
           buyer_ref: 'pkg-001',
@@ -270,6 +272,7 @@ async function runTests() {
         path.join(bundledPath, 'media-buy/create-media-buy-request.json'),
         {
           buyer_ref: 'campaign-bundled-test',
+          account_id: 'acc_test_001',
           packages: [
             {
               buyer_ref: 'pkg-001',

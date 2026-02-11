@@ -44,10 +44,10 @@
       "properties": {
         "setup_modes": {
           "type": "array",
-          "description": "How accounts can be established with this seller. sync_accounts: agent provisions accounts programmatically. oauth: buyer connects existing account via OAuth. auto_provision: seller creates account on first billable operation.",
+          "description": "How accounts can be established with this seller. sync_accounts: agent provisions accounts programmatically. oauth: buyer connects existing account via OAuth.",
           "items": {
             "type": "string",
-            "enum": ["sync_accounts", "oauth", "auto_provision"]
+            "enum": ["sync_accounts", "oauth"]
           },
           "minItems": 1
         },

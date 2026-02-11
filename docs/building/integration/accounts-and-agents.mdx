@@ -99,7 +99,7 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 
 | Field | Description |
 |-------|-------------|
-| `setup_modes` | How accounts can be established: `sync_accounts`, `oauth`, `auto_provision` |
+| `setup_modes` | How accounts can be established: `sync_accounts`, `oauth` |
 | `supported_billing` | Which billing models the seller supports: `brand`, `operator`, `agent` |
 | `required_for_products` | Whether `get_products` requires an `account_id`. When true, set up an account before browsing. |
 
@@ -108,8 +108,6 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 **`sync_accounts`** — Agent provisions accounts programmatically. The agent declares which brands it represents and who should be invoiced. The seller provisions accounts accordingly. This is the primary mechanism for establishing accounts at scale.
 
 **`oauth`** — Buyer connects an existing account. For sellers where the buyer already has a direct account (social platforms, self-serve platforms), the agent connects via OAuth. After OAuth, `list_accounts` returns the buyer's existing accounts.
-
-**`auto_provision`** — Seller creates account on first buy. Some sellers create accounts automatically on the first billable operation, using standard terms. The agent doesn't need to set up accounts in advance.
 
 ### Agent Workflow
 
@@ -372,9 +370,9 @@ Or as a URL to a hosted manifest:
 }
 ```
 
-### Account ID
+### Required: Account ID
 
-Billable operations require `account_id` when accounts are established via `sync_accounts` or `oauth`. The agent gets the `account_id` from the sync response (or `list_accounts` for OAuth-connected accounts):
+Every billable operation requires `account_id`. The agent gets this from `sync_accounts` (or `list_accounts` for OAuth-connected accounts):
 
 ```json
 {
@@ -384,8 +382,6 @@ Billable operations require `account_id` when accounts are established via `sync
 ```
 
 The `account_id` is the seller's identifier for the billing relationship. The agent's natural key is `(house, brand_id, operator)` — but the seller maps that to an `account_id` during account setup, and the agent uses that ID on all subsequent operations.
-
-For sellers that support `auto_provision`, the agent may omit `account_id` on the first operation — the seller creates an account automatically and returns the `account_id` in the response.
 
 For `get_products`, whether `account_id` is required depends on the seller's capabilities (`account.required_for_products`). When required, the seller uses the account to determine rate-card-specific pricing and available inventory.
 
