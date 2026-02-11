@@ -49,15 +49,21 @@
       "required": ["url"],
       "additionalProperties": true
     },
+    "color_value": {
+      "oneOf": [
+        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+      ]
+    },
     "colors": {
       "type": "object",
-      "description": "Brand color palette",
+      "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role.",
       "properties": {
-        "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "secondary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "text": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        "primary": { "$ref": "#/definitions/color_value" },
+        "secondary": { "$ref": "#/definitions/color_value" },
+        "accent": { "$ref": "#/definitions/color_value" },
+        "background": { "$ref": "#/definitions/color_value" },
+        "text": { "$ref": "#/definitions/color_value" }
       },
       "additionalProperties": true
     },
@@ -201,8 +207,35 @@
         "colors": { "$ref": "#/definitions/colors" },
         "fonts": { "$ref": "#/definitions/fonts" },
         "tone": {
-          "type": "string",
-          "description": "Brand voice and messaging tone"
+          "description": "Brand voice and messaging tone guidelines",
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Simple tone descriptors for backwards compatibility"
+            },
+            {
+              "type": "object",
+              "description": "Structured brand voice guidelines",
+              "properties": {
+                "voice": { "type": "string", "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')" },
+                "attributes": {
+                  "type": "array",
+                  "description": "Personality traits that characterize the brand voice",
+                  "items": { "type": "string" }
+                },
+                "dos": {
+                  "type": "array",
+                  "description": "Guidance for copy generation - what TO do",
+                  "items": { "type": "string" }
+                },
+                "donts": {
+                  "type": "array",
+                  "description": "Guardrails to avoid brand violations - what NOT to do",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          ]
         },
         "tagline": {
           "type": "string",
@@ -447,7 +480,12 @@
             {"url": "https://cdn.pg.com/tide/logo-square.png", "tags": ["square", "primary"]}
           ],
           "colors": {"primary": "#FF6600", "secondary": "#0066CC"},
-          "tone": "clean, fresh, trustworthy",
+          "tone": {
+            "voice": "clean, fresh, trustworthy",
+            "attributes": ["reliable", "family-friendly", "confident"],
+            "dos": ["Use simple, direct language", "Emphasize cleaning power"],
+            "donts": ["Avoid technical jargon", "Don't be overly serious"]
+          },
           "tagline": "Tide's In, Dirt's Out",
           "properties": [
             {"type": "website", "identifier": "tide.com", "primary": true},

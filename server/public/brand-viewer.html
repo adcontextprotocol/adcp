@@ -724,6 +724,28 @@
         return div.innerHTML;
       }
 
+      function escapeAttr(str) {
+        if (str == null) return '';
+        return escapeHtml(String(str)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function isSafeUrl(url) {
+        try {
+          const parsed = new URL(url, window.location.origin);
+          return ['http:', 'https:'].includes(parsed.protocol);
+        } catch {
+          return false;
+        }
+      }
+
+      function safeHex(hex) {
+        return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : '#cccccc';
+      }
+
+      function safeFontFamily(name) {
+        return String(name).replace(/[;"'<>&]/g, '');
+      }
+
       async function init() {
         const pathParts = window.location.pathname.split('/');
         // /brand/view/domain.com → domain is everything after /brand/view/
@@ -811,7 +833,7 @@
                 <div class="info-grid">
                   <div class="info-item">
                     <div class="info-label">Brand Agent URL</div>
-                    <div class="info-value"><a href="${escapeHtml(data.brand_agent.url)}" target="_blank">${escapeHtml(data.brand_agent.url)}</a></div>
+                    <div class="info-value">${isSafeUrl(data.brand_agent.url) ? `<a href="${escapeAttr(data.brand_agent.url)}" target="_blank">${escapeHtml(data.brand_agent.url)}</a>` : escapeHtml(data.brand_agent.url)}</div>
                   </div>
                   <div class="info-item">
                     <div class="info-label">Agent ID</div>
@@ -850,7 +872,7 @@
           const name = brand.names?.[0] ? Object.values(brand.names[0])[0] : brand.id;
           const kellerLabel = formatKellerType(brand.keller_type);
           return `
-            <button class="brand-tab" data-brand-id="${escapeHtml(brand.id)}" onclick="selectBrand('${escapeHtml(brand.id)}')">
+            <button class="brand-tab" data-brand-id="${escapeAttr(brand.id)}" onclick="selectBrand('${escapeAttr(brand.id)}')">
               ${escapeHtml(name)}
               ${kellerLabel ? `<span class="keller-badge">${escapeHtml(kellerLabel)}</span>` : ''}
             </button>`;
@@ -958,28 +980,29 @@
 
           const bg = getLogoBackground(logo);
           let previewHtml;
+          const safeLogoUrl = isSafeUrl(logo.url) ? escapeAttr(logo.url) : '';
           if (bg === 'light') {
             previewHtml = `
               <div class="logo-previews logo-previews-single">
                 <div class="logo-preview logo-preview-light">
-                  <img src="${escapeHtml(logo.url)}" alt="Logo on light background" loading="lazy">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on light background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
                 </div>
               </div>`;
           } else if (bg === 'dark') {
             previewHtml = `
               <div class="logo-previews logo-previews-single">
                 <div class="logo-preview logo-preview-dark">
-                  <img src="${escapeHtml(logo.url)}" alt="Logo on dark background" loading="lazy">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on dark background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
                 </div>
               </div>`;
           } else {
             previewHtml = `
               <div class="logo-previews">
                 <div class="logo-preview logo-preview-light">
-                  <img src="${escapeHtml(logo.url)}" alt="Logo on light background" loading="lazy">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on light background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
                 </div>
                 <div class="logo-preview logo-preview-dark">
-                  <img src="${escapeHtml(logo.url)}" alt="Logo on dark background" loading="lazy">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on dark background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
                 </div>
               </div>`;
           }
@@ -993,12 +1016,13 @@
                 </div>
                 ${dims ? `<div class="logo-dimensions">${escapeHtml(dims)}</div>` : ''}
                 <div class="logo-actions">
-                  <a href="${escapeHtml(logo.url)}" ${isSameOrigin ? 'download' : 'target="_blank"'} class="btn btn-sm btn-primary">
+                  ${safeLogoUrl ? `
+                  <a href="${safeLogoUrl}" ${isSameOrigin ? 'download' : 'target="_blank"'} class="btn btn-sm btn-primary">
                     Download
                   </a>
-                  <a href="${escapeHtml(logo.url)}" target="_blank" class="btn btn-sm btn-ghost">
+                  <a href="${safeLogoUrl}" target="_blank" class="btn btn-sm btn-ghost">
                     Open
-                  </a>
+                  </a>` : ''}
                 </div>
               </div>
             </div>`;
@@ -1039,13 +1063,15 @@
         );
 
         grid.innerHTML = sortedKeys.map(key => {
-          const hex = colors[key];
-          return `
-            <div class="color-swatch" onclick="copyColor(this, '${escapeHtml(hex)}')" title="Click to copy">
-              <div class="swatch-block" style="background-color: ${escapeHtml(hex)};"></div>
-              <div class="swatch-label">${escapeHtml(key)}</div>
-              <div class="swatch-hex" data-hex="${escapeHtml(hex)}">${escapeHtml(hex)}</div>
-            </div>`;
+          const val = colors[key];
+          const hexValues = Array.isArray(val) ? val : [val];
+          return hexValues.map((hex, i) => `
+            <div class="color-swatch" onclick="copyColor(this, '${escapeAttr(hex)}')" title="Click to copy">
+              <div class="swatch-block" style="background-color: ${safeHex(hex)};"></div>
+              <div class="swatch-label">${escapeHtml(key)}${hexValues.length > 1 ? ' ' + (i + 1) : ''}</div>
+              <div class="swatch-hex" data-hex="${escapeAttr(hex)}">${escapeHtml(hex)}</div>
+            </div>`
+          ).join('');
         }).join('');
       }
 
@@ -1074,7 +1100,7 @@
           html += `
             <div class="font-item">
               <div class="font-label">Primary Font</div>
-              <div class="font-value" style="font-family: ${escapeHtml(fonts.primary)};">${escapeHtml(fonts.primary)}</div>
+              <div class="font-value" style="font-family: ${safeFontFamily(fonts.primary)};">${escapeHtml(fonts.primary)}</div>
             </div>`;
         }
 
@@ -1082,7 +1108,7 @@
           html += `
             <div class="font-item">
               <div class="font-label">Secondary Font</div>
-              <div class="font-value" style="font-family: ${escapeHtml(fonts.secondary)};">${escapeHtml(fonts.secondary)}</div>
+              <div class="font-value" style="font-family: ${safeFontFamily(fonts.secondary)};">${escapeHtml(fonts.secondary)}</div>
             </div>`;
         }
 
@@ -1090,7 +1116,7 @@
           html += `
             <div class="font-item">
               <div class="font-label">Font Files</div>
-              ${fonts.font_urls.map(url => `<div class="info-value"><a href="${escapeHtml(url)}" target="_blank">${escapeHtml(url)}</a></div>`).join('')}
+              ${fonts.font_urls.map(url => `<div class="info-value">${isSafeUrl(url) ? `<a href="${escapeAttr(url)}" target="_blank">${escapeHtml(url)}</a>` : escapeHtml(url)}</div>`).join('')}
             </div>`;
         }
 
@@ -1257,7 +1283,7 @@
           html += `
             <div class="contact-item">
               <div class="contact-label">Email</div>
-              <div class="contact-value"><a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a></div>
+              <div class="contact-value"><a href="mailto:${escapeAttr(contact.email)}">${escapeHtml(contact.email)}</a></div>
             </div>`;
         }
 
@@ -1265,7 +1291,7 @@
           html += `
             <div class="contact-item">
               <div class="contact-label">Domain</div>
-              <div class="contact-value"><a href="https://${escapeHtml(contact.domain)}" target="_blank">${escapeHtml(contact.domain)}</a></div>
+              <div class="contact-value"><a href="https://${escapeAttr(contact.domain)}" target="_blank">${escapeHtml(contact.domain)}</a></div>
             </div>`;
         }
 

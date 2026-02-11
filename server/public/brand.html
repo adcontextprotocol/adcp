@@ -907,6 +907,108 @@
         padding: 0 var(--space-4) var(--space-4);
       }
 
+      /* Chip components (industry, tone attributes) */
+      .chip-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        padding: var(--space-2);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-md);
+        min-height: 40px;
+        background: var(--color-bg-card);
+        cursor: text;
+        align-items: center;
+      }
+
+      .chip-container:focus-within {
+        border-color: var(--color-brand);
+        box-shadow: 0 0 0 3px var(--color-primary-100);
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-1) var(--space-2);
+        background: var(--color-primary-100);
+        color: var(--color-brand);
+        border-radius: var(--radius-full);
+        font-size: var(--text-xs);
+        font-weight: var(--font-medium);
+        white-space: nowrap;
+      }
+
+      .chip-remove {
+        cursor: pointer;
+        font-size: 10px;
+        opacity: 0.7;
+        background: none;
+        border: none;
+        padding: 0 0 0 2px;
+        color: inherit;
+        line-height: 1;
+      }
+
+      .chip-remove:hover {
+        opacity: 1;
+      }
+
+      .chip-input {
+        border: none !important;
+        outline: none !important;
+        flex: 1;
+        min-width: 120px;
+        padding: 0 !important;
+        font-size: var(--text-sm) !important;
+        box-shadow: none !important;
+      }
+
+      .chip-input:focus {
+        box-shadow: none !important;
+      }
+
+      .dropdown-wrapper {
+        position: relative;
+      }
+
+      .dropdown-list {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-lg);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 50;
+        display: none;
+        margin-top: var(--space-1);
+      }
+
+      .dropdown-list.open {
+        display: block;
+      }
+
+      .dropdown-option {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-sm);
+        cursor: pointer;
+      }
+
+      .dropdown-option:hover {
+        background: var(--color-primary-50);
+        color: var(--color-brand);
+      }
+
+      .dropdown-option.selected {
+        background: var(--color-primary-100);
+        color: var(--color-brand);
+        font-weight: var(--font-medium);
+      }
+
       /* Color picker row */
       .color-row {
         display: flex;
@@ -1106,14 +1208,6 @@
                   </div>
                 </button>
 
-                <button class="decision-option" onclick="selectVariant('hosted')">
-                  <div class="option-icon">☁️</div>
-                  <div class="option-content">
-                    <strong>Hosted elsewhere</strong>
-                    <span>A CDN or managed service hosts it for me</span>
-                  </div>
-                </button>
-
                 <button class="decision-option" onclick="selectVariant('agent')">
                   <div class="option-icon">🤖</div>
                   <div class="option-content">
@@ -1207,14 +1301,53 @@
                     <input type="text" id="single-tagline" placeholder="Just Do It" oninput="updateSingleIdentity('tagline', this.value)" />
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Tone</label>
-                    <input type="text" id="single-tone" placeholder="professional, bold, friendly" oninput="updateSingleIdentity('tone', this.value)" />
+                    <label>Brand Voice</label>
+                    <input type="text" id="single-tone-voice" placeholder="professional and trustworthy" oninput="updateSingleTone('voice', this.value)" />
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom: var(--space-4);">
+                  <label>Voice Attributes</label>
+                  <div class="chip-container" id="single-tone-attributes-container" onclick="document.getElementById('single-tone-attributes-input').focus()">
+                    <span id="single-tone-attributes-chips"></span>
+                    <input type="text" class="chip-input" id="single-tone-attributes-input"
+                      placeholder="Type attribute and press Enter (e.g., confident, innovative)"
+                      onkeydown="handleToneChipKeydown(event, 'single', 'attributes')" />
+                  </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Do's</label>
+                    <div class="chip-container" id="single-tone-dos-container" onclick="document.getElementById('single-tone-dos-input').focus()">
+                      <span id="single-tone-dos-chips"></span>
+                      <input type="text" class="chip-input" id="single-tone-dos-input"
+                        placeholder="Type guideline and press Enter"
+                        onkeydown="handleToneChipKeydown(event, 'single', 'dos')" />
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Don'ts</label>
+                    <div class="chip-container" id="single-tone-donts-container" onclick="document.getElementById('single-tone-donts-input').focus()">
+                      <span id="single-tone-donts-chips"></span>
+                      <input type="text" class="chip-input" id="single-tone-donts-input"
+                        placeholder="Type guideline and press Enter"
+                        onkeydown="handleToneChipKeydown(event, 'single', 'donts')" />
+                    </div>
                   </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
                     <label>Industry</label>
-                    <input type="text" id="single-industry" placeholder="retail, automotive, cpg" oninput="updateSingleIdentity('industry', this.value)" />
+                    <div class="dropdown-wrapper" id="single-industry-wrapper">
+                      <div class="chip-container" onclick="focusIndustryInput('single')">
+                        <span id="single-industry-chips"></span>
+                        <input type="text" class="chip-input" id="single-industry-input"
+                          placeholder="Select or type industry"
+                          onfocus="showIndustryDropdown('single')"
+                          oninput="filterIndustryDropdown('single', this.value)"
+                          onkeydown="handleIndustryKeydown(event, 'single')" />
+                      </div>
+                      <div class="dropdown-list" id="single-industry-list"></div>
+                    </div>
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
                     <label>Target Audience</label>
@@ -1354,21 +1487,6 @@
             </div>
           </div>
 
-          <!-- Hosted Location Form -->
-          <div id="form-hosted" class="hidden">
-            <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
-            <div class="form-group">
-              <label>Hosted URL</label>
-              <input
-                type="url"
-                id="hosted-url"
-                placeholder="https://cdn.example.com/brands/brand.json"
-                oninput="updatePreview()"
-              />
-              <p class="hint">The HTTPS URL where your brand.json is hosted</p>
-            </div>
-          </div>
-
           <!-- Contact Information (root-level, shown for single + portfolio) -->
           <div id="contact-section" class="hidden" style="margin-top: var(--space-5);">
             <details class="brand-section-toggle">
@@ -1467,7 +1585,7 @@
       // ============================================================================
 
       let currentDomain = '';
-      let currentVariant = 'single'; // single, portfolio, redirect, agent, hosted
+      let currentVariant = 'single'; // single, portfolio, redirect, agent
       let brands = [];
       let brandIdCounter = 0;
       let singleBrandProperties = [];
@@ -1519,9 +1637,6 @@
           agent: {
             url: document.getElementById('agent-url')?.value || '',
             id: document.getElementById('agent-id')?.value || ''
-          },
-          hosted: {
-            url: document.getElementById('hosted-url')?.value || ''
           }
         };
       }
@@ -1566,21 +1681,18 @@
           document.getElementById('agent-url').value = state.agent.url || '';
           document.getElementById('agent-id').value = state.agent.id || '';
         }
-        if (state.hosted) {
-          document.getElementById('hosted-url').value = state.hosted.url || '';
-        }
-
         // Show the correct form, hide decision tree
         document.getElementById('decision-tree').classList.add('hidden');
         document.getElementById('form-single').classList.toggle('hidden', currentVariant !== 'single');
         document.getElementById('form-portfolio').classList.toggle('hidden', currentVariant !== 'portfolio');
         document.getElementById('form-redirect').classList.toggle('hidden', currentVariant !== 'redirect');
         document.getElementById('form-agent').classList.toggle('hidden', currentVariant !== 'agent');
-        document.getElementById('form-hosted').classList.toggle('hidden', currentVariant !== 'hosted');
 
         // Re-render dynamic parts
         if (currentVariant === 'single') {
           renderSingleBrandProperties();
+          renderIndustryChips('single', null);
+          renderAllToneChips('single', null);
         }
         if (currentVariant === 'portfolio') {
           renderBrandTree();
@@ -1594,7 +1706,7 @@
       // Identity fields for single brand mode
       let singleBrandIdentity = {
         description: '', industry: '', target_audience: '',
-        tagline: '', tone: '', privacy_policy_url: '',
+        tagline: '', tone: { voice: '', attributes: [], dos: [], donts: [] }, privacy_policy_url: '',
         logos: [],
         colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
         fonts: { primary: '', secondary: '' }
@@ -1642,7 +1754,7 @@
         brandIdManuallyEdited = { single: false };
         singleBrandIdentity = {
           description: '', industry: '', target_audience: '',
-          tagline: '', tone: '', privacy_policy_url: '',
+          tagline: '', tone: { voice: '', attributes: [], dos: [], donts: [] }, privacy_policy_url: '',
           logos: [],
           colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
           fonts: { primary: '', secondary: '' }
@@ -1689,7 +1801,9 @@
               industry: b.industry || '',
               target_audience: b.target_audience || '',
               tagline: b.tagline || '',
-              tone: b.tone || '',
+              tone: typeof b.tone === 'object' && b.tone !== null
+                ? { voice: b.tone.voice || '', attributes: b.tone.attributes || [], dos: b.tone.dos || [], donts: b.tone.donts || [] }
+                : { voice: typeof b.tone === 'string' ? b.tone : '', attributes: [], dos: [], donts: [] },
               privacy_policy_url: b.privacy_policy_url || '',
               logos: (b.logos || []).map(l => ({
                 url: l.url || '',
@@ -1722,7 +1836,6 @@
         document.getElementById('form-portfolio').classList.remove('hidden');
         document.getElementById('form-redirect').classList.add('hidden');
         document.getElementById('form-agent').classList.add('hidden');
-        document.getElementById('form-hosted').classList.add('hidden');
 
         // Show contact section and viewer link
         document.getElementById('contact-section').classList.remove('hidden');
@@ -1853,7 +1966,7 @@
         brandIdManuallyEdited = { single: false };
         singleBrandIdentity = {
           description: '', industry: '', target_audience: '',
-          tagline: '', tone: '', privacy_policy_url: '',
+          tagline: '', tone: { voice: '', attributes: [], dos: [], donts: [] }, privacy_policy_url: '',
           logos: [],
           colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
           fonts: { primary: '', secondary: '' }
@@ -1882,7 +1995,6 @@
         document.getElementById('form-portfolio').classList.add('hidden');
         document.getElementById('form-redirect').classList.add('hidden');
         document.getElementById('form-agent').classList.add('hidden');
-        document.getElementById('form-hosted').classList.add('hidden');
 
         updatePreview();
         updateRegistryButton();
@@ -1930,7 +2042,6 @@
         document.getElementById('form-portfolio').classList.toggle('hidden', variant !== 'portfolio');
         document.getElementById('form-redirect').classList.toggle('hidden', variant !== 'redirect');
         document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
-        document.getElementById('form-hosted').classList.toggle('hidden', variant !== 'hosted');
 
         // Show contact section for single/portfolio
         const showContact = variant === 'single' || variant === 'portfolio';
@@ -1948,10 +2059,12 @@
           addBrand(null); // Add first root brand
         }
 
-        // Initialize single brand color pickers
+        // Initialize single brand pickers
         if (variant === 'single') {
           renderSingleColors();
           renderSingleLogos();
+          renderIndustryChips('single', null);
+          renderAllToneChips('single', null);
         }
 
         // Update deploy path in next steps
@@ -2116,6 +2229,225 @@
       }
 
       // ============================================================================
+      // Industry Chip Functions
+      // ============================================================================
+
+      const INDUSTRY_OPTIONS = [
+        'Automotive', 'Beauty & Personal Care', 'Consumer Packaged Goods',
+        'Education', 'Energy & Utilities', 'Entertainment & Media',
+        'Fashion & Apparel', 'Financial Services', 'Food & Beverage',
+        'Gaming', 'Healthcare & Pharma', 'Home & Garden',
+        'Hospitality & Travel', 'Real Estate', 'Retail & E-Commerce',
+        'Sports & Fitness', 'Technology', 'Telecommunications'
+      ];
+
+      function focusIndustryInput(scope) {
+        const input = document.getElementById(`${scope}-industry-input`);
+        if (input) input.focus();
+      }
+
+      function getIndustryValues(scope, brandId) {
+        let raw = '';
+        if (scope === 'single') {
+          raw = singleBrandIdentity.industry || '';
+        } else if (brandId != null) {
+          const brand = brands.find(b => b.id === brandId);
+          raw = brand ? (brand.industry || '') : '';
+        }
+        return raw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+
+      function setIndustryValues(scope, values, brandId) {
+        const joined = values.join(', ');
+        if (scope === 'single') {
+          singleBrandIdentity.industry = joined;
+        } else if (brandId != null) {
+          const brand = brands.find(b => b.id === brandId);
+          if (brand) brand.industry = joined;
+        }
+        updatePreview();
+      }
+
+      function renderIndustryChips(scope, brandId) {
+        const container = document.getElementById(`${scope}-industry-chips`);
+        if (!container) return;
+        const values = getIndustryValues(scope, brandId);
+        container.innerHTML = values.map(v => `
+          <span class="chip">
+            ${escapeHtml(v)}
+            <button class="chip-remove" onclick="event.stopPropagation(); removeIndustry('${scope}', '${escapeAttr(v)}', ${brandId != null ? brandId : 'null'})">&times;</button>
+          </span>
+        `).join('');
+      }
+
+      function showIndustryDropdown(scope, brandId) {
+        filterIndustryDropdown(scope, '', brandId);
+        const list = document.getElementById(`${scope}-industry-list`);
+        if (list) list.classList.add('open');
+      }
+
+      function filterIndustryDropdown(scope, query, brandId) {
+        const list = document.getElementById(`${scope}-industry-list`);
+        if (!list) return;
+        const current = getIndustryValues(scope, brandId);
+        const q = query.toLowerCase();
+        const filtered = INDUSTRY_OPTIONS.filter(opt =>
+          !current.includes(opt) && opt.toLowerCase().includes(q)
+        );
+        list.innerHTML = filtered.map(opt => `
+          <div class="dropdown-option" onmousedown="event.preventDefault(); selectIndustry('${scope}', '${escapeAttr(opt)}', ${brandId != null ? brandId : 'null'})">${escapeHtml(opt)}</div>
+        `).join('');
+        if (filtered.length > 0 || query) {
+          list.classList.add('open');
+        } else {
+          list.classList.remove('open');
+        }
+      }
+
+      function selectIndustry(scope, value, brandId) {
+        const values = getIndustryValues(scope, brandId);
+        if (!values.includes(value)) {
+          values.push(value);
+          setIndustryValues(scope, values, brandId);
+        }
+        renderIndustryChips(scope, brandId);
+        const input = document.getElementById(`${scope}-industry-input`);
+        if (input) { input.value = ''; input.focus(); }
+        const list = document.getElementById(`${scope}-industry-list`);
+        if (list) list.classList.remove('open');
+      }
+
+      function removeIndustry(scope, value, brandId) {
+        const values = getIndustryValues(scope, brandId);
+        const idx = values.indexOf(value);
+        if (idx >= 0) {
+          values.splice(idx, 1);
+          setIndustryValues(scope, values, brandId);
+        }
+        renderIndustryChips(scope, brandId);
+      }
+
+      function handleIndustryKeydown(event, scope, brandId) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const input = document.getElementById(`${scope}-industry-input`);
+          const val = input.value.trim();
+          if (val) {
+            selectIndustry(scope, val, brandId);
+          }
+        } else if (event.key === 'Backspace' && !event.target.value) {
+          const values = getIndustryValues(scope, brandId);
+          if (values.length > 0) {
+            values.pop();
+            setIndustryValues(scope, values, brandId);
+            renderIndustryChips(scope, brandId);
+          }
+        }
+      }
+
+      // Close dropdowns on outside click
+      document.addEventListener('click', function(e) {
+        document.querySelectorAll('.dropdown-list.open').forEach(list => {
+          if (!list.parentElement.contains(e.target)) {
+            list.classList.remove('open');
+          }
+        });
+      });
+
+      // ============================================================================
+      // Tone Chip Functions
+      // ============================================================================
+
+      function updateSingleTone(field, value) {
+        singleBrandIdentity.tone[field] = value;
+        updatePreview();
+      }
+
+      function updateBrandTone(brandId, field, value) {
+        const brand = brands.find(b => b.id === brandId);
+        if (brand) {
+          if (!brand.tone || typeof brand.tone !== 'object') {
+            brand.tone = { voice: '', attributes: [], dos: [], donts: [] };
+          }
+          brand.tone[field] = value;
+          updatePreview();
+        }
+      }
+
+      function getToneArray(scope, field, brandId) {
+        if (scope === 'single') {
+          return singleBrandIdentity.tone[field] || [];
+        }
+        if (brandId != null) {
+          const brand = brands.find(b => b.id === brandId);
+          return brand && brand.tone ? (brand.tone[field] || []) : [];
+        }
+        return [];
+      }
+
+      function setToneArray(scope, field, values, brandId) {
+        if (scope === 'single') {
+          singleBrandIdentity.tone[field] = values;
+        } else if (brandId != null) {
+          const brand = brands.find(b => b.id === brandId);
+          if (brand) {
+            if (!brand.tone || typeof brand.tone !== 'object') {
+              brand.tone = { voice: '', attributes: [], dos: [], donts: [] };
+            }
+            brand.tone[field] = values;
+          }
+        }
+        updatePreview();
+      }
+
+      function renderToneChips(scope, field, brandId) {
+        const container = document.getElementById(`${scope}-tone-${field}-chips`);
+        if (!container) return;
+        const values = getToneArray(scope, field, brandId);
+        container.innerHTML = values.map((v, i) => `
+          <span class="chip">
+            ${escapeHtml(v)}
+            <button class="chip-remove" onclick="event.stopPropagation(); removeToneChip('${scope}', '${field}', ${i}, ${brandId != null ? brandId : 'null'})">&times;</button>
+          </span>
+        `).join('');
+      }
+
+      function handleToneChipKeydown(event, scope, field, brandId) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const input = event.target;
+          const val = input.value.trim();
+          if (val) {
+            const values = getToneArray(scope, field, brandId);
+            values.push(val);
+            setToneArray(scope, field, values, brandId);
+            renderToneChips(scope, field, brandId);
+            input.value = '';
+          }
+        } else if (event.key === 'Backspace' && !event.target.value) {
+          const values = getToneArray(scope, field, brandId);
+          if (values.length > 0) {
+            values.pop();
+            setToneArray(scope, field, values, brandId);
+            renderToneChips(scope, field, brandId);
+          }
+        }
+      }
+
+      function removeToneChip(scope, field, index, brandId) {
+        const values = getToneArray(scope, field, brandId);
+        values.splice(index, 1);
+        setToneArray(scope, field, values, brandId);
+        renderToneChips(scope, field, brandId);
+      }
+
+      function renderAllToneChips(scope, brandId) {
+        ['attributes', 'dos', 'donts'].forEach(field => {
+          renderToneChips(scope, field, brandId);
+        });
+      }
+
+      // ============================================================================
       // Single Brand Identity Functions
       // ============================================================================
 
@@ -2168,16 +2500,41 @@
         `).join('') + '<div style="margin-bottom: var(--space-4);"></div>';
       }
 
-      function updateSingleColor(colorName, value, source) {
-        singleBrandIdentity.colors[colorName] = value;
+      // Helper: normalize color value to array
+      function colorToArray(val) {
+        if (Array.isArray(val)) return val.length > 0 ? val : [''];
+        if (val && typeof val === 'string') return [val];
+        return [''];
+      }
+
+      function updateSingleColorAt(colorName, index, value, source) {
+        const arr = colorToArray(singleBrandIdentity.colors[colorName]);
+        arr[index] = value;
+        singleBrandIdentity.colors[colorName] = arr.length === 1 ? arr[0] : arr;
         // Sync the other input
         if (source === 'picker') {
-          const textInput = document.getElementById('single-color-text-' + colorName);
+          const textInput = document.getElementById(`single-color-text-${colorName}-${index}`);
           if (textInput) textInput.value = value;
         } else if (source === 'text' && /^#[0-9A-Fa-f]{6}$/.test(value)) {
-          const picker = document.getElementById('single-color-picker-' + colorName);
+          const picker = document.getElementById(`single-color-picker-${colorName}-${index}`);
           if (picker) picker.value = value;
         }
+        updatePreview();
+      }
+
+      function addSingleColor(colorName) {
+        const arr = colorToArray(singleBrandIdentity.colors[colorName]);
+        arr.push('');
+        singleBrandIdentity.colors[colorName] = arr;
+        renderSingleColors();
+        updatePreview();
+      }
+
+      function removeSingleColorAt(colorName, index) {
+        const arr = colorToArray(singleBrandIdentity.colors[colorName]);
+        arr.splice(index, 1);
+        singleBrandIdentity.colors[colorName] = arr.length === 1 ? arr[0] : arr;
+        renderSingleColors();
         updatePreview();
       }
 
@@ -2189,15 +2546,39 @@
       function renderSingleColors() {
         const container = document.getElementById('single-colors-container');
         const colorNames = ['primary', 'secondary', 'accent', 'background', 'text'];
-        container.innerHTML = colorNames.map(name => `
-          <div class="color-row">
-            <span class="color-label">${name}</span>
-            <div class="color-picker-wrapper">
-              <input type="color" id="single-color-picker-${name}" value="${singleBrandIdentity.colors[name] || '#000000'}" oninput="updateSingleColor('${name}', this.value, 'picker')" />
-              <input type="text" id="single-color-text-${name}" value="${escapeHtml(singleBrandIdentity.colors[name])}" placeholder="#000000" oninput="updateSingleColor('${name}', this.value, 'text')" />
+        container.innerHTML = colorNames.map(name => {
+          const values = colorToArray(singleBrandIdentity.colors[name]);
+          return `
+            <div class="color-row">
+              <span class="color-label">${name}</span>
+              <div style="flex: 1;">
+                ${values.map((hex, i) => `
+                  <div class="color-picker-wrapper" style="${i > 0 ? 'margin-top: var(--space-1);' : ''}">
+                    <input type="color" id="single-color-picker-${name}-${i}" value="${escapeAttr(hex || '#000000')}" oninput="updateSingleColorAt('${name}', ${i}, this.value, 'picker')" />
+                    <input type="text" id="single-color-text-${name}-${i}" value="${escapeAttr(hex)}" placeholder="#000000" oninput="updateSingleColorAt('${name}', ${i}, this.value, 'text')" />
+                    ${values.length > 1 ? `<button class="chip-remove" onclick="removeSingleColorAt('${name}', ${i})" style="font-size: 14px;">&times;</button>` : ''}
+                  </div>
+                `).join('')}
+                <button class="btn btn-secondary" onclick="addSingleColor('${name}')" style="padding: 2px var(--space-2); font-size: var(--text-xs); margin-top: var(--space-1);">+</button>
+              </div>
             </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
+      }
+
+      // Serialize colors for JSON output: single-element arrays → string, multi → array, empty → omit
+      function serializeColors(colors) {
+        const result = {};
+        for (const [key, val] of Object.entries(colors)) {
+          if (Array.isArray(val)) {
+            const filtered = val.filter(v => v && /^#[0-9A-Fa-f]{6}$/i.test(v));
+            if (filtered.length === 1) result[key] = filtered[0];
+            else if (filtered.length > 1) result[key] = filtered;
+          } else if (val && /^#[0-9A-Fa-f]{6}$/i.test(val)) {
+            result[key] = val;
+          }
+        }
+        return Object.keys(result).length > 0 ? result : null;
       }
 
       // ============================================================================
@@ -2252,17 +2633,39 @@
         updatePreview();
       }
 
-      function updateBrandColor(brandId, colorName, value, source) {
+      function updateBrandColorAt(brandId, colorName, index, value, source) {
         const brand = brands.find(b => b.id === brandId);
         if (!brand) return;
-        brand.colors[colorName] = value;
+        const arr = colorToArray(brand.colors[colorName]);
+        arr[index] = value;
+        brand.colors[colorName] = arr.length === 1 ? arr[0] : arr;
         if (source === 'picker') {
-          const textInput = document.getElementById('brand-color-text-' + colorName);
+          const textInput = document.getElementById(`brand-color-text-${colorName}-${index}`);
           if (textInput) textInput.value = value;
         } else if (source === 'text' && /^#[0-9A-Fa-f]{6}$/.test(value)) {
-          const picker = document.getElementById('brand-color-picker-' + colorName);
+          const picker = document.getElementById(`brand-color-picker-${colorName}-${index}`);
           if (picker) picker.value = value;
         }
+        updatePreview();
+      }
+
+      function addBrandColor(brandId, colorName) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+        const arr = colorToArray(brand.colors[colorName]);
+        arr.push('');
+        brand.colors[colorName] = arr;
+        renderBrandDetail();
+        updatePreview();
+      }
+
+      function removeBrandColorAt(brandId, colorName, index) {
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+        const arr = colorToArray(brand.colors[colorName]);
+        arr.splice(index, 1);
+        brand.colors[colorName] = arr.length === 1 ? arr[0] : arr;
+        renderBrandDetail();
         updatePreview();
       }
 
@@ -2290,7 +2693,7 @@
           properties: [],
           brandIdManuallyEdited: false,
           description: '', industry: '', target_audience: '',
-          tagline: '', tone: '', privacy_policy_url: '',
+          tagline: '', tone: { voice: '', attributes: [], dos: [], donts: [] }, privacy_policy_url: '',
           logos: [],
           colors: { primary: '', secondary: '', accent: '', background: '', text: '' },
           fonts: { primary: '', secondary: '' }
@@ -2531,7 +2934,7 @@
               <label>Parent Brand</label>
               <select onchange="updateBrand(${brand.id}, 'parent_brand', this.value)">
                 <option value="">None (root brand)</option>
-                ${parentOptions.map(p => `<option value="${escapeHtml(p.id)}" ${brand.parent_brand === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+                ${parentOptions.map(p => `<option value="${escapeAttr(p.id)}" ${brand.parent_brand === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -2574,14 +2977,53 @@
                   <input type="text" value="${escapeHtml(brand.tagline || '')}" placeholder="Just Do It" oninput="updateBrandIdentity(${brand.id}, 'tagline', this.value)" />
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Tone</label>
-                  <input type="text" value="${escapeHtml(brand.tone || '')}" placeholder="professional, bold, friendly" oninput="updateBrandIdentity(${brand.id}, 'tone', this.value)" />
+                  <label>Brand Voice</label>
+                  <input type="text" value="${escapeHtml((brand.tone && brand.tone.voice) || '')}" placeholder="professional and trustworthy" oninput="updateBrandTone(${brand.id}, 'voice', this.value)" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: var(--space-4);">
+                <label>Voice Attributes</label>
+                <div class="chip-container" id="brand-${brand.id}-tone-attributes-container" onclick="document.getElementById('brand-${brand.id}-tone-attributes-input').focus()">
+                  <span id="brand-${brand.id}-tone-attributes-chips"></span>
+                  <input type="text" class="chip-input" id="brand-${brand.id}-tone-attributes-input"
+                    placeholder="Type attribute and press Enter"
+                    onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'attributes', ${brand.id})" />
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Do's</label>
+                  <div class="chip-container" id="brand-${brand.id}-tone-dos-container" onclick="document.getElementById('brand-${brand.id}-tone-dos-input').focus()">
+                    <span id="brand-${brand.id}-tone-dos-chips"></span>
+                    <input type="text" class="chip-input" id="brand-${brand.id}-tone-dos-input"
+                      placeholder="Type guideline and press Enter"
+                      onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'dos', ${brand.id})" />
+                  </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label>Don'ts</label>
+                  <div class="chip-container" id="brand-${brand.id}-tone-donts-container" onclick="document.getElementById('brand-${brand.id}-tone-donts-input').focus()">
+                    <span id="brand-${brand.id}-tone-donts-chips"></span>
+                    <input type="text" class="chip-input" id="brand-${brand.id}-tone-donts-input"
+                      placeholder="Type guideline and press Enter"
+                      onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'donts', ${brand.id})" />
+                  </div>
                 </div>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                 <div class="form-group" style="margin-bottom: 0;">
                   <label>Industry</label>
-                  <input type="text" value="${escapeHtml(brand.industry || '')}" placeholder="retail, automotive, cpg" oninput="updateBrandIdentity(${brand.id}, 'industry', this.value)" />
+                  <div class="dropdown-wrapper" id="brand-${brand.id}-industry-wrapper">
+                    <div class="chip-container" onclick="focusIndustryInput('brand-${brand.id}')">
+                      <span id="brand-${brand.id}-industry-chips"></span>
+                      <input type="text" class="chip-input" id="brand-${brand.id}-industry-input"
+                        placeholder="Select or type industry"
+                        onfocus="showIndustryDropdown('brand-${brand.id}', ${brand.id})"
+                        oninput="filterIndustryDropdown('brand-${brand.id}', this.value, ${brand.id})"
+                        onkeydown="handleIndustryKeydown(event, 'brand-${brand.id}', ${brand.id})" />
+                    </div>
+                    <div class="dropdown-list" id="brand-${brand.id}-industry-list"></div>
+                  </div>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                   <label>Target Audience</label>
@@ -2622,15 +3064,24 @@
 
               <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Colors</label>
               <div style="margin-bottom: var(--space-4);">
-                ${['primary', 'secondary', 'accent', 'background', 'text'].map(name => `
-                  <div class="color-row">
-                    <span class="color-label">${name}</span>
-                    <div class="color-picker-wrapper">
-                      <input type="color" id="brand-color-picker-${name}" value="${brand.colors[name] || '#000000'}" oninput="updateBrandColor(${brand.id}, '${name}', this.value, 'picker')" />
-                      <input type="text" id="brand-color-text-${name}" value="${escapeHtml(brand.colors[name] || '')}" placeholder="#000000" oninput="updateBrandColor(${brand.id}, '${name}', this.value, 'text')" />
+                ${['primary', 'secondary', 'accent', 'background', 'text'].map(name => {
+                  const values = colorToArray(brand.colors[name]);
+                  return `
+                    <div class="color-row">
+                      <span class="color-label">${name}</span>
+                      <div style="flex: 1;">
+                        ${values.map((hex, i) => `
+                          <div class="color-picker-wrapper" style="${i > 0 ? 'margin-top: var(--space-1);' : ''}">
+                            <input type="color" id="brand-color-picker-${name}-${i}" value="${escapeAttr(hex || '#000000')}" oninput="updateBrandColorAt(${brand.id}, '${name}', ${i}, this.value, 'picker')" />
+                            <input type="text" id="brand-color-text-${name}-${i}" value="${escapeAttr(hex || '')}" placeholder="#000000" oninput="updateBrandColorAt(${brand.id}, '${name}', ${i}, this.value, 'text')" />
+                            ${values.length > 1 ? `<button class="chip-remove" onclick="removeBrandColorAt(${brand.id}, '${name}', ${i})" style="font-size: 14px;">&times;</button>` : ''}
+                          </div>
+                        `).join('')}
+                        <button class="btn btn-secondary" onclick="addBrandColor(${brand.id}, '${name}')" style="padding: 2px var(--space-2); font-size: var(--text-xs); margin-top: var(--space-1);">+</button>
+                      </div>
                     </div>
-                  </div>
-                `).join('')}
+                  `;
+                }).join('')}
               </div>
 
               <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Fonts</label>
@@ -2647,6 +3098,10 @@
             </div>
           </details>
         `;
+
+        // Render chips after DOM update
+        renderIndustryChips(`brand-${brand.id}`, brand.id);
+        renderAllToneChips(`brand-${brand.id}`, brand.id);
       }
 
       // ============================================================================
@@ -2789,10 +3244,21 @@
             };
 
             // Add identity text fields
-            const identityTextFields = ['description', 'industry', 'target_audience', 'tagline', 'tone', 'privacy_policy_url'];
+            const identityTextFields = ['description', 'industry', 'target_audience', 'tagline', 'privacy_policy_url'];
             identityTextFields.forEach(f => {
               if (singleBrandIdentity[f]) singleBrandObj[f] = singleBrandIdentity[f];
             });
+
+            // Add structured tone
+            const tone = singleBrandIdentity.tone;
+            if (tone && (tone.voice || (tone.attributes && tone.attributes.length) || (tone.dos && tone.dos.length) || (tone.donts && tone.donts.length))) {
+              const toneObj = {};
+              if (tone.voice) toneObj.voice = tone.voice;
+              if (tone.attributes && tone.attributes.length) toneObj.attributes = tone.attributes;
+              if (tone.dos && tone.dos.length) toneObj.dos = tone.dos;
+              if (tone.donts && tone.donts.length) toneObj.donts = tone.donts;
+              singleBrandObj.tone = toneObj;
+            }
 
             // Add logos (only those with URLs)
             const singleLogos = singleBrandIdentity.logos.filter(l => l.url);
@@ -2807,9 +3273,9 @@
             }
 
             // Add colors (only if any are set)
-            const singleColors = Object.entries(singleBrandIdentity.colors).filter(([, v]) => v);
-            if (singleColors.length > 0) {
-              singleBrandObj.colors = Object.fromEntries(singleColors);
+            const singleColorsSerialized = serializeColors(singleBrandIdentity.colors);
+            if (singleColorsSerialized) {
+              singleBrandObj.colors = singleColorsSerialized;
             }
 
             // Add fonts (only if any are set)
@@ -2865,10 +3331,21 @@
                 }
 
                 // Add identity text fields
-                const identityFields = ['description', 'industry', 'target_audience', 'tagline', 'tone', 'privacy_policy_url'];
+                const identityFields = ['description', 'industry', 'target_audience', 'tagline', 'privacy_policy_url'];
                 identityFields.forEach(f => {
                   if (brand[f]) brandObj[f] = brand[f];
                 });
+
+                // Add structured tone
+                const brandTone = brand.tone;
+                if (brandTone && typeof brandTone === 'object' && (brandTone.voice || (brandTone.attributes && brandTone.attributes.length) || (brandTone.dos && brandTone.dos.length) || (brandTone.donts && brandTone.donts.length))) {
+                  const toneObj = {};
+                  if (brandTone.voice) toneObj.voice = brandTone.voice;
+                  if (brandTone.attributes && brandTone.attributes.length) toneObj.attributes = brandTone.attributes;
+                  if (brandTone.dos && brandTone.dos.length) toneObj.dos = brandTone.dos;
+                  if (brandTone.donts && brandTone.donts.length) toneObj.donts = brandTone.donts;
+                  brandObj.tone = toneObj;
+                }
 
                 // Add logos (only those with URLs)
                 const brandLogos = (brand.logos || []).filter(l => l.url);
@@ -2883,9 +3360,9 @@
                 }
 
                 // Add colors (only if any are set)
-                const brandColors = Object.entries(brand.colors || {}).filter(([, v]) => v);
-                if (brandColors.length > 0) {
-                  brandObj.colors = Object.fromEntries(brandColors);
+                const brandColorsSerialized = serializeColors(brand.colors || {});
+                if (brandColorsSerialized) {
+                  brandObj.colors = brandColorsSerialized;
                 }
 
                 // Add fonts (only if any are set)
@@ -2927,14 +3404,6 @@
             if (agentUrl && agentId) {
               json.version = "1.0";
               json.brand_agent = { url: agentUrl, id: agentId };
-            }
-            break;
-
-          case 'hosted':
-            // Hosted location redirect
-            const hostedUrl = document.getElementById('hosted-url').value.trim();
-            if (hostedUrl) {
-              json.authoritative_location = hostedUrl;
             }
             break;
         }
