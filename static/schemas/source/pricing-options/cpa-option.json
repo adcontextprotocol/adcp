@@ -18,6 +18,10 @@
       "$ref": "/schemas/enums/event-type.json",
       "description": "The conversion event type that triggers billing (e.g., purchase, lead, app_install)"
     },
+    "event_source_id": {
+      "type": "string",
+      "description": "When present, only events from this specific event source count toward billing. Allows different CPA rates for different sources (e.g., online vs in-store purchases). Must match an event source configured via sync_event_sources."
+    },
     "currency": {
       "type": "string",
       "description": "ISO 4217 currency code",
