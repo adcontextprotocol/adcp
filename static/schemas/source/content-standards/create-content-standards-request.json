@@ -12,11 +12,13 @@
         "countries_all": {
           "type": "array",
           "items": { "type": "string" },
+          "minItems": 1,
           "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
         },
         "channels_any": {
           "type": "array",
           "items": { "$ref": "/schemas/enums/channels.json" },
+          "minItems": 1,
           "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
         },
         "languages_any": {

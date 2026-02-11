@@ -72,32 +72,42 @@
     },
     "colors": {
       "type": "object",
-      "description": "Brand color palette",
+      "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role.",
       "properties": {
         "primary": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
-          "description": "Primary brand color (hex format)"
+          "description": "Primary brand color(s)",
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+          ]
         },
         "secondary": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
-          "description": "Secondary brand color (hex format)"
+          "description": "Secondary brand color(s)",
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+          ]
         },
         "accent": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
-          "description": "Accent color (hex format)"
+          "description": "Accent color(s)",
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+          ]
         },
         "background": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
-          "description": "Background color (hex format)"
+          "description": "Background color(s)",
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+          ]
         },
         "text": {
-          "type": "string",
-          "pattern": "^#[0-9A-Fa-f]{6}$",
-          "description": "Text color (hex format)"
+          "description": "Text color(s)",
+          "oneOf": [
+            { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+            { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+          ]
         }
       }
     },
@@ -124,38 +134,47 @@
       }
     },
     "tone": {
-      "type": "object",
       "description": "Brand voice and messaging tone guidelines for creative agents.",
-      "properties": {
-        "voice": {
+      "oneOf": [
+        {
           "type": "string",
-          "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')"
+          "description": "Simple tone descriptors for backwards compatibility"
         },
-        "attributes": {
-          "type": "array",
-          "description": "Personality traits that characterize the brand voice",
-          "items": {
-            "type": "string"
-          },
-          "examples": [["friendly", "optimistic", "conversational", "authentic"]]
-        },
-        "dos": {
-          "type": "array",
-          "description": "Specific guidance for copy generation - what TO do",
-          "items": {
-            "type": "string"
-          },
-          "examples": [["Use simple, everyday language", "Address the reader directly", "Keep sentences short and punchy"]]
-        },
-        "donts": {
-          "type": "array",
-          "description": "Guardrails to avoid brand violations - what NOT to do",
-          "items": {
-            "type": "string"
-          },
-          "examples": [["Avoid corporate jargon", "Don't be overly formal", "Don't make exaggerated claims"]]
+        {
+          "type": "object",
+          "description": "Structured brand voice guidelines",
+          "properties": {
+            "voice": {
+              "type": "string",
+              "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')"
+            },
+            "attributes": {
+              "type": "array",
+              "description": "Personality traits that characterize the brand voice",
+              "items": {
+                "type": "string"
+              },
+              "examples": [["friendly", "optimistic", "conversational", "authentic"]]
+            },
+            "dos": {
+              "type": "array",
+              "description": "Specific guidance for copy generation - what TO do",
+              "items": {
+                "type": "string"
+              },
+              "examples": [["Use simple, everyday language", "Address the reader directly", "Keep sentences short and punchy"]]
+            },
+            "donts": {
+              "type": "array",
+              "description": "Guardrails to avoid brand violations - what NOT to do",
+              "items": {
+                "type": "string"
+              },
+              "examples": [["Avoid corporate jargon", "Don't be overly formal", "Don't make exaggerated claims"]]
+            }
+          }
         }
-      }
+      ]
     },
     "voice": {
       "type": "object",

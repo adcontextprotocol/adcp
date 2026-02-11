@@ -54,6 +54,7 @@
       "items": {
         "$ref": "/schemas/core/creative-asset.json"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "ext": {

@@ -59,7 +59,8 @@
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",
       "items": {
         "$ref": "/schemas/core/creative-assignment.json"
-      }
+      },
+      "minItems": 1
     },
     "creatives": {
       "type": "array",
@@ -67,6 +68,7 @@
       "items": {
         "$ref": "/schemas/core/creative-asset.json"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "ext": {

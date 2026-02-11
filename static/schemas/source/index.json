@@ -226,6 +226,10 @@
           "$ref": "/schemas/core/event-custom-data.json",
           "description": "Event-specific data for attribution and reporting"
         },
+        "attribution-window": {
+          "$ref": "/schemas/core/attribution-window.json",
+          "description": "Attribution methodology and lookback windows for conversion measurement"
+        },
         "optimization-goal": {
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
@@ -515,6 +519,10 @@
         "action-source": {
           "$ref": "/schemas/enums/action-source.json",
           "description": "Where the conversion event originated (website, app, offline, etc.)"
+        },
+        "attribution-model": {
+          "$ref": "/schemas/enums/attribution-model.json",
+          "description": "Attribution model used for conversion measurement"
         },
         "wcag-level": {
           "$ref": "/schemas/enums/wcag-level.json",

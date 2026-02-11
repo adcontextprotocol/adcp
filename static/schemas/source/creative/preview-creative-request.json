@@ -47,7 +47,8 @@
               "name"
             ],
             "additionalProperties": true
-          }
+          },
+          "minItems": 1
         },
         "template_id": {
           "type": "string",
@@ -120,7 +121,8 @@
                     "name"
                   ],
                   "additionalProperties": true
-                }
+                },
+                "minItems": 1
               },
               "template_id": {
                 "type": "string",

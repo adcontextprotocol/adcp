@@ -16,6 +16,7 @@
     "package_ids": {
       "type": "array",
       "items": { "type": "string" },
+      "minItems": 1,
       "description": "Filter to specific packages within the media buy"
     },
     "sampling": {

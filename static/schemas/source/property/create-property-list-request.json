@@ -18,7 +18,8 @@
       "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
       "items": {
         "$ref": "/schemas/property/base-property-source.json"
-      }
+      },
+      "minItems": 1
     },
     "filters": {
       "$ref": "/schemas/property/property-list-filters.json",

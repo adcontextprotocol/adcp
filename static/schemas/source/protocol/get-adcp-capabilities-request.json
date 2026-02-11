@@ -11,7 +11,8 @@
       "items": {
         "type": "string",
         "enum": ["media_buy", "signals", "governance", "sponsored_intelligence", "creative"]
-      }
+      },
+      "minItems": 1
     },
     "context": {
       "$ref": "/schemas/core/context.json"
