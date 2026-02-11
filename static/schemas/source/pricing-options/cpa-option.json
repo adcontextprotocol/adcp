@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/pricing-options/cpa-option.json",
+  "title": "CPA Pricing Option",
+  "description": "Cost Per Acquisition pricing. Advertiser pays a fixed price when a specified conversion event occurs. The event_type field declares which event triggers billing (e.g., purchase, lead, app_install).",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpa",
+      "description": "Cost per acquisition (conversion event)"
+    },
+    "event_type": {
+      "allOf": [{ "$ref": "/schemas/enums/event-type.json" }],
+      "description": "The conversion event type that triggers billing (e.g., purchase, lead, app_install)"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "description": "Name of the custom event when event_type is 'custom'. Required when event_type is 'custom', ignored otherwise."
+    },
+    "event_source_id": {
+      "type": "string",
+      "description": "When present, only events from this specific event source count toward billing. Allows different CPA rates for different sources (e.g., online vs in-store purchases). Must match an event source configured via sync_event_sources."
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "fixed_price": {
+      "type": "number",
+      "description": "Fixed price per acquisition in the specified currency",
+      "exclusiveMinimum": 0
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "event_type", "currency", "fixed_price"],
+  "additionalProperties": true
+}
