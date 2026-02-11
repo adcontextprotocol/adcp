@@ -128,6 +128,7 @@ asyncio.run(discover_with_filters())
 | `brief` | string | No | Natural language description of campaign requirements. When refining a proposal, can include instructions like "focus more on German speakers". |
 | `proposal_id` | string | No | Proposal ID to refine. When provided with a brief, the publisher uses the brief as refinement instructions and returns an updated proposal. |
 | `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
+| `product_selectors` | ProductSelectors | No | Selectors to filter the brand manifest product catalog. Requires `brand_manifest`. See [Product Selectors](#product-selectors) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
@@ -157,6 +158,18 @@ asyncio.run(discover_with_filters())
 | `max` | number | No* | Maximum budget amount |
 
 *At least one of `min` or `max` must be specified.
+
+### Product Selectors
+
+Filter which items from the brand manifest product catalog to evaluate for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches (e.g., a retailer carries the specified GTINs). Selectors combine with OR logic — items matching any criteria are included.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `manifest_gtins` | string[] | GTIN identifiers for cross-retailer catalog matching (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14) |
+| `manifest_skus` | string[] | Direct SKU references from the brand manifest |
+| `manifest_tags` | string[] | Select by tags (e.g., `["organic", "ketchup"]`) |
+| `manifest_category` | string | Select from a specific category (e.g., `"food/condiments"`) |
+| `manifest_query` | string | Natural language query (e.g., `"all pasta sauces under $5"`) |
 
 ## Response
 
@@ -211,6 +224,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | Field | Type | Description |
 |-------|------|-------------|
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
+| `product_selectors_applied` | boolean | `true` if the seller filtered results based on the provided `product_selectors`. Absent or `false` if not provided or not supported. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
@@ -517,6 +531,94 @@ asyncio.run(discover_standard_formats())
 ```
 
 </CodeGroup>
+
+### Commerce Product Discovery
+
+Use `product_selectors` with a brand manifest to discover advertising products where your catalog items have matches at specific retailers:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+// Discover retail media products for specific catalog items
+const result = await testAgent.getProducts({
+  brand_manifest: {
+    name: 'Kraft Heinz',
+    url: 'https://kraftheinz.com',
+    product_catalog: {
+      feed_url: 'https://kraftheinz.com/products.xml',
+      feed_format: 'google_merchant_center'
+    }
+  },
+  product_selectors: {
+    manifest_tags: ['ketchup', 'organic'],
+    manifest_category: 'food/condiments'
+  },
+  filters: {
+    channels: ['retail_media']
+  }
+});
+
+if (result.success && result.data) {
+  if (result.data.product_selectors_applied) {
+    console.log(`Found ${result.data.products.length} products with catalog matches`);
+  } else {
+    console.log('Seller does not support product selectors');
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_commerce_products():
+    # Discover retail media products for specific catalog items
+    result = await test_agent.simple.get_products(
+        brand_manifest={
+            'name': 'Kraft Heinz',
+            'url': 'https://kraftheinz.com',
+            'product_catalog': {
+                'feed_url': 'https://kraftheinz.com/products.xml',
+                'feed_format': 'google_merchant_center'
+            }
+        },
+        product_selectors={
+            'manifest_tags': ['ketchup', 'organic'],
+            'manifest_category': 'food/condiments'
+        },
+        filters={
+            'channels': ['retail_media']
+        }
+    )
+    if result.get('product_selectors_applied'):
+        print(f"Found {len(result.products)} products with catalog matches")
+    else:
+        print("Seller does not support product selectors")
+
+asyncio.run(discover_commerce_products())
+```
+
+```bash CLI
+uvx adcp \
+  https://test-agent.adcontextprotocol.org/mcp \
+  get_products \
+  '{"brand_manifest":{"name":"Kraft Heinz","url":"https://kraftheinz.com","product_catalog":{"feed_url":"https://kraftheinz.com/products.xml","feed_format":"google_merchant_center"}},"product_selectors":{"manifest_tags":["ketchup","organic"],"manifest_category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+```
+
+</CodeGroup>
+
+You can also select catalog items by GTIN for precise cross-retailer matching:
+
+```json
+{
+  "product_selectors": {
+    "manifest_gtins": ["00013000006040", "00013000006057"]
+  }
+}
+```
 
 ### Property List Filtering
 
