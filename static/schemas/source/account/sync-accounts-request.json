@@ -36,12 +36,12 @@
         "required": ["house"],
         "additionalProperties": true
       },
-      "maxItems": 100
+      "maxItems": 1000
     },
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, accounts not included in this sync will be deactivated. Use with caution."
+      "description": "When true, accounts previously synced by this agent but not included in this request will be deactivated. Scoped to the authenticated agent — does not affect accounts managed by other agents. Use with caution."
     },
     "dry_run": {
       "type": "boolean",

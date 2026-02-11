@@ -159,6 +159,8 @@ Each account entry identifies the brand by house domain + brand_id, the operator
 | `operator` | No | Domain of the entity operating the seat. Omit if the brand operates its own seat. |
 | `billing` | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. |
 
+**Natural key:** The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "coca-cola.com"}` (brand buying direct) is a different account from `{house: "coca-cola.com", operator: "groupm.com"}` (brand via agency). The seller uses this natural key for upsert matching across sync calls.
+
 ### Response
 
 The seller responds with per-account results. Each account has an action (what happened) and a status (durable state):
@@ -243,6 +245,14 @@ The seller may return a different `billing` value than the agent requested. For 
 
 The agent should check the returned `billing` and inform the buyer if it differs from what was requested.
 
+### delete_missing Scope
+
+When `delete_missing: true`, the seller deactivates accounts that were previously synced by **this agent** but are not included in the current request. It does not affect accounts managed by other agents.
+
+For example, if Agent A syncs `[dove, axe]` and Agent B syncs `[dove, tide]`, then Agent B calls sync with `delete_missing: true` and `[dove]` — only `tide` is deactivated (Agent B's account not in the new list). Agent A's `axe` account is unaffected.
+
+The scope is always the authenticated agent's portfolio at this seller. Use `dry_run: true` to preview deactivations before committing.
+
 ## Authorized Operators
 
 Brands declare who can represent them in `/.well-known/brand.json` via the `authorized_operators` field. This enables sellers to verify that an operator is authorized to act on a brand's behalf.
@@ -284,14 +294,18 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 
 ### Verification Flow
 
-When an agent syncs an account with `operator: "mindshare.com"` for brand `house: "unilever.com"`, `brand_id: "dove"`, the seller can:
+When an agent syncs an account with a third-party operator, sellers SHOULD verify the operator against `brand.json`. The verification flow:
 
-1. Resolve `unilever.com/.well-known/brand.json`
-2. Check `authorized_operators` for `domain: "mindshare.com"` with `"dove"` in `brands`
+1. Resolve `{house}/.well-known/brand.json`
+2. Check `authorized_operators` for matching `domain` with the brand in `brands`
 3. If found → proceed (account may still need credit approval)
-4. If not found → return `pending_authorization` with a setup URL for Unilever to approve
+4. If not found → return `status: "pending_authorization"` with a setup URL for the brand to approve
 
-If `authorized_operators` is not present in brand.json, the seller falls back to `pending_authorization` for any third-party operator.
+**When `brand.json` is unavailable** (DNS failure, HTTP error, timeout): the seller SHOULD return `status: "pending_authorization"` and MAY include a warning. Sellers MUST NOT silently treat an unreachable `brand.json` as authorization.
+
+**When `authorized_operators` is absent** from brand.json: the seller returns `pending_authorization` for any third-party operator, since the brand has not declared any authorizations.
+
+**Sellers that do not verify:** If a seller does not check `brand.json`, all third-party operator accounts MUST default to `pending_authorization`. The seller provides a setup URL where the brand can authorize the operator directly. This ensures brands always have a gate on who can represent them, regardless of whether the seller implements `brand.json` resolution.
 
 **Self-authorization is implicit.** A brand operating its own accounts does not need to list itself in `authorized_operators`. When `operator` is omitted from a sync_accounts request, or when the operator domain matches the house domain, the brand is operating its own seat. Sellers should treat this as authorized without checking `authorized_operators`.
 
@@ -649,6 +663,12 @@ An account represents a standing relationship between a buyer and seller — who
 Insertion orders, campaign flights, and other time-bound spending commitments are modeled as media buys via `create_media_buy`. The account determines *billing terms*; the media buy determines *what runs and when*.
 
 A single account can have many media buys over its lifetime, just as a single advertiser relationship can encompass many campaigns.
+
+### Operator Revocation and Caching
+
+If a brand removes an operator from `authorized_operators`, existing active accounts are not automatically deactivated. Revocation is eventual, not immediate — similar to how `ads.txt` changes propagate on the supply side.
+
+Sellers SHOULD respect standard HTTP caching headers on `brand.json` and re-validate periodically. A reasonable cache TTL is 24 hours. Sellers that need tighter revocation guarantees can implement shorter cache windows or accept push notifications from brands out-of-band.
 
 ### Brand Identity for SMBs
 
