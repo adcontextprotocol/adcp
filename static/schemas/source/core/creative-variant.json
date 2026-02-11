@@ -20,11 +20,30 @@
         },
         "generation_context": {
           "type": "object",
-          "description": "Input signals that triggered generation of this variant (Tier 3). Describes why the platform created this specific variant. Platforms should provide summarized or anonymized signals rather than raw user input. For web contexts, may include page topic or URL. For conversational contexts, an anonymized content signal. For search, query category or intent.",
+          "description": "Input signals that triggered generation of this variant (Tier 3). Describes why the platform created this specific variant. Platforms should provide summarized or anonymized signals rather than raw user input. For web contexts, may include page topic or URL. For conversational contexts, an anonymized content signal. For search, query category or intent. When the content context is managed through AdCP content standards, reference the artifact directly via the artifact field.",
           "properties": {
             "context_type": {
               "type": "string",
               "description": "Type of context that triggered generation (e.g., 'web_page', 'conversational', 'search', 'app', 'dooh')"
+            },
+            "artifact": {
+              "type": "object",
+              "description": "Reference to the content-standards artifact that provided the generation context. Links this variant to the specific piece of content (article, video, podcast segment, etc.) where the ad was placed.",
+              "properties": {
+                "property_id": {
+                  "$ref": "/schemas/core/identifier.json",
+                  "description": "Property where the artifact appears"
+                },
+                "artifact_id": {
+                  "type": "string",
+                  "description": "Artifact identifier within the property"
+                }
+              },
+              "required": ["property_id", "artifact_id"],
+              "additionalProperties": false
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
             }
           },
           "additionalProperties": true

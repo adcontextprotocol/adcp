@@ -52,7 +52,7 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 |-------|-------------|
 | `variant_id` | Platform-assigned variant identifier |
 | `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
-| `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. |
+| `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
 | Standard metrics | All delivery metrics (impressions, spend, clicks, ctr, etc.) |
 
 Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are platform-calculated and may not equal naive division of their component fields due to rounding, attribution windows, or filtered impressions.
@@ -180,6 +180,8 @@ Buyer provides multiple asset alternatives using a format with `selection_mode: 
 
 Platform generates variants from brand manifest and input contexts. The `manifest` contains the generated assets — which may differ entirely from what the buyer submitted.
 
+When the publisher uses AdCP content standards, `generation_context` can include an `artifact` reference linking the variant to the specific content (article, video, etc.) that triggered generation. Platforms can also use `ext` for vendor-specific context structures.
+
 ```json
 {
   "media_buy_id": "mb_12345",
@@ -203,6 +205,10 @@ Platform generates variants from brand manifest and input contexts. The `manifes
           "variant_id": "gen_mobile_morning",
           "generation_context": {
             "context_type": "web_page",
+            "artifact": {
+              "property_id": { "type": "domain", "value": "techreview.example.com" },
+              "artifact_id": "article_semiconductor_trends_2026"
+            },
             "topic": "technology, semiconductors",
             "device_class": "mobile"
           },
