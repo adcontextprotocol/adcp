@@ -287,7 +287,8 @@
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
-                  "docs/creative/task-reference/list_creative_formats"
+                  "docs/creative/task-reference/list_creative_formats",
+                  "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
             ]
@@ -728,7 +729,8 @@
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
-                  "docs/creative/task-reference/list_creative_formats"
+                  "docs/creative/task-reference/list_creative_formats",
+                  "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
             ]

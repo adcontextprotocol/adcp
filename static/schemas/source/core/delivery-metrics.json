@@ -219,6 +219,45 @@
       },
       "additionalProperties": true
     },
+    "viewability": {
+      "type": "object",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
+      "properties": {
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",
+          "minimum": 0
+        },
+        "viewable_impressions": {
+          "type": "number",
+          "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+          "minimum": 0
+        },
+        "viewable_rate": {
+          "type": "number",
+          "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "standard": {
+          "type": "string",
+          "enum": ["mrc", "groupm"],
+          "description": "Viewability measurement standard. 'mrc': 50% of pixels in view for 1 second (display) or 2 seconds (video), per MRC/IAB guidelines. 'groupm': 100% of pixels in view for the same durations. These are materially different thresholds and should not be compared across standards."
+        }
+      },
+      "additionalProperties": true
+    },
+    "engagement_rate": {
+      "type": "number",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Definition varies by platform (e.g., likes+comments+shares/impressions on social, interactions/impressions on rich media).",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_per_click": {
+      "type": "number",
+      "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
     "by_action_source": {
       "type": "array",
       "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",

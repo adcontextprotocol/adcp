@@ -90,6 +90,10 @@
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Performance feedback data for a media buy or package"
         },
+        "creative-variant": {
+          "$ref": "/schemas/core/creative-variant.json",
+          "description": "A specific execution variant of a creative with performance metrics"
+        },
         "property": {
           "$ref": "/schemas/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
@@ -386,7 +390,7 @@
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
-          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"
+          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
@@ -708,6 +712,16 @@
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
             "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+          }
+        },
+        "get-creative-delivery": {
+          "request": {
+            "$ref": "/schemas/creative/get-creative-delivery-request.json",
+            "description": "Request parameters for retrieving creative delivery data with variant-level breakdowns"
+          },
+          "response": {
+            "$ref": "/schemas/creative/get-creative-delivery-response.json",
+            "description": "Response payload with creative delivery data including variant manifests and metrics"
           }
         }
       },

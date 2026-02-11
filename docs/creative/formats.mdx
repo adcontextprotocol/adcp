@@ -592,6 +592,46 @@ See [Carousel Channel Guide](/docs/creative/channels/carousels) for complete spe
 
 Some formats like carousels, slideshows, and stories use repeatable asset groups where each frame contains a collection of assets. See the [Carousel & Multi-Asset Formats guide](/docs/creative/channels/carousels) for complete documentation on frame-based format patterns.
 
+## Reported Metrics
+
+Formats can declare which metrics they produce in delivery reporting via the `reported_metrics` field. This tells buyers what data to expect when purchasing inventory using this format.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
+  "name": "30-Second Hosted Video",
+  "reported_metrics": [
+    "impressions", "spend", "views", "completed_views",
+    "completion_rate", "quartile_data"
+  ]
+}
+```
+
+### Intersection with Product Metrics
+
+Products declare their available metrics via `reporting_capabilities.available_metrics`. The buyer receives the **intersection** of format `reported_metrics` and product `available_metrics`.
+
+`impressions` and `spend` are always reported regardless of the intersection — they are implicit in every delivery response. The intersection applies to all other metrics.
+
+For example, if a video format declares `quartile_data` but the product only reports `impressions`, `spend`, and `clicks`, the buyer will not receive quartile data for that product.
+
+### When to Omit
+
+If `reported_metrics` is omitted, the format defers entirely to product-level metric declarations. This is appropriate for formats where the creative type does not inherently constrain which metrics are available (e.g., native formats where metrics depend on the platform).
+
+### Common Patterns
+
+**Video formats**: `impressions`, `spend`, `views`, `completed_views`, `completion_rate`, `quartile_data`
+
+**Display formats**: `impressions`, `spend`, `clicks`, `ctr`, `viewability`
+
+**DOOH formats**: `impressions`, `spend`, `dooh_metrics`
+
+**Social/performance formats**: `impressions`, `spend`, `clicks`, `ctr`, `conversions`, `engagement_rate`
+
 ## Format Cards
 
 Format cards provide visual representations of creative formats for display in browsing and selection interfaces. Creative agents can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
