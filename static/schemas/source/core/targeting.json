@@ -67,6 +67,14 @@
         "additionalProperties": false
       }
     },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+      "items": {
+        "$ref": "/schemas/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
     "axe_include_segment": {
       "type": "string",
       "description": "AXE segment ID to include for targeting"

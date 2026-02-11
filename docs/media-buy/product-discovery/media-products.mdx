@@ -649,6 +649,19 @@ This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,8
 - **`modeled`** — derived from predictive models or historical data
 - **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
 
+#### Forecast Range Units
+
+The `forecast_range_unit` field tells consumers how to interpret the points array — what axis the curve represents:
+
+- **`spend`** (default) — points at ascending budget levels. Standard budget curve.
+- **`reach_freq`** — points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.
+- **`weekly`** / **`daily`** — metrics are per-period values. Budget refers to total campaign spend. A frequency of 3.2 with `weekly` means 3.2 exposures per week.
+- **`clicks`** / **`conversions`** — points at ascending outcome targets. Used in goal-based planning (e.g., "tell me your conversion goal, I'll tell you the budget").
+
+A spend curve and a reach/frequency curve may contain identical data — the difference is the publisher's intent. A spend curve says "here's what different budgets buy." A reach/frequency curve says "here's what it costs to hit different frequency targets." Consumers can read either curve in either direction.
+
+Temporal units (`weekly`, `daily`) change how metrics are interpreted. Without a range unit (or with `spend`), a frequency of 3.2 means 3.2 total campaign exposures. With `weekly`, it means 3.2 exposures per week.
+
 Forecasts can appear at two levels:
 - **Proposal-level**: aggregate forecast for the entire media plan
 - **Allocation-level**: per-product forecast for individual line items
@@ -814,6 +827,140 @@ When a proposal includes per-allocation forecasts, buyers can evaluate each prod
 ```
 
 Note that the allocation forecasts (900 + 600 = 1,500 purchases) happen to match the proposal forecast in this example, but they often won't — audience overlap and frequency capping mean the whole is typically less than the sum of its parts. The proposal-level forecast is authoritative for total delivery.
+
+#### Broadcast Audio Spot Plan
+
+Broadcast and audio publishers can return spot-plan proposals with `daypart_targets` on each allocation and weekly frequency projections via `forecast_range_unit: "weekly"`. This pattern lets the publisher solve the optimization problem — the buyer specifies frequency goals, and the publisher returns the plan that achieves them:
+
+```json
+{
+  "proposal_id": "iheart_q4_audio",
+  "name": "Q4 Audio - Adults 25-54",
+  "allocations": [
+    {
+      "product_id": "morning_drive_30s",
+      "allocation_percentage": 50,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 6,
+          "end_hour": 10,
+          "label": "Morning Drive"
+        }
+      ],
+      "rationale": "Morning drive delivers highest reach against P25-54 with 3x weekly frequency at 2 spots/day",
+      "forecast": {
+        "points": [
+          {
+            "budget": 37500,
+            "metrics": {
+              "grps": { "mid": 42 },
+              "reach": { "low": 140000, "mid": 180000, "high": 210000 },
+              "frequency": { "mid": 3.2 },
+              "impressions": { "mid": 576000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "afternoon_drive_30s",
+      "allocation_percentage": 30,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 15,
+          "end_hour": 19,
+          "label": "Afternoon Drive"
+        }
+      ],
+      "rationale": "Afternoon drive complements morning with incremental reach and frequency overlap",
+      "forecast": {
+        "points": [
+          {
+            "budget": 22500,
+            "metrics": {
+              "grps": { "mid": 28 },
+              "reach": { "low": 95000, "mid": 120000, "high": 145000 },
+              "frequency": { "mid": 2.4 },
+              "impressions": { "mid": 288000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "daytime_30s",
+      "allocation_percentage": 20,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 10,
+          "end_hour": 15,
+          "label": "Daytime"
+        }
+      ],
+      "rationale": "Daytime fill provides frequency reinforcement at lower CPP",
+      "forecast": {
+        "points": [
+          {
+            "budget": 15000,
+            "metrics": {
+              "grps": { "mid": 18 },
+              "reach": { "low": 60000, "mid": 80000, "high": 95000 },
+              "frequency": { "mid": 1.8 },
+              "impressions": { "mid": 144000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 75000,
+        "metrics": {
+          "grps": { "mid": 82 },
+          "reach": { "low": 220000, "mid": 280000, "high": 330000 },
+          "frequency": { "mid": 4.1 },
+          "impressions": { "mid": 1008000 }
+        }
+      }
+    ],
+    "forecast_range_unit": "weekly",
+    "method": "modeled",
+    "currency": "USD",
+    "demographic_system": "nielsen",
+    "demographic": "P25-54",
+    "reach_unit": "individuals"
+  }
+}
+```
+
+The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all metrics are per-week values — frequency of 3.2 means 3.2 exposures per week, not 3.2 over the entire campaign. Budget ($75K) is total campaign spend.
+
+The `daypart_targets` on each allocation specify the publisher's recommended time windows. These are the same structure used in `targeting` for hard daypart constraints — here the publisher is prescribing the spot plan rather than the buyer constraining it.
+
+Note that allocation-level reach doesn't sum to the proposal level (180K + 120K + 80K > 280K) because of audience overlap across dayparts — the same listener may hear morning drive and afternoon drive spots. The proposal-level forecast accounts for this overlap.
 
 ## Integration with Discovery
 

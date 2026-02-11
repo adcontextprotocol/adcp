@@ -35,6 +35,14 @@
         "type": "string"
       }
     },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Recommended time windows for this allocation in spot-plan proposals.",
+      "items": {
+        "$ref": "/schemas/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
     "forecast": {
       "$ref": "/schemas/core/delivery-forecast.json",
       "description": "Forecasted delivery metrics for this allocation"

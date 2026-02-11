@@ -13,6 +13,10 @@
       },
       "minItems": 1
     },
+    "forecast_range_unit": {
+      "$ref": "/schemas/enums/forecast-range-unit.json",
+      "description": "How to interpret the points array. 'spend' (default when omitted): points at ascending budget levels. 'reach_freq': points at ascending reach/frequency targets. 'weekly'/'daily': metrics are per-period values. 'clicks'/'conversions': points at ascending outcome targets."
+    },
     "method": {
       "$ref": "/schemas/enums/forecast-method.json",
       "description": "Method used to produce this forecast"

@@ -210,6 +210,10 @@
           "$ref": "/schemas/core/data-provider-signal-selector.json",
           "description": "Selects signals from a data provider's adagents.json - supports three patterns: all signals, specific IDs, or by tags"
         },
+        "daypart-target": {
+          "$ref": "/schemas/core/daypart-target.json",
+          "description": "A time window for daypart targeting with days of week and hour range"
+        },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
@@ -364,6 +368,10 @@
           "$ref": "/schemas/enums/daast-tracking-event.json",
           "description": "Standard DAAST tracking events for audio playback and interaction"
         },
+        "day-of-week": {
+          "$ref": "/schemas/enums/day-of-week.json",
+          "description": "Days of the week for daypart targeting"
+        },
         "signal-catalog-type": {
           "$ref": "/schemas/enums/signal-catalog-type.json",
           "description": "Types of signal catalogs (marketplace, custom, owned)"
@@ -383,6 +391,10 @@
         "forecastable-metric": {
           "$ref": "/schemas/enums/forecastable-metric.json",
           "description": "Standard metric names for delivery forecasts (audience_size, reach, impressions, clicks, spend, etc.)"
+        },
+        "forecast-range-unit": {
+          "$ref": "/schemas/enums/forecast-range-unit.json",
+          "description": "How to interpret forecast points: spend curve, reach/frequency curve, temporal (weekly/daily), or outcome targets (clicks/conversions)"
         },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",
