@@ -46,6 +46,7 @@
     "fields": {
       "type": "array",
       "description": "Specific fields to include in response (omit for all fields)",
+      "minItems": 1,
       "items": {
         "type": "string",
         "enum": [

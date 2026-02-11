@@ -10,7 +10,8 @@
       "description": "Return only these specific format IDs",
       "items": {
         "$ref": "/schemas/core/format-id.json"
-      }
+      },
+      "minItems": 1
     },
     "type": {
       "type": "string",
@@ -36,7 +37,8 @@
           "javascript",
           "url"
         ]
-      }
+      },
+      "minItems": 1
     },
     "max_width": {
       "type": "integer",
@@ -61,6 +63,10 @@
     "name_search": {
       "type": "string",
       "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "wcag_level": {
+      "$ref": "/schemas/enums/wcag-level.json",
+      "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"

@@ -42,7 +42,8 @@
       "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
-      }
+      },
+      "minItems": 1
     },
     "brand_manifest": {
       "$ref": "/schemas/core/brand-manifest-ref.json",

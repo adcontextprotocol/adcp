@@ -12,6 +12,7 @@
     "event_sources": {
       "type": "array",
       "description": "Event sources to sync (create or update). When omitted, the call is discovery-only and returns all existing event sources on the account without modification.",
+      "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
@@ -28,14 +29,16 @@
             "description": "Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.",
             "items": {
               "$ref": "/schemas/enums/event-type.json"
-            }
+            },
+            "minItems": 1
           },
           "allowed_domains": {
             "type": "array",
             "description": "Domains authorized to send events for this event source",
             "items": {
               "type": "string"
-            }
+            },
+            "minItems": 1
           }
         },
         "required": [

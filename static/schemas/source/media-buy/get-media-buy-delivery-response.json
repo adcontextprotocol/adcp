@@ -60,6 +60,10 @@
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$"
     },
+    "attribution_window": {
+      "$ref": "/schemas/core/attribution-window.json",
+      "description": "Attribution methodology and lookback windows used for conversion metrics in this response. All media buys from a single seller share the same attribution methodology. Enables cross-platform comparison (e.g., Amazon 14-day click vs. Criteo 30-day click)."
+    },
     "aggregated_totals": {
       "type": "object",
       "description": "Combined metrics across all returned media buys. Only included in API responses (get_media_buy_delivery), not in webhook notifications.",
