@@ -4,7 +4,7 @@
 
 Add CPA (Cost Per Acquisition) pricing model for outcome-based campaigns.
 
-CPA enables advertisers to pay per conversion event (purchase, lead, signup, etc.) rather than per impression or click. The billable event type is determined by the package's `optimization_goal.event_type`, which ties to event sources configured via `sync_event_sources`.
+CPA enables advertisers to pay per conversion event (purchase, lead, signup, etc.) rather than per impression or click. The pricing option declares which `event_type` triggers billing, independent of any optimization goal.
 
 This single model covers use cases previously described as CPO (Cost Per Order), CPL (Cost Per Lead), and CPI (Cost Per Install) — differentiated by event type rather than separate pricing models.
 

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/pricing-options/cpa-option.json",
   "title": "CPA Pricing Option",
-  "description": "Cost Per Acquisition pricing. Advertiser pays when a conversion event occurs (e.g., purchase, lead, signup). The billable event type is determined by the package's optimization_goal.event_type. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
+  "description": "Cost Per Acquisition pricing. Advertiser pays when a specified conversion event occurs. The event_type field declares which event triggers billing (e.g., purchase, lead, app_install). If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
   "type": "object",
   "properties": {
     "pricing_option_id": {
@@ -13,6 +13,10 @@
       "type": "string",
       "const": "cpa",
       "description": "Cost per acquisition (conversion event)"
+    },
+    "event_type": {
+      "$ref": "/schemas/enums/event-type.json",
+      "description": "The conversion event type that triggers billing (e.g., purchase, lead, app_install)"
     },
     "currency": {
       "type": "string",
@@ -40,6 +44,6 @@
       "minimum": 0
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency"],
+  "required": ["pricing_option_id", "pricing_model", "event_type", "currency"],
   "additionalProperties": true
 }

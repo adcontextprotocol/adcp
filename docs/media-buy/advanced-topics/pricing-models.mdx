@@ -242,22 +242,24 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 **Use Cases**: Retail media (pay per order), lead generation, app install campaigns, commerce media
 
-**Example** (fixed pricing):
+**Example** (fixed pricing — pay per purchase):
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpa-option.json",
   "pricing_option_id": "cpa_usd_purchase",
   "pricing_model": "cpa",
+  "event_type": "purchase",
   "fixed_price": 5.00,
   "currency": "USD"
 }
 ```
 
-**Example** (auction pricing):
+**Example** (auction pricing — pay per lead):
 ```json
 {
-  "pricing_option_id": "cpa_usd_auction",
+  "pricing_option_id": "cpa_usd_lead_auction",
   "pricing_model": "cpa",
+  "event_type": "lead",
   "currency": "USD",
   "floor_price": 2.00,
   "price_guidance": {
@@ -269,15 +271,12 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
-**Billing**: Charged when a conversion event fires. The specific event type (purchase, lead, signup, etc.) is defined by the package's `optimization_goal.event_type`, which ties to event sources configured via `sync_event_sources`.
+**Billing**: Charged when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goal`, which controls delivery optimization.
 
-**How CPA connects to conversion tracking:**
-1. Buyer configures event sources via `sync_event_sources` (e.g., a pixel tracking purchases)
-2. Buyer sets `optimization_goal` on the package with `event_source_id` and `event_type`
-3. Events fire via `log_event` as conversions occur
-4. Delivery reports include `conversions`, `conversion_value`, `cost_per_acquisition`, and `roas`
+**Parameters**:
+- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
 
-**Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. Use `optimization_goal.event_type` to specify the conversion type: `purchase` for CPO equivalents, `lead` for CPL equivalents, etc.
+**Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. A seller can offer multiple CPA options with different event types and prices on the same product.
 
 ---
 
