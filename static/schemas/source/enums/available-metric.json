@@ -15,6 +15,7 @@
     "conversion_value",
     "roas",
     "cost_per_acquisition",
+    "new_to_brand_rate",
     "viewability",
     "engagement_rate"
   ]

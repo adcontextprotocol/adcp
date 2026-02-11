@@ -32,7 +32,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 |-------|-------------|
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
-| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, video_completions, media_buy_count) |
+| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, video_completions, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, media_buy_count) |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -42,9 +42,9 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `media_buy_id` | Media buy identifier |
 | `buyer_ref` | Buyer's reference identifier |
 | `status` | Current status (`pending`, `active`, `paused`, `completed`, `failed`) |
-| `totals` | Aggregate metrics (impressions, spend, clicks, ctr, video_completions, completion_rate) |
+| `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
-| `daily_breakdown` | Day-by-day delivery (date, impressions, spend) |
+| `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
 
 See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) for complete field list.
 
@@ -476,6 +476,11 @@ asyncio.run(main())
 | **CTR** | Click-through rate (clicks/impressions) |
 | **Video Completions** | Videos watched to completion |
 | **Completion Rate** | Video completions/video impressions |
+| **Conversions** | Attributed conversions/orders |
+| **Conversion Value** | Total monetary value of attributed conversions |
+| **ROAS** | Return on ad spend (conversion_value / spend) |
+| **New-to-Brand Rate** | Fraction of conversions from first-time brand buyers (0-1) |
+| **Cost per Acquisition** | Cost per conversion (spend / conversions) |
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |
 
@@ -502,6 +507,7 @@ asyncio.run(main())
 ### Metric Availability
 - **Universal**: Impressions, spend (available on all platforms)
 - **Format-dependent**: Clicks, video completions (depends on inventory type and platform capabilities)
+- **Commerce attribution**: Conversions, conversion_value, roas, new_to_brand_rate (available on commerce media platforms)
 - **Package-level**: All metrics broken down by package with pacing_index
 
 ## Data Freshness

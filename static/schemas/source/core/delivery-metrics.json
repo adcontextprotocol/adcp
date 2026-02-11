@@ -62,6 +62,12 @@
       "description": "Cost per conversion (spend / conversions)",
       "minimum": 0
     },
+    "new_to_brand_rate": {
+      "type": "number",
+      "description": "Fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+      "minimum": 0,
+      "maximum": 1
+    },
     "leads": {
       "type": "number",
       "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
