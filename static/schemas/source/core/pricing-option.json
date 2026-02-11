@@ -27,6 +27,9 @@
     },
     {
       "$ref": "/schemas/pricing-options/flat-rate-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/time-option.json"
     }
   ]
 }

@@ -1,7 +1,7 @@
 ---
 title: Pricing Models
-description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, CPA, and DOOH support
-keywords: [pricing models, CPM, CPCV, CPP, CPC, CPA, CPV, GRP, video pricing, DOOH, share of voice, measurement, conversions]
+description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, CPA, Time, and DOOH support
+keywords: [pricing models, CPM, CPCV, CPP, CPC, CPA, CPV, GRP, video pricing, DOOH, share of voice, measurement, conversions, time-based, sponsorship, daily rate]
 ---
 
 
@@ -310,6 +310,54 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 ---
 
+### Time (Cost Per Time Unit)
+**Cost per time unit** - Rate scales with campaign duration, enabling self-serve sponsorships.
+
+**Use Cases**: Homepage takeovers, section sponsorships, premium placements where price depends on booking duration
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/time-option.json",
+  "pricing_option_id": "time_usd_daily",
+  "pricing_model": "time",
+  "fixed_price": 50000.00,
+  "currency": "USD",
+  "parameters": {
+    "time_unit": "day",
+    "min_duration": 1,
+    "max_duration": 30
+  }
+}
+```
+
+**Billing**: Cost = `fixed_price` x number of `time_unit`s in the campaign flight. For example, a 3-day campaign at $50,000/day = $150,000 total.
+
+**Parameters**:
+- `time_unit` (required): `"hour"`, `"day"`, `"week"`, or `"month"`
+- `min_duration` (optional): Minimum booking duration in time units
+- `max_duration` (optional): Maximum booking duration in time units
+
+**Time Unit Calculation**:
+
+| Time Unit | Calculation |
+|-----------|-------------|
+| `hour` | rate x hours in flight |
+| `day` | rate x calendar days in flight |
+| `week` | rate x weeks (seller-defined rounding) |
+| `month` | rate x months (seller-defined pro-rating) |
+
+**Comparison with Flat Rate**:
+
+| Aspect | Flat Rate | Time |
+|--------|-----------|------|
+| Semantics | Fixed total cost | Rate x duration |
+| `fixed_price` means | Total campaign cost | Cost per time unit |
+| Buyer flexibility | Must negotiate duration | Self-serve any duration |
+| Use case | Fixed sponsorships | Scalable sponsorships |
+
+---
+
 ## Digital Out-of-Home (DOOH) Pricing
 
 DOOH advertising uses existing pricing models—typically **CPM** or **flat_rate**—with optional parameters to describe the inventory allocation.
@@ -459,6 +507,7 @@ Different pricing models report different primary metrics:
 | CPC | clicks | impressions, ctr, spend |
 | CPA | conversions | conversion_value, cost_per_acquisition, roas, spend |
 | Flat Rate | N/A | impressions, reach, frequency |
+| Time | N/A | impressions, reach, frequency |
 
 ## Example: Multi-Model CTV Product
 
