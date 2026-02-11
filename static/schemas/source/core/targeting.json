@@ -13,9 +13,25 @@
         "pattern": "^[A-Z]{2}$"
       }
     },
+    "geo_countries_exclude": {
+      "type": "array",
+      "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
     "geo_regions": {
       "type": "array",
       "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      }
+    },
+    "geo_regions_exclude": {
+      "type": "array",
+      "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
@@ -44,6 +60,29 @@
         "additionalProperties": false
       }
     },
+    "geo_metros_exclude": {
+      "type": "array",
+      "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes to exclude within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      }
+    },
     "geo_postal_areas": {
       "type": "array",
       "description": "Restrict delivery to specific postal areas. Each entry specifies the postal system and target values. Seller must declare supported systems in get_adcp_capabilities.",
@@ -57,6 +96,29 @@
           "values": {
             "type": "array",
             "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      }
+    },
+    "geo_postal_areas_exclude": {
+      "type": "array",
+      "description": "Exclude specific postal areas from delivery. Each entry specifies the postal system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes to exclude within the system (e.g., ['10001', '10002'] for us_zip)",
             "items": {
               "type": "string"
             },

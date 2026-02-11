@@ -147,13 +147,19 @@ Use geo fields **only** for:
 - **Regulatory compliance**: Legal requirements for geographic restrictions
 - **Product refinement**: When a product spans multiple regions and you need to restrict to a subset
 
-**Available fields**:
+**Inclusion fields** (restrict delivery to these locations):
 - `geo_countries`: ISO 3166-1 alpha-2 country codes (e.g., `["US", "GB"]`)
 - `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
 - `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
 - `geo_postal_areas`: Structured postal areas with explicit system (e.g., `us_zip`, `gb_outward`) — not all publishers support postal-level targeting
 
-**Note**: Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
+**Exclusion fields** (exclude these locations from delivery):
+- `geo_countries_exclude`: Same format as `geo_countries`
+- `geo_regions_exclude`: Same format as `geo_regions`
+- `geo_metros_exclude`: Same format as `geo_metros`
+- `geo_postal_areas_exclude`: Same format as `geo_postal_areas`
+
+**Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
 ### Age Restrictions (Compliance)
 Use for **legal compliance** requirements:
@@ -225,7 +231,35 @@ Basic impression suppression controls:
 
 ### Example Geographic Overlay (RCT Testing)
 
-Test group targeting uses structured metro areas with explicit classification system:
+For RCT testing, exclusion targeting is often simpler than inclusion. Instead of listing hundreds of DMAs to include, exclude the holdout markets from a national campaign. When inclusion and exclusion are combined, exclusion fields subtract from the included set (e.g., "US minus these 3 DMAs"):
+
+```json
+{
+  "packages": [
+    {
+      "buyer_ref": "test_group",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_countries": ["US"],
+        "geo_metros_exclude": [
+          { "system": "nielsen_dma", "values": ["501", "803", "602"] }
+        ]
+      }
+    },
+    {
+      "buyer_ref": "control_group",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["501", "803", "602"] }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Inclusion targeting works the same way for cases where you want to specify exact markets:
 
 ```json
 {
@@ -279,7 +313,17 @@ Test group targeting uses structured metro areas with explicit classification sy
 
 ## Available Targeting Overlay Parameters
 
-All geographic targeting uses inclusive matching.
+Geographic targeting supports both inclusion (restrict to) and exclusion (exclude from) for all geo dimensions. Inclusion and exclusion fields can be combined — for example, include a country but exclude specific metros within it.
+
+### Exclusion Semantics
+
+**Exclusion without inclusion.** When an exclusion field is present without a corresponding inclusion field, the exclusion applies to the product's full geographic coverage. For example, if a product covers the entire US and the buyer specifies only `geo_metros_exclude`, the excluded metros are removed from the product's national footprint.
+
+**Cross-level resolution.** Geographic levels form a hierarchy: country > region > metro > postal. Exclusion at a higher level removes all locations within that geography, regardless of inclusion at a more specific level. For example, `geo_countries_exclude: ["US"]` combined with `geo_regions: ["US-CA"]` results in no US delivery — the country-level exclusion takes precedence.
+
+**Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error.
+
+**Capabilities.** Declaring geographic targeting support in `get_adcp_capabilities` implies support for both inclusion and exclusion at that level. Sellers that support `geo_metros` targeting are expected to also support `geo_metros_exclude`.
 
 ### geo_countries
 - **Description**: Restrict delivery to specific countries
@@ -287,11 +331,23 @@ All geographic targeting uses inclusive matching.
 - **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
 - **Use cases**: Regulatory compliance, country-specific campaigns
 
+### geo_countries_exclude
+- **Description**: Exclude specific countries from delivery
+- **Format**: ISO 3166-1 alpha-2 country codes
+- **Examples**: `["RU", "CN"]`
+- **Use cases**: Regulatory compliance, sanctions
+
 ### geo_regions
 - **Description**: Restrict delivery to specific regions/states
 - **Format**: ISO 3166-2 subdivision codes
 - **Examples**: `["US-CA", "US-NY"]`, `["GB-SCT", "GB-ENG"]`
 - **Use cases**: State-level compliance, regional testing
+
+### geo_regions_exclude
+- **Description**: Exclude specific regions/states from delivery
+- **Format**: ISO 3166-2 subdivision codes
+- **Examples**: `["US-CA"]`, `["CA-QC"]`
+- **Use cases**: Regulatory compliance (e.g., cannabis restrictions by province), RCT holdout regions, regions where product is unavailable
 
 ### geo_metros
 - **Description**: Restrict delivery to specific metro areas
@@ -301,12 +357,26 @@ All geographic targeting uses inclusive matching.
 - **Use cases**: Local campaigns, metro-level RCT testing
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
+### geo_metros_exclude
+- **Description**: Exclude specific metro areas from delivery
+- **Format**: Array of objects, each with a `system` and `values`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["602"] }]`
+- **Use cases**: RCT holdout markets, competitive exclusion zones, markets where product is unavailable
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
 ### geo_postal_areas
 - **Description**: Restrict delivery to specific postal areas
 - **Format**: Array of objects, each with a `system` and `values`
 - **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`
 - **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
 - **Use cases**: Hyper-local campaigns, postal-level restrictions
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
+### geo_postal_areas_exclude
+- **Description**: Exclude specific postal areas from delivery
+- **Format**: Array of objects, each with a `system` and `values`
+- **Example**: `[{ "system": "us_zip", "values": ["90210"] }]`
+- **Use cases**: RCT holdout zip codes, restricted delivery areas
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
 
 ### axe_include_segment
@@ -400,7 +470,7 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 
 ### Publishers MUST:
 
-1. **Support Geographic Targeting**: Handle geographic parameters (`geo_countries`, `geo_regions`, `geo_metros`, `geo_postal_areas`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
+1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
 2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
 3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
 4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions
