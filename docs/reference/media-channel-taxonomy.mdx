@@ -618,6 +618,27 @@ Properties in `adagents.json` declare which channels they support:
 }
 ```
 
+### Usage in Product Definitions
+
+Products declare which channels they are sold as. This typically inherits from properties but may be more specific:
+
+```json
+{
+  "product_id": "youtube_ctv_premium",
+  "name": "YouTube CTV Premium",
+  "channels": ["ctv"],
+  "publisher_properties": [
+    {
+      "publisher_domain": "youtube.com",
+      "selection_type": "by_tag",
+      "property_tags": ["ctv_apps"]
+    }
+  ]
+}
+```
+
+Even though YouTube properties support `["olv", "social", "ctv"]`, this product is specifically sold as CTV inventory.
+
 ### Extensibility
 
 Implementations MAY support additional channels beyond this specification using the `ext` field pattern:
@@ -694,7 +715,7 @@ Retail media may eventually warrant sub-channels:
 | Display on retailer site | `retail_media` | `retail_media_display` |
 | Off-site using retailer data | `retail_media` | `retail_media_offsite` |
 
-For now, use `retail_media` with format filters to distinguish.
+With `channels` on products and `format_types` in filters, buyers can distinguish retail media product types (sponsored products vs display vs offsite) without sub-channels. Use `channels: ["retail_media"]` combined with format filters to narrow results. The two-axis approach (channel + format) is preferred over channel proliferation.
 
 ### Gaming vs Display/OLV
 

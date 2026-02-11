@@ -119,7 +119,7 @@
     },
     "channels": {
       "type": "array",
-      "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
+      "description": "Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])",
       "items": {
         "$ref": "/schemas/enums/channels.json"
       }
