@@ -148,8 +148,10 @@ const exampleData = {
   },
   
   targeting: {
-    "geo_country_any_of": ["US"],
-    "audience_segment_any_of": ["sports_enthusiasts"]
+    "geo_countries": ["US"],
+    "geo_metros_exclude": [
+      { "system": "nielsen_dma", "values": ["602"] }
+    ]
   },
   
   budget: {

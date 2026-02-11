@@ -23,7 +23,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 4. **Cursor-Based Pagination** - All list operations (`list_creatives`, `tasks_list`, `list_property_lists`, `get_property_list`, `get_media_buy_artifacts`) standardized on cursor-based pagination with shared `pagination-request.json` and `pagination-response.json` schemas.
 
-5. **Targeting Restrictions** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. These are compliance/technical restrictions, not audience targeting.
+5. **Targeting Restrictions** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. Geographic exclusion fields (`geo_countries_exclude`, `geo_regions_exclude`, `geo_metros_exclude`, `geo_postal_areas_exclude`) enable RCT holdout groups and regulatory exclusions. These are compliance/technical restrictions, not audience targeting.
 
 6. **Typed Asset Requirements** - Discriminated union schemas for all 13 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, promoted offerings, URL, webhook) using `asset_type` as discriminator.
 
