@@ -539,7 +539,7 @@
         },
         "cpa-option": {
           "$ref": "/schemas/pricing-options/cpa-option.json",
-          "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - supports fixed rate and auction modes"
+          "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - fixed price per conversion event"
         },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",

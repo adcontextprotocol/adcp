@@ -242,7 +242,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 **Use Cases**: Retail media (pay per order), lead generation, app install campaigns, commerce media
 
-**Example** (fixed pricing — pay per purchase):
+**Example**:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpa-option.json",
@@ -254,24 +254,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
-**Example** (auction pricing — pay per lead):
-```json
-{
-  "pricing_option_id": "cpa_usd_lead_auction",
-  "pricing_model": "cpa",
-  "event_type": "lead",
-  "currency": "USD",
-  "floor_price": 2.00,
-  "price_guidance": {
-    "p25": 3.00,
-    "p50": 5.00,
-    "p75": 8.00,
-    "p90": 12.00
-  }
-}
-```
-
-**Billing**: Charged when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goal`, which controls delivery optimization.
+**Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goal`, which controls delivery optimization.
 
 **Parameters**:
 - `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
