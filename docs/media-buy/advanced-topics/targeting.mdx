@@ -319,7 +319,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 **Exclusion without inclusion.** When an exclusion field is present without a corresponding inclusion field, the exclusion applies to the product's full geographic coverage. For example, if a product covers the entire US and the buyer specifies only `geo_metros_exclude`, the excluded metros are removed from the product's national footprint.
 
-**Cross-level resolution.** Geographic levels form a hierarchy: country > region > metro > postal. Exclusion at a higher level removes all locations within that geography, regardless of inclusion at a more specific level. For example, `geo_countries_exclude: ["US"]` combined with `geo_regions: ["US-CA"]` results in no US delivery — the country-level exclusion takes precedence.
+**Cross-level resolution.** Geographic levels form a hierarchy: country > region > metro > postal. Sellers SHOULD resolve hierarchical conflicts such that exclusion at a higher level takes precedence over inclusion at a more specific level. For example, `geo_countries_exclude: ["US"]` combined with `geo_regions: ["US-CA"]` SHOULD result in no US delivery — the country-level exclusion takes precedence.
 
 **Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error.
 
