@@ -552,6 +552,10 @@
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
           "description": "Flat rate pricing for DOOH and sponsorships - supports fixed rate and auction modes"
+        },
+        "time-option": {
+          "$ref": "/schemas/pricing-options/time-option.json",
+          "description": "Time-based pricing - cost per time unit (hour, day, week, month) that scales with campaign duration"
         }
       }
     },

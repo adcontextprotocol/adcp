@@ -12,7 +12,8 @@
     "cpv",
     "cpp",
     "cpa",
-    "flat_rate"
+    "flat_rate",
+    "time"
   ],
   "enumDescriptions": {
     "cpm": "Cost Per Mille - cost per 1,000 impressions",
@@ -22,6 +23,7 @@
     "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",
     "cpp": "Cost Per Point - cost per Gross Rating Point or Target Rating Point (TV/audio)",
     "cpa": "Cost Per Acquisition - cost per conversion event (purchase, lead, signup, etc.)",
-    "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)"
+    "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)",
+    "time": "Time - cost per time unit (hour, day, week, or month) that scales with campaign duration"
   }
 }
