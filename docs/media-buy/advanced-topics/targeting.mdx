@@ -323,7 +323,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 **Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error.
 
-**Capabilities.** Declaring geographic targeting support in `get_adcp_capabilities` implies support for both inclusion and exclusion at that level. Sellers that support `geo_metros` targeting are expected to also support `geo_metros_exclude`.
+**Capabilities.** Sellers that declare geographic targeting support in `get_adcp_capabilities` SHOULD support both inclusion and exclusion at that level. If a seller only supports one direction, it MUST return a validation error for unsupported fields rather than silently ignoring them.
 
 ### geo_countries
 - **Description**: Restrict delivery to specific countries
