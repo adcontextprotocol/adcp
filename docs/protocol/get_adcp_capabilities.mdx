@@ -104,6 +104,8 @@ Technical execution capabilities:
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 
+Declaring support for a geographic targeting level implies support for both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` means the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+
 **geo_metros** specifies which metro classification systems are supported:
 
 | System | Description |
@@ -204,8 +206,8 @@ This tells buyers:
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST target them
-- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST target them
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes (inclusion and exclusion), seller MUST honor them
+- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes (inclusion and exclusion), seller MUST honor them
 - `media_buy.features.content_standards: true` → Seller MUST apply content standards when provided
 - AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange
 
