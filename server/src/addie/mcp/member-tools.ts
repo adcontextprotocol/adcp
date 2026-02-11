@@ -2,7 +2,6 @@
  * Addie Member Tools
  *
  * Tools that allow Addie to help users with:
- * - Validating adagents.json configurations
  * - Viewing and updating their member profile
  * - Browsing and joining working groups
  * - Creating posts in working groups
@@ -13,7 +12,6 @@
 
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
-import { AdAgentsManager } from '../../adagents-manager.js';
 import type { MemberContext } from '../member-context.js';
 import {
   runAgentTests,
@@ -34,7 +32,6 @@ import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-
 import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
 
-const adagentsManager = new AdAgentsManager();
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
@@ -154,24 +151,6 @@ setAgentTesterLogger({
  * Tool definitions for member-related operations
  */
 export const MEMBER_TOOLS: AddieTool[] = [
-  // ============================================
-  // ADAGENTS.JSON VALIDATION (read-only, public)
-  // ============================================
-  {
-    name: 'validate_adagents',
-    description:
-      'Validate an adagents.json file for a domain. Checks that the file exists at /.well-known/adagents.json, has valid structure, and optionally validates the agent cards. Use this when users ask about setting up or debugging their adagents.json configuration. Share the validation results with the user - they contain helpful error messages and links.',
-    usage_hints: 'use ONLY for "check my setup", "validate example.com", debugging configs - NOT for learning about adagents.json',
-    input_schema: {
-      type: 'object',
-      properties: {
-        domain: { type: 'string', description: 'Domain to check' },
-        validate_cards: { type: 'boolean', description: 'Also validate agent cards (default: false)' },
-      },
-      required: ['domain'],
-    },
-  },
-
   // ============================================
   // WORKING GROUPS (read + user-scoped write)
   // ============================================
@@ -771,77 +750,6 @@ export function createMemberToolHandlers(
   memberContext: MemberContext | null
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
-
-  // ============================================
-  // ADAGENTS.JSON VALIDATION
-  // ============================================
-  handlers.set('validate_adagents', async (input) => {
-    const domain = input.domain as string;
-    const validateCards = (input.validate_cards as boolean) || false;
-
-    try {
-      // Validate the domain's adagents.json
-      const result = await adagentsManager.validateDomain(domain);
-
-      let response = `## adagents.json Validation for ${result.domain}\n\n`;
-      response += `**URL:** ${result.url}\n`;
-      response += `**Status:** ${result.valid ? '✅ Valid' : '❌ Invalid'}\n`;
-
-      if (result.status_code) {
-        response += `**HTTP Status:** ${result.status_code}\n`;
-      }
-
-      if (result.errors.length > 0) {
-        response += `\n### Errors\n`;
-        result.errors.forEach((err) => {
-          response += `- **${err.field}:** ${err.message}\n`;
-        });
-      }
-
-      if (result.warnings.length > 0) {
-        response += `\n### Warnings\n`;
-        result.warnings.forEach((warn) => {
-          response += `- **${warn.field}:** ${warn.message}`;
-          if (warn.suggestion) {
-            response += ` (${warn.suggestion})`;
-          }
-          response += `\n`;
-        });
-      }
-
-      // Optionally validate agent cards
-      if (validateCards && result.valid && result.raw_data?.authorized_agents) {
-        response += `\n### Agent Card Validation\n`;
-        const cardResults = await adagentsManager.validateAgentCards(
-          result.raw_data.authorized_agents
-        );
-
-        cardResults.forEach((cardResult) => {
-          const status = cardResult.valid ? '✅' : '❌';
-          response += `\n**${status} ${cardResult.agent_url}**\n`;
-          if (cardResult.response_time_ms) {
-            response += `- Response time: ${cardResult.response_time_ms}ms\n`;
-          }
-          if (cardResult.errors.length > 0) {
-            cardResult.errors.forEach((err) => {
-              response += `- Error: ${err}\n`;
-            });
-          }
-        });
-      }
-
-      if (result.valid) {
-        response += `\n✅ The adagents.json file is valid and properly configured.`;
-      } else {
-        response += `\n\nNeed help fixing these issues? Check out the adagents.json builder at https://agenticadvertising.org/adagents or ask me for guidance on specific errors.`;
-      }
-
-      return response;
-    } catch (error) {
-      logger.error({ error, domain }, 'Addie: validate_adagents failed');
-      return `Failed to validate adagents.json for ${domain}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
 
   // ============================================
   // WORKING GROUPS
