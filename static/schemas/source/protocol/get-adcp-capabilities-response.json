@@ -38,6 +38,36 @@
       },
       "minItems": 1
     },
+    "account": {
+      "type": "object",
+      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "properties": {
+        "setup_modes": {
+          "type": "array",
+          "description": "How accounts can be established with this seller. sync_accounts: agent provisions accounts programmatically. oauth: buyer connects existing account via OAuth. auto_provision: seller creates account on first billable operation.",
+          "items": {
+            "type": "string",
+            "enum": ["sync_accounts", "oauth", "auto_provision"]
+          },
+          "minItems": 1
+        },
+        "supported_billing": {
+          "type": "array",
+          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "items": {
+            "type": "string",
+            "enum": ["brand", "operator", "agent"]
+          },
+          "minItems": 1
+        },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account (via sync_accounts or OAuth) before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "default": false
+        }
+      },
+      "required": ["setup_modes", "supported_billing"]
+    },
     "media_buy": {
       "type": "object",
       "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",

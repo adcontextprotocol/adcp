@@ -11,7 +11,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Account to bill for this media buy. Optional if the agent has a single account or the seller can determine the account from context (brand + agent). Required if the agent has multiple accounts and the seller cannot route automatically."
+      "description": "Account to bill for this media buy. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."
     },
     "proposal_id": {
       "type": "string",

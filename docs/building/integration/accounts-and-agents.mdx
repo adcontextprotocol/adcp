@@ -7,17 +7,22 @@ AdCP distinguishes three entities in every billable operation:
 
 | Entity | Question | How Identified |
 |--------|----------|----------------|
-| **Brand** | Whose products are advertised? | Brand manifest |
-| **Account** | Who gets billed? What rates apply? | `account_id` (optional) |
-| **Agent** | Who is placing the buy? | Authentication token |
+| **Brand** | Whose products are advertised? | House domain + brand_id ([brand.json](/docs/brand-protocol/brand-json)) |
+| **Account** | Who gets billed? What rates apply? | `account_id` |
+| **Operator** | Who operates the seat? | Domain (e.g., `groupm.com`) |
+| **Agent** | What software is placing the buy? | Authentication token |
 
 ## Core Concepts
 
 ### Brand
 
-The **brand** is the advertiser whose products or services are being promoted. Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
+The **brand** is the advertiser whose products or services are being promoted. Brands are identified canonically by their house domain + brand_id, resolved via `/.well-known/brand.json`.
 
-The brand is always explicit in requests—it cannot be inferred.
+For example, Dove is identified as `house: "unilever.com"` + `brand_id: "dove"`. Any party can resolve `unilever.com/.well-known/brand.json` to verify Dove's identity, assets, and authorized operators.
+
+For single-brand houses like Coca-Cola, the house domain alone (`house: "coca-cola.com"`) identifies the brand — no `brand_id` is needed.
+
+Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
 
 ### Account
 
@@ -28,116 +33,280 @@ An **account** represents a billing relationship between a buyer and a seller. T
 - **Payment terms**: Net 30, prepay, etc.
 - **Credit limit**: Maximum outstanding balance
 
-An account may represent different billing arrangements:
+### Operator
 
-| Account Type | Example | Billing Flow |
-|--------------|---------|--------------|
-| Direct | "Coke" | Publisher → Coke |
-| Via agency | "Coke c/o Publicis" | Publisher → Publicis → Coke |
-| Agency principal | "Publicis" | Publisher → Publicis |
-
-In the "Coke c/o Publicis" case, Coke's negotiated rates apply, but invoices flow through Publicis as the billing proxy.
+The **operator** is the entity driving the buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Operators are identified by domain (e.g., `groupm.com`, `mindshare.com`) and can be verified against the brand's `authorized_operators` in `brand.json`.
 
 ### Agent
 
-An **agent** is the entity operating on an account—placing buys, uploading creatives, monitoring delivery. The agent is identified by the authentication token and may be:
+An **agent** is the software placing buys and managing campaigns. The agent authenticates with the seller and may operate on behalf of one or more operators and brands.
 
-- A brand's internal team
-- An agency's trading desk
-- An automated buying system
-- An AI agent
+## Billing
 
-An agent may have access to multiple accounts (e.g., an agency managing several clients).
+Every account has a billing model that determines who gets invoiced:
 
-## Request Context
+| Billing | Who is invoiced | Use case |
+|---------|----------------|----------|
+| `brand` | Brand directly | Brand has direct relationship with seller |
+| `operator` | Operator (agency) | Agency buying on their own terms |
+| `agent` | Agent | Agent consolidates billing across brands |
 
-### Required: Brand Manifest
+### Examples
 
-Every billable operation must include the brand manifest:
+**Brand buys direct** — Coca-Cola has their own account on the seller:
+```
+Billing: brand
+Invoice: Seller → Coca-Cola
+Rates: Coca-Cola's negotiated rates
+```
+
+**Agency buys for brand, brand pays** — GroupM buys on Unilever's account:
+```
+Billing: brand
+Invoice: Seller → Unilever
+Rates: Unilever's negotiated rates
+Operator: GroupM (authorized via brand.json)
+```
+
+**Agency buys on own account** — GroupM uses their own rates:
+```
+Billing: operator
+Invoice: Seller → GroupM
+Rates: GroupM's rates
+```
+
+**Agent consolidates billing** — AI buying platform bills centrally:
+```
+Billing: agent
+Invoice: Seller → Agent
+Rates: Agent's rates
+Agent re-bills individual advertisers
+```
+
+## Account Setup
+
+The seller declares account capabilities in `get_adcp_capabilities`:
 
 ```json
 {
-  "brand_manifest": {
-    "brand_id": "brand_coke",
-    "name": "Coca-Cola",
-    "domain": "coca-cola.com",
-    "category": "beverages",
-    "logo_url": "https://coca-cola.com/logo.png"
-  },
-  "campaign": {
-    "name": "Summer 2025",
-    ...
+  "account": {
+    "setup_modes": ["sync_accounts"],
+    "supported_billing": ["brand", "agent"],
+    "required_for_products": true
   }
 }
 ```
 
-### Optional: Account ID
+| Field | Description |
+|-------|-------------|
+| `setup_modes` | How accounts can be established: `sync_accounts`, `oauth`, `auto_provision` |
+| `supported_billing` | Which billing models the seller supports: `brand`, `operator`, `agent` |
+| `required_for_products` | Whether `get_products` requires an `account_id`. When true, set up an account before browsing. |
 
-The `account_id` field specifies which account to bill:
+### Setup Modes
+
+**`sync_accounts`** — Agent provisions accounts programmatically. The agent declares which brands it represents and who should be invoiced. The seller provisions accounts accordingly. This is the primary mechanism for establishing accounts at scale.
+
+**`oauth`** — Buyer connects an existing account. For sellers where the buyer already has a direct account (social platforms, self-serve platforms), the agent connects via OAuth. After OAuth, `list_accounts` returns the buyer's existing accounts.
+
+**`auto_provision`** — Seller creates account on first buy. Some sellers create accounts automatically on the first billable operation, using standard terms. The agent doesn't need to set up accounts in advance.
+
+### Agent Workflow
+
+```
+1. get_adcp_capabilities → learn setup_modes, supported_billing, required_for_products
+2. If sync_accounts in setup_modes → sync_accounts (declare brands, operators, billing)
+   If oauth in setup_modes → OAuth flow, then list_accounts
+3. Wait for account status = active (poll list_accounts if pending)
+4. get_products with account_id (required if required_for_products = true)
+5. create_media_buy with account_id
+```
+
+## sync_accounts
+
+The `sync_accounts` task lets an agent declare its advertiser portfolio to a seller with upsert semantics. The agent specifies which brands it represents, who operates each seat, and the billing model. The seller responds with per-account status.
+
+### Request
+
+Each account entry identifies the brand by house domain + brand_id, the operator by domain, and who should be invoiced:
 
 ```json
 {
-  "account_id": "acc_coke_publicis",
-  "brand_manifest": { ... },
-  "campaign": { ... }
-}
-```
-
-**When `account_id` is omitted:**
-
-1. If the agent has exactly one account, the seller uses that account
-2. If the agent has multiple accounts, the seller may:
-   - Apply routing logic (e.g., brand + agent → account)
-   - Return an `ACCOUNT_REQUIRED` error
-
-Sellers define their own routing policy. Some sellers implement smart routing; others require explicit account specification.
-
-## Account Routing
-
-Sellers may implement routing logic to determine the account when `account_id` is omitted:
-
-```
-Request: { brand: Coke, agent: Publicis }
-
-Seller routing table:
-  brand=Coke + agent=Publicis → acc_coke_publicis
-  brand=Pepsi + agent=Publicis → acc_pepsi_publicis
-  agent=Publicis (default) → acc_publicis_house
-
-Result: Routes to acc_coke_publicis
-```
-
-This routing is seller-specific and not defined by the protocol.
-
-## Response Attribution
-
-Responses for billable operations include account attribution:
-
-```json
-{
-  "media_buy": {
-    "media_buy_id": "mb_abc123",
-    "account": {
-      "account_id": "acc_coke_publicis",
-      "name": "Coke c/o Publicis",
-      "advertiser": "The Coca-Cola Company",
-      "billing_proxy": "Publicis Media"
+  "task": "sync_accounts",
+  "accounts": [
+    {
+      "house": "unilever.com",
+      "brand_id": "dove",
+      "operator": "mindshare.com",
+      "billing": "brand"
     },
-    "campaign": { ... }
-  }
+    {
+      "house": "pg.com",
+      "brand_id": "tide",
+      "operator": "groupm.com",
+      "billing": "agent"
+    },
+    {
+      "house": "coca-cola.com",
+      "billing": "brand"
+    }
+  ]
 }
 ```
 
-This attribution enables:
-- Accurate billing and invoicing
-- Rate card application based on advertiser relationships
-- Tracking which account was used
+| Field | Required | Description |
+|-------|----------|-------------|
+| `house` | Yes | House domain where `brand.json` is hosted. For single-brand houses, this alone identifies the brand. |
+| `brand_id` | No | Brand ID within the house portfolio. Required when the house has multiple brands. |
+| `operator` | No | Domain of the entity operating the seat. Omit if the brand operates its own seat. |
+| `billing` | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. |
 
-Agent information (who placed the buy) is not part of the standard response schema. Sellers may optionally include it via the `context` or `ext` fields for audit purposes.
+### Response
 
-## Tasks
+The seller responds with per-account results. Each account has an action (what happened) and a status (durable state):
 
-### list_accounts
+```json
+{
+  "accounts": [
+    {
+      "account_id": "acc_dove_001",
+      "house": "unilever.com",
+      "brand_id": "dove",
+      "operator": "mindshare.com",
+      "name": "Dove",
+      "action": "created",
+      "status": "pending_authorization",
+      "billing": "brand",
+      "setup": {
+        "url": "https://seller.com/authorize/unilever",
+        "message": "Unilever must authorize Mindshare to operate on their account"
+      }
+    },
+    {
+      "account_id": "sub_tide_001",
+      "house": "pg.com",
+      "brand_id": "tide",
+      "operator": "groupm.com",
+      "name": "Tide (via GroupM)",
+      "action": "created",
+      "status": "active",
+      "billing": "agent",
+      "parent_account_id": "acc_agent_house"
+    },
+    {
+      "account_id": "acc_coke_pending",
+      "house": "coca-cola.com",
+      "name": "Coca-Cola",
+      "action": "created",
+      "status": "pending_approval",
+      "billing": "brand",
+      "setup": {
+        "url": "https://seller.com/credit-app/coca-cola",
+        "message": "Credit application required for direct billing"
+      }
+    }
+  ]
+}
+```
+
+### Action vs Status
+
+Each account in the response has two fields:
+
+- **`action`**: What happened during *this* sync operation — `created`, `updated`, `unchanged`, or `failed`
+- **`status`**: The durable state of the account — `active`, `pending_approval`, `pending_authorization`, `suspended`, or `closed`
+
+An account can be `action: "created"` with `status: "pending_approval"` (new account, waiting for credit check) or `action: "unchanged"` with `status: "active"` (already exists, nothing changed).
+
+### Account Status
+
+| Status | Meaning | Next step |
+|--------|---------|-----------|
+| `active` | Ready to use | Agent can place buys on this account |
+| `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit/legal process. Poll `list_accounts` for updates. |
+| `pending_authorization` | Brand must authorize operator | Someone at the brand (e.g., `@unilever.com`) must approve the operator's access. Visit `setup.url`. |
+| `suspended` | Was active, now paused | Contact seller to resolve |
+| `closed` | Terminated | — |
+
+### Billing Negotiation
+
+The seller may return a different `billing` value than the agent requested. For example, if a seller doesn't support direct billing, it may route billing through the agent instead:
+
+```json
+{
+  "account_id": "acc_agent_house",
+  "house": "coca-cola.com",
+  "action": "created",
+  "status": "active",
+  "billing": "agent",
+  "warnings": ["Direct billing (brand) not supported. Mapped to agent billing."]
+}
+```
+
+The agent should check the returned `billing` and inform the buyer if it differs from what was requested.
+
+## Authorized Operators
+
+Brands declare who can represent them in `/.well-known/brand.json` via the `authorized_operators` field. This enables sellers to verify that an operator is authorized to act on a brand's behalf.
+
+```json
+{
+  "house": {
+    "domain": "unilever.com",
+    "name": "Unilever"
+  },
+  "brands": [
+    { "id": "dove", "names": [{"en": "Dove"}] },
+    { "id": "axe", "names": [{"en": "Axe"}] }
+  ],
+  "authorized_operators": [
+    {
+      "domain": "mindshare.com",
+      "brands": ["dove", "axe"],
+      "countries": ["US", "GB", "DE"]
+    },
+    {
+      "domain": "dentsu.co.jp",
+      "brands": ["dove"],
+      "countries": ["JP"]
+    },
+    {
+      "domain": "unilever.com",
+      "brands": ["*"]
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `domain` | Yes | Operator's domain |
+| `brands` | Yes | Brand IDs this operator can represent. `["*"]` means all brands. |
+| `countries` | No | ISO 3166-1 alpha-2 country codes. Omit for global authorization. |
+
+### Verification Flow
+
+When an agent syncs an account with `operator: "mindshare.com"` for brand `house: "unilever.com"`, `brand_id: "dove"`, the seller can:
+
+1. Resolve `unilever.com/.well-known/brand.json`
+2. Check `authorized_operators` for `domain: "mindshare.com"` with `"dove"` in `brands`
+3. If found → proceed (account may still need credit approval)
+4. If not found → return `pending_authorization` with a setup URL for Unilever to approve
+
+If `authorized_operators` is not present in brand.json, the seller falls back to `pending_authorization` for any third-party operator.
+
+**Self-authorization is implicit.** A brand operating its own accounts does not need to list itself in `authorized_operators`. When `operator` is omitted from a sync_accounts request, or when the operator domain matches the house domain, the brand is operating its own seat. Sellers should treat this as authorized without checking `authorized_operators`.
+
+### Scope and Hierarchy
+
+`authorized_operators` models the **interface** between the brand and whoever holds the seat at the seller. It does not model internal hierarchies on either side:
+
+- **Agency side**: If WPP holds the seat, `operator: "wpp.com"`. If Mindshare holds it, `operator: "mindshare.com"`. WPP's internal delegation to GroupM to Mindshare is the agency's business.
+- **Brand side**: The house domain + brand_id identifies the brand. The parent/sub-brand hierarchy (Keller types) is in brand.json for anyone who needs it, but for seat mapping, house + brand_id is sufficient.
+
+The protocol models interfaces between parties, not internal org charts.
+
+## list_accounts
 
 Returns accounts the authenticated agent can operate.
 
@@ -157,24 +326,68 @@ Returns accounts the authenticated agent can operate.
       "name": "Coke c/o Publicis",
       "advertiser": "The Coca-Cola Company",
       "billing_proxy": "Publicis Media",
-      "status": "active"
+      "status": "active",
+      "house": "coca-cola.com",
+      "billing": "brand"
     },
     {
-      "account_id": "acc_pepsi_publicis",
-      "name": "Pepsi c/o Publicis",
-      "advertiser": "PepsiCo",
-      "billing_proxy": "Publicis Media",
-      "status": "active"
+      "account_id": "acc_agent_house",
+      "name": "Agent House Account",
+      "status": "active",
+      "billing": "agent"
     },
     {
-      "account_id": "acc_publicis",
-      "name": "Publicis",
-      "advertiser": "Publicis Media",
-      "status": "active"
+      "account_id": "acc_dove_pending",
+      "name": "Dove",
+      "status": "pending_authorization",
+      "house": "unilever.com",
+      "brand_id": "dove",
+      "billing": "brand"
     }
   ]
 }
 ```
+
+## Request Context
+
+### Required: Brand Manifest
+
+Every billable operation must include the brand manifest, either inline or as a URL reference:
+
+```json
+{
+  "brand_manifest": {
+    "url": "https://coca-cola.com",
+    "name": "Coca-Cola",
+    "colors": { "primary": "#F40009" }
+  }
+}
+```
+
+Or as a URL to a hosted manifest:
+
+```json
+{
+  "brand_manifest": "https://cdn.coca-cola.com/brand-manifest.json"
+}
+```
+
+### Account ID
+
+Billable operations require `account_id` when accounts are established via `sync_accounts` or `oauth`. The agent gets the `account_id` from the sync response (or `list_accounts` for OAuth-connected accounts):
+
+```json
+{
+  "account_id": "acc_coke_publicis",
+  "brand_manifest": "https://cdn.coca-cola.com/brand-manifest.json"
+}
+```
+
+The `account_id` is the seller's identifier for the billing relationship. The agent's natural key is `(house, brand_id, operator)` — but the seller maps that to an `account_id` during account setup, and the agent uses that ID on all subsequent operations.
+
+For sellers that support `auto_provision`, the agent may omit `account_id` on the first operation — the seller creates an account automatically and returns the `account_id` in the response.
+
+For `get_products`, whether `account_id` is required depends on the seller's capabilities (`account.required_for_products`). When required, the seller uses the account to determine rate-card-specific pricing and available inventory.
 
 ## Error Responses
 
@@ -184,20 +397,18 @@ Returned when the seller cannot determine which account to use:
 
 ```json
 {
-  "error": {
-    "code": "ACCOUNT_REQUIRED",
-    "message": "Multiple accounts available. Please specify account_id.",
-    "available_accounts": [
-      {
-        "account_id": "acc_coke_publicis",
-        "name": "Coke c/o Publicis"
-      },
-      {
-        "account_id": "acc_publicis",
-        "name": "Publicis"
+  "errors": [
+    {
+      "code": "ACCOUNT_REQUIRED",
+      "message": "Multiple accounts available. Please specify account_id.",
+      "details": {
+        "available_accounts": [
+          { "account_id": "acc_coke_publicis", "name": "Coke c/o Publicis" },
+          { "account_id": "acc_publicis", "name": "Publicis" }
+        ]
       }
-    ]
-  }
+    }
+  ]
 }
 ```
 
@@ -207,10 +418,12 @@ The specified account does not exist or the agent does not have access:
 
 ```json
 {
-  "error": {
-    "code": "ACCOUNT_NOT_FOUND",
-    "message": "Account 'acc_xyz' not found or not accessible"
-  }
+  "errors": [
+    {
+      "code": "ACCOUNT_NOT_FOUND",
+      "message": "Account 'acc_xyz' not found or not accessible"
+    }
+  ]
 }
 ```
 
@@ -220,10 +433,12 @@ The account exists but is not in good standing:
 
 ```json
 {
-  "error": {
-    "code": "ACCOUNT_SUSPENDED",
-    "message": "Account 'acc_coke_publicis' is suspended due to payment issues"
-  }
+  "errors": [
+    {
+      "code": "ACCOUNT_SUSPENDED",
+      "message": "Account 'acc_coke_publicis' is suspended due to payment issues"
+    }
+  ]
 }
 ```
 
@@ -233,127 +448,189 @@ Billable operation attempted without brand manifest:
 
 ```json
 {
-  "error": {
-    "code": "BRAND_MANIFEST_REQUIRED",
-    "message": "Brand manifest is required for this operation"
-  }
+  "errors": [
+    {
+      "code": "BRAND_MANIFEST_REQUIRED",
+      "message": "Brand manifest is required for this operation"
+    }
+  ]
 }
 ```
 
-## Examples
+## Scenarios
 
-### Coke buying direct
+### Scenario 1: Brand buying direct on a publisher
 
-Coke's internal team buying on their own account:
+Coca-Cola wants to buy inventory on a premium publisher. Their in-house team operates the seat directly.
 
+**Step 1**: Agent syncs the account:
 ```json
 {
-  "brand_manifest": {
-    "brand_id": "brand_coke",
-    "name": "Coca-Cola",
-    "domain": "coca-cola.com"
-  },
-  "campaign": {
-    "name": "Summer 2025",
-    "budget": { "amount": 500000, "currency": "USD" }
-  }
+  "task": "sync_accounts",
+  "accounts": [{
+    "house": "coca-cola.com",
+    "billing": "brand"
+  }]
 }
 ```
 
-Agent has one account (Coke), so `account_id` is omitted.
-
-**Response attribution:**
+**Step 2**: Seller responds — credit check needed:
 ```json
 {
-  "account": {
-    "account_id": "acc_coke",
-    "name": "Coke",
-    "advertiser": "The Coca-Cola Company"
-  }
+  "accounts": [{
+    "account_id": "acc_coke_001",
+    "house": "coca-cola.com",
+    "action": "created",
+    "status": "pending_approval",
+    "billing": "brand",
+    "setup": {
+      "url": "https://publisher.com/advertiser-onboard",
+      "message": "Complete advertiser registration and credit application"
+    }
+  }]
 }
 ```
 
-Sellers may optionally include agent info in `ext` for audit purposes.
+**Step 3**: Human at Coca-Cola completes the setup at the URL. Agent polls `list_accounts` until the account becomes `active`.
 
-### Agency buying for Coke, Coke pays
-
-Publicis buying on Coke's behalf, using Coke's rates, billed through Publicis:
-
+**Step 4**: Agent places buys using the account:
 ```json
 {
-  "account_id": "acc_coke_publicis",
-  "brand_manifest": {
-    "brand_id": "brand_coke",
-    "name": "Coca-Cola",
-    "domain": "coca-cola.com"
-  },
-  "campaign": {
-    "name": "Summer 2025",
-    "budget": { "amount": 500000, "currency": "USD" }
-  }
+  "account_id": "acc_coke_001",
+  "brand_manifest": { "..." : "..." },
+  "campaign": { "..." : "..." }
 }
 ```
 
-**Response attribution:**
+### Scenario 2: Agency buying for multiple brands on a DSP
+
+GroupM operates buying seats on a DSP for multiple advertisers. Billing goes through the agent.
+
+**Step 1**: Agent syncs all advertisers:
 ```json
 {
-  "account": {
-    "account_id": "acc_coke_publicis",
-    "name": "Coke c/o Publicis",
-    "advertiser": "The Coca-Cola Company",
-    "billing_proxy": "Publicis Media"
-  }
+  "task": "sync_accounts",
+  "accounts": [
+    {
+      "house": "unilever.com",
+      "brand_id": "dove",
+      "operator": "groupm.com",
+      "billing": "agent"
+    },
+    {
+      "house": "pg.com",
+      "brand_id": "tide",
+      "operator": "groupm.com",
+      "billing": "agent"
+    }
+  ]
 }
 ```
 
-### Agency buying for Coke, agency pays
-
-Publicis buying on their own account (agency rates), for Coke's brand:
-
+**Step 2**: DSP provisions sub-accounts immediately (no approval needed — billing goes through the agent):
 ```json
 {
-  "account_id": "acc_publicis",
-  "brand_manifest": {
-    "brand_id": "brand_coke",
-    "name": "Coca-Cola",
-    "domain": "coca-cola.com"
-  },
-  "campaign": {
-    "name": "Summer 2025",
-    "budget": { "amount": 500000, "currency": "USD" }
-  }
+  "accounts": [
+    {
+      "account_id": "sub_dove_001",
+      "house": "unilever.com",
+      "brand_id": "dove",
+      "action": "created",
+      "status": "active",
+      "billing": "agent",
+      "parent_account_id": "acc_groupm_house"
+    },
+    {
+      "account_id": "sub_tide_001",
+      "house": "pg.com",
+      "brand_id": "tide",
+      "action": "created",
+      "status": "active",
+      "billing": "agent",
+      "parent_account_id": "acc_groupm_house"
+    }
+  ]
 }
 ```
 
-**Response attribution:**
+Both sub-accounts are active immediately. GroupM receives a single consolidated invoice from the DSP.
+
+### Scenario 3: Agency needs brand authorization on a publisher
+
+Mindshare wants to buy on Unilever's existing publisher account (Unilever's rates, Unilever's invoice). The publisher needs Unilever to authorize Mindshare.
+
+**Step 1**: Agent syncs the account:
 ```json
 {
-  "account": {
-    "account_id": "acc_publicis",
-    "name": "Publicis",
-    "advertiser": "Publicis Media"
-  }
+  "task": "sync_accounts",
+  "accounts": [{
+    "house": "unilever.com",
+    "brand_id": "dove",
+    "operator": "mindshare.com",
+    "billing": "brand"
+  }]
 }
 ```
 
-Note: In this case, Publicis's rates apply, not Coke's negotiated rates.
+**Step 2**: Seller checks `unilever.com/.well-known/brand.json` and finds Mindshare in `authorized_operators` for Dove in the US:
+```json
+{
+  "authorized_operators": [{
+    "domain": "mindshare.com",
+    "brands": ["dove", "axe"],
+    "countries": ["US", "GB", "DE"]
+  }]
+}
+```
 
-## Account Setup
+**Step 3**: Since Mindshare is pre-authorized, the seller skips the authorization step and proceeds to account provisioning. If credit is already established for Unilever:
+```json
+{
+  "accounts": [{
+    "account_id": "acc_unilever_dove",
+    "house": "unilever.com",
+    "brand_id": "dove",
+    "operator": "mindshare.com",
+    "action": "created",
+    "status": "active",
+    "billing": "brand",
+    "rate_card": "unilever_2026"
+  }]
+}
+```
 
-Account creation is typically a seller-side process involving:
+If Mindshare were *not* in `authorized_operators`, the seller would return `pending_authorization` with a URL for someone at `@unilever.com` to approve.
 
-- Credit verification
-- Rate negotiation
-- Legal agreements
-- Payment terms setup
+### Scenario 4: Seller doesn't support direct billing
 
-The protocol does not define account creation. Sellers may:
+An agent requests direct billing for an advertiser, but the seller only supports billing through the agent.
 
-1. **Require out-of-band setup**: Sales process before API access
-2. **Auto-provision**: Create accounts on first buy with standard terms
-3. **Async setup**: Accept requests, provision accounts asynchronously
+**Step 1**: Agent requests brand billing:
+```json
+{
+  "task": "sync_accounts",
+  "accounts": [{
+    "house": "coca-cola.com",
+    "billing": "brand"
+  }]
+}
+```
 
-If an agent attempts a billable operation without a valid account, the seller returns an appropriate error and may provide instructions for account setup.
+**Step 2**: Seller maps to agent billing and explains:
+```json
+{
+  "accounts": [{
+    "account_id": "acc_agent_house",
+    "house": "coca-cola.com",
+    "action": "created",
+    "status": "active",
+    "billing": "agent",
+    "warnings": ["Direct billing (brand) not supported. Mapped to agent billing."]
+  }]
+}
+```
+
+The agent should inform the buyer that billing will be consolidated through the agent rather than invoiced directly by the seller.
 
 ## Authentication
 
@@ -367,13 +644,41 @@ The protocol does not mandate a specific OAuth flow. Sellers implement authentic
 
 See [Authentication](/docs/building/integration/authentication) for details.
 
+## Design Notes
+
+### Accounts and Insertion Orders
+
+An account represents a standing relationship between a buyer and seller — who gets billed, what rates apply, what credit is available. It is not a campaign or an insertion order.
+
+Insertion orders, campaign flights, and other time-bound spending commitments are modeled as media buys via `create_media_buy`. The account determines *billing terms*; the media buy determines *what runs and when*.
+
+A single account can have many media buys over its lifetime, just as a single advertiser relationship can encompass many campaigns.
+
+### Brand Identity for SMBs
+
+Domain-based identity via `/.well-known/brand.json` works for organizations of any size. `brand.json` is a static JSON file that can be hosted on any web server — no special infrastructure is required.
+
+For organizations that cannot host files on their domain, the `authoritative_location` field in `brand.json` allows the house domain to redirect to a hosted location (e.g., AgenticAdvertising.org's brand registry). The domain owner sets up a single redirect; the registry hosts the actual brand metadata.
+
+```json
+{
+  "house": {
+    "domain": "local-bakery.com"
+  },
+  "authoritative_location": "https://registry.agenticadvertising.org/brands/local-bakery.com"
+}
+```
+
 ## Summary
 
-| Aspect | Protocol Defines | Seller Implements |
-|--------|------------------|-------------------|
-| Brand manifest | Required, full object | Validation |
-| Account ID | Optional field | Routing policy |
+| Aspect | Protocol Defines | Seller Declares |
+|--------|------------------|-----------------|
+| Brand identity | House domain + brand_id via brand.json | Resolution and caching |
+| Account capabilities | `account` section in capabilities | `setup_modes`, `supported_billing`, `required_for_products` |
+| Account setup | `sync_accounts` task with status lifecycle | Provisioning, credit, legal |
+| Billing | Three models: brand, operator, agent | Which models are supported |
+| Operator authorization | `authorized_operators` in brand.json | Verification and enforcement |
+| Account status | Standard status values with setup URLs | Status transitions and notifications |
+| Account ID | Required on billable operations | Mapping from brand+operator to account |
 | Agent identity | From auth token | Authentication |
-| Response attribution | Required fields | Storage, billing |
-| Account creation | Not defined | Sales process |
 | Error codes | Standard codes | When to return |

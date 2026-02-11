@@ -311,6 +311,35 @@
       "required": ["url", "id"],
       "additionalProperties": true
     },
+    "authorized_operator": {
+      "type": "object",
+      "description": "An entity authorized to represent brands from this house. Verified by resolving the operator's domain.",
+      "properties": {
+        "domain": {
+          "$ref": "#/definitions/domain",
+          "description": "Domain of the authorized operator (e.g., 'groupm.com')"
+        },
+        "brands": {
+          "type": "array",
+          "description": "Brand IDs this operator is authorized for. Use ['*'] for all brands in the portfolio.",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9_]+|\\*)$"
+          },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "ISO 3166-1 alpha-2 country codes where this authorization applies. Omit for global authorization.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "required": ["domain", "brands"],
+      "additionalProperties": true
+    },
     "contact": {
       "type": "object",
       "description": "Contact information",
@@ -391,6 +420,11 @@
           "minItems": 1
         },
         "contact": { "$ref": "#/definitions/contact" },
+        "authorized_operators": {
+          "type": "array",
+          "description": "Entities authorized to represent brands from this house. Third parties (sellers, platforms) can verify an operator's authorization by checking this list. Operators are identified by domain.",
+          "items": { "$ref": "#/definitions/authorized_operator" }
+        },
         "trademarks": {
           "type": "array",
           "items": {
@@ -528,6 +562,22 @@
           "properties": [
             {"type": "website", "identifier": "converse.com", "primary": true}
           ]
+        }
+      ],
+      "authorized_operators": [
+        {
+          "domain": "wpp.com",
+          "brands": ["nike", "air_jordan"],
+          "countries": ["US", "GB", "DE", "FR"]
+        },
+        {
+          "domain": "dentsu.co.jp",
+          "brands": ["nike"],
+          "countries": ["JP"]
+        },
+        {
+          "domain": "nike.com",
+          "brands": ["*"]
         }
       ],
       "last_updated": "2026-01-15T10:00:00Z"
