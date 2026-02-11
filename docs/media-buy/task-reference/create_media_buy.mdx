@@ -195,6 +195,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when pricing option has no `fixed_price`) |
+| `optimization_goal` | OptimizationGoal | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models). |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
@@ -320,6 +321,96 @@ async def create_targeted_campaign():
     print(f"Campaign {result.media_buy_id} created with targeting")
 
 asyncio.run(create_targeted_campaign())
+```
+
+</CodeGroup>
+
+### Campaign with Conversion Optimization
+
+Set a ROAS target for conversion-optimized delivery. The product must declare support in `conversion_tracking.supported_optimization_strategies`, and you must have an event source configured via `sync_event_sources`:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/client';
+
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 90);
+
+const result = await testAgent.createMediaBuy({
+  buyer_ref: 'performance_campaign_' + Date.now(),
+  brand_manifest: {
+    name: 'Acme Retailer',
+    url: 'https://example-retailer.com'
+  },
+  packages: [{
+    buyer_ref: 'roas_package',
+    product_id: 'prod_retail_sp',
+    pricing_option_id: 'cpc_usd_auction',
+    budget: 10000,
+    bid_price: 1.20,
+    optimization_goal: {
+      event_source_id: 'retailer_sales',
+      event_type: 'purchase',
+      target_roas: 4.0
+    }
+  }],
+  start_time: 'asap',
+  end_time: endDate.toISOString()
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = CreateMediaBuyResponseSchema.parse(result.data);
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Creation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ('media_buy_id' in validated) {
+  console.log(`Campaign ${validated.media_buy_id} created with ROAS target`);
+}
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta, timezone
+from adcp.testing import test_agent
+
+async def create_optimized_campaign():
+    end_date = datetime.now(timezone.utc) + timedelta(days=90)
+
+    result = await test_agent.simple.create_media_buy(
+        buyer_ref=f'performance_campaign_{int(time.time() * 1000)}',
+        brand_manifest={
+            'name': 'Acme Retailer',
+            'url': 'https://example-retailer.com'
+        },
+        packages=[{
+            'buyer_ref': 'roas_package',
+            'product_id': 'prod_retail_sp',
+            'pricing_option_id': 'cpc_usd_auction',
+            'budget': 10000,
+            'bid_price': 1.20,
+            'optimization_goal': {
+                'event_source_id': 'retailer_sales',
+                'event_type': 'purchase',
+                'target_roas': 4.0
+            }
+        }],
+        start_time='asap',
+        end_time=end_date.isoformat().replace('+00:00', 'Z')
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Creation failed: {result.errors}")
+
+    print(f"Campaign {result.media_buy_id} created with ROAS target")
+
+asyncio.run(create_optimized_campaign())
 ```
 
 </CodeGroup>

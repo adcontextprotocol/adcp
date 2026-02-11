@@ -178,6 +178,7 @@ Configure automated delivery reporting for this media buy:
 | `impressions` | number | Updated impression goal for this package |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only) |
+| `optimization_goal` | OptimizationGoal | Updated conversion optimization goal (event source, event type, target ROAS/CPA) |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
@@ -547,6 +548,7 @@ asyncio.run(update_multiple_packages())
 - Budget allocation
 - Pacing strategy
 - Bid prices (auction products)
+- Optimization goal (event source, event type, target ROAS/CPA)
 - Targeting overlays
 - Creative assignments
 - Package status (active/paused)

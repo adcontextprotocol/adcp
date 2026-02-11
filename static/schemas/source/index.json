@@ -225,6 +225,10 @@
         "event-custom-data": {
           "$ref": "/schemas/core/event-custom-data.json",
           "description": "Event-specific data for attribution and reporting"
+        },
+        "optimization-goal": {
+          "$ref": "/schemas/core/optimization-goal.json",
+          "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         }
       },
       "requirements": {

@@ -48,6 +48,9 @@
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
+    "optimization_goal": {
+      "$ref": "/schemas/core/optimization-goal.json"
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
