@@ -1,0 +1,200 @@
+---
+title: Accessibility
+---
+
+
+AdCP supports accessibility at two levels: formats declare the conformance level of their rendered output, and assets carry the metadata needed to achieve it.
+
+## How It Works
+
+Accessibility in advertising creatives depends on who controls the rendering:
+
+- **Format-rendered creatives** (image + headline + CTA): The format controls the output. It can guarantee contrast ratios, keyboard navigation, and ARIA landmarks — it just needs the right inputs from the creative (alt text for images, captions for video, etc.).
+
+- **Opaque creatives** (HTML bundles, JavaScript tags): The format can't inspect or modify the content. The asset must self-declare its accessibility properties.
+
+AdCP handles both cases through the format's `accessibility` object and per-asset-type accessibility metadata.
+
+## Format Accessibility
+
+Formats declare their accessibility posture through the `accessibility` object:
+
+### `accessibility.wcag_level`
+
+The WCAG conformance level that creatives produced by this format will meet. Values: `A`, `AA`, `AAA`.
+
+For format-rendered creatives, this is a guarantee from the format. For opaque creatives, this reflects the level the format requires assets to self-certify to.
+
+### `accessibility.requires_accessible_assets`
+
+When `true`, all assets with accessibility-relevant fields must include those fields. This is the enforcement mechanism — it tells validation to treat optional accessibility fields as required.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "name": "Display Banner 300x250",
+  "accessibility": {
+    "wcag_level": "AA",
+    "requires_accessible_assets": true
+  },
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "hero_image",
+      "asset_type": "image",
+      "required": true,
+      "requirements": {
+        "min_width": 300,
+        "max_width": 300,
+        "min_height": 250,
+        "max_height": 250,
+        "formats": ["jpg", "png", "webp"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": {
+        "max_length": 90
+      }
+    }
+  ]
+}
+```
+
+This format guarantees WCAG AA output and requires `alt_text` on the image asset (because `alt_text` is marked as an accessibility field on the image asset type).
+
+## Asset Accessibility Fields
+
+Each asset type defines which of its fields are accessibility-relevant using the `x-accessibility` schema marker. These fields are always optional by default, but become required when the format sets `accessibility.requires_accessible_assets: true`.
+
+### Inspectable Assets
+
+These assets provide structured data that the format uses to render accessibly.
+
+| Asset Type | Accessibility Fields | Purpose |
+|---|---|---|
+| **Image** | `alt_text` | Alternative text for screen readers |
+| **Video** | `captions_url` | URL to captions file (WebVTT, SRT) |
+| | `transcript_url` | URL to text transcript |
+| | `audio_description_url` | URL to audio description track |
+| **Audio** | `transcript_url` | URL to text transcript |
+
+**Example** — video asset in a manifest for an accessible format:
+
+```json
+{
+  "creative_id": "brand_video_001",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
+  "assets": {
+    "video_file": {
+      "url": "https://cdn.example.com/video.mp4",
+      "width": 1920,
+      "height": 1080,
+      "duration_ms": 30000,
+      "captions_url": "https://cdn.example.com/video.vtt",
+      "transcript_url": "https://cdn.example.com/video-transcript.txt",
+      "audio_description_url": "https://cdn.example.com/video-ad.mp3"
+    }
+  }
+}
+```
+
+### Opaque Assets
+
+HTML and JavaScript assets are black boxes — the format can't inspect their rendering. These assets carry an `accessibility` object with self-declared properties.
+
+| Field | Type | Description |
+|---|---|---|
+| `alt_text` | string | Text alternative describing the creative content |
+| `keyboard_navigable` | boolean | Creative can be fully operated via keyboard |
+| `motion_control` | boolean | Respects `prefers-reduced-motion` or provides pause/stop controls |
+| `screen_reader_tested` | boolean | Creative has been tested with screen readers |
+
+**Example** — HTML creative with accessibility declarations:
+
+```json
+{
+  "creative_id": "rich_media_001",
+  "format_id": {
+    "agent_url": "https://publisher.com",
+    "id": "rich_media_expandable"
+  },
+  "assets": {
+    "creative_html": {
+      "content": "<div class='ad-container'>...</div>",
+      "version": "HTML5",
+      "accessibility": {
+        "alt_text": "Interactive product carousel showing summer collection",
+        "keyboard_navigable": true,
+        "motion_control": true,
+        "screen_reader_tested": true
+      }
+    }
+  }
+}
+```
+
+Self-declared accessibility is a trust claim. Platforms may independently validate these properties — that is outside the scope of the protocol.
+
+### Third-Party Tags
+
+VAST and DAAST assets wrap video and audio delivered by third parties. They carry accessibility fields alongside their existing tag properties.
+
+| Asset Type | Accessibility Fields |
+|---|---|
+| **VAST** | `captions_url`, `audio_description_url` |
+| **DAAST** | `transcript_url` |
+
+### Assets Without Accessibility Fields
+
+Some asset types don't produce standalone rendered content and have no accessibility fields. When a format sets `accessibility.requires_accessible_assets: true`, these are effectively no-ops:
+
+- **Text** — rendered by the format
+- **Markdown** — rendered by the format
+- **CSS** — styles, not content
+- **URL** — links, not rendered content
+- **Webhook** — server-side
+- **Promoted Offerings** — context data for generative creatives
+
+## Discovering Accessible Formats
+
+Buyers can filter for accessible formats using the `wcag_level` parameter in `list_creative_formats`:
+
+```json
+{
+  "wcag_level": "AA",
+  "asset_types": ["image", "text"]
+}
+```
+
+This returns formats that meet at least WCAG AA conformance and accept image and text assets. The filter uses "at least" logic: requesting `AA` returns formats with `AA` or `AAA`.
+
+## Implementation Notes
+
+**Enforcement is application-level.** The `x-accessibility` marker is a JSON Schema extension keyword. Standard JSON Schema validators ignore it — enforcement of `accessibility.requires_accessible_assets` must be implemented in application code that scans asset schemas for `x-accessibility: true` fields and validates their presence.
+
+**For format implementers:**
+- Set `accessibility.wcag_level` only when you can substantiate the claim — through your own rendering guarantees or by requiring accessible assets
+- If your format renders from structured inputs, ensure your rendering pipeline meets the declared WCAG level (contrast, keyboard nav, ARIA)
+- If your format wraps opaque assets, `accessibility.requires_accessible_assets: true` ensures the inputs carry the right declarations
+
+**For creative producers:**
+- When submitting to a format with `accessibility.requires_accessible_assets: true`, include all accessibility fields for your asset types
+- For opaque assets, test accessibility properties before declaring them
+- Provide captions and transcripts as separate hosted files, not embedded in the asset
+
+## Related Documentation
+
+- [Creative Formats](/docs/creative/formats) — Format structure and requirements
+- [Asset Types](/docs/creative/asset-types) — Asset specifications and payload schemas
+- [Creative Manifests](/docs/creative/creative-manifests) — Pairing assets with formats
+- [list_creative_formats](/docs/creative/task-reference/list_creative_formats) — Format discovery with filtering

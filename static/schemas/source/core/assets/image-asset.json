@@ -26,7 +26,8 @@
     },
     "alt_text": {
       "type": "string",
-      "description": "Alternative text for accessibility"
+      "description": "Alternative text for accessibility",
+      "x-accessibility": true
     }
   },
   "required": [

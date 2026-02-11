@@ -501,6 +501,21 @@
       ],
       "additionalProperties": true
     },
+    "accessibility": {
+      "type": "object",
+      "description": "Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by this format will meet.",
+      "properties": {
+        "wcag_level": {
+          "$ref": "/schemas/enums/wcag-level.json",
+          "description": "WCAG conformance level that this format achieves. For format-rendered creatives, the format guarantees this level. For opaque creatives, the format requires assets that self-certify to this level."
+        },
+        "requires_accessible_assets": {
+          "type": "boolean",
+          "description": "When true, all assets with x-accessibility fields must include those fields. For inspectable assets (image, video, audio), this means providing accessibility metadata like alt_text or captions. For opaque assets (HTML, JavaScript), this means providing self-declared accessibility properties."
+        }
+      },
+      "required": ["wcag_level"]
+    },
     "format_card_detailed": {
       "type": "object",
       "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",

@@ -511,6 +511,10 @@
         "action-source": {
           "$ref": "/schemas/enums/action-source.json",
           "description": "Where the conversion event originated (website, app, offline, etc.)"
+        },
+        "wcag-level": {
+          "$ref": "/schemas/enums/wcag-level.json",
+          "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
         }
       }
     },

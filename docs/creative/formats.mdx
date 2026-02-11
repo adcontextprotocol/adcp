@@ -296,6 +296,7 @@ Formats are JSON objects with the following key fields:
 - **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional. This is the authoritative source for understanding creative requirements.
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
+- **accessibility**: Optional WCAG conformance declaration — see [Accessibility](/docs/creative/accessibility)
 
 <Note>
 **Deprecation Notice**: The `type` field is deprecated and optional. The `assets` array provides precise information about creative requirements (video, image, text, etc.) and should be used instead. Categories like "video", "display", and "native" are lossy abstractions that don't scale well to emerging formats like Performance Max (spans multiple channels), search ads (text-only with high intent), or conversational AI placements.
