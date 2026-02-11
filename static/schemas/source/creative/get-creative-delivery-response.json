@@ -89,6 +89,37 @@
         "additionalProperties": true
       }
     },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information. Present when the request included pagination parameters.",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of creatives requested",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of creatives skipped",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more creatives are available beyond this page"
+        },
+        "total": {
+          "type": "integer",
+          "description": "Total number of creatives matching the request filters",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "additionalProperties": true
+    },
     "errors": {
       "type": "array",
       "description": "Task-specific errors and warnings",

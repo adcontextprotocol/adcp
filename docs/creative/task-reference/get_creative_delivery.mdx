@@ -10,17 +10,20 @@ Retrieve creative delivery data from a creative agent, including variant-level b
 
 ## Request Parameters
 
-At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids`) should be provided.
+At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids`) is required.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account_id` | string | No | Account context for routing and scoping. Limits results to creatives within this account. |
-| `media_buy_ids` | string[] | No | Filter to specific media buys by publisher ID |
-| `media_buy_buyer_refs` | string[] | No | Filter to specific media buys by buyer reference ID |
-| `creative_ids` | string[] | No | Filter to specific creatives by ID |
+| `media_buy_ids` | string[] | Yes* | Filter to specific media buys by publisher ID |
+| `media_buy_buyer_refs` | string[] | Yes* | Filter to specific media buys by buyer reference ID |
+| `creative_ids` | string[] | Yes* | Filter to specific creatives by ID |
 | `start_date` | string | No | Start date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `end_date` | string | No | End date for delivery period (YYYY-MM-DD, interpreted in the platform's reporting timezone) |
 | `max_variants` | integer | No | Maximum variants to return per creative. Useful for generative creatives with large variant counts. |
+| `pagination` | object | No | Pagination parameters (`limit`, `offset`) for the creatives array. When omitted, all matching creatives are returned. |
+
+\* At least one of `media_buy_ids`, `media_buy_buyer_refs`, or `creative_ids` must be provided.
 
 ## Response
 
@@ -32,6 +35,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 | `currency` | ISO 4217 currency code for monetary values (e.g., 'USD', 'EUR') |
 | `reporting_period` | Date range with start/end timestamps and `timezone` (IANA identifier — platforms report in their native timezone) |
 | `creatives` | Array of creative delivery data with variant breakdowns |
+| `pagination` | (Optional) Pagination info with `limit`, `offset`, `has_more`, and optional `total`. Present when the request included pagination parameters. |
 
 ### Creative Object
 

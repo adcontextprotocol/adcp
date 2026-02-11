@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-delivery-request.json",
   "title": "Get Creative Delivery Request",
-  "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids, media_buy_buyer_refs, or creative_ids) should be provided.",
+  "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids, media_buy_buyer_refs, or creative_ids) is required.",
   "type": "object",
   "properties": {
     "account_id": {
@@ -48,6 +48,26 @@
       "description": "Maximum number of variants to return per creative. When omitted, the agent returns all variants. Use this to limit response size for generative creatives that may produce large numbers of variants.",
       "minimum": 1
     },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination parameters for the creatives array in the response. When omitted, the agent returns all matching creatives.",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of creatives to return"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Number of creatives to skip"
+        }
+      },
+      "additionalProperties": true
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -55,5 +75,10 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "anyOf": [
+    { "required": ["media_buy_ids"] },
+    { "required": ["media_buy_buyer_refs"] },
+    { "required": ["creative_ids"] }
+  ],
   "additionalProperties": true
 }
