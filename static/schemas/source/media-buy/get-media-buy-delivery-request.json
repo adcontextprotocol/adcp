@@ -14,14 +14,16 @@
       "description": "Array of publisher media buy IDs to get delivery data for",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "buyer_refs": {
       "type": "array",
       "description": "Array of buyer reference IDs to get delivery data for",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "status_filter": {
       "oneOf": [
@@ -32,7 +34,8 @@
           "type": "array",
           "items": {
             "$ref": "/schemas/enums/media-buy-status.json"
-          }
+          },
+          "minItems": 1
         }
       ],
       "description": "Filter by status. Can be a single status or array of statuses"

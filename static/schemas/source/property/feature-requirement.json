@@ -20,7 +20,8 @@
     "allowed_values": {
       "type": "array",
       "description": "Values that pass the requirement (for binary/categorical features)",
-      "items": {}
+      "items": {},
+      "minItems": 1
     },
     "if_not_covered": {
       "type": "string",

@@ -10,14 +10,16 @@
       "description": "Filter by catalog type",
       "items": {
         "$ref": "/schemas/enums/signal-catalog-type.json"
-      }
+      },
+      "minItems": 1
     },
     "data_providers": {
       "type": "array",
       "description": "Filter by specific data providers",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "max_cpm": {
       "type": "number",

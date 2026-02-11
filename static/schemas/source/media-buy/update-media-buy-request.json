@@ -30,7 +30,8 @@
       "description": "Package-specific updates",
       "items": {
         "$ref": "/schemas/media-buy/package-update.json"
-      }
+      },
+      "minItems": 1
     },
     "reporting_webhook": {
       "$ref": "/schemas/core/reporting-webhook.json",

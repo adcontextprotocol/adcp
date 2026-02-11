@@ -10,35 +10,40 @@
       "description": "Filter creatives by owning accounts. Useful for agencies managing multiple client accounts.",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "formats": {
       "type": "array",
       "description": "Filter by creative format types (e.g., video, audio, display)",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "statuses": {
       "type": "array",
       "description": "Filter by creative approval statuses",
       "items": {
         "$ref": "/schemas/enums/creative-status.json"
-      }
+      },
+      "minItems": 1
     },
     "tags": {
       "type": "array",
       "description": "Filter by creative tags (all tags must match)",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "tags_any": {
       "type": "array",
       "description": "Filter by creative tags (any tag must match)",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "name_contains": {
       "type": "string",
@@ -50,6 +55,7 @@
       "items": {
         "type": "string"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "created_after": {
@@ -77,21 +83,24 @@
       "description": "Filter creatives assigned to any of these packages",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "media_buy_ids": {
       "type": "array",
       "description": "Filter creatives assigned to any of these media buys",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "buyer_refs": {
       "type": "array",
       "description": "Filter creatives assigned to media buys with any of these buyer references",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "unassigned": {
       "type": "boolean",

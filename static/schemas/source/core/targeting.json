@@ -172,7 +172,8 @@
           "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
           "items": {
             "$ref": "/schemas/enums/age-verification-method.json"
-          }
+          },
+          "minItems": 1
         }
       },
       "required": ["min"],
