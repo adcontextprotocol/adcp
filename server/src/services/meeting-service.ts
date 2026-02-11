@@ -276,6 +276,47 @@ export async function cancelMeeting(meetingId: string): Promise<{ success: boole
 }
 
 /**
+ * Cancel all upcoming meetings in a series and archive the series
+ */
+export async function cancelSeries(seriesId: string): Promise<{ cancelledCount: number; errors: string[] }> {
+  const series = await meetingsDb.getSeriesById(seriesId);
+  if (!series) {
+    throw new Error(`Series not found: ${seriesId}`);
+  }
+
+  const errors: string[] = [];
+  let cancelledCount = 0;
+
+  // Get all upcoming scheduled meetings in this series
+  const upcomingMeetings = await meetingsDb.listMeetings({
+    series_id: seriesId,
+    upcoming_only: true,
+  });
+
+  // Cancel each meeting (handles Zoom + Calendar + DB status)
+  for (const meeting of upcomingMeetings) {
+    try {
+      const result = await cancelMeeting(meeting.id);
+      cancelledCount++;
+      errors.push(...result.errors);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Failed to cancel meeting ${meeting.id}: ${msg}`);
+      logger.error({ err: error, meetingId: meeting.id }, 'Failed to cancel series meeting');
+    }
+  }
+
+  // Archive the series if we cancelled at least some meetings (or there were none)
+  if (cancelledCount > 0 || upcomingMeetings.length === 0) {
+    await meetingsDb.updateSeries(seriesId, { status: 'archived' });
+  }
+
+  logger.info({ seriesId, cancelledCount }, 'Meeting series cancelled');
+
+  return { cancelledCount, errors };
+}
+
+/**
  * Add attendees to an existing meeting
  */
 export async function addAttendeesToMeeting(
@@ -461,8 +502,8 @@ export async function generateMeetingsFromSeries(
       durationMinutes: series.duration_minutes,
       timezone: series.timezone,
       seriesId,
-      inviteMode: 'none',
-      sendCalendarInvites: false,
+      inviteMode: series.invite_mode === 'manual' ? 'none' : (series.invite_mode || 'all_members'),
+      inviteSlackChannelId: series.invite_slack_channel_id,
     });
 
     meetings.push(result.meeting);
