@@ -30,6 +30,13 @@
       "type": "boolean",
       "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
     },
+    "product_selectors_applied": {
+      "type": "boolean",
+      "description": "Indicates whether product_selectors filtering was applied. True if the seller filtered results based on the provided product_selectors. Absent or false if product_selectors was not provided or not supported by this agent."
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-response.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

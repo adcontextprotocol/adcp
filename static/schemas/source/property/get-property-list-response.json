@@ -16,28 +16,8 @@
         "$ref": "/schemas/core/identifier.json"
       }
     },
-    "total_count": {
-      "type": "integer",
-      "description": "Total number of identifiers in resolved list"
-    },
-    "returned_count": {
-      "type": "integer",
-      "description": "Number of identifiers returned in this response"
-    },
     "pagination": {
-      "type": "object",
-      "description": "Pagination information",
-      "properties": {
-        "has_more": {
-          "type": "boolean",
-          "description": "Whether more results are available"
-        },
-        "cursor": {
-          "type": "string",
-          "description": "Cursor for next page"
-        }
-      },
-      "additionalProperties": false
+      "$ref": "/schemas/core/pagination-response.json"
     },
     "resolved_at": {
       "type": "string",

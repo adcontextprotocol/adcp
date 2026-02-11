@@ -48,6 +48,14 @@
       },
       "uniqueItems": true
     },
+    "supported_channels": {
+      "type": "array",
+      "description": "Advertising channels this property supports (e.g., ['display', 'olv', 'social']). Publishers declare which channels their inventory aligns with. Properties may support multiple channels. See the Media Channel Taxonomy for definitions.",
+      "items": {
+        "$ref": "/schemas/enums/channels.json"
+      },
+      "uniqueItems": true
+    },
     "publisher_domain": {
       "type": "string",
       "description": "Domain where adagents.json should be checked for authorization validation. Optional in adagents.json (file location implies domain)."

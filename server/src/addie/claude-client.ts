@@ -337,9 +337,10 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools
+    // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
     const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
     const toolCount = allTools.length + (this.webSearchEnabled ? 1 : 0);
 
@@ -820,9 +821,10 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools
+    // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
     const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
     const toolCount = allTools.length; // Note: streaming doesn't use web search
 

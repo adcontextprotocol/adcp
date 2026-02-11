@@ -124,17 +124,34 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 
 #### Available Metrics
 
-Publishers declare which metrics they can provide in `reporting_capabilities.available_metrics`. Common metrics include:
+Metric availability is declared at two levels:
+
+1. **Product level**: `reporting_capabilities.available_metrics` declares what the platform can report
+2. **Format level**: `reported_metrics` on a creative format declares what the format can produce (see [Reported Metrics](/docs/creative/formats#reported-metrics))
+
+Buyers receive the intersection of both. `impressions` and `spend` are always reported regardless of the intersection. Standard metrics include:
 
 - **`impressions`**: Ad views (always available)
 - **`spend`**: Amount spent (always available)
 - **`clicks`**: Click events
 - **`ctr`**: Click-through rate
+- **`views`**: Views at platform-defined threshold
+- **`completed_views`**: 100% video completions
 - **`video_completions`**: Completed video views
 - **`completion_rate`**: Video completion percentage
 - **`conversions`**: Post-click or post-view conversions
-- **`viewability`**: Viewable impression percentage
+- **`conversion_value`**: Monetary value of attributed conversions
+- **`roas`**: Return on ad spend
+- **`cost_per_acquisition`**: Cost per conversion
+- **`leads`**: Leads generated
+- **`reach`**: Unique reach
+- **`frequency`**: Average frequency per individual
+- **`grps`**: Gross Rating Points (for CPP billing)
+- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard). Separates MRC and GroupM standards.
 - **`engagement_rate`**: Platform-specific engagement metric
+- **`quartile_data`**: Video quartile completion data (q1-q4)
+- **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
+- **`cost_per_click`**: Cost per click
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 

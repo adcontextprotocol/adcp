@@ -15,6 +15,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
+- `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.

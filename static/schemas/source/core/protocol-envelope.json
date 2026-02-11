@@ -126,7 +126,7 @@
             {
               "code": "INVALID_TARGETING",
               "message": "Geographic targeting codes are invalid",
-              "field": "targeting.geo_codes",
+              "field": "targeting.geo_countries",
               "severity": "error"
             }
           ]

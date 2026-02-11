@@ -23,6 +23,9 @@
       "$ref": "/schemas/pricing-options/cpp-option.json"
     },
     {
+      "$ref": "/schemas/pricing-options/cpa-option.json"
+    },
+    {
       "$ref": "/schemas/pricing-options/flat-rate-option.json"
     }
   ]

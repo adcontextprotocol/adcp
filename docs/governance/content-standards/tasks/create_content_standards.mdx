@@ -28,9 +28,10 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
 
 ```json
 {
+  "$schema": "/schemas/content-standards/create-content-standards-request.json",
   "scope": {
     "countries_all": ["GB", "DE", "FR"],
-    "channels_any": ["display", "video", "ctv"],
+    "channels_any": ["display", "olv", "ctv"],
     "languages_any": ["en", "de", "fr"],
     "description": "EMEA - all digital channels"
   },
@@ -56,6 +57,7 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
 
 ```json
 {
+  "$schema": "/schemas/content-standards/create-content-standards-response.json",
   "standards_id": "emea_digital_safety"
 }
 ```

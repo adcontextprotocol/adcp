@@ -15,7 +15,7 @@
         },
         "format_id": {
           "$ref": "/schemas/core/format-id.json",
-          "description": "Format identifier for rendering the preview"
+          "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
         },
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
@@ -67,7 +67,6 @@
       },
       "required": [
         "request_type",
-        "format_id",
         "creative_manifest"
       ],
       "additionalProperties": true
@@ -89,7 +88,7 @@
             "properties": {
               "format_id": {
                 "$ref": "/schemas/core/format-id.json",
-                "description": "Format identifier for rendering the preview"
+                "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
               },
               "creative_manifest": {
                 "$ref": "/schemas/core/creative-manifest.json",
@@ -134,7 +133,6 @@
               }
             },
             "required": [
-              "format_id",
               "creative_manifest"
             ],
             "additionalProperties": true
@@ -157,6 +155,41 @@
       "required": [
         "request_type",
         "requests"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Variant preview request - retrieve a post-flight preview of a specific creative variant that was served during delivery",
+      "properties": {
+        "request_type": {
+          "type": "string",
+          "const": "variant",
+          "description": "Discriminator indicating this is a variant preview request"
+        },
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned variant identifier from get_creative_delivery response"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative identifier for context"
+        },
+        "output_format": {
+          "$ref": "/schemas/enums/preview-output-format.json",
+          "default": "url",
+          "description": "Output format for the preview. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding)."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "request_type",
+        "variant_id"
       ],
       "additionalProperties": true
     }

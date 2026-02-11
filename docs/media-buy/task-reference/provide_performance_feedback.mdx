@@ -148,6 +148,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "gam_1234567890",
   "measurement_period": {
     "start": "2024-01-01T00:00:00Z",
@@ -165,6 +166,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Performance feedback processed successfully. Optimization algorithms updated."
 }
@@ -175,6 +177,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "meta_9876543210",
   "package_id": "pkg_social_feed",
   "measurement_period": {
@@ -193,6 +196,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Exceptional performance noted. Increasing allocation to similar segments."
 }
@@ -203,6 +207,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "creative_id": "creative_video_123",
   "measurement_period": {
@@ -221,35 +226,57 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Creative performance feedback recorded. Consider creative optimization."
 }
 ```
 
-### Example 4: Multiple Performance Metrics (Future)
+### Example 4: Multiple Performance Metrics
 
-#### Request - Batch Feedback (Not Implemented Yet)
+To report multiple metrics for the same media buy, send one request per metric type:
+
+#### Request - Viewability Feedback
 ```json
 {
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
     "start": "2024-02-01T00:00:00Z",
     "end": "2024-02-14T23:59:59Z"
   },
-  "feedback_metrics": [
-    {
-      "metric_type": "viewability",
-      "performance_index": 1.15
-    },
-    {
-      "metric_type": "completion_rate",
-      "performance_index": 0.92
-    },
-    {
-      "metric_type": "brand_safety",
-      "performance_index": 1.05
-    }
-  ],
+  "metric_type": "viewability",
+  "performance_index": 1.15,
+  "feedback_source": "verification_partner"
+}
+```
+
+#### Request - Completion Rate Feedback
+```json
+{
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "media_buy_id": "ttd_5555555555",
+  "measurement_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-14T23:59:59Z"
+  },
+  "metric_type": "completion_rate",
+  "performance_index": 0.92,
+  "feedback_source": "verification_partner"
+}
+```
+
+#### Request - Brand Safety Feedback
+```json
+{
+  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "media_buy_id": "ttd_5555555555",
+  "measurement_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-14T23:59:59Z"
+  },
+  "metric_type": "brand_safety",
+  "performance_index": 1.05,
   "feedback_source": "verification_partner"
 }
 ```

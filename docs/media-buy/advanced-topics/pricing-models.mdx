@@ -1,7 +1,7 @@
 ---
 title: Pricing Models
-description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, and DOOH support
-keywords: [pricing models, CPM, CPCV, CPP, CPC, CPV, GRP, video pricing, DOOH, share of voice, measurement]
+description: Comprehensive guide to AdCP's flexible pricing models including CPM, CPCV, CPP, CPC, CPA, and DOOH support
+keywords: [pricing models, CPM, CPCV, CPP, CPC, CPA, CPV, GRP, video pricing, DOOH, share of voice, measurement, conversions]
 ---
 
 
@@ -237,6 +237,61 @@ Buyers should verify the measurement provider meets their campaign requirements 
 
 ---
 
+### CPA (Cost Per Acquisition)
+**Cost per conversion event** - Advertiser pays when a defined conversion occurs.
+
+**Use Cases**: Retail media (pay per order), lead generation, app install campaigns, commerce media
+
+**Example**:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpa-option.json",
+  "pricing_option_id": "cpa_usd_purchase",
+  "pricing_model": "cpa",
+  "event_type": "purchase",
+  "fixed_price": 5.00,
+  "currency": "USD"
+}
+```
+
+**Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goal`, which controls delivery optimization.
+
+**Parameters**:
+- `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
+- `event_source_id` (optional): When present, only events from this specific source count toward billing. Must match an event source configured via `sync_event_sources`. When omitted, any event of the specified `event_type` counts.
+
+**Example** (different rates by event source):
+```json
+{
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpa_online_purchase",
+      "pricing_model": "cpa",
+      "event_type": "purchase",
+      "event_source_id": "website_pixel",
+      "fixed_price": 5.00,
+      "currency": "USD"
+    },
+    {
+      "pricing_option_id": "cpa_instore_purchase",
+      "pricing_model": "cpa",
+      "event_type": "purchase",
+      "event_source_id": "instore_attribution",
+      "fixed_price": 3.00,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+**Pricing vs. optimization**: The CPA pricing option's `event_type` (what triggers billing) is independent of the package's `optimization_goal` (what the platform optimizes delivery toward). For example, a package can use CPA pricing on `lead` events while setting `optimization_goal.event_type: "purchase"` with `target_roas: 4.0` — billing fires on leads, but delivery is optimized for downstream purchase ROAS.
+
+**Refunds and adjustments**: Refund handling and conversion adjustment policies are commercial terms between buyer and seller. The protocol does not govern clawbacks or billing credits for refunded conversions.
+
+**Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. A seller can offer multiple CPA options with different event types, event sources, and prices on the same product.
+
+---
+
 ### Flat Rate
 **Fixed cost** - Single payment regardless of delivery volume.
 
@@ -402,6 +457,7 @@ Different pricing models report different primary metrics:
 | CPV | views | impressions, quartile_data, spend |
 | CPP | grps | reach, frequency, spend |
 | CPC | clicks | impressions, ctr, spend |
+| CPA | conversions | conversion_value, cost_per_acquisition, roas, spend |
 | Flat Rate | N/A | impressions, reach, frequency |
 
 ## Example: Multi-Model CTV Product

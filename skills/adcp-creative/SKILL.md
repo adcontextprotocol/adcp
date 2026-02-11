@@ -137,10 +137,6 @@ Generate visual previews of creative manifests.
 ```json
 {
   "request_type": "single",
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  },
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -162,8 +158,7 @@ Generate visual previews of creative manifests.
 ```json
 {
   "request_type": "single",
-  "format_id": { "agent_url": "...", "id": "native_responsive" },
-  "creative_manifest": { /* ... */ },
+  "creative_manifest": { /* includes format_id, assets */ },
   "inputs": [
     { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
     { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } }
@@ -176,15 +171,15 @@ Generate visual previews of creative manifests.
 {
   "request_type": "batch",
   "requests": [
-    { "format_id": {...}, "creative_manifest": { /* creative 1 */ } },
-    { "format_id": {...}, "creative_manifest": { /* creative 2 */ } }
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
 
 **Key fields:**
 - `request_type` (string, required): `"single"` or `"batch"`
-- `format_id` (object, required for single): Format identifier
+- `format_id` (object, optional): Format identifier. Defaults to `creative_manifest.format_id` if omitted.
 - `creative_manifest` (object, required): Complete creative manifest
 - `inputs` (array, optional): Generate variants with different macros/contexts
 - `output_format` (string, optional): `"url"` (default) or `"html"`

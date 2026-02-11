@@ -251,8 +251,8 @@ const result = await testAgent.createMediaBuy({
     budget: 2500,
     bid_price: 5.00,
     targeting_overlay: {
-      geo_country_any_of: ['US'],
-      geo_region_any_of: ['CA', 'NY'],
+      geo_countries: ['US'],
+      geo_regions: ['US-CA', 'US-NY'],
       frequency_cap: {
         suppress_minutes: 60
       }
@@ -303,8 +303,8 @@ async def create_targeted_campaign():
             'budget': 2500,
             'bid_price': 5.00,
             'targeting_overlay': {
-                'geo_country_any_of': ['US'],
-                'geo_region_any_of': ['CA', 'NY'],
+                'geo_countries': ['US'],
+                'geo_regions': ['US-CA', 'US-NY'],
                 'frequency_cap': {
                     'suppress_minutes': 60
                 }

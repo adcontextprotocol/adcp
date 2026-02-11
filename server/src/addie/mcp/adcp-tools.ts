@@ -553,7 +553,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         requests: {
           type: 'array',
-          description: 'For batch preview - array of { format_id, creative_manifest }',
+          description: 'For batch preview - array of { creative_manifest } objects',
         },
         output_format: {
           type: 'string',

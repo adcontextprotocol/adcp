@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-variant.json",
+  "title": "Creative Variant",
+  "description": "A specific execution variant of a creative with delivery metrics. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative itself.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/delivery-metrics.json"
+    },
+    {
+      "properties": {
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned identifier for this variant"
+        },
+        "manifest": {
+          "$ref": "/schemas/core/creative-manifest.json",
+          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. Contains format_id and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand manifest. Pass to preview_creative to re-render."
+        },
+        "generation_context": {
+          "type": "object",
+          "description": "Input signals that triggered generation of this variant (Tier 3). Describes why the platform created this specific variant. Platforms should provide summarized or anonymized signals rather than raw user input. For web contexts, may include page topic or URL. For conversational contexts, an anonymized content signal. For search, query category or intent. When the content context is managed through AdCP content standards, reference the artifact directly via the artifact field.",
+          "properties": {
+            "context_type": {
+              "type": "string",
+              "description": "Type of context that triggered generation (e.g., 'web_page', 'conversational', 'search', 'app', 'dooh')"
+            },
+            "artifact": {
+              "type": "object",
+              "description": "Reference to the content-standards artifact that provided the generation context. Links this variant to the specific piece of content (article, video, podcast segment, etc.) where the ad was placed.",
+              "properties": {
+                "property_id": {
+                  "$ref": "/schemas/core/identifier.json",
+                  "description": "Property where the artifact appears"
+                },
+                "artifact_id": {
+                  "type": "string",
+                  "description": "Artifact identifier within the property"
+                }
+              },
+              "required": ["property_id", "artifact_id"],
+              "additionalProperties": false
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "variant_id"
+      ]
+    }
+  ]
+}

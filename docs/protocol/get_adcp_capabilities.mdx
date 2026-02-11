@@ -104,6 +104,8 @@ Technical execution capabilities:
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 
+Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+
 **geo_metros** specifies which metro classification systems are supported:
 
 | System | Description |
@@ -164,6 +166,7 @@ Array of property features this governance agent can evaluate:
 
 ```json
 {
+  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": { "major_versions": [1] },
   "supported_protocols": ["governance"],
   "governance": {
@@ -203,8 +206,8 @@ This tells buyers:
 
 **If a capability is declared, the seller MUST honor it.**
 
-- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST target them
-- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST target them
+- `media_buy.execution.targeting.geo_postal_areas.us_zip: true` → Buyer can send US ZIP codes, seller MUST honor them
+- `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.features.content_standards: true` → Seller MUST apply content standards when provided
 - AXE URL in `media_buy.execution.axe_integrations` → Seller can execute through that exchange
 
@@ -417,6 +420,7 @@ const buy = await client.createMediaBuy({
 
 ```json
 {
+  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [1]
   },

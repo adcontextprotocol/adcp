@@ -15,7 +15,17 @@
     "conversion_value",
     "roas",
     "cost_per_acquisition",
+    "new_to_brand_rate",
     "viewability",
-    "engagement_rate"
+    "engagement_rate",
+    "views",
+    "completed_views",
+    "leads",
+    "reach",
+    "frequency",
+    "grps",
+    "quartile_data",
+    "dooh_metrics",
+    "cost_per_click"
   ]
 }

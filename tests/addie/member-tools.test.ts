@@ -29,12 +29,9 @@ describe('MEMBER_TOOLS definitions', () => {
     }
   });
 
-  it('has validate_adagents tool', () => {
+  it('does not have validate_adagents tool (moved to property-tools)', () => {
     const tool = MEMBER_TOOLS.find(t => t.name === 'validate_adagents');
-    expect(tool).toBeDefined();
-    expect(tool?.input_schema.properties).toHaveProperty('domain');
-    expect(tool?.input_schema.properties).toHaveProperty('validate_cards');
-    expect(tool?.input_schema.required).toContain('domain');
+    expect(tool).toBeUndefined();
   });
 
   it('has list_working_groups tool with limit parameter', () => {

@@ -12,11 +12,7 @@ Generate preview renderings of creative manifests. Supports both single creative
 ```json
 {
   "request_type": "single",
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "native_responsive"
-  },
-  "creative_manifest": { /* your creative */ }
+  "creative_manifest": { /* includes format_id, assets */ }
 }
 ```
 
@@ -49,8 +45,7 @@ For faster rendering without iframe overhead, request HTML directly:
 ```json
 {
   "request_type": "single",
-  "format_id": { "agent_url": "...", "id": "native_responsive" },
-  "creative_manifest": { /* your creative */ },
+  "creative_manifest": { /* includes format_id, assets */ },
   "output_format": "html"
 }
 ```
@@ -81,8 +76,8 @@ Preview multiple creatives in one API call (5-10x faster):
 {
   "request_type": "batch",
   "requests": [
-    { "format_id": {...}, "creative_manifest": { /* creative 1 */ } },
-    { "format_id": {...}, "creative_manifest": { /* creative 2 */ } }
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
@@ -99,14 +94,78 @@ Response contains results in order:
 }
 ```
 
+### Variant Preview (Post-Flight)
+
+Preview what a specific variant looked like when served. Use `variant_id` from `get_creative_delivery` response:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_mobile_morning"
+}
+```
+
+Response:
+
+```json
+{
+  "response_type": "variant",
+  "variant_id": "gen_mobile_morning",
+  "previews": [
+    {
+      "preview_id": "prev_gen_morning",
+      "renders": [
+        {
+          "render_id": "render_1",
+          "output_format": "url",
+          "preview_url": "https://creative-agent.example.com/preview/variant/gen_mobile_morning",
+          "role": "primary",
+          "dimensions": { "width": 300, "height": 250 }
+        }
+      ]
+    }
+  ],
+  "manifest": {
+    "format_id": {
+      "agent_url": "https://creative.example.com",
+      "id": "display_300x250_generative"
+    },
+    "assets": {
+      "hero_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative.example.com/generated/mobile_morning_v1.jpg",
+        "width": 300,
+        "height": 250
+      },
+      "headline": {
+        "asset_type": "text",
+        "content": "Start Your Summer Right"
+      }
+    }
+  },
+  "expires_at": "2026-02-15T18:00:00Z"
+}
+```
+
+Since each variant from `get_creative_delivery` includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
+
 ## Request Parameters
+
+### Variant Mode
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_type` | string | Yes | `"variant"` |
+| `variant_id` | string | Yes | Platform-assigned variant identifier from `get_creative_delivery` |
+| `creative_id` | string | No | Creative identifier for context |
+| `output_format` | string | No | `"url"` (default) or `"html"` |
 
 ### Single Mode
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `request_type` | string | Yes | `"single"` |
-| `format_id` | FormatID | Yes | Format identifier (agent_url + id) |
+| `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
 | `creative_manifest` | object | Yes | Complete creative manifest |
 | `inputs` | array | No | Array of input sets for multiple preview variants |
 | `output_format` | string | No | `"url"` (default) or `"html"` |
@@ -192,8 +251,8 @@ Generate multiple preview variants by providing different contexts:
 
 ```json
 {
+  "$schema": "/schemas/creative/preview-creative-request.json",
   "request_type": "single",
-  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
   "creative_manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
     "assets": {
@@ -217,14 +276,8 @@ Preview multiple creatives for a grid layout:
   "request_type": "batch",
   "output_format": "html",
   "requests": [
-    {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
-      "creative_manifest": { /* creative 1 */ }
-    },
-    {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
-      "creative_manifest": { /* creative 2 */ }
-    }
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
   ]
 }
 ```
@@ -233,8 +286,8 @@ Preview multiple creatives for a grid layout:
 
 ```json
 {
+  "$schema": "/schemas/creative/preview-creative-request.json",
   "request_type": "single",
-  "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
   "creative_manifest": {
     "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
     "assets": {

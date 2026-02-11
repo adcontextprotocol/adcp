@@ -17,6 +17,7 @@ List available content standards configurations.
 | `countries` | array | No | Filter by ISO 3166-1 alpha-2 country codes (case-insensitive) |
 | `channels` | array | No | Filter by channels |
 | `languages` | array | No | Filter by ISO 639-1 or BCP 47 language tags (case-insensitive) |
+| `pagination` | object | No | Pagination: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
 
 ## Response
 
@@ -28,20 +29,21 @@ Returns an abbreviated list of standards configurations. Use [get_content_standa
 
 ```json
 {
+  "$schema": "/schemas/content-standards/list-content-standards-response.json",
   "standards": [
     {
       "standards_id": "emea_digital_safety",
       "name": "EMEA - all digital channels",
       "countries_all": ["GB", "DE", "FR"],
-      "channels_any": ["display", "video", "ctv"],
-      "languages": ["en", "de", "fr"]
+      "channels_any": ["display", "olv", "ctv"],
+      "languages_any": ["en", "de", "fr"]
     },
     {
       "standards_id": "us_display_only",
       "name": "US - display only",
       "countries_all": ["US"],
       "channels_any": ["display"],
-      "languages": ["en"]
+      "languages_any": ["en"]
     }
   ]
 }

@@ -94,6 +94,22 @@
           "description": "Total conversion value across all media buys (if applicable)",
           "minimum": 0
         },
+        "roas": {
+          "type": "number",
+          "description": "Aggregate return on ad spend across all media buys (total conversion_value / total spend)",
+          "minimum": 0
+        },
+        "new_to_brand_rate": {
+          "type": "number",
+          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_per_acquisition": {
+          "type": "number",
+          "description": "Aggregate cost per conversion across all media buys (total spend / total conversions)",
+          "minimum": 0
+        },
         "media_buy_count": {
           "type": "integer",
           "description": "Number of media buys included in the response",
@@ -219,6 +235,37 @@
                     "paused": {
                       "type": "boolean",
                       "description": "Whether this package is currently paused by the buyer"
+                    },
+                    "by_creative": {
+                      "type": "array",
+                      "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "creative_id": {
+                                "type": "string",
+                                "description": "Creative identifier matching the creative assignment"
+                              },
+                              "weight": {
+                                "type": "number",
+                                "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
+                                "minimum": 0,
+                                "maximum": 100
+                              }
+                            },
+                            "required": [
+                              "creative_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
                     }
                   },
                   "required": [
@@ -262,6 +309,17 @@
                   "type": "number",
                   "description": "Daily conversion value",
                   "minimum": 0
+                },
+                "roas": {
+                  "type": "number",
+                  "description": "Daily return on ad spend (conversion_value / spend)",
+                  "minimum": 0
+                },
+                "new_to_brand_rate": {
+                  "type": "number",
+                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+                  "minimum": 0,
+                  "maximum": 1
                 }
               },
               "required": [

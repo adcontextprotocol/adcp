@@ -276,6 +276,47 @@ export async function cancelMeeting(meetingId: string): Promise<{ success: boole
 }
 
 /**
+ * Cancel all upcoming meetings in a series and archive the series
+ */
+export async function cancelSeries(seriesId: string): Promise<{ cancelledCount: number; errors: string[] }> {
+  const series = await meetingsDb.getSeriesById(seriesId);
+  if (!series) {
+    throw new Error(`Series not found: ${seriesId}`);
+  }
+
+  const errors: string[] = [];
+  let cancelledCount = 0;
+
+  // Get all upcoming scheduled meetings in this series
+  const upcomingMeetings = await meetingsDb.listMeetings({
+    series_id: seriesId,
+    upcoming_only: true,
+  });
+
+  // Cancel each meeting (handles Zoom + Calendar + DB status)
+  for (const meeting of upcomingMeetings) {
+    try {
+      const result = await cancelMeeting(meeting.id);
+      cancelledCount++;
+      errors.push(...result.errors);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Failed to cancel meeting ${meeting.id}: ${msg}`);
+      logger.error({ err: error, meetingId: meeting.id }, 'Failed to cancel series meeting');
+    }
+  }
+
+  // Archive the series if we cancelled at least some meetings (or there were none)
+  if (cancelledCount > 0 || upcomingMeetings.length === 0) {
+    await meetingsDb.updateSeries(seriesId, { status: 'archived' });
+  }
+
+  logger.info({ seriesId, cancelledCount }, 'Meeting series cancelled');
+
+  return { cancelledCount, errors };
+}
+
+/**
  * Add attendees to an existing meeting
  */
 export async function addAttendeesToMeeting(
@@ -408,13 +449,20 @@ function buildCalendarDescription(
   return parts.join('\n');
 }
 
+export interface GenerateSeriesResult {
+  meetings: Meeting[];
+  errors: string[];
+}
+
 /**
- * Generate upcoming meetings from a series
+ * Generate upcoming meetings from a series.
+ * @param startFrom - Anchor date for the first occurrence. If omitted, calculates from today.
  */
 export async function generateMeetingsFromSeries(
   seriesId: string,
-  count: number = 4
-): Promise<Meeting[]> {
+  count: number = 4,
+  startFrom?: Date
+): Promise<GenerateSeriesResult> {
   const series = await meetingsDb.getSeriesById(seriesId);
   if (!series) {
     throw new Error(`Series not found: ${seriesId}`);
@@ -426,18 +474,19 @@ export async function generateMeetingsFromSeries(
 
   const rule = series.recurrence_rule as RecurrenceRule;
   const meetings: Meeting[] = [];
+  const errors: string[] = [];
 
-  // Calculate next occurrence dates
-  const dates = calculateNextOccurrences(rule, series.default_start_time, series.timezone, count);
+  // Calculate next occurrence dates, anchored to startFrom if provided
+  const dates = calculateNextOccurrences(rule, series.default_start_time, series.timezone, count, startFrom);
+
+  // Pre-fetch existing meetings to avoid N+1 queries inside the loop
+  const existing = await meetingsDb.listMeetings({
+    series_id: seriesId,
+    upcoming_only: true,
+  });
+  const existingDates = new Set(existing.map(m => m.start_time.toISOString().split('T')[0]));
 
   for (const date of dates) {
-    // Check if meeting already exists for this date
-    const existing = await meetingsDb.listMeetings({
-      series_id: seriesId,
-      upcoming_only: true,
-    });
-
-    const existingDates = new Set(existing.map(m => m.start_time.toISOString().split('T')[0]));
     const dateStr = date.toISOString().split('T')[0];
 
     if (existingDates.has(dateStr)) {
@@ -453,40 +502,92 @@ export async function generateMeetingsFromSeries(
       durationMinutes: series.duration_minutes,
       timezone: series.timezone,
       seriesId,
+      inviteMode: series.invite_mode === 'manual' ? 'none' : (series.invite_mode || 'all_members'),
+      inviteSlackChannelId: series.invite_slack_channel_id,
     });
 
     meetings.push(result.meeting);
+    errors.push(...result.errors);
+    existingDates.add(dateStr);
   }
 
-  return meetings;
+  return { meetings, errors };
 }
 
 /**
- * Calculate next occurrence dates based on recurrence rule
+ * Convert a UTC Date to local date components in the given timezone.
+ */
+function toLocalComponents(utcDate: Date, timezone: string): { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(utcDate);
+
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '0';
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
+    day: parseInt(get('day'), 10),
+    hour: parseInt(get('hour'), 10) % 24,
+    minute: parseInt(get('minute'), 10),
+    dayOfWeek: dayMap[get('weekday')] ?? 0,
+  };
+}
+
+/**
+ * Convert local date components + timezone to a UTC Date.
+ * Uses the Intl offset trick to handle DST correctly.
+ */
+function localToUtc(year: number, month: number, day: number, hour: number, minute: number, timezone: string): Date {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const utcFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: 'UTC' }).replace(' ', 'T');
+  const tzFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
+  const utcMs = new Date(utcFormatted + 'Z').getTime();
+  const tzMs = new Date(tzFormatted + 'Z').getTime();
+  return new Date(utcGuess.getTime() - (tzMs - utcMs));
+}
+
+/**
+ * Calculate next occurrence dates based on recurrence rule.
+ * All date arithmetic is done in the meeting's local timezone to handle DST correctly.
+ * @param startFrom - If provided, use this as the first occurrence date.
+ *                    Otherwise, calculate from today using the time-of-day from startTime.
  */
 function calculateNextOccurrences(
   rule: RecurrenceRule,
   startTime: string | undefined,
   timezone: string,
-  count: number
+  count: number,
+  startFrom?: Date
 ): Date[] {
   const dates: Date[] = [];
   const now = new Date();
 
-  // Parse start time (e.g., "14:00:00")
-  const [hours, minutes] = (startTime || '14:00:00').split(':').map(Number);
+  // Get the starting local components
+  let local: { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number };
 
-  let current = new Date(now);
-  current.setHours(hours, minutes, 0, 0);
+  if (startFrom) {
+    local = toLocalComponents(startFrom, timezone);
+  } else {
+    // No anchor date - use today's date with the series' default time
+    const todayLocal = toLocalComponents(now, timezone);
+    const [hours, minutes] = (startTime || '14:00:00').split(':').map(Number);
+    local = { ...todayLocal, hour: hours, minute: minutes };
 
-  // If today's time has passed, start from next occurrence
-  if (current <= now) {
-    current = getNextOccurrence(current, rule);
+    // If today's time has passed, advance to next occurrence
+    const candidate = localToUtc(local.year, local.month, local.day, local.hour, local.minute, timezone);
+    if (candidate <= now) {
+      advanceLocal(local, rule);
+    }
   }
 
   while (dates.length < count) {
+    const utcDate = localToUtc(local.year, local.month, local.day, local.hour, local.minute, timezone);
+
     // Check against until date if specified
-    if (rule.until && current > new Date(rule.until)) {
+    if (rule.until && utcDate > new Date(rule.until)) {
       break;
     }
 
@@ -495,60 +596,78 @@ function calculateNextOccurrences(
       break;
     }
 
-    dates.push(new Date(current));
-    current = getNextOccurrence(current, rule);
+    dates.push(utcDate);
+    advanceLocal(local, rule);
   }
 
   return dates;
 }
 
 /**
- * Get next occurrence based on recurrence rule
+ * Advance local date components to the next occurrence based on recurrence rule.
+ * Mutates the local components in place.
  */
-function getNextOccurrence(from: Date, rule: RecurrenceRule): Date {
-  const next = new Date(from);
+function advanceLocal(local: { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number }, rule: RecurrenceRule): void {
   const interval = rule.interval || 1;
 
   switch (rule.freq) {
-    case 'daily':
-      next.setDate(next.getDate() + interval);
+    case 'daily': {
+      const d = new Date(local.year, local.month - 1, local.day + interval);
+      local.year = d.getFullYear();
+      local.month = d.getMonth() + 1;
+      local.day = d.getDate();
+      local.dayOfWeek = d.getDay();
       break;
+    }
 
-    case 'weekly':
+    case 'weekly': {
       if (rule.byDay && rule.byDay.length > 0) {
-        // Find next matching day
         const dayMap: Record<string, number> = {
           SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6,
         };
         const targetDays = rule.byDay.map(d => dayMap[d]).sort((a, b) => a - b);
-        const currentDay = next.getDay();
+        const currentDay = local.dayOfWeek;
 
-        // Find next target day
+        // Find next target day in current week
+        let daysToAdd = 0;
         let found = false;
         for (const targetDay of targetDays) {
           if (targetDay > currentDay) {
-            next.setDate(next.getDate() + (targetDay - currentDay));
+            daysToAdd = targetDay - currentDay;
             found = true;
             break;
           }
         }
 
         if (!found) {
-          // Wrap to next week's first target day
-          const daysUntilNextWeek = 7 - currentDay + targetDays[0];
-          next.setDate(next.getDate() + daysUntilNextWeek + (interval - 1) * 7);
+          // Wrap to next interval week's first target day
+          daysToAdd = 7 - currentDay + targetDays[0] + (interval - 1) * 7;
         }
+
+        const d = new Date(local.year, local.month - 1, local.day + daysToAdd);
+        local.year = d.getFullYear();
+        local.month = d.getMonth() + 1;
+        local.day = d.getDate();
+        local.dayOfWeek = d.getDay();
       } else {
-        next.setDate(next.getDate() + interval * 7);
+        const d = new Date(local.year, local.month - 1, local.day + interval * 7);
+        local.year = d.getFullYear();
+        local.month = d.getMonth() + 1;
+        local.day = d.getDate();
+        local.dayOfWeek = d.getDay();
       }
       break;
+    }
 
-    case 'monthly':
-      next.setMonth(next.getMonth() + interval);
+    case 'monthly': {
+      const d = new Date(local.year, local.month - 1 + interval, local.day);
+      local.year = d.getFullYear();
+      local.month = d.getMonth() + 1;
+      local.day = d.getDate();
+      local.dayOfWeek = d.getDay();
       break;
+    }
   }
-
-  return next;
 }
 
 /**

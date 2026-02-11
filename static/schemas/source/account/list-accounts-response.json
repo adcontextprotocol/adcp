@@ -19,6 +19,9 @@
         "$ref": "/schemas/core/error.json"
       }
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-response.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -53,7 +56,11 @@
             "advertiser": "Publicis Media",
             "status": "active"
           }
-        ]
+        ],
+        "pagination": {
+          "has_more": false,
+          "total_count": 3
+        }
       }
     },
     {

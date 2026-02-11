@@ -27,6 +27,7 @@ For pure generation, provide a minimal source manifest with the required input a
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-request.json",
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
@@ -41,10 +42,12 @@ For pure generation, provide a minimal source manifest with the required input a
       "promoted_offerings": {
         "brand_manifest": {
           "url": "https://mybrand.com",
+          "name": "My Brand",
           "colors": {"primary": "#FF0000"}
         },
-        "inline_offerings": [
+        "offerings": [
           {
+            "offering_id": "winter-sale",
             "name": "Winter Sale Collection",
             "description": "50% off all winter items"
           }
@@ -61,6 +64,7 @@ For transformation, provide the complete source manifest:
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-request.json",
   "message": "Adapt this creative for mobile, making the text larger and CTA more prominent",
   "creative_manifest": {
     "format_id": {
@@ -113,6 +117,7 @@ The response contains the transformed or generated creative manifest:
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -195,6 +200,7 @@ Generate a creative from scratch using a generative format that requires `promot
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-request.json",
   "message": "Create a display banner for our winter sale. Use warm colors and emphasize the 50% discount",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
@@ -230,6 +236,7 @@ Generate a creative from scratch using a generative format that requires `promot
 **Response**:
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -258,6 +265,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-request.json",
   "message": "Adapt this leaderboard creative to a 300x250 banner format",
   "creative_manifest": {
     "format_id": {
@@ -292,6 +300,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 **Response**:
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -324,6 +333,7 @@ Adapt a creative for mobile with specific design changes:
 
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-request.json",
   "message": "Make this mobile-friendly: increase text size, simplify the layout, and make the CTA button more prominent",
   "creative_manifest": {
     "format_id": {
@@ -361,6 +371,7 @@ Adapt a creative for mobile with specific design changes:
 **Response**:
 ```json
 {
+  "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",

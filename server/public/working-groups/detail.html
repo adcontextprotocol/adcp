@@ -1696,9 +1696,17 @@
 
     function renderMeetingCard(meeting) {
       const startDate = new Date(meeting.start_time);
-      const month = startDate.toLocaleDateString('en-US', { month: 'short' });
-      const day = startDate.getDate();
-      const time = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const tz = meeting.timezone || 'America/New_York';
+      const month = startDate.toLocaleDateString('en-US', { month: 'short', timeZone: tz });
+      const day = parseInt(startDate.toLocaleDateString('en-US', { day: 'numeric', timeZone: tz }), 10);
+      const time = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz });
+
+      // Calculate duration from start/end times, fall back to 60 min
+      let durationStr = '60 min';
+      if (meeting.end_time) {
+        const mins = Math.round((new Date(meeting.end_time) - startDate) / 60000);
+        if (mins > 0) durationStr = `${mins} min`;
+      }
 
       return `
         <a href="/meetings#meeting-${meeting.id}" class="meeting-card">
@@ -1710,8 +1718,8 @@
           <div class="meeting-info">
             <div class="meeting-title">${escapeHtml(meeting.title)}</div>
             <div class="meeting-meta">
-              <span>${meeting.duration_minutes} min</span>
-              ${meeting.rsvp_count ? `<span>${meeting.rsvp_count} attending</span>` : ''}
+              <span>${durationStr}</span>
+              ${meeting.accepted_count ? `<span>${meeting.accepted_count} attending</span>` : ''}
             </div>
           </div>
           ${meeting.zoom_join_url ? `

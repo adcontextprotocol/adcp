@@ -16,6 +16,7 @@
     "list_property_lists",
     "delete_property_list",
     "sync_accounts",
+    "get_creative_delivery",
     "sync_event_sources",
     "log_event"
   ],
@@ -31,6 +32,7 @@
     "list_property_lists": "Property domain: List all accessible property lists",
     "delete_property_list": "Property domain: Delete a property list",
     "sync_accounts": "Account domain: Sync advertiser accounts with a seller, declaring brands, operators, and billing arrangements",
+    "get_creative_delivery": "Creative domain: Retrieve variant-level creative delivery data",
     "sync_event_sources": "Media-buy domain: Configure event sources on an account with upsert semantics",
     "log_event": "Media-buy domain: Send conversion or marketing events for attribution"
   },

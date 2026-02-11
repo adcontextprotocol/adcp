@@ -66,6 +66,14 @@
           "$ref": "/schemas/core/error.json",
           "description": "Standard error structure"
         },
+        "pagination-request": {
+          "$ref": "/schemas/core/pagination-request.json",
+          "description": "Standard cursor-based pagination parameters for list request schemas"
+        },
+        "pagination-response": {
+          "$ref": "/schemas/core/pagination-response.json",
+          "description": "Standard cursor-based pagination metadata for list response schemas"
+        },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
           "description": "Sub-asset for multi-asset creative formats"
@@ -81,6 +89,10 @@
         "performance-feedback": {
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Performance feedback data for a media buy or package"
+        },
+        "creative-variant": {
+          "$ref": "/schemas/core/creative-variant.json",
+          "description": "A specific execution variant of a creative with performance metrics"
         },
         "property": {
           "$ref": "/schemas/core/property.json",
@@ -378,7 +390,7 @@
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
-          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"
+          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
@@ -528,6 +540,10 @@
         "cpp-option": {
           "$ref": "/schemas/pricing-options/cpp-option.json",
           "description": "Cost Per Point (CPP) pricing for TV/audio with demographic measurement - supports fixed rate and auction modes"
+        },
+        "cpa-option": {
+          "$ref": "/schemas/pricing-options/cpa-option.json",
+          "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - fixed price per conversion event"
         },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
@@ -706,6 +722,16 @@
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
             "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+          }
+        },
+        "get-creative-delivery": {
+          "request": {
+            "$ref": "/schemas/creative/get-creative-delivery-request.json",
+            "description": "Request parameters for retrieving creative delivery data with variant-level breakdowns"
+          },
+          "response": {
+            "$ref": "/schemas/creative/get-creative-delivery-response.json",
+            "description": "Response payload with creative delivery data including variant manifests and metrics"
           }
         }
       },

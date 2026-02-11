@@ -17,6 +17,10 @@
       "$ref": "/schemas/core/brand-manifest-ref.json",
       "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
     },
+    "product_selectors": {
+      "$ref": "/schemas/core/promoted-products.json",
+      "description": "Selectors to filter the brand manifest product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+    },
     "account_id": {
       "type": "string",
       "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
@@ -28,6 +32,9 @@
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
     },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -36,5 +43,8 @@
     }
   },
   "required": [],
+  "dependencies": {
+    "product_selectors": ["brand_manifest"]
+  },
   "additionalProperties": true
 }

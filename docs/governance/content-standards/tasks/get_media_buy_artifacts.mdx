@@ -35,8 +35,7 @@ The buyer requests artifacts from the seller using the same media buy parameters
 | `package_ids` | array | No | Filter to specific packages |
 | `sampling` | object | No | Sampling parameters (defaults to media buy agreement) |
 | `time_range` | object | No | Filter to specific time period |
-| `limit` | integer | No | Maximum artifacts to return (default: 1000) |
-| `cursor` | string | No | Pagination cursor for large result sets |
+| `pagination` | object | No | Pagination parameters (see below) |
 
 ### Sampling Options
 
@@ -56,6 +55,15 @@ The buyer requests artifacts from the seller using the same media buy parameters
 | `recent` | Most recent deliveries first |
 | `failures_only` | Only artifacts that failed local evaluation |
 
+### Pagination
+
+Uses higher limits than standard pagination because artifact result sets can be very large.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pagination.max_results` | integer | 1000 | Maximum artifacts per page (1-10,000) |
+| `pagination.cursor` | string | - | Opaque cursor from a previous response |
+
 ## Response
 
 **Schema**: [get-media-buy-artifacts-response.json](https://adcontextprotocol.org/schemas/v2/content-standards/get-media-buy-artifacts-response.json)
@@ -64,6 +72,7 @@ The buyer requests artifacts from the seller using the same media buy parameters
 
 ```json
 {
+  "$schema": "/schemas/content-standards/get-media-buy-artifacts-response.json",
   "media_buy_id": "mb_nike_reddit_q1",
   "artifacts": [
     {
@@ -75,7 +84,7 @@ The buyer requests artifacts from the seller using the same media buy parameters
         "artifact_id": "r_fitness_abc123",
         "assets": [
           {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
-          {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
+          {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources for recovery", "language": "en"},
           {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
         ]
       },
@@ -93,7 +102,7 @@ The buyer requests artifacts from the seller using the same media buy parameters
         "artifact_id": "r_news_politics_456",
         "assets": [
           {"type": "text", "role": "title", "content": "Election Results Analysis", "language": "en"},
-          {"type": "text", "role": "paragraph", "content": "The latest polling data shows...", "language": "en"}
+          {"type": "text", "role": "paragraph", "content": "The latest polling data shows a tight race between candidates", "language": "en"}
         ]
       },
       "country": "US",
@@ -173,7 +182,7 @@ for i, result in enumerate(validation["results"]):
 failures = seller_agent.get_media_buy_artifacts(
     media_buy_id="mb_nike_reddit_q1",
     sampling={"method": "failures_only"},
-    limit=100
+    pagination={"max_results": 100}
 )
 
 # Verify these were correctly flagged
