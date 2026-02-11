@@ -44,12 +44,17 @@
       "properties": {
         "setup_modes": {
           "type": "array",
-          "description": "How accounts can be established with this seller. sync_accounts: agent provisions accounts programmatically. oauth: buyer connects existing account via OAuth.",
+          "description": "How accounts can be established with this seller. sync_accounts: seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. oauth: seller requires operator-level credentials — each operator authenticates independently via OAuth, then the agent opens a per-operator session and calls sync_accounts with the operator's token.",
           "items": {
             "type": "string",
             "enum": ["sync_accounts", "oauth"]
           },
           "minItems": 1
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Required when setup_modes includes 'oauth'. The agent directs the operator to this URL to authenticate with the seller and obtain a bearer token for a per-operator session."
         },
         "supported_billing": {
           "type": "array",
