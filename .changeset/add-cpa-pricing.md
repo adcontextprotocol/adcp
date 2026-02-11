@@ -9,7 +9,7 @@ CPA enables advertisers to pay per conversion event (purchase, lead, signup, etc
 This single model covers use cases previously described as CPO (Cost Per Order), CPL (Cost Per Lead), and CPI (Cost Per Install) — differentiated by event type rather than separate pricing models.
 
 New schema:
-- `cpa-option.json`: CPA pricing option with fixed and auction modes
+- `cpa-option.json`: CPA pricing option (fixed price per conversion event)
 
 Updated schemas:
 - `pricing-model.json`: Added `cpa` enum value

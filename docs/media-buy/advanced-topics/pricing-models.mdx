@@ -284,6 +284,10 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
+**Pricing vs. optimization**: The CPA pricing option's `event_type` (what triggers billing) is independent of the package's `optimization_goal` (what the platform optimizes delivery toward). For example, a package can use CPA pricing on `lead` events while setting `optimization_goal.event_type: "purchase"` with `target_roas: 4.0` — billing fires on leads, but delivery is optimized for downstream purchase ROAS.
+
+**Refunds and adjustments**: Refund handling and conversion adjustment policies are commercial terms between buyer and seller. The protocol does not govern clawbacks or billing credits for refunded conversions.
+
 **Note**: CPA replaces the need for separate "CPO" (Cost Per Order) or "CPL" (Cost Per Lead) pricing models. A seller can offer multiple CPA options with different event types, event sources, and prices on the same product.
 
 ---

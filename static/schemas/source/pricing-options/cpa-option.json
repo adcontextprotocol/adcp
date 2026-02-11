@@ -15,8 +15,12 @@
       "description": "Cost per acquisition (conversion event)"
     },
     "event_type": {
-      "$ref": "/schemas/enums/event-type.json",
+      "allOf": [{ "$ref": "/schemas/enums/event-type.json" }],
       "description": "The conversion event type that triggers billing (e.g., purchase, lead, app_install)"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "description": "Name of the custom event when event_type is 'custom'. Required when event_type is 'custom', ignored otherwise."
     },
     "event_source_id": {
       "type": "string",
@@ -30,8 +34,8 @@
     },
     "fixed_price": {
       "type": "number",
-      "description": "Price per acquisition in the specified currency",
-      "minimum": 0
+      "description": "Fixed price per acquisition in the specified currency",
+      "exclusiveMinimum": 0
     },
     "min_spend_per_package": {
       "type": "number",
