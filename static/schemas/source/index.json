@@ -229,6 +229,10 @@
         "attribution-window": {
           "$ref": "/schemas/core/attribution-window.json",
           "description": "Attribution methodology and lookback windows for conversion measurement"
+        },
+        "optimization-goal": {
+          "$ref": "/schemas/core/optimization-goal.json",
+          "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         }
       },
       "requirements": {

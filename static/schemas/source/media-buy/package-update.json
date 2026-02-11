@@ -35,6 +35,9 @@
       "type": "boolean",
       "description": "Pause/resume specific package (true = paused, false = active)"
     },
+    "optimization_goal": {
+      "$ref": "/schemas/core/optimization-goal.json"
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
