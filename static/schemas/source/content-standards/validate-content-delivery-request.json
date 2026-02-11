@@ -12,6 +12,7 @@
     "records": {
       "type": "array",
       "description": "Delivery records to validate (max 10,000)",
+      "minItems": 1,
       "maxItems": 10000,
       "items": {
         "type": "object",
@@ -62,6 +63,7 @@
     "feature_ids": {
       "type": "array",
       "items": { "type": "string" },
+      "minItems": 1,
       "description": "Specific features to evaluate (defaults to all)"
     },
     "include_passed": {

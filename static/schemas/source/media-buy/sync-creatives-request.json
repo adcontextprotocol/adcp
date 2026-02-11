@@ -15,6 +15,7 @@
       "items": {
         "$ref": "/schemas/core/creative-asset.json"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "creative_ids": {
@@ -23,6 +24,7 @@
       "items": {
         "type": "string"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "assignments": {

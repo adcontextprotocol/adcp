@@ -10,7 +10,8 @@
       "description": "Return only these specific format IDs",
       "items": {
         "$ref": "/schemas/core/format-id.json"
-      }
+      },
+      "minItems": 1
     },
     "type": {
       "type": "string",
@@ -36,7 +37,8 @@
           "javascript",
           "url"
         ]
-      }
+      },
+      "minItems": 1
     },
     "max_width": {
       "type": "integer",
