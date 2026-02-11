@@ -90,7 +90,6 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 ```json
 {
   "account": {
-    "setup_modes": ["sync_accounts"],
     "supported_billing": ["brand", "agent"],
     "required_for_products": true
   }
@@ -99,41 +98,38 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 
 | Field | Description |
 |-------|-------------|
-| `setup_modes` | How accounts can be established: `sync_accounts`, `oauth` |
-| `authorization_endpoint` | OAuth URL for obtaining operator credentials. Required when `oauth` is in `setup_modes`. |
+| `require_operator_auth` | Whether the seller requires operator-level credentials. Default: `false`. |
+| `authorization_endpoint` | OAuth URL for obtaining operator credentials. Present when the seller supports OAuth for operator authentication. |
 | `supported_billing` | Which billing models the seller supports: `brand`, `operator`, `agent` |
 | `required_for_products` | Whether `get_products` requires an `account_id`. When true, set up an account before browsing. |
 
-### Setup Modes
+### Trust Model
 
-The two setup modes represent different trust models — specifically, who authenticates to the seller.
+The `require_operator_auth` flag determines who authenticates to the seller.
 
-**`sync_accounts`** (agent-trusted) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential.
+**`require_operator_auth: false`** (default, agent-trusted) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential.
 
-**`oauth`** (operator-scoped) — The seller requires operator-level credentials. Each operator must authenticate independently with the seller via OAuth (using `authorization_endpoint` from capabilities). The agent obtains a bearer token per operator, opens a separate session per operator, and calls `sync_accounts` within each session to declare brands. The operator's token — not the agent's — authorizes all calls in that session.
-
-A seller can support both modes. For example, a publisher might trust established agent platforms (`sync_accounts`) while requiring OAuth for operators it hasn't vetted.
+**`require_operator_auth: true`** (operator-scoped) — The seller requires operator-level credentials. Each operator must authenticate independently with the seller (via OAuth if `authorization_endpoint` is provided, or out-of-band via seller portal / API key). The agent obtains a credential per operator, opens a separate session per operator, and calls `sync_accounts` within each session to declare brands. The operator's credential — not the agent's — authorizes all calls in that session.
 
 ### Agent Workflow
 
-**For `sync_accounts` (agent-trusted):**
+**Agent-trusted** (`require_operator_auth: false`):
 ```
-1. get_adcp_capabilities → learn setup_modes, supported_billing, required_for_products
+1. get_adcp_capabilities → learn supported_billing, required_for_products
 2. sync_accounts → declare brands, operators, billing (using agent's own token)
 3. Wait for account status = active (poll list_accounts if pending)
 4. get_products with account_id
 5. create_media_buy with account_id
 ```
 
-**For `oauth` (operator-scoped):**
+**Operator-scoped** (`require_operator_auth: true`):
 ```
-1. get_adcp_capabilities → learn setup_modes, authorization_endpoint
+1. get_adcp_capabilities → learn require_operator_auth, authorization_endpoint
 2. For each operator:
-   a. Direct operator to authorization_endpoint to authenticate with seller
-   b. Obtain operator's bearer token
-   c. Open a new session with the operator's token
-   d. sync_accounts → declare brands for this operator
-   e. list_accounts → discover existing accounts
+   a. Obtain operator's credential (OAuth via authorization_endpoint, or API key)
+   b. Open a new session with the operator's credential
+   c. sync_accounts → declare brands for this operator
+   d. list_accounts → discover existing accounts
 3. Wait for account status = active
 4. get_products / create_media_buy using the operator's session
 ```
@@ -662,17 +658,17 @@ The agent should inform the buyer that billing will be consolidated through the 
 
 ## Authentication
 
-All AdCP sessions use OAuth 2.0 bearer tokens. Whose token it is depends on the seller's setup mode:
+All AdCP sessions use OAuth 2.0 bearer tokens. Whose credential is on the wire depends on the seller's `require_operator_auth` setting:
 
-**Agent-trusted (`sync_accounts` mode):** The bearer token identifies the agent. The agent holds a single credential and operates on behalf of all its brands and operators. Account access is scoped by `account_id` on each request.
+**Agent-trusted** (`require_operator_auth: false`): The bearer token identifies the agent. The agent holds a single credential and operates on behalf of all its brands and operators. Account access is scoped by `account_id` on each request.
 
-**Operator-scoped (`oauth` mode):** The bearer token identifies the operator. The agent obtains a separate token per operator via the seller's `authorization_endpoint`, then opens a dedicated session per operator. All calls within that session are authorized by the operator's credential.
+**Operator-scoped** (`require_operator_auth: true`): The bearer token identifies the operator. The agent obtains a separate credential per operator (via OAuth or API key), then opens a dedicated session per operator. All calls within that session are authorized by the operator's credential.
 
 ```
 Authorization: Bearer <token>
 ```
 
-In both models, the protocol does not mandate a specific OAuth flow. Sellers implement authentication according to their existing systems. The `authorization_endpoint` in capabilities provides the entry point for the `oauth` setup mode.
+The protocol does not mandate how operator credentials are obtained. If the seller provides an `authorization_endpoint`, agents can initiate OAuth programmatically. Otherwise, operators obtain credentials out-of-band (seller portal, direct API key issuance).
 
 See [Authentication](/docs/building/integration/authentication) for details.
 
@@ -712,7 +708,7 @@ For organizations that cannot host files on their domain, the `authoritative_loc
 | Aspect | Protocol Defines | Seller Declares |
 |--------|------------------|-----------------|
 | Brand identity | House domain + brand_id via brand.json | Resolution and caching |
-| Account capabilities | `account` section in capabilities | `setup_modes`, `authorization_endpoint`, `supported_billing`, `required_for_products` |
+| Account capabilities | `account` section in capabilities | `require_operator_auth`, `authorization_endpoint`, `supported_billing`, `required_for_products` |
 | Account setup | `sync_accounts` task with status lifecycle | Provisioning, credit, legal |
 | Billing | Three models: brand, operator, agent | Which models are supported |
 | Operator authorization | `authorized_operators` in brand.json | Verification and enforcement |

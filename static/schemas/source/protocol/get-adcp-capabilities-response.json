@@ -42,19 +42,15 @@
       "type": "object",
       "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
-        "setup_modes": {
-          "type": "array",
-          "description": "How accounts can be established with this seller. sync_accounts: seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. oauth: seller requires operator-level credentials — each operator authenticates independently via OAuth, then the agent opens a per-operator session and calls sync_accounts with the operator's token.",
-          "items": {
-            "type": "string",
-            "enum": ["sync_accounts", "oauth"]
-          },
-          "minItems": 1
+        "require_operator_auth": {
+          "type": "boolean",
+          "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
+          "default": false
         },
         "authorization_endpoint": {
           "type": "string",
           "format": "uri",
-          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Required when setup_modes includes 'oauth'. The agent directs the operator to this URL to authenticate with the seller and obtain a bearer token for a per-operator session."
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
         },
         "supported_billing": {
           "type": "array",
@@ -67,11 +63,11 @@
         },
         "required_for_products": {
           "type": "boolean",
-          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account (via sync_accounts or OAuth) before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
           "default": false
         }
       },
-      "required": ["setup_modes", "supported_billing"]
+      "required": ["supported_billing"]
     },
     "media_buy": {
       "type": "object",
