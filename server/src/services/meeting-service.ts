@@ -515,7 +515,43 @@ export async function generateMeetingsFromSeries(
 }
 
 /**
+ * Convert a UTC Date to local date components in the given timezone.
+ */
+function toLocalComponents(utcDate: Date, timezone: string): { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+  }).formatToParts(utcDate);
+
+  const get = (type: string) => parts.find(p => p.type === type)?.value || '0';
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
+    day: parseInt(get('day'), 10),
+    hour: parseInt(get('hour'), 10) % 24,
+    minute: parseInt(get('minute'), 10),
+    dayOfWeek: dayMap[get('weekday')] ?? 0,
+  };
+}
+
+/**
+ * Convert local date components + timezone to a UTC Date.
+ * Uses the Intl offset trick to handle DST correctly.
+ */
+function localToUtc(year: number, month: number, day: number, hour: number, minute: number, timezone: string): Date {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const utcFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: 'UTC' }).replace(' ', 'T');
+  const tzFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
+  const utcMs = new Date(utcFormatted + 'Z').getTime();
+  const tzMs = new Date(tzFormatted + 'Z').getTime();
+  return new Date(utcGuess.getTime() - (tzMs - utcMs));
+}
+
+/**
  * Calculate next occurrence dates based on recurrence rule.
+ * All date arithmetic is done in the meeting's local timezone to handle DST correctly.
  * @param startFrom - If provided, use this as the first occurrence date.
  *                    Otherwise, calculate from today using the time-of-day from startTime.
  */
@@ -529,26 +565,29 @@ function calculateNextOccurrences(
   const dates: Date[] = [];
   const now = new Date();
 
-  let current: Date;
+  // Get the starting local components
+  let local: { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number };
 
   if (startFrom) {
-    // Use the provided start date as the anchor
-    current = new Date(startFrom);
+    local = toLocalComponents(startFrom, timezone);
   } else {
-    // No anchor date - calculate from today using just the time
+    // No anchor date - use today's date with the series' default time
+    const todayLocal = toLocalComponents(now, timezone);
     const [hours, minutes] = (startTime || '14:00:00').split(':').map(Number);
-    current = new Date(now);
-    current.setHours(hours, minutes, 0, 0);
+    local = { ...todayLocal, hour: hours, minute: minutes };
 
-    // If today's time has passed, start from next occurrence
-    if (current <= now) {
-      current = getNextOccurrence(current, rule);
+    // If today's time has passed, advance to next occurrence
+    const candidate = localToUtc(local.year, local.month, local.day, local.hour, local.minute, timezone);
+    if (candidate <= now) {
+      advanceLocal(local, rule);
     }
   }
 
   while (dates.length < count) {
+    const utcDate = localToUtc(local.year, local.month, local.day, local.hour, local.minute, timezone);
+
     // Check against until date if specified
-    if (rule.until && current > new Date(rule.until)) {
+    if (rule.until && utcDate > new Date(rule.until)) {
       break;
     }
 
@@ -557,60 +596,78 @@ function calculateNextOccurrences(
       break;
     }
 
-    dates.push(new Date(current));
-    current = getNextOccurrence(current, rule);
+    dates.push(utcDate);
+    advanceLocal(local, rule);
   }
 
   return dates;
 }
 
 /**
- * Get next occurrence based on recurrence rule
+ * Advance local date components to the next occurrence based on recurrence rule.
+ * Mutates the local components in place.
  */
-function getNextOccurrence(from: Date, rule: RecurrenceRule): Date {
-  const next = new Date(from);
+function advanceLocal(local: { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number }, rule: RecurrenceRule): void {
   const interval = rule.interval || 1;
 
   switch (rule.freq) {
-    case 'daily':
-      next.setDate(next.getDate() + interval);
+    case 'daily': {
+      const d = new Date(local.year, local.month - 1, local.day + interval);
+      local.year = d.getFullYear();
+      local.month = d.getMonth() + 1;
+      local.day = d.getDate();
+      local.dayOfWeek = d.getDay();
       break;
+    }
 
-    case 'weekly':
+    case 'weekly': {
       if (rule.byDay && rule.byDay.length > 0) {
-        // Find next matching day
         const dayMap: Record<string, number> = {
           SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6,
         };
         const targetDays = rule.byDay.map(d => dayMap[d]).sort((a, b) => a - b);
-        const currentDay = next.getDay();
+        const currentDay = local.dayOfWeek;
 
-        // Find next target day
+        // Find next target day in current week
+        let daysToAdd = 0;
         let found = false;
         for (const targetDay of targetDays) {
           if (targetDay > currentDay) {
-            next.setDate(next.getDate() + (targetDay - currentDay));
+            daysToAdd = targetDay - currentDay;
             found = true;
             break;
           }
         }
 
         if (!found) {
-          // Wrap to next week's first target day
-          const daysUntilNextWeek = 7 - currentDay + targetDays[0];
-          next.setDate(next.getDate() + daysUntilNextWeek + (interval - 1) * 7);
+          // Wrap to next interval week's first target day
+          daysToAdd = 7 - currentDay + targetDays[0] + (interval - 1) * 7;
         }
+
+        const d = new Date(local.year, local.month - 1, local.day + daysToAdd);
+        local.year = d.getFullYear();
+        local.month = d.getMonth() + 1;
+        local.day = d.getDate();
+        local.dayOfWeek = d.getDay();
       } else {
-        next.setDate(next.getDate() + interval * 7);
+        const d = new Date(local.year, local.month - 1, local.day + interval * 7);
+        local.year = d.getFullYear();
+        local.month = d.getMonth() + 1;
+        local.day = d.getDate();
+        local.dayOfWeek = d.getDay();
       }
       break;
+    }
 
-    case 'monthly':
-      next.setMonth(next.getMonth() + interval);
+    case 'monthly': {
+      const d = new Date(local.year, local.month - 1 + interval, local.day);
+      local.year = d.getFullYear();
+      local.month = d.getMonth() + 1;
+      local.day = d.getDate();
+      local.dayOfWeek = d.getDay();
       break;
+    }
   }
-
-  return next;
 }
 
 /**
