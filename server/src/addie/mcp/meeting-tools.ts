@@ -211,7 +211,7 @@ export const MEETING_TOOLS: AddieTool[] = [
     description: `Schedule a new working group meeting. Use this when someone asks to schedule a meeting, call, or discussion.
 The meeting will be created with a Zoom link. For one-time meetings, calendar invites are sent to working group members by default.
 
-For recurring meetings, meetings are created as opt-in (no calendar invites sent). The meetings will be visible on the working group page where members can find them and ask to be added. This prevents spamming large groups with many calendar invites.
+For recurring meetings, calendar invites are sent to working group members by default (same as one-time meetings).
 
 If the user is in a channel associated with a working group, you can omit working_group_slug and it will be inferred from the channel context.
 
@@ -388,6 +388,20 @@ Example prompts this handles:
         },
       },
       required: ['meeting_id'],
+    },
+  },
+  {
+    name: 'cancel_meeting_series',
+    description: `Cancel a recurring meeting series. Cancels all upcoming meetings in the series (Zoom + calendar) and archives the series record. Use this when someone wants to stop a recurring series entirely.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        series_id: {
+          type: 'string',
+          description: 'Series ID to cancel. Find this from list_upcoming_meetings or get_meeting_details.',
+        },
+      },
+      required: ['series_id'],
     },
   },
   {
@@ -607,6 +621,15 @@ export function createMeetingToolHandlers(
 
     const durationMinutes = (input.duration_minutes as number) || 60;
 
+    // Extract invite settings (used by both one-time and recurring paths)
+    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none' | undefined;
+    const inviteSlackChannelId = input.invite_slack_channel_id as string | undefined;
+
+    // Validate slack_channel mode has a channel ID
+    if (inviteMode === 'slack_channel' && !inviteSlackChannelId) {
+      return `❌ When using invite_mode='slack_channel', you must also provide invite_slack_channel_id.`;
+    }
+
     // Handle recurring vs one-time meetings
     if (recurrenceInput) {
       // Validate recurrence input
@@ -644,6 +667,14 @@ export function createMeetingToolHandlers(
         const timePart = startTimeStr.split('T')[1] || '14:00:00';
         const defaultStartTime = timePart.substring(0, 8).padEnd(8, ':00');
 
+        // Check for existing active series on this working group with same title
+        const existingSeries = await meetingsDb.listSeriesForGroup(workingGroup.id, { status: 'active' });
+        const duplicate = existingSeries.find(s => s.title === title);
+        if (duplicate) {
+          const seriesMeetings = await meetingsDb.listMeetings({ series_id: duplicate.id, upcoming_only: true });
+          return `❌ A recurring series "${title}" already exists for ${workingGroup.name} with ${seriesMeetings.length} upcoming meeting(s). To start fresh, cancel the existing series first using cancel_meeting_series.`;
+        }
+
         // Create the meeting series
         const seriesInput: CreateMeetingSeriesInput = {
           working_group_id: workingGroup.id,
@@ -655,14 +686,18 @@ export function createMeetingToolHandlers(
           duration_minutes: durationMinutes,
           timezone,
           created_by_user_id: getUserId(),
+          invite_mode: inviteMode === 'none' ? 'manual' : (inviteMode || 'all_members'),
+          invite_slack_channel_id: inviteSlackChannelId,
         };
 
         const series = await meetingsDb.createSeries(seriesInput);
         logger.info({ seriesId: series.id, workingGroupSlug, recurrence: recurrenceRule }, 'Meeting series created');
 
         // Generate the first batch of meetings, anchored to the user's requested start date
+        const MAX_MEETINGS_PER_BATCH = 12;
         const meetingsToGenerate = recurrenceInput.count || 4;
-        const seriesResult = await meetingService.generateMeetingsFromSeries(series.id, Math.min(meetingsToGenerate, 8), startTime);
+        const actualCount = Math.min(meetingsToGenerate, MAX_MEETINGS_PER_BATCH);
+        const seriesResult = await meetingService.generateMeetingsFromSeries(series.id, actualCount, startTime);
 
         // Build response
         let response = `✅ Created recurring meeting series: **${title}**\n\n`;
@@ -689,7 +724,22 @@ export function createMeetingToolHandlers(
           response += seriesResult.errors.map(e => `• ${e}`).join('\n');
         }
 
-        response += `\n📋 These meetings are visible on the [${workingGroup.name} page](${process.env.BASE_URL || ''}/working-groups/${workingGroupSlug}). Members can join via the Zoom link or ask to be added to receive calendar invites.`;
+        if (meetingsToGenerate > MAX_MEETINGS_PER_BATCH) {
+          response += `\n\n⚠️ Created ${actualCount} of ${meetingsToGenerate} requested meetings. Additional meetings can be generated later.`;
+        }
+
+        if (seriesResult.errors.length === 0) {
+          const seriesInviteMode = series.invite_mode || 'all_members';
+          if (seriesInviteMode === 'manual') {
+            response += `\n📋 Meetings created as **opt-in** - no invites sent. Members can join using the Zoom links.`;
+          } else if (seriesInviteMode === 'slack_channel') {
+            response += `\n📧 Calendar invites sent to Slack channel members for each meeting.`;
+          } else if (seriesInviteMode === 'topic_subscribers') {
+            response += `\n📧 Calendar invites sent to topic subscribers for each meeting.`;
+          } else {
+            response += `\n📧 Calendar invites sent to working group members for each meeting.`;
+          }
+        }
 
         logger.info({
           seriesId: series.id,
@@ -707,14 +757,6 @@ export function createMeetingToolHandlers(
     }
 
     // One-time meeting
-    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none' | undefined;
-    const inviteSlackChannelId = input.invite_slack_channel_id as string | undefined;
-
-    // Validate slack_channel mode has a channel ID
-    if (inviteMode === 'slack_channel' && !inviteSlackChannelId) {
-      return `❌ When using invite_mode='slack_channel', you must also provide invite_slack_channel_id.`;
-    }
-
     try {
       const result = await meetingService.scheduleMeeting({
         workingGroupId: workingGroup.id,
@@ -1027,6 +1069,42 @@ export function createMeetingToolHandlers(
     }
   });
 
+  // Cancel meeting series
+  handlers.set('cancel_meeting_series', async (input) => {
+    const permCheck = await checkSchedulePermission();
+    if (permCheck) return permCheck;
+
+    const seriesId = input.series_id as string;
+
+    const series = await meetingsDb.getSeriesById(seriesId);
+    if (!series) {
+      return `❌ Meeting series not found: "${seriesId}".`;
+    }
+
+    if (series.status === 'archived') {
+      return `Series "${series.title}" is already archived.`;
+    }
+
+    try {
+      const result = await meetingService.cancelSeries(seriesId);
+
+      let response = `✅ Cancelled series: **${series.title}**\n`;
+      response += `${result.cancelledCount} upcoming meeting(s) cancelled.`;
+
+      if (result.errors.length > 0) {
+        response += `\n\n⚠️ Some cleanup had issues:\n`;
+        response += result.errors.map(e => `• ${e}`).join('\n');
+      }
+
+      logger.info({ seriesId, cancelledBy: getUserId() }, 'Meeting series cancelled via Addie');
+
+      return response;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to cancel series: ${msg}`;
+    }
+  });
+
   // Update meeting
   handlers.set('update_meeting', async (input) => {
     const permCheck = await checkSchedulePermission();
@@ -1211,7 +1289,8 @@ export function createMeetingToolHandlers(
       ]);
 
       if (result.addedCount > 0) {
-        return `✅ Added ${name || email} to **${meeting.title}**. Calendar invite sent.`;
+        const calendarNote = meeting.google_calendar_event_id ? ' Calendar invite sent.' : '';
+        return `✅ Added ${name || email} to **${meeting.title}**.${calendarNote}`;
       } else {
         return `${name || email} was already on the invite list.`;
       }

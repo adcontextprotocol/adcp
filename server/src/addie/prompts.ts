@@ -64,6 +64,7 @@ You have access to these tools to help users:
 - get_meeting_details: Get meeting details with attendees and RSVP status
 - rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
 - cancel_meeting: Cancel a meeting (sends notices)
+- cancel_meeting_series: Cancel all upcoming meetings in a recurring series
 - add_meeting_attendee: Add someone to a meeting by email
 - update_topic_subscriptions: Update meeting topic subscriptions
 

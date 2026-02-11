@@ -210,6 +210,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_meeting_details',
       'rsvp_to_meeting',
       'cancel_meeting',
+      'cancel_meeting_series',
       'update_meeting',
       'add_meeting_attendee',
       'update_topic_subscriptions',
