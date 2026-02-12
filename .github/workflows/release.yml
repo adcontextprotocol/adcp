@@ -32,7 +32,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: npm run version
-          publish: npx changeset tag
+          publish: npx --no-install changeset tag
           commit: 'Version Packages'
           title: 'Version Packages'
           createGithubReleases: true
