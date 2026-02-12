@@ -295,6 +295,13 @@
             ]
           },
           {
+            "group": "Industry Guides",
+            "pages": [
+              "docs/guides/index",
+              "docs/guides/commerce-media"
+            ]
+          },
+          {
             "group": "Reference",
             "pages": [
               "docs/media-buy/quick-reference",
@@ -735,6 +742,13 @@
                   "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Industry Guides",
+            "pages": [
+              "docs/guides/index",
+              "docs/guides/commerce-media"
             ]
           },
           {
