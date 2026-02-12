@@ -164,6 +164,7 @@ npx adcp \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Your reference identifier for this media buy |
+| `account_id` | string | No | Account to bill. Required when the agent has access to multiple accounts; the seller infers the account when only one exists. |
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |

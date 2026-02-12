@@ -120,7 +120,7 @@ The `require_operator_auth` flag determines who authenticates to the seller.
 2. sync_accounts → declare brands, operators, billing (using agent's own token)
 3. Wait for account status = active (poll list_accounts if pending)
 4. get_products with account_id
-5. create_media_buy with account_id
+5. create_media_buy with account_id (optional for single-account agents)
 ```
 
 **Operator-scoped** (`require_operator_auth: true`):
@@ -383,9 +383,9 @@ Or as a URL to a hosted manifest:
 }
 ```
 
-### Required: Account ID
+### Account ID
 
-Every billable operation requires `account_id`. The agent gets this from `sync_accounts` (or `list_accounts` for OAuth-connected accounts):
+Agents with multiple accounts must pass `account_id` on billable operations. Single-account agents can omit it — the seller infers the account. The agent gets account IDs from `sync_accounts` (or `list_accounts` for OAuth-connected accounts):
 
 ```json
 {
@@ -713,6 +713,6 @@ For organizations that cannot host files on their domain, the `authoritative_loc
 | Billing | Three models: brand, operator, agent | Which models are supported |
 | Operator authorization | `authorized_operators` in brand.json | Verification and enforcement |
 | Account status | Standard status values with setup URLs | Status transitions and notifications |
-| Account ID | Required on billable operations | Mapping from brand+operator to account |
+| Account ID | Required when agent has multiple accounts | Mapping from brand+operator to account |
 | Agent identity | From auth token | Authentication |
 | Error codes | Standard codes | When to return |

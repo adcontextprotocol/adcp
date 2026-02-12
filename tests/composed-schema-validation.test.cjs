@@ -213,6 +213,28 @@ async function runTests() {
     'Create media buy without optional reporting_webhook'
   );
 
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      buyer_ref: 'single-account-campaign',
+      packages: [
+        {
+          buyer_ref: 'pkg-001',
+          product_id: 'display_standard',
+          budget: 10000,
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand_manifest: {
+        name: 'Single Account Brand',
+        url: 'https://brand.example.com/manifest.json'
+      },
+      start_time: 'asap',
+      end_time: '2024-12-31T23:59:59Z'
+    },
+    'Create media buy without account_id (single-account agent)'
+  );
+
   log('');
 
   // Test 4: Get Media Buy Delivery Response (allOf with delivery-metrics.json)
