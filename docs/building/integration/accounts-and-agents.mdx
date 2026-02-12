@@ -20,7 +20,7 @@ The **brand** is the advertiser whose products or services are being promoted. B
 
 For example, Dove is identified as `house: "unilever.com"` + `brand_id: "dove"`. Any party can resolve `unilever.com/.well-known/brand.json` to verify Dove's identity, assets, and authorized operators.
 
-For single-brand houses like Coca-Cola, the house domain alone (`house: "coca-cola.com"`) identifies the brand — no `brand_id` is needed.
+For single-brand houses like Acme Corp, the house domain alone (`house: "acme-corp.com"`) identifies the brand — no `brand_id` is needed.
 
 Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
 
@@ -53,11 +53,11 @@ Every account has a billing model that determines who gets invoiced:
 
 ### Examples
 
-**Brand buys direct** — Coca-Cola has their own account on the seller:
+**Brand buys direct** — Acme Corp has their own account on the seller:
 ```
 Billing: brand
-Invoice: Seller → Coca-Cola
-Rates: Coca-Cola's negotiated rates
+Invoice: Seller → Acme Corp
+Rates: Acme Corp's negotiated rates
 ```
 
 **Agency buys for brand, brand pays** — GroupM buys on Unilever's account:
@@ -160,7 +160,7 @@ Each account entry identifies the brand by house domain + brand_id, the operator
       "billing": "agent"
     },
     {
-      "house": "coca-cola.com",
+      "house": "acme-corp.com",
       "billing": "brand"
     }
   ]
@@ -174,7 +174,7 @@ Each account entry identifies the brand by house domain + brand_id, the operator
 | `operator` | No | Domain of the entity operating the seat. Omit if the brand operates its own seat. |
 | `billing` | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. The seller returns the actual billing model in the sync_accounts response, so the agent always knows what was applied. |
 
-**Natural key:** The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "coca-cola.com"}` (brand buying direct) is a different account from `{house: "coca-cola.com", operator: "groupm.com"}` (brand via agency). The seller uses this natural key for upsert matching across sync calls.
+**Natural key:** The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "acme-corp.com"}` (brand buying direct) is a different account from `{house: "acme-corp.com", operator: "groupm.com"}` (brand via agency). The seller uses this natural key for upsert matching across sync calls.
 
 ### Response
 
@@ -195,14 +195,14 @@ The seller responds with per-account results. Each account has an action (what h
       "parent_account_id": "acc_agent_house"
     },
     {
-      "account_id": "acc_coke_pending",
-      "house": "coca-cola.com",
-      "name": "Coca-Cola",
+      "account_id": "acc_acme_pending",
+      "house": "acme-corp.com",
+      "name": "Acme Corp",
       "action": "created",
       "status": "pending_approval",
       "billing": "brand",
       "setup": {
-        "url": "https://seller.com/credit-app/coca-cola",
+        "url": "https://seller.com/credit-app/acme-corp",
         "message": "Credit application required for direct billing"
       }
     }
@@ -236,7 +236,7 @@ The seller may return a different `billing` value than the agent requested. For 
 ```json
 {
   "account_id": "acc_agent_house",
-  "house": "coca-cola.com",
+  "house": "acme-corp.com",
   "action": "created",
   "status": "active",
   "billing": "agent",
@@ -333,12 +333,12 @@ Returns accounts the authenticated agent can operate.
 {
   "accounts": [
     {
-      "account_id": "acc_coke_publicis",
-      "name": "Coke c/o Publicis",
-      "advertiser": "The Coca-Cola Company",
-      "billing_proxy": "Publicis Media",
+      "account_id": "acc_acme_pinnacle",
+      "name": "Acme c/o Pinnacle",
+      "advertiser": "Acme Corp",
+      "billing_proxy": "Pinnacle Media",
       "status": "active",
-      "house": "coca-cola.com",
+      "house": "acme-corp.com",
       "billing": "brand"
     },
     {
@@ -368,8 +368,8 @@ Every billable operation must include the brand manifest, either inline or as a 
 ```json
 {
   "brand_manifest": {
-    "url": "https://coca-cola.com",
-    "name": "Coca-Cola",
+    "url": "https://acme-corp.com",
+    "name": "Acme Corp",
     "colors": { "primary": "#F40009" }
   }
 }
@@ -379,7 +379,7 @@ Or as a URL to a hosted manifest:
 
 ```json
 {
-  "brand_manifest": "https://cdn.coca-cola.com/brand-manifest.json"
+  "brand_manifest": "https://cdn.acme-corp.com/brand-manifest.json"
 }
 ```
 
@@ -389,8 +389,8 @@ Every billable operation requires `account_id`. The agent gets this from `sync_a
 
 ```json
 {
-  "account_id": "acc_coke_publicis",
-  "brand_manifest": "https://cdn.coca-cola.com/brand-manifest.json"
+  "account_id": "acc_acme_pinnacle",
+  "brand_manifest": "https://cdn.acme-corp.com/brand-manifest.json"
 }
 ```
 
@@ -412,8 +412,8 @@ Returned when the seller cannot determine which account to use:
       "message": "Multiple accounts available. Please specify account_id.",
       "details": {
         "available_accounts": [
-          { "account_id": "acc_coke_publicis", "name": "Coke c/o Publicis" },
-          { "account_id": "acc_publicis", "name": "Publicis" }
+          { "account_id": "acc_acme_pinnacle", "name": "Acme c/o Pinnacle" },
+          { "account_id": "acc_pinnacle", "name": "Pinnacle" }
         ]
       }
     }
@@ -445,7 +445,7 @@ The account has reached its credit limit or run out of funds:
   "errors": [
     {
       "code": "PAYMENT_REQUIRED",
-      "message": "Account 'acc_coke_publicis' has reached its credit limit"
+      "message": "Account 'acc_acme_pinnacle' has reached its credit limit"
     }
   ]
 }
@@ -460,7 +460,7 @@ The account exists but is not in good standing:
   "errors": [
     {
       "code": "ACCOUNT_SUSPENDED",
-      "message": "Account 'acc_coke_publicis' is suspended"
+      "message": "Account 'acc_acme_pinnacle' is suspended"
     }
   ]
 }
@@ -485,14 +485,14 @@ Billable operation attempted without brand manifest:
 
 ### Scenario 1: Brand buying direct on a publisher
 
-Coca-Cola wants to buy inventory on a premium publisher. Their in-house team operates the seat directly.
+Acme Corp wants to buy inventory on a premium publisher. Their in-house team operates the seat directly.
 
 **Step 1**: Agent syncs the account:
 ```json
 {
   "task": "sync_accounts",
   "accounts": [{
-    "house": "coca-cola.com",
+    "house": "acme-corp.com",
     "billing": "brand"
   }]
 }
@@ -502,8 +502,8 @@ Coca-Cola wants to buy inventory on a premium publisher. Their in-house team ope
 ```json
 {
   "accounts": [{
-    "account_id": "acc_coke_001",
-    "house": "coca-cola.com",
+    "account_id": "acc_acme_001",
+    "house": "acme-corp.com",
     "action": "created",
     "status": "pending_approval",
     "billing": "brand",
@@ -515,12 +515,12 @@ Coca-Cola wants to buy inventory on a premium publisher. Their in-house team ope
 }
 ```
 
-**Step 3**: Human at Coca-Cola completes the setup at the URL. Agent polls `list_accounts` until the account becomes `active`.
+**Step 3**: Human at Acme Corp completes the setup at the URL. Agent polls `list_accounts` until the account becomes `active`.
 
 **Step 4**: Agent places buys using the account:
 ```json
 {
-  "account_id": "acc_coke_001",
+  "account_id": "acc_acme_001",
   "brand_manifest": { "..." : "..." },
   "campaign": { "..." : "..." }
 }
@@ -634,7 +634,7 @@ An agent requests direct billing for an advertiser, but the seller only supports
 {
   "task": "sync_accounts",
   "accounts": [{
-    "house": "coca-cola.com",
+    "house": "acme-corp.com",
     "billing": "brand"
   }]
 }
@@ -645,7 +645,7 @@ An agent requests direct billing for an advertiser, but the seller only supports
 {
   "accounts": [{
     "account_id": "acc_agent_house",
-    "house": "coca-cola.com",
+    "house": "acme-corp.com",
     "action": "created",
     "status": "active",
     "billing": "agent",

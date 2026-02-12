@@ -420,7 +420,7 @@ import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
 // Get delivery for a specific advertiser account
 const result = await testAgent.getMediaBuyDelivery({
-  account_id: 'acc_coke_publicis',
+  account_id: 'acc_acme_pinnacle',
   status_filter: 'active',
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -449,7 +449,7 @@ async def main():
     # Get delivery for a specific advertiser account
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            account_id='acc_coke_publicis',
+            account_id='acc_acme_pinnacle',
             status_filter='active',
             start_date='2024-02-01',
             end_date='2024-02-07'

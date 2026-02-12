@@ -723,7 +723,7 @@ export class SlackDatabase {
    * Link unmapped Slack users with a specific email domain to an organization.
    * Sets the pending_organization_id field so they're associated with the prospect.
    *
-   * @param domain The email domain to match (e.g., "publicis.com")
+   * @param domain The email domain to match (e.g., "example.com")
    * @param organizationId The WorkOS organization ID to link users to
    * @returns Number of users linked and their details
    */

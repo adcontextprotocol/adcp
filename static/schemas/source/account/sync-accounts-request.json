@@ -14,7 +14,7 @@
         "properties": {
           "house": {
             "type": "string",
-            "description": "House domain where brand.json is hosted (e.g., 'unilever.com', 'coca-cola.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
+            "description": "House domain where brand.json is hosted (e.g., 'unilever.com', 'acme-corp.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "brand_id": {
@@ -86,7 +86,7 @@
       "data": {
         "accounts": [
           {
-            "house": "coca-cola.com",
+            "house": "acme-corp.com",
             "billing": "brand"
           }
         ]

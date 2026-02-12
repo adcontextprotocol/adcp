@@ -27,7 +27,7 @@ export const BRAND_TOOLS: AddieTool[] = [
       properties: {
         domain: {
           type: 'string',
-          description: 'Domain to research (e.g., "nike.com", "coca-cola.com")',
+          description: 'Domain to research (e.g., "acme-corp.com", "example.com")',
         },
       },
       required: ['domain'],
@@ -42,7 +42,7 @@ export const BRAND_TOOLS: AddieTool[] = [
       properties: {
         domain: {
           type: 'string',
-          description: 'Domain to resolve (e.g., "jumpman23.com", "nike.com")',
+          description: 'Domain to resolve (e.g., "acme-corp.com", "example.com")',
         },
       },
       required: ['domain'],
