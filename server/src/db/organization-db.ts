@@ -483,6 +483,57 @@ export class OrganizationDatabase {
   }
 
   /**
+   * Atomically get or create a Stripe customer for an organization.
+   * Uses SELECT FOR UPDATE to prevent concurrent customer creation.
+   */
+  async getOrCreateStripeCustomer(
+    workos_organization_id: string,
+    createFn: () => Promise<string | null>
+  ): Promise<string | null> {
+    const pool = getPool();
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(
+        `SELECT stripe_customer_id FROM organizations
+         WHERE workos_organization_id = $1 FOR UPDATE`,
+        [workos_organization_id]
+      );
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      const existingCustomerId = result.rows[0].stripe_customer_id;
+      if (existingCustomerId) {
+        await client.query('COMMIT');
+        return existingCustomerId;
+      }
+
+      const newCustomerId = await createFn();
+
+      if (newCustomerId) {
+        await client.query(
+          `UPDATE organizations SET stripe_customer_id = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [newCustomerId, workos_organization_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      return newCustomerId;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Unlink Stripe customer from an organization (set to null)
    */
   async unlinkStripeCustomer(workos_organization_id: string): Promise<void> {

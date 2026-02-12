@@ -436,7 +436,30 @@ export async function createStripeCustomer(data: {
   }
 
   try {
-    // Check for existing customer with this email
+    // Search by org ID first to prevent duplicates when different users in the same org
+    // have different emails (e.g., bennett@optable.co vs billing@optable.co)
+    const orgId = data.metadata?.workos_organization_id;
+    if (orgId && /^org_[a-zA-Z0-9]+$/.test(orgId)) {
+      const searchResult = await stripe.customers.search({
+        query: `metadata['workos_organization_id']:'${orgId}'`,
+        limit: 1,
+      });
+
+      if (searchResult.data.length > 0) {
+        const existing = searchResult.data[0];
+        await stripe.customers.update(existing.id, {
+          name: data.name,
+          metadata: {
+            ...existing.metadata,
+            ...data.metadata,
+          },
+        });
+        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Found existing Stripe customer by org ID');
+        return existing.id;
+      }
+    }
+
+    // Fall through to email check for cases without org ID
     const existingCustomers = await stripe.customers.list({
       email: data.email,
       limit: 1,
@@ -444,7 +467,6 @@ export async function createStripeCustomer(data: {
 
     if (existingCustomers.data.length > 0) {
       const existing = existingCustomers.data[0];
-      // Update existing customer with new metadata if provided
       if (data.metadata) {
         await stripe.customers.update(existing.id, {
           name: data.name,
@@ -454,7 +476,7 @@ export async function createStripeCustomer(data: {
           },
         });
       }
-      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer');
+      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
       return existing.id;
     }
 
@@ -826,39 +848,26 @@ export async function createAndSendInvoice(
   }
 
   try {
-    // Create or find customer
-    const existingCustomers = await stripe.customers.list({
+    // Find or create customer using shared deduplication logic
+    const customerId = await createStripeCustomer({
       email: data.contactEmail,
-      limit: 1,
+      name: data.companyName,
+      metadata: {
+        contact_name: data.contactName,
+        invoice_request: 'true',
+        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+      },
     });
 
-    let customer: Stripe.Customer;
-
-    if (existingCustomers.data.length > 0) {
-      // Update existing customer with new info
-      customer = await stripe.customers.update(existingCustomers.data[0].id, {
-        name: data.companyName,
-        address: data.billingAddress,
-        metadata: {
-          contact_name: data.contactName,
-          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
-        },
-      });
-      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Updated existing Stripe customer for invoice');
-    } else {
-      // Create new customer
-      customer = await stripe.customers.create({
-        email: data.contactEmail,
-        name: data.companyName,
-        address: data.billingAddress,
-        metadata: {
-          contact_name: data.contactName,
-          invoice_request: 'true',
-          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
-        },
-      });
-      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Created new Stripe customer for invoice');
+    if (!customerId) {
+      logger.error({ email: data.contactEmail }, 'Failed to find or create Stripe customer for invoice');
+      return null;
     }
+
+    // Update with billing address (createStripeCustomer doesn't handle address)
+    const customer = await stripe.customers.update(customerId, {
+      address: data.billingAddress,
+    });
 
     // Verify the price exists and has a valid amount before creating subscription
     const price = await stripe.prices.retrieve(priceId);

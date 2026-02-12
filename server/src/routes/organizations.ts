@@ -1634,27 +1634,20 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Create Stripe customer if needed
-      let stripeCustomerId = org.stripe_customer_id;
-      if (!stripeCustomerId) {
-        logger.info({ orgId }, 'Creating Stripe customer for organization');
-        stripeCustomerId = await createStripeCustomer({
+      // Create Stripe customer if needed (row-level lock prevents duplicate creation)
+      const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+        createStripeCustomer({
           email: user.email,
           name: org.name,
-          metadata: {
-            workos_organization_id: orgId,
-          },
+          metadata: { workos_organization_id: orgId },
+        })
+      );
+
+      if (!stripeCustomerId) {
+        return res.status(500).json({
+          error: 'Failed to create billing account',
+          message: 'Could not create Stripe customer',
         });
-
-        if (!stripeCustomerId) {
-          return res.status(500).json({
-            error: 'Failed to create billing account',
-            message: 'Could not create Stripe customer',
-          });
-        }
-
-        // Save Stripe customer ID
-        await orgDb.setStripeCustomerId(orgId, stripeCustomerId);
       }
 
       // Create Customer Portal session
