@@ -184,20 +184,6 @@ The seller responds with per-account results. Each account has an action (what h
 {
   "accounts": [
     {
-      "account_id": "acc_dove_001",
-      "house": "unilever.com",
-      "brand_id": "dove",
-      "operator": "mindshare.com",
-      "name": "Dove",
-      "action": "created",
-      "status": "pending_authorization",
-      "billing": "brand",
-      "setup": {
-        "url": "https://seller.com/authorize/unilever",
-        "message": "Unilever must authorize Mindshare to operate on their account"
-      }
-    },
-    {
       "account_id": "sub_tide_001",
       "house": "pg.com",
       "brand_id": "tide",
@@ -229,7 +215,7 @@ The seller responds with per-account results. Each account has an action (what h
 Each account in the response has two fields:
 
 - **`action`**: What happened during *this* sync operation — `created`, `updated`, `unchanged`, or `failed`
-- **`status`**: The durable state of the account — `active`, `pending_approval`, `pending_authorization`, `suspended`, or `closed`
+- **`status`**: The durable state of the account — `active`, `pending_approval`, `payment_required`, `suspended`, or `closed`
 
 An account can be `action: "created"` with `status: "pending_approval"` (new account, waiting for credit check) or `action: "unchanged"` with `status: "active"` (already exists, nothing changed).
 
@@ -239,11 +225,9 @@ An account can be `action: "created"` with `status: "pending_approval"` (new acc
 |--------|---------|-----------|
 | `active` | Ready to use | Agent can place buys on this account |
 | `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit/legal process. Poll `list_accounts` for updates. |
-| `pending_authorization` | Brand must authorize operator | Someone at the brand (e.g., `@unilever.com`) must approve the operator's access. Visit `setup.url`. |
+| `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. The agent should route spend to other accounts or prompt the buyer. |
 | `suspended` | Was active, now paused | Contact seller to resolve |
 | `closed` | Terminated | — |
-
-An account may require multiple steps before becoming active (e.g., operator authorization *and* credit approval). The `setup.url` points to the seller's workflow, which handles multi-step processes internally. The account status reflects the current blocker — it may transition from `pending_authorization` to `pending_approval` to `active` as each step completes. The agent polls `list_accounts` (or uses push notifications) to track progress through the seller's setup flow.
 
 ### Billing Negotiation
 
@@ -315,16 +299,14 @@ When an agent syncs an account with a third-party operator, sellers SHOULD verif
 
 1. Resolve `{house}/.well-known/brand.json`
 2. Check `authorized_operators` for matching `domain` with the brand in `brands`
-3. If found → proceed (account may still need credit approval)
-4. If not found → return `status: "pending_authorization"` with a setup URL for the brand to approve
+3. If found → proceed (account may still need credit/legal approval)
+4. If not found → reject the account (`action: "failed"`) or return `pending_approval` for manual review
 
-**When `brand.json` is unavailable** (DNS failure, HTTP error, timeout): the seller SHOULD return `status: "pending_authorization"` and MAY include a warning. Sellers MUST NOT silently treat an unreachable `brand.json` as authorization.
+Verification is a trust signal, not a gate. In agent-trusted mode (`require_operator_auth: false`), finding the operator in `brand.json` lets the seller fast-track provisioning. If the operator isn't listed, the seller can still approve the account through its own review process — `pending_approval` covers this.
 
-**When `authorized_operators` is absent** from brand.json: the seller returns `pending_authorization` for any third-party operator, since the brand has not declared any authorizations.
+In operator-scoped mode (`require_operator_auth: true`), the operator authenticates directly, so the seller already knows who they are.
 
-**Sellers that do not verify:** If a seller does not check `brand.json`, all third-party operator accounts MUST default to `pending_authorization`. The seller provides a setup URL where the brand can authorize the operator directly. This ensures brands always have a gate on who can represent them, regardless of whether the seller implements `brand.json` resolution.
-
-**Self-authorization is implicit.** A brand operating its own accounts does not need to list itself in `authorized_operators`. When `operator` is omitted from a sync_accounts request, or when the operator domain matches the house domain, the brand is operating its own seat. Sellers should treat this as authorized without checking `authorized_operators`.
+**Self-authorization is implicit.** A brand operating its own accounts does not need to list itself in `authorized_operators`. When `operator` is omitted from a sync_accounts request, or when the operator domain matches the house domain, the brand is operating its own seat.
 
 ### Scope and Hierarchy
 
@@ -368,7 +350,7 @@ Returns accounts the authenticated agent can operate.
     {
       "account_id": "acc_dove_pending",
       "name": "Dove",
-      "status": "pending_authorization",
+      "status": "pending_approval",
       "house": "unilever.com",
       "brand_id": "dove",
       "billing": "brand"
@@ -454,6 +436,21 @@ The specified account does not exist or the agent does not have access:
 }
 ```
 
+### PAYMENT_REQUIRED
+
+The account has reached its credit limit or run out of funds:
+
+```json
+{
+  "errors": [
+    {
+      "code": "PAYMENT_REQUIRED",
+      "message": "Account 'acc_coke_publicis' has reached its credit limit"
+    }
+  ]
+}
+```
+
 ### ACCOUNT_SUSPENDED
 
 The account exists but is not in good standing:
@@ -463,7 +460,7 @@ The account exists but is not in good standing:
   "errors": [
     {
       "code": "ACCOUNT_SUSPENDED",
-      "message": "Account 'acc_coke_publicis' is suspended due to payment issues"
+      "message": "Account 'acc_coke_publicis' is suspended"
     }
   ]
 }
@@ -626,7 +623,7 @@ Mindshare wants to buy on Unilever's existing publisher account (Unilever's rate
 }
 ```
 
-If Mindshare were *not* in `authorized_operators`, the seller would return `pending_authorization` with a URL for someone at `@unilever.com` to approve.
+If Mindshare were *not* in `authorized_operators`, the seller could return `pending_approval` for manual review, or reject the account outright.
 
 ### Scenario 4: Seller doesn't support direct billing
 

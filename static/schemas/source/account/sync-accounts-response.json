@@ -49,8 +49,8 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["active", "pending_approval", "pending_authorization", "suspended", "closed"],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). pending_authorization: brand must authorize operator. suspended: was active, now paused. closed: terminated."
+                "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
               },
               "billing": {
                 "type": "string",
@@ -68,7 +68,7 @@
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "URL where the human can complete the required action (credit application, authorization grant, legal agreement)"
+                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)"
                   },
                   "message": {
                     "type": "string",
@@ -159,7 +159,7 @@
   ],
   "examples": [
     {
-      "description": "Mixed results - one active, one pending approval, one pending authorization",
+      "description": "Mixed results - one active, one pending approval",
       "data": {
         "accounts": [
           {
@@ -186,18 +186,6 @@
               "url": "https://seller.com/onboard/dove",
               "message": "Credit application required for direct billing",
               "expires_at": "2026-03-10T00:00:00Z"
-            }
-          },
-          {
-            "house": "unilever.com",
-            "brand_id": "axe",
-            "operator": "mindshare.com",
-            "action": "created",
-            "status": "pending_authorization",
-            "billing": "brand",
-            "setup": {
-              "url": "https://seller.com/authorize/unilever",
-              "message": "Unilever must authorize Mindshare to operate on their account"
             }
           }
         ]

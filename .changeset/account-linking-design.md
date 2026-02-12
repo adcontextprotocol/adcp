@@ -10,4 +10,4 @@ BREAKING: `account_id` is now required on `create_media_buy`. Existing callers m
 - `authorized_operators` in brand.json: Brand declares which operators can represent them
 - Account capabilities in `get_adcp_capabilities`: require_operator_auth, supported_billing, required_for_products
 - Three-party billing model: brand, operator, agent
-- Account status lifecycle: active, pending_approval, pending_authorization, suspended, closed
+- Account status lifecycle: active, pending_approval, payment_required, suspended, closed

@@ -23,8 +23,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["active", "pending_approval", "pending_authorization", "suspended", "closed"],
-      "description": "Account status. pending_approval: seller reviewing (credit, contracts). pending_authorization: brand must authorize the operator."
+      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+      "description": "Account status. pending_approval: seller reviewing (credit, contracts). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
     },
     "house": {
       "type": "string",
@@ -125,12 +125,12 @@
       }
     },
     {
-      "description": "Pending account awaiting brand authorization",
+      "description": "Pending account awaiting seller approval",
       "data": {
         "account_id": "acc_axe_pending",
         "name": "Axe",
         "advertiser": "Unilever",
-        "status": "pending_authorization",
+        "status": "pending_approval",
         "house": "unilever.com",
         "brand_id": "axe",
         "operator": "mindshare.com",
