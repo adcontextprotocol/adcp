@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/reporting-capabilities.json",
+  "title": "Reporting Capabilities",
+  "description": "Reporting capabilities available for a product",
+  "type": "object",
+  "properties": {
+    "available_reporting_frequencies": {
+      "type": "array",
+      "description": "Supported reporting frequency options",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/enums/reporting-frequency.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "expected_delay_minutes": {
+      "type": "integer",
+      "description": "Expected delay in minutes before reporting data becomes available (e.g., 240 for 4-hour delay)",
+      "minimum": 0,
+      "examples": [
+        240,
+        300,
+        1440
+      ]
+    },
+    "timezone": {
+      "type": "string",
+      "description": "Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g., 'America/New_York'). Critical for daily/monthly frequency alignment.",
+      "examples": [
+        "UTC",
+        "America/New_York",
+        "Europe/London",
+        "America/Los_Angeles"
+      ]
+    },
+    "supports_webhooks": {
+      "type": "boolean",
+      "description": "Whether this product supports webhook-based reporting notifications"
+    },
+    "available_metrics": {
+      "type": "array",
+      "description": "Metrics available in reporting. Impressions and spend are always implicitly included. When a creative format declares reported_metrics, buyers receive the intersection of these product-level metrics and the format's reported_metrics.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/enums/available-metric.json"
+      },
+      "uniqueItems": true,
+      "examples": [
+        [
+          "impressions",
+          "spend",
+          "clicks",
+          "video_completions"
+        ],
+        [
+          "impressions",
+          "spend",
+          "conversions"
+        ]
+      ]
+    },
+    "supports_creative_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
+    },
+    "date_range_support": {
+      "type": "string",
+      "enum": ["date_range", "lifetime_only"],
+      "description": "Whether delivery data can be filtered to arbitrary date ranges. 'date_range' means the platform supports start_date/end_date parameters. 'lifetime_only' means the platform returns campaign lifetime totals and date range parameters are not accepted.",
+      "default": "date_range"
+    }
+  },
+  "required": [
+    "available_reporting_frequencies",
+    "expected_delay_minutes",
+    "timezone",
+    "supports_webhooks",
+    "available_metrics",
+    "date_range_support"
+  ],
+  "additionalProperties": true
+}

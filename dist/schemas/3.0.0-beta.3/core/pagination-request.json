@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/pagination-request.json",
+  "title": "Pagination Request",
+  "description": "Standard cursor-based pagination parameters for list operations",
+  "type": "object",
+  "properties": {
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 50,
+      "description": "Maximum number of items to return per page"
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Opaque cursor from a previous response to fetch the next page"
+    }
+  },
+  "additionalProperties": false
+}

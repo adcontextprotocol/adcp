@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/metro-system.json",
+  "title": "Metro Area System",
+  "description": "Metro area classification systems for geographic targeting",
+  "type": "string",
+  "enum": [
+    "nielsen_dma",
+    "uk_itl1",
+    "uk_itl2",
+    "eurostat_nuts2",
+    "custom"
+  ]
+}

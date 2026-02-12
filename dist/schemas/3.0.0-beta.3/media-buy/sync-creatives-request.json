@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/media-buy/sync-creatives-request.json",
+  "title": "Sync Creatives Request",
+  "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account that owns these creatives. Optional if the agent has a single account or the seller can determine the account from context. Required if the agent has multiple accounts and the seller cannot route automatically."
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets to sync (create or update)",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Optional filter to limit sync scope to specific creative IDs. When provided, only these creatives will be created/updated. Other creatives in the library are unaffected. Useful for partial updates and error recovery.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "assignments": {
+      "type": "object",
+      "description": "Optional bulk assignment of creatives to packages",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "array",
+          "description": "Array of package IDs to assign this creative to",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+    },
+    "validation_mode": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/validation-mode.json",
+      "default": "strict",
+      "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid creatives and reports errors."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.0-beta.3/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (typically for large bulk operations or manual approval/HITL)."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "creatives"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Full sync with hosted video creative",
+      "data": {
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_standard_30s"
+            },
+            "assets": {
+              "video": {
+                "url": "https://cdn.example.com/hero-video.mp4",
+                "width": 1920,
+                "height": 1080,
+                "duration_ms": 30000
+              }
+            },
+            "tags": [
+              "q1_2024",
+              "video"
+            ]
+          }
+        ],
+        "assignments": {
+          "hero_video_30s": [
+            "pkg_ctv_001",
+            "pkg_ctv_002"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Generative creative with approval",
+      "data": {
+        "creatives": [
+          {
+            "creative_id": "holiday_hero",
+            "name": "Holiday Campaign Hero",
+            "format_id": {
+              "agent_url": "https://publisher.com/.well-known/adcp/sales",
+              "id": "premium_bespoke_display"
+            },
+            "assets": {
+              "promoted_offerings": {
+                "brand_manifest": {
+                  "url": "https://retailer.com",
+                  "colors": {
+                    "primary": "#C41E3A",
+                    "secondary": "#165B33"
+                  }
+                }
+              },
+              "generation_prompt": {
+                "content": "Create a warm, festive holiday campaign featuring winter products"
+              }
+            },
+            "tags": [
+              "holiday",
+              "q4_2024"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Scoped update using creative_ids filter",
+      "data": {
+        "creative_ids": [
+          "hero_video_30s",
+          "banner_300x250"
+        ],
+        "creatives": [
+          {
+            "creative_id": "hero_video_30s",
+            "name": "Brand Hero Video 30s - Updated",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "video_standard_30s"
+            },
+            "assets": {
+              "video": {
+                "url": "https://cdn.example.com/updated-hero.mp4",
+                "width": 1920,
+                "height": 1080,
+                "duration_ms": 30000
+              }
+            }
+          },
+          {
+            "creative_id": "banner_300x250",
+            "name": "Display Banner 300x250 - Updated",
+            "format_id": {
+              "agent_url": "https://creative.adcontextprotocol.org",
+              "id": "display_300x250"
+            },
+            "assets": {
+              "image": {
+                "url": "https://cdn.example.com/updated-banner.png",
+                "width": 300,
+                "height": 250
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

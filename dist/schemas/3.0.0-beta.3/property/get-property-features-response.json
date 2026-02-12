@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/property/get-property-features-response.json",
+  "title": "Get Property Features Response",
+  "description": "Response payload for get_property_features task. Returns feature values for requested properties.",
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "description": "Feature values for each requested property",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/property/property-feature-result.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Errors for properties that could not be processed",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/error.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["results"],
+  "additionalProperties": false
+}

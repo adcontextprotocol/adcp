@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/content-standards/content-standards.json",
+  "title": "Content Standards",
+  "description": "A content standards configuration defining brand safety and suitability policies. Standards are scoped by brand, geography, and channel. Multiple standards can be active simultaneously for different scopes.",
+  "type": "object",
+  "properties": {
+    "standards_id": {
+      "type": "string",
+      "description": "Unique identifier for this standards configuration"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this standards configuration"
+    },
+    "countries_all": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
+    },
+    "channels_any": {
+      "type": "array",
+      "items": { "$ref": "/schemas/3.0.0-beta.3/enums/channels.json" },
+      "minItems": 1,
+      "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
+    },
+    "languages_any": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy describing acceptable and unacceptable content contexts. Used by LLMs and human reviewers to make judgments."
+    },
+    "calibration_exemplars": {
+      "type": "object",
+      "description": "Training/test set to calibrate policy interpretation. Provides concrete examples of pass/fail decisions.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-beta.3/content-standards/artifact.json" },
+          "description": "Artifacts that pass the content standards"
+        },
+        "fail": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-beta.3/content-standards/artifact.json" },
+          "description": "Artifacts that fail the content standards"
+        }
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["standards_id"]
+}

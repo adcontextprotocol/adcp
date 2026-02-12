@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both (signal_ids take precedence for exact matches, signal_spec provides additional discovery context).",
+  "type": "object",
+  "properties": {
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's catalog. Takes precedence over signal_spec when both are provided.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/signal-id.json"
+      },
+      "minItems": 1
+    },
+    "deliver_to": {
+      "type": "object",
+      "description": "Deployment targets where signals need to be activated",
+      "properties": {
+        "deployments": {
+          "type": "array",
+          "description": "List of deployment targets (DSPs, sales agents, etc.). If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
+          "items": {
+            "$ref": "/schemas/3.0.0-beta.3/core/destination.json"
+          },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "Countries where signals will be used (ISO codes)",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "deployments",
+        "countries"
+      ],
+      "additionalProperties": true
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-beta.3/core/signal-filters.json"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.3/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "deliver_to"
+  ],
+  "anyOf": [
+    { "required": ["signal_spec"] },
+    { "required": ["signal_ids"] }
+  ],
+  "additionalProperties": true
+}

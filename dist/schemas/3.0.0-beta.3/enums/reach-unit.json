@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/reach-unit.json",
+  "title": "Reach Unit",
+  "description": "Unit of measurement for reach and audience size metrics. Different channels and measurement providers count reach in fundamentally different units, making cross-channel comparison impossible without declaring the unit.",
+  "type": "string",
+  "enum": [
+    "individuals",
+    "households",
+    "devices",
+    "accounts",
+    "cookies",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "individuals": "Unique people. Panel-based or identity-resolved measurement.",
+    "households": "Unique households or TV homes.",
+    "devices": "Unique device identifiers (IDFA, GAID, CTV device ID).",
+    "accounts": "Unique logged-in accounts (platform-specific identity).",
+    "cookies": "Unique browser cookies.",
+    "custom": "Publisher-defined reach unit. Describe in ext."
+  }
+}

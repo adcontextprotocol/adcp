@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/property/get-property-list-response.json",
+  "title": "Get Property List Response",
+  "description": "Response payload for get_property_list task. Returns identifiers only (not full property objects or scores). Consumers should cache the resolved identifiers and refresh based on cache_valid_until.",
+  "type": "object",
+  "properties": {
+    "list": {
+      "$ref": "/schemas/3.0.0-beta.3/property/property-list.json",
+      "description": "The property list metadata (always returned)"
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Resolved identifiers that passed filters (if resolve=true). Cache these locally for real-time use.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/identifier.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.3/core/pagination-response.json"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the list was resolved"
+    },
+    "cache_valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Cache expiration timestamp. Re-fetch the list after this time to get updated identifiers."
+    },
+    "coverage_gaps": {
+      "type": "object",
+      "description": "Properties included in the list despite missing feature data. Only present when a feature_requirement has if_not_covered='include'. Maps feature_id to list of identifiers not covered for that feature.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "/schemas/3.0.0-beta.3/core/identifier.json"
+        }
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["list"],
+  "additionalProperties": false
+}
