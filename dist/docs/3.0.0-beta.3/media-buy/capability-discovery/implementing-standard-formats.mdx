@@ -1,0 +1,488 @@
+---
+title: Implementing Standard Format Support
+---
+
+
+This guide is for **sales agents** implementing creative format support. Before creating custom format definitions, you should check what formats are already available in the AdCP ecosystem.
+
+## Implementation Philosophy: Check First, Then Extend
+
+Most publishers support some combination of standard formats - whether IAB standard sizes, common video specs, or widely-used native formats. Rather than defining these yourself:
+
+1. **Check the reference creative agent** to see if your formats are already defined
+2. **Reference the formats** if they match your needs
+3. **Only create custom formats** when you have truly unique requirements
+
+This approach:
+- **Reduces maintenance burden** - No need to maintain format definitions that already exist
+- **Enables creative portability** - Buyers can reuse creatives across publishers
+- **Improves ecosystem consistency** - Everyone uses the same specifications for common formats
+
+## The Reference Creative Agent
+
+**URL:** `https://creative.adcontextprotocol.org`
+
+**Status:** Production service - this is a real, working AdCP creative agent
+
+The reference creative agent provides authoritative definitions for common creative formats used across the advertising industry:
+- IAB standard display sizes (300x250, 728x90, 320x50, etc.)
+- Standard video formats (15s, 30s, 60s pre-roll, etc.)
+- Audio formats for streaming and podcast insertion
+- DOOH formats for digital out-of-home
+- Native formats for responsive placements
+- Carousel formats for multi-product displays
+
+**Before creating custom formats,** query the reference creative agent to see if the formats you need already exist.
+
+## Why Use Standard Formats?
+
+### For Sales Agents
+- **No maintenance burden**: Don't replicate IAB standard format definitions
+- **Ecosystem consistency**: Everyone uses the same format specifications
+- **Focus on differentiation**: Spend time on custom formats unique to your inventory
+
+### For Buyers
+- **Portability**: One creative works across multiple publishers
+- **Predictability**: Format requirements are consistent
+- **Faster launches**: No custom creative production per publisher
+
+## Implementation Steps
+
+### Step 1: Discover What Formats You Need
+
+List the creative formats your inventory accepts. For example:
+- Display: 300x250, 728x90, 320x50
+- Video: 15-second pre-roll, 30-second pre-roll
+- Native: Responsive native format
+
+### Step 2: Check the Reference Creative Agent
+
+Query `https://creative.adcontextprotocol.org` using `list_creative_formats` to see which of your formats already exist. The reference agent maintains formats for:
+- All IAB standard display sizes
+- Common video durations and aspect ratios
+- Standard audio formats
+- DOOH specifications
+- Native ad formats
+
+### Step 3: Decide What to Reference vs Define
+
+**Reference formats when:**
+- The format matches your technical requirements exactly
+- You accept creatives built to standard IAB specifications
+- You want creative portability across publishers
+
+**Define custom formats when:**
+- You have unique technical requirements (custom dimensions, special asset needs)
+- You need publisher-specific validation or assembly logic
+- You offer premium, differentiated ad experiences
+
+### Step 4: Implement Your Response
+
+When implementing `list_creative_formats`, include the reference creative agent if you support any standard formats:
+
+**Most Common: Reference Standard Formats**
+
+If your inventory accepts standard formats (which most publishers do):
+
+```json
+{
+  "formats": [],
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"
+  ]
+}
+```
+
+This tells buyers: "We support all standard formats from the reference creative agent."
+
+**With Custom Formats: Combine Both**
+
+If you have unique formats PLUS standard format support:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover"
+      },
+      "name": "Homepage Takeover",
+      "type": "rich_media",
+      "assets": [...]
+    }
+  ],
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"
+  ]
+}
+```
+
+This tells buyers: "We support our custom homepage takeover format, PLUS all standard formats from the reference creative agent."
+
+**Only Custom Formats: Skip the Reference**
+
+If you ONLY support custom formats with truly unique requirements (rare):
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "custom_holographic_display"
+      },
+      "name": "Holographic Display Format",
+      "type": "dooh",
+      "assets": [...]
+    }
+  ]
+}
+```
+
+**Note:** This is uncommon. Most publishers accept at least some standard formats (300x250, etc.) and should include the reference creative agent URL.
+
+## What Standard Formats Are Included?
+
+The reference creative agent provides formats across all major channels:
+
+- **[Display Formats](/docs/creative/channels/display)** - IAB standard banner sizes (300x250, 728x90, 320x50, etc.)
+- **[Video Formats](/docs/creative/channels/video)** - Standard video ad specifications (15s, 30s, vertical, CTV)
+- **[Audio Formats](/docs/creative/channels/audio)** - Streaming audio and podcast insertion formats
+- **[DOOH Formats](/docs/creative/channels/dooh)** - Digital out-of-home billboard and transit specs
+- **[Carousel Formats](/docs/creative/channels/carousels)** - Multi-product and slideshow formats
+
+Each format includes:
+- Precise technical requirements (dimensions, duration, file types)
+- Required and optional assets with specifications
+- Universal macro support
+- Preview and validation capabilities
+
+## Format Discovery Flow
+
+When buyers discover formats from your sales agent:
+
+1. **Buyer calls** `list_creative_formats` on your sales agent
+2. **Your response includes** custom formats plus `creative_agents: ["https://creative.adcontextprotocol.org"]`
+3. **Buyer recursively queries** the reference agent to discover standard formats
+4. **Buyer sees combined list** of your custom formats plus all standard formats
+
+The buyer tracks which URLs they've queried to avoid infinite loops.
+
+## Best Practices for Sales Agents
+
+### ✅ DO Reference Standard Formats
+
+```json
+{
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"
+  ]
+}
+```
+
+**When:** Your inventory accepts standard IAB sizes with no special requirements
+
+**Why:** Reduces maintenance, ensures consistency, buyers already have compatible creatives
+
+### ✅ DO Define Custom Formats
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "native_feed_card"
+      },
+      "type": "native"
+    }
+  ]
+}
+```
+
+**When:** You have unique inventory experiences or specific technical requirements
+
+**Why:** Enables differentiation and premium inventory
+
+### ❌ DON'T Replicate Standard Formats
+
+```json
+{
+  "formats": [
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_300x250"}},
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_728x90"}},
+    {"format_id": {"agent_url": "https://youragent.com", "id": "display_320x50"}},
+    // ... copying 50+ standard formats
+  ]
+}
+```
+
+**Why not:** Maintenance burden, version drift, inconsistency across ecosystem
+
+**Exception:** You need custom validation/preview logic for these formats
+
+### ✅ DO Use Both When Appropriate
+
+```json
+{
+  "formats": [
+    // Your differentiating formats
+  ],
+  "creative_agents": [
+    "https://creative.adcontextprotocol.org"
+  ]
+}
+```
+
+**Result:** Buyers see your custom formats plus all standard formats
+
+## Format ID Namespacing
+
+To prevent conflicts when multiple agents define formats, AdCP uses a **namespace pattern** for format identifiers.
+
+### Namespace Pattern: `{domain}:{format_id}`
+
+**Structure:**
+```
+domain:format_id
+```
+
+**Examples:**
+- `creative.adcontextprotocol.org:display_300x250`
+- `creative.adcontextprotocol.org:video_30s_hosted`
+- `youragent.com:homepage_takeover_2024`
+- `publisher.example:native_feed_card`
+
+### Domain Requirements
+
+**The domain in a namespaced format_id MUST:**
+
+1. **Host a valid agent card** at `{domain}/.well-known/adagents.json`
+2. **Declare MCP endpoint** in the agent card extension
+3. **Declare A2A endpoint** in the standard agent card section
+
+**Example agent card at** `https://youragent.com/.well-known/adagents.json`:
+
+```json
+{
+  "agents": [
+    {
+      "agent_url": "https://youragent.com",
+      "agent_name": "Your Creative Agent",
+      "protocols": ["mcp", "a2a"],
+      "mcp_endpoint": "https://youragent.com/mcp",
+      "a2a_endpoint": "https://youragent.com/a2a",
+      "capabilities": ["list_creative_formats", "preview_creative"]
+    }
+  ]
+}
+```
+
+This ensures the domain in the namespace is a valid, discoverable agent that can provide format specifications and validation.
+
+### When to Use Namespaces
+
+**Always use namespaced format_ids** when defining formats:
+
+```json
+{
+  "$schema": "/schemas/media-buy/list-creative-formats-response.json",
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://youragent.com",
+        "id": "homepage_takeover"
+      },
+      "name": "Homepage Takeover",
+      "type": "rich_media"
+    }
+  ]
+}
+```
+
+**Benefits:**
+- **No collisions** - Each agent owns its namespace
+- **Clear ownership** - Domain identifies the authoritative agent
+- **Discoverable** - Buyers can query the domain's agent card
+- **Verifiable** - Domain must prove ownership via agent card
+
+### Namespace Examples by Agent Type
+
+**Reference Creative Agent:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  }
+}
+```
+
+**Publisher Sales Agent:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragent.com",
+    "id": "custom_format"
+  }
+}
+```
+
+**DCO Platform:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://dco.example",
+    "id": "dynamic_creative_v2"
+  }
+}
+```
+
+### Conflict Resolution
+
+With namespaced format_ids, conflicts **cannot occur** - each domain controls its own namespace.
+
+**No conflict:**
+```json
+// Two different formats, both valid
+{
+  "format_id": {
+    "agent_url": "https://publisher-a.com",
+    "id": "video_30s"
+  }
+}
+{
+  "format_id": {
+    "agent_url": "https://publisher-b.com",
+    "id": "video_30s"
+  }
+}
+```
+
+If a buyer encounters the same namespaced format_id from multiple sources, they are **the same format** - the namespace guarantees identity.
+
+### Validation Rules
+
+1. **Domain MUST match agent_url domain:**
+   ```json
+   // ✅ Valid - domain matches
+   {
+     "format_id": {
+       "agent_url": "https://youragent.com",
+       "id": "format_x"
+     }
+   }
+
+   // ❌ Invalid - domain mismatch
+   {
+     "format_id": {
+       "agent_url": "https://otheragent.com",
+       "id": "format_x"
+     }
+   }
+   ```
+
+2. **Domain MUST have valid agent card:**
+   - Agent card must exist at `{domain}/.well-known/adagents.json`
+   - Must declare MCP and/or A2A endpoints
+   - Endpoints must be functional
+
+3. **Format_id MUST follow pattern:**
+   - `{domain}:{format_id}` structure
+   - Domain is valid DNS hostname
+   - Format_id is alphanumeric with underscores/hyphens
+
+### Migration from Unnamespaced IDs
+
+If you previously used simple IDs like `display_300x250`, migrate to namespaced versions:
+
+**Before:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragent.com",
+    "id": "display_300x250_old"
+  }
+}
+```
+
+**After:**
+```json
+{
+  "format_id": {
+    "agent_url": "https://youragent.com",
+    "id": "display_300x250"
+  }
+}
+```
+
+Support both during transition if needed, but new implementations should use namespaced IDs from the start.
+
+## Reference Agent as Format Authority
+
+Each format includes a `format_id` field with an `agent_url` indicating its authoritative source:
+
+```json
+{
+  "$schema": "/schemas/core/format.json",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "name": "Medium Rectangle",
+  "type": "display"
+}
+```
+
+The creative agent at that URL is the definitive source for:
+- Complete format specifications
+- Asset requirements and validation rules
+- Preview generation
+- Rendering instructions
+
+## When NOT to Use Standard Formats
+
+Define your own formats when:
+
+1. **Unique technical requirements** - Your platform needs different specs than IAB standards
+2. **Custom validation** - You require additional creative review or approval
+3. **Proprietary assembly** - Your rendering pipeline has special requirements
+4. **Premium experiences** - Differentiated ad products not covered by standard formats
+
+Even in these cases, you can reference standard formats for basic inventory while defining custom formats for premium placements.
+
+## Implementation Notes
+
+### Format Authority Pattern
+
+The `agent_url` field enables a **distributed format authority** model:
+- Reference agent is authoritative for IAB standards
+- Each publisher is authoritative for their custom formats
+- Buyers can discover and validate against the correct authority
+
+### Version Management
+
+The reference creative agent maintains format versions and compatibility:
+- Format definitions evolve with industry standards
+- Backward compatibility is maintained
+- Buyers can rely on stable format_id values
+
+### What Makes a Format "Standard"
+
+**Standard formats** are those defined by the reference creative agent at `https://creative.adcontextprotocol.org` based on:
+
+1. **Industry specifications** - IAB standards, VAST/VPAID specs, common ad unit sizes
+2. **Cross-platform compatibility** - Work across multiple publishers without customization
+3. **Stable definitions** - Versioned and maintained for consistency across the ecosystem
+
+**Protocol perspective:** At the protocol level, standard formats are just formats like any other - there's no special API treatment. The `agent_url` field identifies the reference agent as the authoritative source, just as it would for any custom format.
+
+**Ecosystem perspective:** Standard formats enable portability. A buyer can build one creative and use it across many publishers who reference the same format definitions.
+
+## Related Documentation
+
+- [Creative Protocol Overview](/docs/creative) - How formats, manifests, and agents work together
+- [Creative Formats](/docs/creative/formats) - Understanding format specifications and discovery
+- [Channel Guides](/docs/creative/channels/video) - Detailed format documentation by media type
+- [list_creative_formats Task](/docs/media-buy/task-reference/list_creative_formats) - API reference for format discovery

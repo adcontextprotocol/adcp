@@ -1,0 +1,84 @@
+---
+title: Capability Discovery
+sidebarTitle: Overview
+description: Understanding creative formats and property authorization in AdCP - the foundation for effective advertising workflows.
+keywords: [capability discovery, creative formats, authorized properties, format specifications, property authorization]
+---
+
+
+Before you can effectively buy advertising through AdCP, you need to understand two fundamental capabilities: **what creative formats are supported** and **which properties sales agents are authorized to represent**. This section covers the tools and concepts that form the foundation of AdCP's advertising ecosystem.
+
+## What You'll Learn
+
+### [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats) 🎨
+Learn how sales agents can support standard creative formats through the reference creative agent. Learn how to:
+
+- Reference standard IAB formats without replicating them
+- Implement custom formats for unique inventory
+- Use format ID namespacing to prevent conflicts
+- Combine standard and custom format support
+- Validate format compatibility with advertising products
+- Leverage the Standard Creative Agent for standard formats
+- Work with publisher-specific creative agents for custom formats
+
+### [Understanding Authorization](/docs/governance/property/authorized-properties) 🔐
+Learn how AdCP prevents unauthorized resale and ensures sales agents are legitimate. Understand:
+
+- The problem of unauthorized resale in digital advertising
+- How publishers authorize sales agents via `adagents.json`
+- How to validate sales agent authorization before purchasing
+- Property tags and large-scale authorization management
+
+<Note>
+**Cross-Protocol Foundation**: The `adagents.json` authorization system applies across ALL AdCP protocols (Media Buy, Signals, and future Curation). See the [adagents.json specification](/docs/governance/property/adagents) for complete implementation details.
+</Note>
+
+
+## Foundation Tasks
+
+These capability discovery tasks provide the reference data needed for effective AdCP workflows:
+
+### [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)
+The primary capability discovery task. Returns protocol versions, supported features, portfolio information, and governance capabilities in a single call. Use this as your first interaction with any AdCP agent.
+
+### [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats)
+Discover all supported creative formats with detailed specifications including dimensions, file types, duration limits, and technical requirements.
+
+## Integration Pattern
+
+Capability discovery typically happens early in your AdCP workflow:
+
+1. **Discover Capabilities**: Call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to learn what the agent supports
+2. **Understand Formats**: Call [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) to learn supported creative types
+3. **Validate Authorization**: Check the `media_buy.portfolio` from capabilities, then verify via publisher `adagents.json`
+4. **Discover Products**: Search for advertising inventory with [`get_products`](/docs/media-buy/task-reference/get_products)
+5. **Plan Creatives**: Match discovered products to available formats for production planning
+6. **Execute Campaigns**: Create media buys with confidence in format compatibility and authorization
+
+## Why This Matters
+
+### Creative Formats
+- **Production Planning**: Know requirements before creating assets
+- **Creative Agents**: Leverage AI-powered agents to build and validate creatives
+- **Platform Compatibility**: Ensure creatives work across advertising platforms
+- **Cost Efficiency**: Avoid recreating assets due to specification mismatches
+- **Quality Assurance**: Meet technical standards for optimal performance
+- **Preview Capabilities**: Test creative rendering before campaign launch
+
+### Authorized Properties  
+- **Fraud Prevention**: Avoid unauthorized sellers and inventory fraud
+- **Brand Safety**: Ensure you're buying from legitimate property owners
+- **Legal Compliance**: Maintain clear audit trails of authorized transactions
+- **Trust Building**: Create confidence in the advertising supply chain
+
+Together, these capabilities provide the foundation for safe, efficient, and effective advertising through AdCP.
+
+## Related Documentation
+
+- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
+- **[Product Discovery](/docs/media-buy/product-discovery/)** - Finding advertising inventory
+- **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
+- **[Creative Protocol](/docs/creative/)** - Creative agents and manifests
+- **[Creative Channel Guides](/docs/creative/channels/video)** - Format examples and patterns
+- **[Creative Manifests](/docs/creative/creative-manifests)** - Understanding creative specifications
+- **[adagents.json Specification](/docs/governance/property/adagents)** - Publisher authorization system (applies across all AdCP protocols)

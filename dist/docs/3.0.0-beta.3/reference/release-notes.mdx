@@ -1,0 +1,635 @@
+---
+title: Release Notes
+description: Major release highlights and migration guides for AdCP
+keywords: [releases, what's new, migration guide, breaking changes]
+---
+
+
+High-level summaries of major AdCP releases with migration guidance. For detailed technical changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md).
+
+---
+
+## Version 3.0.0-beta.3
+
+**Status:** Beta | [Migration Guide](/docs/reference/migrating-to-v3)
+
+### What's New
+
+1. **Delivery Forecasting** - Predict campaign performance before committing budget. New `DeliveryForecast` type with budget curves, forecast methods (estimate, modeled, guaranteed), daypart targeting windows, and GRP demographic notation. Forecasts attach to product allocations and proposals, enabling budget curve analysis across spend levels.
+
+2. **Brand Protocol** - Brand discovery and identity resolution via `brand.json`. Four manifest variants (authoritative redirect, house redirect, brand agent, house portfolio) with builder tools, registry, and admin UI. Brands declare `authorized_operators` to control which agents can represent them.
+
+3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Three-party billing model (brand, operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
+
+4. **Commerce Media** - `product_selectors` on `get_products` for commerce product discovery. `manifest_gtins` on promoted products for cross-retailer GTIN matching. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response aggregated totals and daily breakdown. See the [Commerce Media Guide](/docs/guides/commerce-media).
+
+5. **Creative Delivery Reporting** - Per-creative metrics breakdown within `by_package` in delivery responses. New `get_creative_delivery` task on creative agents for variant-level delivery data with manifests. Three variant tiers: standard (1:1), asset group optimization, and generative creative. Format-level `reported_metrics` declare which metrics each format can provide.
+
+6. **CPA & TIME Pricing Models** - Two new pricing models. CPA (Cost Per Acquisition) for outcome-based campaigns — covers CPO, CPL, CPI use cases differentiated by `event_type`. TIME for sponsorship-based advertising where price scales with duration (hour, day, week, month) with optional min/max constraints.
+
+7. **Conversion Tracking** - New events protocol with `sync_event_sources` and `log_event` tasks for attribution and measurement.
+
+8. **Signal Catalog** - Data providers become first-class members with signal definitions, categories, targeting schemas, and value types. New schemas for signal discovery and integration into products.
+
+9. **Cursor-Based Pagination** - All list operations (`list_creatives`, `tasks_list`, `list_property_lists`, `get_property_list`, `get_media_buy_artifacts`) standardized on cursor-based pagination with shared `pagination-request.json` and `pagination-response.json` schemas.
+
+10. **Accessibility in Creative Formats** - Two-layer accessibility model. Format-level `wcag_level` (A/AA/AAA) and `requires_accessible_assets` flag. Asset-level metadata for inspectable assets (alt text, captions, transcripts) and self-declared properties for opaque assets (keyboard navigable, motion control). Buyers can filter by `wcag_level` in `list_creative_formats`.
+
+11. **Targeting Restrictions & Geo Exclusion** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. Geographic exclusion fields (`geo_countries_exclude`, `geo_regions_exclude`, `geo_metros_exclude`, `geo_postal_areas_exclude`) enable RCT holdout groups and regulatory exclusions.
+
+12. **Typed Asset Requirements** - Discriminated union schemas for all 13 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, promoted offerings, URL, webhook) using `asset_type` as discriminator.
+
+13. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `SHOW_NAME`, `EPISODE_ID`, `AUDIO_DURATION`.
+
+14. **Brand Manifest Improvements** - Structured tone object with `voice`, `attributes`, `dos`, `donts` fields. Logo objects gain `orientation`, `background`, `variant`, `usage` fields.
+
+### Breaking Changes
+
+| Change | beta.2 | beta.3 |
+|--------|--------|--------|
+| Pagination | `limit`/`offset` | Cursor-based `pagination` object |
+| Brand manifest tone | `string \| object` | Object only with structured fields |
+
+### Other Changes
+
+- `optimization_goal` on package requests — buyers can specify conversion goals when creating or updating media buys
+- Attribution window metadata on delivery response: `click_window_days`, `view_window_days`, and attribution `model` (last_touch, first_touch, linear, time_decay, data_driven)
+- Channel fields on property and product schemas: `supported_channels` and `channels` referencing Media Channel Taxonomy enum
+- `account_id` added to `get_media_buy_delivery` and `get_media_buy_artifacts` requests
+- `date_range_support` in reporting capabilities
+- `minItems: 1` on request-side arrays for stricter validation
+- `FormatCategory` enum deprecated; `type` field on Format objects now optional
+- `format_id` optional in `preview_creative` (falls back to `creative_manifest.format_id`)
+- `selection_mode` on repeatable asset groups to distinguish sequential (carousel) from optimize (asset pool) behavior
+- Session ID fallback recommendation for MCP agent `context_id`
+
+---
+
+## Version 3.0.0-beta.2
+
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta2) | [Migration Guide](/docs/reference/migrating-to-v3)
+
+Building on beta.1, this release adds account-level billing, property targeting controls, CTV technical specs, and agent-driven UI rendering for Sponsored Intelligence.
+
+### What's New
+
+1. **Accounts & Agents** - AdCP now distinguishes Brand (whose products are advertised), Account (who gets billed), and Agent (who places the buy). New `account_id` field on media buys, product queries, and creative operations enables multi-account billing with rate cards and credit limits.
+
+2. **Property Targeting** - Products can declare `property_targeting_allowed` to let buyers target a subset of publisher properties. When enabled, buyers pass a `property_list` in their targeting overlay and the package runs on the intersection.
+
+3. **A2UI for Sponsored Intelligence** - Sponsored Intelligence sessions now support agent-driven UI rendering via MCP Apps, enabling rich interactive experiences within AI assistants.
+
+4. **CTV & Streaming Constraints** - Video formats gain technical constraint fields for frame rate, HDR, GOP structure, and moov atom position. Audio formats add codec, sampling rate, channel layout, and loudness normalization (LUFS/true peak) fields.
+
+5. **Creative Protocol Discovery** - `get_adcp_capabilities` now includes `"creative"` in `supported_protocols`, letting agents discover creative services at runtime.
+
+### Schema Changes
+
+- New `account.json`, `list-accounts-request.json`, `list-accounts-response.json` schemas
+- `account_id` added to `create-media-buy-request`, `get-products-request`, `sync-creatives-request`, and their responses
+- Shared `price-guidance.json` schema extracted to fix duplicate type generation across pricing options
+- `property_targeting_allowed` and `property_list` fields added to product and targeting overlay schemas
+- Video/audio asset schemas extended with CTV technical constraint fields
+
+### Removed
+
+| Removed | Replacement |
+|---------|-------------|
+| `list_property_features` task | `get_adcp_capabilities` |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `adcp-extension.json` schema | `get_adcp_capabilities` task |
+| `assets_required` format field | `assets` array with `required` boolean |
+| `preview_image` format field | `format_card` object |
+
+---
+
+## Version 3.0.0-beta.1
+
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/docs/reference/migrating-to-v3)
+
+<Warning>
+**This is a beta release.** While the API is stable for testing, breaking changes may occur before the final 3.0.0 release. We encourage early adopters to test and provide feedback.
+</Warning>
+
+### What's New
+
+Version 3.0.0 is a **major release** that expands AdCP beyond media buying into governance, brand suitability, and conversational commerce. See the [Migration Guide](/docs/reference/migrating-to-v3) for detailed upgrade instructions.
+
+**🎯 Key Themes:**
+
+1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+
+2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand suitability evaluation with collaborative calibration workflows.
+
+3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+
+4. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of capabilities, supported protocols, and geo targeting systems.
+
+5. **Creative Assignment Weighting** - Replace simple creative ID arrays with weighted assignments supporting traffic allocation and placement targeting.
+
+6. **Global Geo Targeting** - Structured geographic targeting with named systems (Nielsen DMA, UK ITL, Eurostat NUTS2, etc.) for international markets.
+
+### Breaking Changes Summary
+
+| Change | v2.x | v3.x |
+|--------|------|------|
+| Channels | 5 values | 19 planning-oriented values |
+| Creative assignment | `creative_ids: [...]` | `creative_assignments: [{...}]` |
+| Metro targeting | `geo_metros: ["501"]` | `geo_metros: [{ system, code }]` |
+| Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
+| Asset discovery | `assets_required: [...]` | `assets: [{ asset_id, required }]` |
+
+See [Migration Guide](/docs/reference/migrating-to-v3) for detailed before/after examples and migration steps.
+
+### New Protocol Domains
+
+#### Governance Protocol
+
+Brand suitability and inventory curation:
+
+- **Property Lists** - `create_property_list`, `get_property_list`, `update_property_list`, `delete_property_list`, `list_property_lists`
+- **Content Standards** - `create_content_standards`, `get_content_standards`, `update_content_standards`, `calibrate_content`, `validate_content_delivery`
+- **Product Filtering** - Pass property lists to `get_products` for compliant inventory discovery
+
+#### Sponsored Intelligence Protocol
+
+Conversational brand experiences:
+
+- **Session Management** - `si_check_availability`, `si_initiate_session`, `si_send_message`, `si_terminate_session`
+- **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
+- **Commerce Handoff** - Seamless transition to ACP for transactions
+
+See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+
+### New Features
+
+- **`get_adcp_capabilities` task** - Runtime capability discovery replacing agent card extensions
+- **Unified asset discovery** - `assets` array with `required` boolean for full asset visibility
+- **Property list filtering** - Pass governance lists to `get_products` for brand-safe inventory
+
+### Removed in v3
+
+| Removed | Replacement |
+|---------|-------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `assets_required` in formats | `assets` array with `required` boolean |
+| `preview_image` in formats | `format_card` object |
+| `creative_ids` in packages | `creative_assignments` array |
+| `geo_postal_codes` | `geo_postal_areas` |
+| `fixed_rate` in pricing | `fixed_price` |
+| `price_guidance.floor` | `floor_price` (top-level) |
+
+### Quick Migration Checklist
+
+- [ ] Update channel enum values ([taxonomy guide](/docs/reference/media-channel-taxonomy))
+- [ ] Replace `creative_ids` with `creative_assignments`
+- [ ] Add system specification to metro/postal targeting
+- [ ] Implement `get_adcp_capabilities` task
+- [ ] Update format parsing to use `assets` array
+
+**[View Complete Migration Guide →](/docs/reference/migrating-to-v3)**
+
+---
+
+## Version 2.5.0
+
+**Released:** November 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#250)
+
+### What's New
+
+Version 2.5.0 is a **developer experience and API refinement** release that significantly improves type safety, schema infrastructure, and creative workflow performance. This release prepares AdCP for production-scale integrations with better TypeScript/Python code generation, stricter validation semantics, and flexible schema versioning.
+
+**🎯 Key Themes:**
+
+1. **Type Safety & Code Generation** - Comprehensive discriminator fields throughout the protocol enable excellent TypeScript/Python type inference and eliminate ambiguous union types.
+
+2. **Batch Creative Previews** - Generate previews for up to 50 creatives in a single API call with optional direct HTML embedding, reducing preview generation time by 5-10x.
+
+3. **Schema Infrastructure** - Build-time schema versioning with semantic paths (`/schemas/2.5.0/`, `/schemas/v2/`, `/schemas/v2.5/`) enables version pinning and automatic minor version tracking.
+
+4. **API Consistency** - Atomic response semantics (success XOR error) and standardized webhook payloads eliminate ambiguity and improve reliability.
+
+5. **Signal Protocol Refinement** - Activation keys returned per deployment with permission-based access, enabling proper multi-platform signal activation.
+
+6. **Template Formats** - Dynamic creative sizing with `accepts_parameters` enables formats that accept runtime dimensions, durations, and other parameters.
+
+7. **Enhanced Product Discovery** - Structured filters with date ranges, budget constraints, country targeting, and channel filtering improve product search precision.
+
+### Key Enhancements
+
+#### Type Safety & Code Generation
+- **Discriminator fields** added to all discriminated union types (destinations, pricing, property selectors, preview requests/responses)
+- **Atomic response semantics** - All task responses now use strict success XOR error patterns with `oneOf` discriminators
+- **Explicit type declarations** on all const fields for proper TypeScript literal type generation
+- **31 new enum schemas** extracted from inline definitions for better reusability
+
+#### Schema Infrastructure
+- **Build-time versioning** - Schemas now support semantic version paths (`/schemas/2.5.0/`), major version aliases (`/schemas/v2/`), and minor version aliases (`/schemas/v2.5/`)
+- **Consistent media buy responses** - Both `create_media_buy` and `update_media_buy` now return full Package objects
+- **Standardized webhook payload** - Protocol envelope at top-level with task data under `result` field
+
+#### Product Discovery
+- **Structured filters** - Extracted filter objects into separate schemas (`product-filters.json`, `creative-filters.json`, `signal-filters.json`)
+- **Enhanced filtering** - Date ranges (`start_date`, `end_date`), budget ranges with currency, country targeting, and channel filtering
+- **Full enum support** - Filters now accept complete enum values without artificial restrictions
+
+#### Signal Protocol
+- **Activation keys** - `activate_signal` now returns deployment-specific activation keys (segment IDs, key-value pairs) based on authenticated permissions
+- **Consistent terminology** - Standardized on "deployments" throughout signal requests and responses
+
+#### Creative Protocol
+- **Batch preview support** - Preview multiple creatives in one request (`preview_creative` supports 1-50 items)
+- **Direct HTML embedding** - Responses can include raw HTML for iframe-free rendering
+- **Simplified brand manifest** - Single required field (`name`) eliminates duplicate type generation
+- **Template formats** - `accepts_parameters` field enables dynamic formats (e.g., display_[width]x[height], video_[duration]s)
+- **Inline creative updates** - `sync_creatives` task provides upsert semantics for updating creatives in existing campaigns
+
+#### Documentation & Testing
+- **Testable documentation** - All code examples can be validated against live schemas
+- **Client library prominence** - NPM badges and installation instructions in intro
+- **Fixed 389 broken links** across 50 documentation files
+
+### Migration Guide
+
+#### Discriminator Fields (Breaking)
+
+Many schemas now require explicit discriminator fields. Update your code to include these fields:
+
+**Signal Destinations:**
+```json
+// Before
+{
+  "platform_id": "ttd"
+}
+
+// After
+{
+  "type": "platform",
+  "platform_id": "ttd"
+}
+```
+
+**Property Selectors:**
+```json
+// Before
+{
+  "publisher_domain": "cnn.com",
+  "property_ids": ["cnn_ctv_app"]
+}
+
+// After
+{
+  "publisher_domain": "cnn.com",
+  "selection_type": "by_id",
+  "property_ids": ["cnn_ctv_app"]
+}
+```
+
+**Pricing Options:**
+```json
+// Before
+{
+  "pricing_model": "cpm",
+  "rate": 12.50
+}
+
+// After (fixed pricing uses fixed_price field)
+{
+  "pricing_model": "cpm",
+  "fixed_price": 12.50
+}
+```
+
+#### Webhook Payload Structure (Breaking)
+
+Webhook payloads now use protocol envelope at top-level:
+
+**Before:**
+```json
+{
+  "task_id": "task_123",
+  "status": "completed",
+  "media_buy_id": "mb_456",
+  "packages": [...]
+}
+```
+
+**After:**
+```json
+{
+  "task_id": "task_123",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2025-11-21T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_456",
+    "packages": [...]
+  }
+}
+```
+
+#### Signal Activation Response (Breaking)
+
+`activate_signal` response changed from single key to deployments array:
+
+**Before:**
+```json
+{
+  "activation_key": "segment_123"
+}
+```
+
+**After:**
+```json
+{
+  "deployments": [
+    {
+      "destination": {"type": "platform", "platform_id": "ttd"},
+      "activation_key": "segment_123",
+      "status": "active"
+    }
+  ]
+}
+```
+
+#### Template Formats
+
+Formats can now accept parameters for dynamic sizing:
+
+**Template Format Definition:**
+```json
+{
+  "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_static"},
+  "accepts_parameters": ["dimensions"],
+  "renders": [{
+    "role": "primary",
+    "parameters_from_format_id": true
+  }]
+}
+```
+
+The `parameters_from_format_id: true` flag indicates dimensions come from the format_id at usage time.
+
+**Usage (parameterized format_id):**
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_static",
+    "width": 300,
+    "height": 250
+  }
+}
+```
+
+This creates a specific 300x250 variant of the display_static template.
+
+#### Enhanced Product Filtering
+
+New structured filters in `get_products`:
+
+```json
+{
+  "filters": {
+    "start_date": "2026-01-01",
+    "end_date": "2026-03-31",
+    "budget_range": {
+      "min": 10000,
+      "max": 50000,
+      "currency": "USD"
+    },
+    "countries": ["US", "CA"],
+    "channels": ["display", "ctv"]
+  }
+}
+```
+
+#### Schema Versioning
+
+New version paths available:
+- `/schemas/2.5.0/` - Exact version (recommended for production)
+- `/schemas/v2.5/` - Latest 2.5.x patch (auto-updates for patch releases)
+- `/schemas/v2/` - Latest 2.x release (auto-updates for minor/patch)
+- `/schemas/v1/` - Backward compat alias (same as v2)
+
+### Breaking Changes
+
+- **Discriminator fields required** in destinations, property selectors, pricing options, and preview requests
+- **Webhook payload structure** - Task data moved under `result` field; `domain` no longer required
+- **Signal activation response** - Changed from `activation_key` string to `deployments` array
+- **Removed legacy creative fields** - `media_url`, `click_url`, `duration` removed from `list_creatives` response
+
+### Non-Breaking Additions
+
+- Application `context` object (optional) in all task requests
+- `product_card` and `format_card` fields (optional) for visual UI support
+- Batch preview mode in `preview_creative` (backward compatible)
+- Package pricing fields in delivery reporting (already documented, now schema-enforced)
+- Minor version symlinks (`/schemas/v2.5/`)
+
+---
+
+## Version 2.3.0
+
+**Released:** October 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#230)
+
+### What's New
+
+**Publisher-Owned Property Definitions** - Properties are now owned by publishers and referenced by agents, following the IAB Tech Lab sellers.json model. This eliminates duplication and creates a single source of truth for property information.
+
+**Placement Targeting** - Products can now define multiple placements (e.g., homepage banner, article sidebar), and buyers can assign different creatives to each placement within a product purchase.
+
+**Simplified Budgets** - Budget is now only specified at the package level, enabling mixed-currency campaigns and eliminating redundant aggregation at the media buy level.
+
+### Migration Guide
+
+#### Publisher-Owned Properties
+
+**Before:**
+```json
+{
+  "properties": [{
+    "publisher_domain": "cnn.com",
+    "property_name": "CNN CTV App",
+    "property_tags": ["ctv", "premium"]
+  }]
+}
+```
+
+**After:**
+```json
+{
+  "publisher_properties": [
+    {
+      "publisher_domain": "cnn.com",
+      "property_tags": ["ctv"]
+    }
+  ]
+}
+```
+
+Buyers now fetch property definitions from `https://cnn.com/.well-known/adagents.json`.
+
+#### Remove Media Buy Budget
+
+**Before:**
+```json
+{
+  "budget": 50000,
+  "packages": [...]
+}
+```
+
+**After:**
+```json
+{
+  "packages": [
+    {"package_id": "p1", "budget": 30000},
+    {"package_id": "p2", "budget": 20000}
+  ]
+}
+```
+
+Budget is specified per package only.
+
+### Breaking Changes
+
+- `properties` field in products → `publisher_properties`
+- `list_authorized_properties` returns `publisher_domains` array
+- Removed `budget` from create_media_buy/update_media_buy requests
+
+---
+
+## Version 2.2.0
+
+**Released:** October 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#220)
+
+### What's New
+
+**Build Creative Alignment** - The `build_creative` task now follows a clear "manifest-in → manifest-out" transformation model with consistent parameter naming.
+
+### Migration Guide
+
+**Before:**
+```json
+{
+  "source_manifest": {...},
+  "promoted_offerings": [...]
+}
+```
+
+**After:**
+```json
+{
+  "creative_manifest": {
+    "format_id": {...},
+    "assets": {
+      "promoted_offerings": [...]
+    }
+  }
+}
+```
+
+### Breaking Changes
+
+- `build_creative` parameter renamed: `source_manifest` → `creative_manifest`
+- Removed `promoted_offerings` as top-level parameter (now in manifest assets)
+
+---
+
+## Version 2.1.0
+
+**Released:** January 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#210)
+
+### What's New
+
+**Simplified Asset Schema** - Separated asset payload schemas from format requirement schemas, eliminating redundancy. Asset types are now determined by format specifications rather than declared in manifests.
+
+### Migration Guide
+
+**Before:**
+```json
+{
+  "assets": {
+    "banner_image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+**After:**
+```json
+{
+  "assets": {
+    "banner_image": {
+      "url": "https://cdn.example.com/banner.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+### Breaking Changes
+
+- Removed `asset_type` field from creative manifest payloads
+- Schema paths changed: `/creative/asset-types/*.json` → `/core/assets/*-asset.json`
+- Constraint fields moved from asset payloads to format specifications
+
+---
+
+## Version 2.0.0
+
+**Released:** October 2025 | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#200)
+
+### What's New
+
+First production release of the Advertising Context Protocol with:
+
+- **8 Media Buy Tasks** - Complete workflow from product discovery to delivery reporting
+- **3 Creative Tasks** - AI-powered creative generation and management
+- **2 Signals Tasks** - First-party data integration
+- **Standard Formats** - Industry-standard display, video, and native formats
+- **Multi-Protocol Support** - Works with MCP and A2A
+
+### Core Features
+
+- Natural language product discovery with brief-based targeting
+- Asynchronous task management with human-in-the-loop approvals
+- JSON Schema validation for all requests and responses
+- Publisher-owned property definitions via `.well-known/adagents.json`
+- Comprehensive format specifications with asset requirements
+
+---
+
+## Versioning Policy
+
+AdCP follows [Semantic Versioning 2.0.0](https://semver.org/):
+
+- **PATCH (x.x.N)** - Bug fixes, documentation, clarifications
+- **MINOR (x.N.0)** - New features, backward-compatible additions
+- **MAJOR (N.0.0)** - Breaking changes
+
+### Deprecation Process
+
+Breaking changes follow a 6-month deprecation cycle:
+
+1. **Deprecation Notice** - Feature marked deprecated in minor release
+2. **Transition Period** - Minimum 6 months support with warnings
+3. **Migration Guide** - Detailed upgrade path provided
+4. **Breaking Change** - Removed in next major version
+
+---
+
+## Additional Resources
+
+- **Technical Changelog** - [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md)
+- **GitHub Releases** - [Release Archive](https://github.com/adcontextprotocol/adcp/releases)
+- **Community** - [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- **Issues** - [GitHub Issues](https://github.com/adcontextprotocol/adcp/issues)
+- **Support** - support@adcontextprotocol.org

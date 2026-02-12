@@ -1,0 +1,196 @@
+---
+title: Creative
+sidebarTitle: Overview
+---
+
+
+One upload, every format. This guide explains how creatives work in AdCP, from defining format requirements to assembling and delivering ads.
+
+## The Four Key Concepts
+
+### 1. **Assets**
+
+Assets are the individual building blocks used to compose a creative. Each asset has a defined type that determines how it is used and validated.
+
+**Examples:**
+- An image file (PNG, JPG, WebP)
+- A video file (MP4, WebM, MOV)
+- A block of text (headline or CTA)
+- An audio file (MP3, M4A)
+- An HTML or JavaScript tag
+- A tracking or clickthrough URL
+
+### 2. **Formats**
+
+Formats define how assets are assembled and rendered, based on IAB format taxonomy. A format specifies:
+- Media family (e.g., Display, Video, Audio, Native)
+- The required asset types
+- Technical constraints (duration, dimensions, codecs, file size)
+- Rendering and interaction expectations
+
+**Examples:**
+- A Video format may require one video asset (MP4, 30 seconds, defined resolution and codec) and one clickthrough URL
+- A Display format may require one or more image or HTML assets, optional text assets, and tracking URLs
+
+### 3. **Manifests**
+
+Manifests define a creative preset: a reusable configuration that captures what a brand wants to say and show, independent of where or how it is ultimately delivered.
+
+A manifest does not describe an ad format or rendering logic. Instead, it declares a named set of creative choices—media, messaging, destinations, and tracking intent—that can be applied consistently wherever a compatible format is supported.
+
+**Example**: A manifest for "video_30s" provides the URL to your actual 30-second video file, plus tracking pixels and landing page URL.
+
+### 4. **Creative Agents**
+
+Creative agents are services that:
+- Define and document formats (authoritative source)
+- Explain how each format renders
+- Validate manifests against format requirements
+- Generate previews showing how creatives will appear
+- Optionally build manifests from natural-language briefs
+
+Each format identifies its authoritative creative agent.
+
+## How They Fit Together
+
+```
+Format Definition (by Creative Agent)
+  ↓
+  "video_30s format requires:
+   - One video file asset (MP4, 30s, 1920x1080)
+   - One clickthrough URL"
+
+Creative Manifest (by Buyer)
+  ↓
+  "Here's my actual video file:
+   https://cdn.brand.com/spring_30s.mp4
+   Landing page: https://brand.com/spring-sale"
+
+Sales Agent (validates & delivers)
+  ↓
+  - Checks: Is this really 30 seconds? Is it MP4?
+  - Adds: Impression tracking, click tracking
+  - Delivers: Creative to ad server
+```
+
+## The Workflow
+
+### 1. **Discovery** - "What formats do you support?"
+
+Buyers call `list_creative_formats` on sales or creative agents to discover available formats and their full specifications. Each format includes an `agent_url` identifying the creative agent that is authoritative for that format.
+
+See [Creative Formats](/docs/creative/formats) for format discovery details.
+
+### 2. **Assembly** - "Here are my assets"
+
+Buyers create manifests that provide assets fulfilling the selected format's requirements. Manifests pair format specifications with actual asset URLs, text, and tracking data.
+
+See [Creative Manifests](/docs/creative/creative-manifests) for manifest structure details.
+
+### 3. **Validation** - "Does this match the requirements?"
+
+Creative agents validate manifests by checking:
+- Are all required assets present?
+- Do assets meet technical constraints (duration, dimensions, file type, file size)?
+- Are tracking URLs and macros correctly formatted?
+
+### 4. **Delivery** - "Traffic this to the ad server"
+
+Sales agents deliver validated creatives to their ad servers, translating AdCP universal concepts to platform-specific formats.
+
+## Core Concepts
+
+### Assets & Asset Types
+
+Assets are the raw materials of a creative. Each asset has a type that defines its role:
+- **image**: Static images (JPEG, PNG, WebP)
+- **video**: Video files (MP4, WebM, MOV) or VAST tags
+- **audio**: Audio files (MP3, M4A) or DAAST tags
+- **text**: Headlines, descriptions, CTAs
+- **html**: HTML5 creatives or third-party tags
+- **javascript**: JavaScript tags
+- **url**: Tracking pixels, clickthrough URLs, webhooks
+
+See [Asset Types](/docs/creative/asset-types) for detailed specifications.
+
+### Formats & Format Authority
+
+Each format has an authoritative source—the creative agent that defines it (indicated by `agent_url`). That agent:
+- Hosts the definitive documentation
+- Explains how to assemble assets
+- Describes how the format renders
+- Provides validation rules
+
+**Standard vs. Custom Formats:**
+- **Standard formats** are based on IAB specifications and hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
+- **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
+- Technically, both work the same way—the `agent_url` field identifies which agent is authoritative for each format
+
+See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
+
+### Manifests
+
+Manifests are JSON structures that pair format-defined asset IDs with actual asset content. They supply the URLs, text values, and tracking endpoints required to assemble a complete creative.
+
+See [Creative Manifests](/docs/creative/creative-manifests) for detailed documentation.
+
+### Universal Macros
+
+AdCP defines universal macros that work across platforms. Sales agents translate these macros into their ad server's native syntax.
+
+- **For impression tracking**: Sales agents translate AdCP macros into the ad server's native macro format before serving the impression tracking URL.
+- **For click tracking**: In addition to macro translation, sales agents replace `{REDIRECT_URL}` with the final destination click URL and serve the click tracking URL as the destination URL in the ad server, ensuring proper redirection after the click is recorded.
+
+See [Universal Macros](/docs/creative/universal-macros) for complete reference.
+
+## Common Patterns
+
+### Third-Party Tags
+
+Some formats support creatives that are served by third-party systems rather than assembled from first-party media elements.
+
+In this pattern, the creative is provided as an HTML tag or a JavaScript tag. The format definition specifies the required element type and any applicable constraints (such as sandboxing or tracking expectations). Rendering, asset loading, and interaction logic are handled externally by the third-party system.
+
+This pattern is most commonly used with Display formats. See the [Display Channel Guide](/docs/creative/channels/display) for third-party tag examples.
+
+### Repeatable Asset Groups
+
+Some formats allow or require repeated sets of creative elements under a common structure. This pattern is used for creatives such as carousels, slideshows, story-style sequences, and playlists or product lists.
+
+Each repetition contains the same logical element roles (for example: image, text, and URL), with the number of repetitions defined or constrained by the format. Repeatable element groups describe structural patterns, not formats or layout guarantees, and may be used across Display, Native, or other compatible formats.
+
+See the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for detailed documentation.
+
+### DOOH Impression Tracking
+
+Digital Out-of-Home (DOOH) environments require different measurement semantics than personal-device environments.
+
+In this pattern:
+- Impressions are tracked using venue- or screen-level identifiers
+- Device-based identifiers are not used
+- Tracking relies on environment-specific macros
+
+This affects measurement and reporting only and does not change creative format classification or asset requirements. See the [DOOH Channel Guide](/docs/creative/channels/dooh) for DOOH-specific macro details.
+
+## Channel-Specific Information
+
+For detailed information on creatives by channel and format family, see [Creative Manifests](/docs/creative/creative-manifests), including:
+
+- **Video Ads** - In-stream and outstream video formats (including CTV environments)
+- **Display Ads** - Standard display formats (e.g., banners and interstitials)
+- **Audio Ads** - In-stream audio formats (with optional companion display)
+- **DOOH** - Digital out-of-home inventory and venue-based delivery environments
+
+## Getting Started
+
+1. **Discover formats**: Call `list_creative_formats` to see what's available
+2. **Choose your channel guide**: Pick the guide that matches your campaign type
+3. **Build your manifest**: Follow the format requirements
+4. **Use universal macros**: Add tracking with standardized macros
+5. **Preview**: Use `preview_creative` to see how it looks
+6. **Submit**: Include manifests in your `create_media_buy` request
+
+## Additional Resources
+
+- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
+- [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide

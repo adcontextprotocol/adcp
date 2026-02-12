@@ -1,0 +1,508 @@
+---
+title: Targeting
+testable: true
+---
+
+
+AdCP's targeting philosophy centers on **brief-based targeting** where targeting requirements are communicated through natural language briefs, and publishers return products that include all necessary targeting capabilities.
+
+## Core Principle: Targeting Through Briefs
+
+The primary way to specify targeting in AdCP is through campaign briefs. Instead of configuring complex targeting parameters, buyers describe their audience requirements in plain language:
+
+```json
+{
+  "brief": "We want to reach millennial parents (ages 25-40) in major US metro areas who are interested in sustainable products. Focus on mobile and desktop during evening hours when families are planning purchases."
+}
+```
+
+Publishers then return products that include the targeting capabilities to reach this audience, with targeting costs built into the media pricing.
+
+## Why Brief-Based Targeting?
+
+### Eliminates Targeting Conflicts
+- **Single source**: All targeting comes from the publisher's product definition
+- **No layering conflicts**: Avoids multiple targeting systems competing
+- **Pricing consistency**: Targeting costs are transparent and included in media prices
+
+### Simplifies Implementation
+- **Natural language**: Buyers describe needs in familiar terms
+- **Publisher expertise**: Publishers know their inventory and audience capabilities best
+- **Reduced complexity**: No need to learn platform-specific targeting syntax
+
+### Enables Accurate Pricing
+- **Inclusive pricing**: All targeting costs are built into the product price
+- **No surprises**: Buyers know the complete cost upfront
+- **Market-driven**: Pricing reflects true market value of targeted inventory
+
+## Real-Time Decisioning with AXE
+
+For targeting decisions that must happen at impression time, buyers can use the **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)**. AXE is the real-time execution layer between orchestrators and decisioning platforms.
+
+**Key capabilities:**
+- **Dynamic audience targeting**: Bring your own DMP/CDP segments to publisher inventory
+- **Brand suitability enforcement**: Real-time content evaluation and blocking
+- **Cross-campaign frequency**: Manage user exposure across multiple publishers
+- **First-party data activation**: Use your customer data without sharing PII
+
+**When to use AXE:**
+- Audience segments that can't be expressed in a brief
+- Suppression lists (existing customers, past converters)
+- Real-time brand suitability beyond static rules
+- High-cardinality targeting (millions of segment members)
+
+See the [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for implementation details.
+
+## How Publishers Include Targeting
+
+Publishers incorporate targeting capabilities directly into their product definitions:
+
+### Geographic Targeting
+Products specify geographic coverage:
+```
+"Chicago metro premium display package" 
+"US national mobile video inventory"
+"California lifestyle sites network"
+```
+
+### Demographic Targeting
+Audience characteristics are built into products:
+```
+"Millennial-focused social media placements"
+"Premium business professional network"
+"Family-oriented content sites"
+```
+
+### Contextual Targeting
+Content alignment is inherent in product descriptions:
+```
+"Sports content premium video inventory"
+"Financial news site network"
+"Entertainment property display package"
+```
+
+### Device & Platform Targeting
+Technical specifications included in product format:
+```
+"Mobile-optimized video formats"
+"Connected TV premium inventory"
+"Desktop display network"
+```
+
+## Brief Examples for Common Targeting Needs
+
+### Geographic Targeting
+```json
+{
+  "brief": "Target users in New York, Los Angeles, and Chicago metro areas with premium display advertising for our luxury retail brand."
+}
+```
+
+### Demographic Targeting
+```json
+{
+  "brief": "Reach parents with children under 10 who are interested in educational content, focusing on weekend and evening viewing times."
+}
+```
+
+### Contextual Targeting
+```json
+{
+  "brief": "Place financial services ads adjacent to business and investment content, targeting affluent professionals during business hours."
+}
+```
+
+### Behavioral Targeting
+```json
+{
+  "brief": "Target users who have shown interest in sustainable products and eco-friendly brands, particularly those researching major purchases."
+}
+```
+
+## Product Response Targeting Information
+
+When publishers return products, they include targeting information buyers need:
+
+```json
+{
+  "product_id": "premium_millennial_mobile",
+  "name": "Premium Millennial Mobile Package",
+  "description": "Mobile display inventory targeting millennials (25-40) across lifestyle and entertainment apps in top 25 US markets",
+  "targeting_description": "Ages 25-40, household income $50K+, interests in lifestyle/entertainment, mobile apps only, top 25 US metro areas",
+  "audience_size": "~2.5M monthly unique users",
+  "pricing": {
+    "cpm": 8.50,
+    "targeting_included": true
+  }
+}
+```
+
+## When to Use Targeting Overlays
+
+Targeting overlays in `create_media_buy` and `update_media_buy` are **rare** and should only be used for:
+
+### Geographic Restrictions
+Use geo fields **only** for:
+- **RCT testing**: Randomized control trials requiring specific geographic splits
+- **Regulatory compliance**: Legal requirements for geographic restrictions
+- **Product refinement**: When a product spans multiple regions and you need to restrict to a subset
+
+**Inclusion fields** (restrict delivery to these locations):
+- `geo_countries`: ISO 3166-1 alpha-2 country codes (e.g., `["US", "GB"]`)
+- `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
+- `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
+- `geo_postal_areas`: Structured postal areas with explicit system (e.g., `us_zip`, `gb_outward`) — not all publishers support postal-level targeting
+
+**Exclusion fields** (exclude these locations from delivery):
+- `geo_countries_exclude`: Same format as `geo_countries`
+- `geo_regions_exclude`: Same format as `geo_regions`
+- `geo_metros_exclude`: Same format as `geo_metros`
+- `geo_postal_areas_exclude`: Same format as `geo_postal_areas`
+
+**Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
+
+### Age Restrictions (Compliance)
+Use for **legal compliance** requirements:
+- **Alcohol advertising**: Require verified 21+ in the US
+- **Gambling/Gaming**: Require verified 18+ or 21+ depending on jurisdiction
+- **Cannabis**: Require verified age per local regulations
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "age_restriction": {
+    "min": 21,
+    "verification_required": true,
+    "accepted_methods": ["facial_age_estimation", "id_document", "world_id"]
+  }
+}
+```
+
+**Verification methods** (defined in [`age-verification-method.json`](https://adcontextprotocol.org/schemas/latest/enums/age-verification-method.json), based on ISO/IEC 27566-1 age assurance standards):
+- `facial_age_estimation` - AI-based age estimation (Yoti, etc.)
+- `id_document` - Government ID scan
+- `digital_id` - Verified digital identity credentials
+- `credit_card` - Payment card age gate
+- `world_id` - World ID orb verification
+
+**Note**: "Inferred" age (guessing from behavior/profile) is **not** accepted for regulatory compliance. Platforms declare their supported verification methods in `get_adcp_capabilities`.
+
+### Device Platform (Technical Compatibility)
+Use for **technical requirements**:
+- **App install campaigns**: iOS-only app requires `device_platform: ["ios"]`
+- **CTV campaigns**: Target specific TV operating systems
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "device_platform": ["ios", "android"]
+}
+```
+
+**Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/latest/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
+- Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
+- CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+- Other: `unknown`
+
+### Language (Localization)
+Use for **localization requirements**:
+- Creative is in a specific language
+- Campaign targets specific language speakers
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "language": ["es", "en"]
+}
+```
+
+**Format**: ISO 639-1 two-letter language codes (e.g., `en`, `es`, `fr`, `de`, `zh`).
+
+### Frequency Capping
+Basic impression suppression controls:
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "frequency_cap": {
+    "suppress_minutes": 60
+  }
+}
+```
+
+### Example Geographic Overlay (RCT Testing)
+
+For RCT testing, exclusion targeting is often simpler than inclusion. Instead of listing hundreds of DMAs to include, exclude the holdout markets from a national campaign. When inclusion and exclusion are combined, exclusion fields subtract from the included set (e.g., "US minus these 3 DMAs"):
+
+```json
+{
+  "packages": [
+    {
+      "buyer_ref": "test_group",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_countries": ["US"],
+        "geo_metros_exclude": [
+          { "system": "nielsen_dma", "values": ["501", "803", "602"] }
+        ]
+      }
+    },
+    {
+      "buyer_ref": "control_group",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["501", "803", "602"] }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Inclusion targeting works the same way for cases where you want to specify exact markets:
+
+```json
+{
+  "packages": [
+    {
+      "buyer_ref": "test_group_a",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["501", "602", "803"] }
+        ]
+      }
+    },
+    {
+      "buyer_ref": "test_group_b",
+      "product_id": "national_video",
+      "targeting_overlay": {
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["504", "505", "506"] }
+        ]
+      }
+    }
+  ]
+}
+```
+
+## What NOT to Use Targeting Overlays For
+
+**Express these in briefs instead:**
+- **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
+- **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
+- **Content categories** - "Sports content" or "News sites" in brief text
+- **Audience segments** - "Auto intenders" or "Luxury shoppers" in brief text
+- **Daypart preferences** - "Morning commute hours" or "prime time evening" in brief text
+
+**Overlays vs Briefs:**
+| Use Case | Overlay | Brief |
+|----------|---------|-------|
+| Age for compliance (alcohol, gambling) | ✅ `age_restriction` | |
+| Age for audience targeting | | ✅ "Target millennials" |
+| Device for app compatibility | ✅ `device_platform` | |
+| Device for audience preference | | ✅ "Mobile users" |
+| Language for creative localization | ✅ `language` | |
+| Language for audience preference | | ✅ "Spanish-speaking audiences" |
+
+**Why briefs work better for preferences:**
+- Natural language captures intent more clearly
+- Publishers know their inventory and can target effectively
+- Avoids channel-specific complexity (DOOH has no browsers)
+- Simpler API with fewer edge cases
+
+## Available Targeting Overlay Parameters
+
+Geographic targeting supports both inclusion (restrict to) and exclusion (exclude from) for all geo dimensions. Inclusion and exclusion fields can be combined — for example, include a country but exclude specific metros within it.
+
+### Exclusion Semantics
+
+**Exclusion without inclusion.** When an exclusion field is present without a corresponding inclusion field, the exclusion applies to the product's full geographic coverage. For example, if a product covers the entire US and the buyer specifies only `geo_metros_exclude`, the excluded metros are removed from the product's national footprint.
+
+**Cross-level resolution.** Geographic levels form a hierarchy: country > region > metro > postal. Sellers SHOULD resolve hierarchical conflicts such that exclusion at a higher level takes precedence over inclusion at a more specific level. For example, `geo_countries_exclude: ["US"]` combined with `geo_regions: ["US-CA"]` SHOULD result in no US delivery — the country-level exclusion takes precedence.
+
+**Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error.
+
+**Capabilities.** Sellers that declare geographic targeting support in `get_adcp_capabilities` SHOULD support both inclusion and exclusion at that level. If a seller only supports one direction, it MUST return a validation error for unsupported fields rather than silently ignoring them.
+
+### geo_countries
+- **Description**: Restrict delivery to specific countries
+- **Format**: ISO 3166-1 alpha-2 country codes
+- **Examples**: `["US", "CA"]`, `["GB", "FR", "DE"]`
+- **Use cases**: Regulatory compliance, country-specific campaigns
+
+### geo_countries_exclude
+- **Description**: Exclude specific countries from delivery
+- **Format**: ISO 3166-1 alpha-2 country codes
+- **Examples**: `["RU", "CN"]`
+- **Use cases**: Regulatory compliance, sanctions
+
+### geo_regions
+- **Description**: Restrict delivery to specific regions/states
+- **Format**: ISO 3166-2 subdivision codes
+- **Examples**: `["US-CA", "US-NY"]`, `["GB-SCT", "GB-ENG"]`
+- **Use cases**: State-level compliance, regional testing
+
+### geo_regions_exclude
+- **Description**: Exclude specific regions/states from delivery
+- **Format**: ISO 3166-2 subdivision codes
+- **Examples**: `["US-CA"]`, `["CA-QC"]`
+- **Use cases**: Regulatory compliance (e.g., cannabis restrictions by province), RCT holdout regions, regions where product is unavailable
+
+### geo_metros
+- **Description**: Restrict delivery to specific metro areas
+- **Format**: Array of objects, each with a `system` and `values`
+- **Systems**: `nielsen_dma` (US), `uk_itl1` / `uk_itl2` (UK), `eurostat_nuts2` (EU), `custom`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["501", "803"] }]`
+- **Use cases**: Local campaigns, metro-level RCT testing
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
+### geo_metros_exclude
+- **Description**: Exclude specific metro areas from delivery
+- **Format**: Array of objects, each with a `system` and `values`
+- **Example**: `[{ "system": "nielsen_dma", "values": ["602"] }]`
+- **Use cases**: RCT holdout markets, competitive exclusion zones, markets where product is unavailable
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
+### geo_postal_areas
+- **Description**: Restrict delivery to specific postal areas
+- **Format**: Array of objects, each with a `system` and `values`
+- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`
+- **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
+- **Use cases**: Hyper-local campaigns, postal-level restrictions
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
+### geo_postal_areas_exclude
+- **Description**: Exclude specific postal areas from delivery
+- **Format**: Array of objects, each with a `system` and `values`
+- **Example**: `[{ "system": "us_zip", "values": ["90210"] }]`
+- **Use cases**: RCT holdout zip codes, restricted delivery areas
+- **Note**: Seller must declare supported systems in `get_adcp_capabilities`
+
+### axe_include_segment
+- **Description**: AXE segment ID for inclusion targeting
+- **Format**: String segment identifier from your AXE platform
+- **Examples**: `"seg_auto_intenders_q1"`, `"audience_lapsed_buyers_30d"`
+- **Use cases**: Dynamic audience targeting, first-party data activation
+- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+
+### axe_exclude_segment
+- **Description**: AXE segment ID for exclusion targeting
+- **Format**: String segment identifier from your AXE platform
+- **Examples**: `"seg_existing_customers"`, `"audience_past_converters"`
+- **Use cases**: Customer suppression, frequency management
+- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+
+### frequency_cap
+- **Description**: Limit ad exposure frequency per user
+- **Format**: Frequency cap object with `suppress_minutes` (required)
+- **Use cases**: User experience management, ad fatigue prevention
+- **Example**: `{"suppress_minutes": 60}`
+
+### age_restriction
+- **Description**: Require minimum age for compliance
+- **Format**: Object with `min` (required), `verification_required`, and `accepted_methods`
+- **Examples**: `{"min": 21, "verification_required": true}`, `{"min": 18, "accepted_methods": ["world_id"]}`
+- **Use cases**: Alcohol (21+), gambling (18+), cannabis regulations
+- **Note**: Platforms declare supported verification methods in `get_adcp_capabilities`
+
+### device_platform
+- **Description**: Restrict to specific operating system platforms
+- **Format**: Array of platform identifiers from Sec-CH-UA-Platform standard
+- **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
+- **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
+- **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### language
+- **Description**: Restrict to users with specific language preferences
+- **Format**: Array of ISO 639-1 two-letter language codes
+- **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
+- **Use cases**: Localized creative, language-specific campaigns
+
+## Benefits for Different Stakeholders
+
+### For Buyers
+- **Simpler planning**: Describe audience needs naturally
+- **Transparent pricing**: All costs included upfront  
+- **Reduced complexity**: No targeting configuration required
+- **Better outcomes**: Publisher expertise optimizes delivery
+
+### For Publishers
+- **Pricing control**: Bundle targeting into product pricing
+- **Expertise utilization**: Apply knowledge of inventory and audiences
+- **Simplified integration**: Fewer technical targeting parameters
+- **Market positioning**: Differentiate through targeting capabilities
+
+### For Platforms
+- **Reduced conflicts**: Single targeting source eliminates layering issues
+- **Cleaner implementation**: Less complex targeting logic required
+- **Better performance**: Optimized for publisher inventory characteristics
+
+## Real-Time Targeting Signals
+
+Orchestrators can provide **real-time targeting signals** to publishers for dynamic, high-cardinality targeting beyond what can be expressed in static overlays. These signals enable:
+
+- **Brand safety** - Real-time content filtering and adjacency controls
+- **Brand suitability** - Contextual alignment with brand values
+- **Audience targeting** - Dynamic audience segments updated in real-time
+- **Contextual targeting** - Page-level or moment-level targeting decisions
+
+Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals/overview), which allows orchestrators to supply targeting data at impression time.
+
+### Key Differences: Signals vs Overlays
+
+- Signals are **evaluated at impression time**, not campaign setup
+- Signals support **higher cardinality** (thousands of values vs. dozens)
+- Signals can be **updated continuously** without modifying the media buy
+- Signals enable **sophisticated contextual targeting** that briefs cannot express
+
+### When to Use Real-Time Signals
+
+✅ **Use Real-Time Signals For:**
+- Brand safety filtering (block unsafe content)
+- Brand suitability scoring (prefer suitable contexts)
+- Dynamic audience targeting (real-time segment membership)
+- Contextual targeting (page-level or moment-level decisions)
+- High-cardinality targeting (thousands of values)
+- Targeting that changes during campaign flight
+
+## Implementation Requirements
+
+### Publishers MUST:
+
+1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
+2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
+3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
+4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions
+
+### Buyers SHOULD:
+
+1. **Use Briefs First**: Express most targeting needs in natural language briefs
+2. **Minimize Overlays**: Only use technical targeting for geographic restrictions or RCT testing
+3. **Trust Publishers**: Let publishers apply their inventory knowledge to brief interpretation
+4. **Validate Early**: Check product capabilities before applying technical targeting
+
+## Best Practices
+
+1. **Default to briefs** - Start with natural language descriptions
+2. **Write Clear Briefs**: Be specific about audience and context requirements
+3. **Trust Publisher Expertise**: Publishers know their inventory capabilities best
+4. **Use signals for dynamic targeting** - Real-time signals handle complex, high-cardinality targeting better than overlays
+5. **Minimize Technical Overlays**: Use only for geographic restrictions or compliance
+6. **Validate Audience Fit**: Ensure product descriptions match campaign goals
+7. **Inclusive pricing** - Expect targeting costs to be built into product rates
+
+## Future Evolution
+
+- **Enhanced Brief Processing**: More sophisticated natural language understanding
+- **Audience Discovery**: Better tools for exploring available audiences
+- **Deeper Signal Integration**: More sophisticated real-time targeting capabilities
+- **Performance Optimization**: AI-driven audience refinement based on campaign results
+
+## Related Documentation
+
+- **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)** - Real-time execution layer for dynamic targeting
+- **[Signals Protocol](/docs/signals/overview)** - Real-time targeting signals for brand suitability and contextual targeting
+- **[Product Discovery](/docs/media-buy/product-discovery/)** - How briefs lead to targeted product recommendations
+- **[Example Briefs](/docs/media-buy/product-discovery/example-briefs)** - Real examples of effective targeting briefs
+- **[Policy Compliance](/docs/media-buy/media-buys/policy-compliance)** - Automated compliance checking and enforcement
