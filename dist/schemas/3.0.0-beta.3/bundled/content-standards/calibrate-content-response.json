@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/bundled/content-standards/calibrate-content-response.json",
+  "title": "Calibrate Content Response",
+  "description": "Response payload with verdict and detailed explanations for collaborative calibration",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response with detailed calibration feedback",
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ],
+          "description": "Overall pass/fail verdict for the content evaluation"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Model confidence in the verdict (0-1)"
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Detailed natural language explanation of the decision"
+        },
+        "features": {
+          "type": "array",
+          "description": "Per-feature breakdown with explanations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Which feature was evaluated (e.g., brand_safety, brand_suitability, competitor_adjacency)"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "passed",
+                  "failed",
+                  "warning",
+                  "unevaluated"
+                ],
+                "description": "Evaluation status for this feature"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "Human-readable explanation of why this feature passed or failed"
+              }
+            },
+            "required": [
+              "feature_id",
+              "status"
+            ]
+          }
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        }
+      },
+      "required": [
+        "verdict"
+      ]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "title": "Error",
+            "description": "Standard error structure for task-specific errors and warnings",
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code for programmatic handling"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "field": {
+                "type": "string",
+                "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+              },
+              "suggestion": {
+                "type": "string",
+                "description": "Suggested fix for the error"
+              },
+              "retry_after": {
+                "type": "number",
+                "description": "Seconds to wait before retrying the operation",
+                "minimum": 0
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional task-specific error details",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "verdict": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        }
+      },
+      "required": [
+        "errors"
+      ]
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-02-12T12:28:49.077Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

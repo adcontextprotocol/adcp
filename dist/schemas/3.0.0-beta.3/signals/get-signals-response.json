@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
+  "title": "Get Signals Response",
+  "description": "Response payload for get_signals task",
+  "type": "object",
+  "properties": {
+    "signals": {
+      "type": "array",
+      "description": "Array of matching signals",
+      "items": {
+        "type": "object",
+        "properties": {
+          "signal_id": {
+            "$ref": "/schemas/3.0.0-beta.3/core/signal-id.json",
+            "description": "Universal signal identifier referencing the data provider's catalog. Use this to verify authorization and look up signal definitions."
+          },
+          "signal_agent_segment_id": {
+            "type": "string",
+            "description": "Opaque identifier used for activation. This is the signals agent's internal segment ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable signal name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed signal description"
+          },
+          "value_type": {
+            "$ref": "/schemas/3.0.0-beta.3/enums/signal-value-type.json",
+            "description": "The data type of this signal's values (binary, categorical, numeric)"
+          },
+          "signal_type": {
+            "$ref": "/schemas/3.0.0-beta.3/enums/signal-catalog-type.json",
+            "description": "Catalog type of signal (marketplace, custom, owned)"
+          },
+          "data_provider": {
+            "type": "string",
+            "description": "Human-readable name of the data provider"
+          },
+          "coverage_percentage": {
+            "type": "number",
+            "description": "Percentage of audience coverage",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "deployments": {
+            "type": "array",
+            "description": "Array of deployment targets",
+            "items": {
+              "$ref": "/schemas/3.0.0-beta.3/core/deployment.json"
+            }
+          },
+          "pricing": {
+            "type": "object",
+            "description": "Pricing information",
+            "properties": {
+              "cpm": {
+                "type": "number",
+                "description": "Cost per thousand impressions",
+                "minimum": 0
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency code",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            "required": [
+              "cpm",
+              "currency"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., signal discovery or pricing issues)",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.3/core/pagination-response.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "signals"
+  ],
+  "additionalProperties": true
+}

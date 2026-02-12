@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/account/list-accounts-request.json",
+  "title": "List Accounts Request",
+  "description": "Request parameters for listing accounts accessible to the authenticated agent",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+      "description": "Filter accounts by status. Omit to return accounts in all statuses."
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.3/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

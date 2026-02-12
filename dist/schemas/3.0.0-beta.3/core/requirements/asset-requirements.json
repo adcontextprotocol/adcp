@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/requirements/asset-requirements.json",
+  "title": "Asset Requirements",
+  "description": "Technical requirements for creative assets. The applicable schema is determined by the sibling asset_type field.",
+  "oneOf": [
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/image-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/video-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/audio-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/text-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/markdown-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/html-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/css-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/javascript-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/vast-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/daast-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/promoted-offerings-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/url-asset-requirements.json" },
+    { "$ref": "/schemas/3.0.0-beta.3/core/requirements/webhook-asset-requirements.json" }
+  ]
+}

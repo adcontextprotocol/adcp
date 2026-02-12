@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/task-type.json",
+  "title": "Task Type",
+  "description": "Valid AdCP task types across all domains. These represent the complete set of operations that can be tracked via the task management system.",
+  "type": "string",
+  "enum": [
+    "create_media_buy",
+    "update_media_buy",
+    "sync_creatives",
+    "activate_signal",
+    "get_signals",
+    "create_property_list",
+    "update_property_list",
+    "get_property_list",
+    "list_property_lists",
+    "delete_property_list",
+    "sync_accounts",
+    "get_creative_delivery",
+    "sync_event_sources",
+    "log_event"
+  ],
+  "enumDescriptions": {
+    "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
+    "update_media_buy": "Media-buy domain: Update campaign settings, package configuration, or delivery parameters",
+    "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
+    "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
+    "get_signals": "Signals domain: Discover available audience signals based on natural language description",
+    "create_property_list": "Property domain: Create a new property list with filters and brand manifest",
+    "update_property_list": "Property domain: Update an existing property list",
+    "get_property_list": "Property domain: Retrieve a property list with resolved properties",
+    "list_property_lists": "Property domain: List all accessible property lists",
+    "delete_property_list": "Property domain: Delete a property list",
+    "sync_accounts": "Account domain: Sync advertiser accounts with a seller, declaring brands, operators, and billing arrangements",
+    "get_creative_delivery": "Creative domain: Retrieve variant-level creative delivery data",
+    "sync_event_sources": "Media-buy domain: Configure event sources on an account with upsert semantics",
+    "log_event": "Media-buy domain: Send conversion or marketing events for attribution"
+  },
+  "notes": [
+    "Task types map to specific AdCP task operations",
+    "Each task type belongs to the 'media-buy', 'signals', 'property', 'account', or 'creative' domain",
+    "This enum is used in task management APIs (tasks/list, tasks/get) and webhook payloads",
+    "New task types require a minor version bump per semantic versioning"
+  ]
+}
