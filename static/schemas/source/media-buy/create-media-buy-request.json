@@ -11,7 +11,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Account to bill for this media buy. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."
+      "description": "Account to bill for this media buy. Required when the agent has access to multiple accounts; when omitted, the seller uses the agent's sole account. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."
     },
     "proposal_id": {
       "type": "string",
@@ -144,7 +144,6 @@
   },
   "required": [
     "buyer_ref",
-    "account_id",
     "brand_manifest",
     "start_time",
     "end_time"
