@@ -11,25 +11,37 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ## Version 3.0.0-beta.3
 
-**Status:** Upcoming | [Migration Guide](/docs/reference/migrating-to-v3)
+**Status:** Beta | [Migration Guide](/docs/reference/migrating-to-v3)
 
 ### What's New
 
-1. **Brand Protocol** - Brand discovery and identity resolution via `brand.json`. Four manifest variants (authoritative redirect, house redirect, brand agent, house portfolio) with builder tools, registry, and admin UI.
+1. **Delivery Forecasting** - Predict campaign performance before committing budget. New `DeliveryForecast` type with budget curves, forecast methods (estimate, modeled, guaranteed), daypart targeting windows, and GRP demographic notation. Forecasts attach to product allocations and proposals, enabling budget curve analysis across spend levels.
 
-2. **Conversion Tracking** - New events protocol with `sync_event_sources` and `log_event` tasks for attribution and measurement.
+2. **Brand Protocol** - Brand discovery and identity resolution via `brand.json`. Four manifest variants (authoritative redirect, house redirect, brand agent, house portfolio) with builder tools, registry, and admin UI. Brands declare `authorized_operators` to control which agents can represent them.
 
-3. **Signal Catalog** - Data providers become first-class members with signal definitions, categories, targeting schemas, and value types. New schemas for signal discovery and integration into products.
+3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Three-party billing model (brand, operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
 
-4. **Cursor-Based Pagination** - All list operations (`list_creatives`, `tasks_list`, `list_property_lists`, `get_property_list`, `get_media_buy_artifacts`) standardized on cursor-based pagination with shared `pagination-request.json` and `pagination-response.json` schemas.
+4. **Commerce Media** - `product_selectors` on `get_products` for commerce product discovery. `manifest_gtins` on promoted products for cross-retailer GTIN matching. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response aggregated totals and daily breakdown. See the [Commerce Media Guide](/docs/guides/commerce-media).
 
-5. **Targeting Restrictions** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. Geographic exclusion fields (`geo_countries_exclude`, `geo_regions_exclude`, `geo_metros_exclude`, `geo_postal_areas_exclude`) enable RCT holdout groups and regulatory exclusions. These are compliance/technical restrictions, not audience targeting.
+5. **Creative Delivery Reporting** - Per-creative metrics breakdown within `by_package` in delivery responses. New `get_creative_delivery` task on creative agents for variant-level delivery data with manifests. Three variant tiers: standard (1:1), asset group optimization, and generative creative. Format-level `reported_metrics` declare which metrics each format can provide.
 
-6. **Typed Asset Requirements** - Discriminated union schemas for all 13 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, promoted offerings, URL, webhook) using `asset_type` as discriminator.
+6. **CPA & TIME Pricing Models** - Two new pricing models. CPA (Cost Per Acquisition) for outcome-based campaigns — covers CPO, CPL, CPI use cases differentiated by `event_type`. TIME for sponsorship-based advertising where price scales with duration (hour, day, week, month) with optional min/max constraints.
 
-7. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `SHOW_NAME`, `EPISODE_ID`, `AUDIO_DURATION`.
+7. **Conversion Tracking** - New events protocol with `sync_event_sources` and `log_event` tasks for attribution and measurement.
 
-8. **Brand Manifest Improvements** - Structured tone object with `voice`, `attributes`, `dos`, `donts` fields. Logo objects gain `orientation`, `background`, `variant`, `usage` fields.
+8. **Signal Catalog** - Data providers become first-class members with signal definitions, categories, targeting schemas, and value types. New schemas for signal discovery and integration into products.
+
+9. **Cursor-Based Pagination** - All list operations (`list_creatives`, `tasks_list`, `list_property_lists`, `get_property_list`, `get_media_buy_artifacts`) standardized on cursor-based pagination with shared `pagination-request.json` and `pagination-response.json` schemas.
+
+10. **Accessibility in Creative Formats** - Two-layer accessibility model. Format-level `wcag_level` (A/AA/AAA) and `requires_accessible_assets` flag. Asset-level metadata for inspectable assets (alt text, captions, transcripts) and self-declared properties for opaque assets (keyboard navigable, motion control). Buyers can filter by `wcag_level` in `list_creative_formats`.
+
+11. **Targeting Restrictions & Geo Exclusion** - Functional restriction overlays for age (with verification methods), device platform (Sec-CH-UA-Platform values), and language localization. Geographic exclusion fields (`geo_countries_exclude`, `geo_regions_exclude`, `geo_metros_exclude`, `geo_postal_areas_exclude`) enable RCT holdout groups and regulatory exclusions.
+
+12. **Typed Asset Requirements** - Discriminated union schemas for all 13 asset types (image, video, audio, text, markdown, HTML, CSS, JavaScript, VAST, DAAST, promoted offerings, URL, webhook) using `asset_type` as discriminator.
+
+13. **Universal Macros** - `universal-macro.json` enum defining all 54 standard ad-serving macros, including 6 new additions: `GPP_SID`, `IP_ADDRESS`, `STATION_ID`, `SHOW_NAME`, `EPISODE_ID`, `AUDIO_DURATION`.
+
+14. **Brand Manifest Improvements** - Structured tone object with `voice`, `attributes`, `dos`, `donts` fields. Logo objects gain `orientation`, `background`, `variant`, `usage` fields.
 
 ### Breaking Changes
 
@@ -40,9 +52,15 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ### Other Changes
 
+- `optimization_goal` on package requests — buyers can specify conversion goals when creating or updating media buys
+- Attribution window metadata on delivery response: `click_window_days`, `view_window_days`, and attribution `model` (last_touch, first_touch, linear, time_decay, data_driven)
+- Channel fields on property and product schemas: `supported_channels` and `channels` referencing Media Channel Taxonomy enum
 - `account_id` added to `get_media_buy_delivery` and `get_media_buy_artifacts` requests
+- `date_range_support` in reporting capabilities
+- `minItems: 1` on request-side arrays for stricter validation
 - `FormatCategory` enum deprecated; `type` field on Format objects now optional
 - `format_id` optional in `preview_creative` (falls back to `creative_manifest.format_id`)
+- `selection_mode` on repeatable asset groups to distinguish sequential (carousel) from optimize (asset pool) behavior
 - Session ID fallback recommendation for MCP agent `context_id`
 
 ---

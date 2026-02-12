@@ -17,7 +17,7 @@ Version 2.5.0 delivered developer experience and API refinement improvements inc
 - **Type Safety & Code Generation** - Discriminator fields throughout for excellent TypeScript/Python type inference
 - **Batch Creative Previews** - Preview up to 50 creatives in a single call (5-10x faster)
 - **Schema Infrastructure** - Build-time versioning with semantic paths (`/schemas/v2.5/`)
-- **Agent Cards** - ADCP extension schema for capability discovery
+- **Agent Cards** - AdCP extension schema for capability discovery
 - **Brand Manifest** - Standardized brand information for creative generation
 - **Template Formats** - Dynamic creative sizing via `accepts_parameters` (dimensions, duration, etc.)
 - **Inline Creative Updates** - `sync_creatives` task for updating creatives in existing campaigns
@@ -35,32 +35,27 @@ From December 2025 through year end:
 
 ## Version 3.0.0 - Major Update
 
-**Target Release:** January 15, 2026
+**Current Status:** beta.3 released | [View Release Notes](./release-notes#version-300-beta3)
 
-Version 3.0 represents a significant evolution of the protocol with several major new capabilities.
+Version 3.0 is a major evolution of the protocol. Three beta releases have shipped:
 
-### Confirmed Features
+- **beta.1** - Media Channel Taxonomy (19 channels), Governance Protocol, Sponsored Intelligence, `get_adcp_capabilities`, creative assignment weighting, global geo targeting
+- **beta.2** - Accounts & Agents, property targeting, A2UI for Sponsored Intelligence, CTV/streaming constraints, creative protocol discovery
+- **beta.3** - Delivery forecasting, brand protocol, account management, commerce media, creative delivery reporting, CPA & TIME pricing, conversion tracking, signal catalog, cursor-based pagination, accessibility, targeting restrictions
 
-#### Creative Agent Protocol Enhancements
-- **Hosted Creative Sets** - New protocol for managing collections of related creatives
+### Remaining for GA
 
-#### Registry & Discovery
+- **Creative Governance** - Creative guidelines, approval workflows, and brand compliance controls for creative agents
+- **Hosted Creative Sets** - Protocol for managing collections of related creatives
 - **Property Registry** - Centralized registry for publisher property definitions
-
-### Under Consideration
-
-These features are in active development but may not make the 3.0 release:
-- Better namespace management for custom capabilities
+- Namespace management for custom capabilities
+- Final migration guide review
 
 ---
 
 ## Future Work (No Target Date)
 
 The following features are in the working group planning stages:
-
-### Governance Protocol [3.0]
-
-Property governance (property lists, filters, adagents.json authorization), brand standards (brand manifests, creative guidelines), and compliance controls. See the [Governance Protocol](/docs/governance/overview) for current specification.
 
 ### Private Marketplace (PMP) Support
 - Deal ID integration
