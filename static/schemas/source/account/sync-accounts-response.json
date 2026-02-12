@@ -197,8 +197,8 @@
         "accounts": [
           {
             "account_id": "acc_agent_house",
-            "house": "coca-cola.com",
-            "name": "Coca-Cola (via agent)",
+            "house": "acme-corp.com",
+            "name": "Acme Corp (via agent)",
             "action": "created",
             "status": "active",
             "billing": "agent",

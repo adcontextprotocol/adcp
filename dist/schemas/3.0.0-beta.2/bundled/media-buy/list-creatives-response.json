@@ -108,7 +108,7 @@
               },
               "name": {
                 "type": "string",
-                "description": "Human-readable account name (e.g., 'Coke', 'Coke c/o Publicis')"
+                "description": "Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')"
               },
               "advertiser": {
                 "type": "string",
@@ -170,32 +170,32 @@
               {
                 "description": "Direct advertiser account",
                 "data": {
-                  "account_id": "acc_coke_direct",
-                  "name": "Coke",
-                  "advertiser": "The Coca-Cola Company",
+                  "account_id": "acc_acme_direct",
+                  "name": "Acme",
+                  "advertiser": "Acme Corp",
                   "status": "active",
-                  "rate_card": "coke_vip_2024",
+                  "rate_card": "acme_vip_2024",
                   "payment_terms": "net_30"
                 }
               },
               {
                 "description": "Advertiser account with agency billing proxy",
                 "data": {
-                  "account_id": "acc_coke_publicis",
-                  "name": "Coke c/o Publicis",
-                  "advertiser": "The Coca-Cola Company",
-                  "billing_proxy": "Publicis Media",
+                  "account_id": "acc_acme_pinnacle",
+                  "name": "Acme c/o Pinnacle",
+                  "advertiser": "Acme Corp",
+                  "billing_proxy": "Pinnacle Media",
                   "status": "active",
-                  "rate_card": "coke_vip_2024",
+                  "rate_card": "acme_vip_2024",
                   "payment_terms": "net_60"
                 }
               },
               {
                 "description": "Agency as direct buyer",
                 "data": {
-                  "account_id": "acc_publicis",
-                  "name": "Publicis",
-                  "advertiser": "Publicis Media",
+                  "account_id": "acc_pinnacle",
+                  "name": "Pinnacle",
+                  "advertiser": "Pinnacle Media",
                   "status": "active",
                   "rate_card": "agency_standard",
                   "payment_terms": "net_45"
