@@ -3218,6 +3218,31 @@ async function handleReactionAdded({
     content_sanitized: userInput,
   });
 
+  // Fetch conversation history from database for context
+  const MAX_HISTORY_MESSAGES = 10;
+  let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  try {
+    const previousMessages = await threadService.getThreadMessages(thread.thread_id);
+    if (previousMessages.length > 0) {
+      conversationHistory = previousMessages
+        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(msg => ({
+          user: msg.role === 'user' ? 'User' : 'Addie',
+          text: msg.content_sanitized || msg.content,
+        }));
+
+      if (conversationHistory.length > 0) {
+        logger.debug(
+          { threadId: thread.thread_id, messageCount: conversationHistory.length },
+          'Addie Bolt: Loaded conversation history for reaction handler'
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch reaction conversation history');
+  }
+
   // Fetch channel context (includes working group if channel is linked to one)
   let channelContext: ThreadContext | undefined;
   try {
@@ -3241,7 +3266,7 @@ async function handleReactionAdded({
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {
