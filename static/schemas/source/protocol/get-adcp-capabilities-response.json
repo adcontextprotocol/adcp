@@ -38,6 +38,42 @@
       },
       "minItems": 1
     },
+    "account": {
+      "type": "object",
+      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "properties": {
+        "require_operator_auth": {
+          "type": "boolean",
+          "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
+          "default": false
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
+        },
+        "supported_billing": {
+          "type": "array",
+          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "items": {
+            "type": "string",
+            "enum": ["brand", "operator", "agent"]
+          },
+          "minItems": 1
+        },
+        "default_billing": {
+          "type": "string",
+          "enum": ["brand", "operator", "agent"],
+          "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
+        },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "default": false
+        }
+      },
+      "required": ["supported_billing"]
+    },
     "media_buy": {
       "type": "object",
       "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",

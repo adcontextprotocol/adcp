@@ -15,6 +15,7 @@
     "get_property_list",
     "list_property_lists",
     "delete_property_list",
+    "sync_accounts",
     "get_creative_delivery",
     "sync_event_sources",
     "log_event"
@@ -30,13 +31,14 @@
     "get_property_list": "Property domain: Retrieve a property list with resolved properties",
     "list_property_lists": "Property domain: List all accessible property lists",
     "delete_property_list": "Property domain: Delete a property list",
+    "sync_accounts": "Account domain: Sync advertiser accounts with a seller, declaring brands, operators, and billing arrangements",
     "get_creative_delivery": "Creative domain: Retrieve variant-level creative delivery data",
     "sync_event_sources": "Media-buy domain: Configure event sources on an account with upsert semantics",
     "log_event": "Media-buy domain: Send conversion or marketing events for attribution"
   },
   "notes": [
     "Task types map to specific AdCP task operations",
-    "Each task type belongs to the 'media-buy', 'signals', 'property', or 'creative' domain",
+    "Each task type belongs to the 'media-buy', 'signals', 'property', 'account', or 'creative' domain",
     "This enum is used in task management APIs (tasks/list, tasks/get) and webhook payloads",
     "New task types require a minor version bump per semantic versioning"
   ]

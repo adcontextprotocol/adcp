@@ -7,9 +7,8 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["active", "suspended", "closed", "all"],
-      "default": "active",
-      "description": "Filter accounts by status"
+      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+      "description": "Filter accounts by status. Omit to return accounts in all statuses."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"

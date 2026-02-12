@@ -213,6 +213,7 @@ const exampleData = {
   
   createMediaBuyRequest: {
     "buyer_ref": "nike_q1_campaign_2024",
+    "account_id": "acc_nike_001",
     "packages": [
       {
         "buyer_ref": "nike_ctv_sports_package",
@@ -242,6 +243,7 @@ const exampleData = {
 
   createMediaBuyRequestAsap: {
     "buyer_ref": "acme_flash_sale_campaign",
+    "account_id": "acc_acme_001",
     "packages": [
       {
         "buyer_ref": "acme_display_package",
