@@ -1280,18 +1280,14 @@ export function createEventsRouter(): {
         currency: tier.currency || "USD",
       });
 
-      // Ensure Stripe customer exists
-      let stripeCustomerId = org.stripe_customer_id;
-      if (!stripeCustomerId) {
-        stripeCustomerId = await createStripeCustomer({
+      // Ensure Stripe customer exists (row-level lock prevents duplicate creation)
+      const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(org_id, () =>
+        createStripeCustomer({
           email: user.email,
           name: org.name,
           metadata: { workos_organization_id: org_id },
-        });
-        if (stripeCustomerId) {
-          await orgDb.setStripeCustomerId(org_id, stripeCustomerId);
-        }
-      }
+        })
+      );
 
       // Create a one-time price for this sponsorship
       // Note: In production, you might want to create products/prices in Stripe admin
