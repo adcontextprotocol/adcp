@@ -10,7 +10,7 @@ AdCP distinguishes three entities in every billable operation:
 | **Brand** | Whose products are advertised? | House domain + brand_id ([brand.json](/docs/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | `account_id` |
 | **Operator** | Who operates the seat? | Domain (e.g., `groupm.com`) |
-| **Agent** | What software is placing the buy? | Authentication token |
+| **Agent** | What software is placing the buy? | Authenticated session (see [Trust Model](#trust-model)) |
 
 ## Core Concepts
 
@@ -80,7 +80,7 @@ Rates: GroupM's rates
 Billing: agent
 Invoice: Seller → Agent
 Rates: Agent's rates
-Agent re-bills individual advertisers
+Agent re-bills individual brands and operators
 ```
 
 ## Account Setup
@@ -101,6 +101,7 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 | `require_operator_auth` | Whether the seller requires operator-level credentials. Default: `false`. |
 | `authorization_endpoint` | OAuth URL for obtaining operator credentials. Present when the seller supports OAuth for operator authentication. |
 | `supported_billing` | Which billing models the seller supports: `brand`, `operator`, `agent` |
+| `default_billing` | The billing model applied when the agent omits `billing` from sync_accounts. |
 | `required_for_products` | Whether `get_products` requires an `account_id`. When true, set up an account before browsing. |
 
 ### Trust Model
@@ -171,7 +172,7 @@ Each account entry identifies the brand by house domain + brand_id, the operator
 | `house` | Yes | House domain where `brand.json` is hosted. For single-brand houses, this alone identifies the brand. |
 | `brand_id` | No | Brand ID within the house portfolio. Required when the house has multiple brands. |
 | `operator` | No | Domain of the entity operating the seat. Omit if the brand operates its own seat. |
-| `billing` | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. |
+| `billing` | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. The seller returns the actual billing model in the sync_accounts response, so the agent always knows what was applied. |
 
 **Natural key:** The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "coca-cola.com"}` (brand buying direct) is a different account from `{house: "coca-cola.com", operator: "groupm.com"}` (brand via agency). The seller uses this natural key for upsert matching across sync calls.
 
@@ -241,6 +242,8 @@ An account can be `action: "created"` with `status: "pending_approval"` (new acc
 | `pending_authorization` | Brand must authorize operator | Someone at the brand (e.g., `@unilever.com`) must approve the operator's access. Visit `setup.url`. |
 | `suspended` | Was active, now paused | Contact seller to resolve |
 | `closed` | Terminated | — |
+
+An account may require multiple steps before becoming active (e.g., operator authorization *and* credit approval). The `setup.url` points to the seller's workflow, which handles multi-step processes internally. The account status reflects the current blocker — it may transition from `pending_authorization` to `pending_approval` to `active` as each step completes. The agent polls `list_accounts` (or uses push notifications) to track progress through the seller's setup flow.
 
 ### Billing Negotiation
 
