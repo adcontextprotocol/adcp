@@ -75,6 +75,9 @@ import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { InsightsDatabase } from "./db/insights-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
+import { RegistryBansDatabase } from "./db/registry-bans-db.js";
+import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
+import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -388,6 +391,7 @@ export class HTTPServer {
   private brandDb: BrandDatabase;
   private brandManager: BrandManager;
   private propertyDb: PropertyDatabase;
+  private bansDb: RegistryBansDatabase;
 
   constructor() {
     this.app = express();
@@ -402,6 +406,7 @@ export class HTTPServer {
     this.brandDb = new BrandDatabase();
     this.brandManager = new BrandManager();
     this.propertyDb = new PropertyDatabase();
+    this.bansDb = new RegistryBansDatabase();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -1364,7 +1369,7 @@ export class HTTPServer {
     // API endpoints
 
     // Public config endpoint - returns feature flags and auth state for nav
-    this.app.get("/api/config", optionalAuth, (req, res) => {
+    this.app.get("/api/config", optionalAuth, async (req, res) => {
       // Prevent caching - auth state changes on login/logout
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -1377,13 +1382,18 @@ export class HTTPServer {
         isAdmin = adminEmails.includes(req.user.email.toLowerCase());
       }
 
-      const user = req.user ? {
-        id: req.user.id,
-        email: req.user.email,
-        firstName: req.user.firstName,
-        lastName: req.user.lastName,
-        isAdmin,
-      } : null;
+      let user = null;
+      if (req.user) {
+        await enrichUserWithMembership(req.user as any);
+        user = {
+          id: req.user.id,
+          email: req.user.email,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          isAdmin,
+          isMember: !!(req.user as any).isMember,
+        };
+      }
 
       res.json({
         authEnabled: AUTH_ENABLED,
@@ -1611,9 +1621,14 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'registry.html');
     });
 
-    // AdAgents Manager UI route - serve adagents.html at /adagents
+    // adagents.json project landing page
     this.app.get("/adagents", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'adagents.html');
+      await this.serveHtmlWithConfig(req, res, 'adagents-landing.html');
+    });
+
+    // adagents.json builder tool
+    this.app.get("/adagents/builder", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
@@ -1634,6 +1649,16 @@ export class HTTPServer {
     // Individual member profile page
     this.app.get("/members/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'members.html');
+    });
+
+    // brand.json project landing page
+    this.app.get("/brand", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-landing.html');
+    });
+
+    // Standalone brand registry page
+    this.app.get("/brands", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brands.html');
     });
 
     // Publishers registry page
@@ -1910,6 +1935,46 @@ export class HTTPServer {
       }
     });
 
+    // ========== Unified Search API ==========
+
+    // GET /api/search?q=<query> - Search across brands, publishers, and properties
+    this.app.get('/api/search', async (req, res) => {
+      const q = (req.query.q as string || '').trim();
+      if (q.length < 2) {
+        return res.status(400).json({ error: 'Query must be at least 2 characters' });
+      }
+
+      try {
+        const [brands, properties, members] = await Promise.all([
+          this.brandDb.getAllBrandsForRegistry({ search: q, limit: 5 }),
+          this.propertyDb.getAllPropertiesForRegistry({ search: q, limit: 5 }),
+          new MemberDatabase().getPublicProfiles({}),
+        ]);
+
+        // Filter publishers client-side (small dataset, matches /api/public/publishers pattern)
+        const qLower = q.toLowerCase();
+        const publishers = members
+          .flatMap((m) =>
+            (m.publishers || [])
+              .filter((p) => p.is_public)
+              .map((p) => ({
+                domain: p.domain,
+                member: { display_name: m.display_name },
+              }))
+          )
+          .filter((p) =>
+            p.domain.toLowerCase().includes(qLower) ||
+            p.member.display_name?.toLowerCase().includes(qLower)
+          )
+          .slice(0, 5);
+
+        return res.json({ brands, publishers, properties });
+      } catch (error) {
+        logger.error({ error }, 'Search failed');
+        return res.status(500).json({ error: 'Search failed' });
+      }
+    });
+
     // ========== Brand Registry API Routes ==========
 
     // GET /api/brands/registry - List all brands in the registry
@@ -2023,26 +2088,92 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/discovered - Save a discovered/enriched brand
-    this.app.post('/api/brands/discovered', async (req, res) => {
+    // POST /api/brands/discovered - Save a discovered/enriched brand (admin only)
+    this.app.post('/api/brands/discovered', requireAuth, async (req, res) => {
       try {
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
         const { domain, brand_name, brand_manifest, source_type } = req.body;
         if (!domain) {
           return res.status(400).json({ error: 'domain required' });
         }
 
+        const validSourceTypes = ['brand_json', 'hosted', 'enriched', 'community'];
         const brand = await this.brandDb.upsertDiscoveredBrand({
           domain,
           brand_name,
           brand_manifest,
           has_brand_manifest: !!brand_manifest,
-          source_type: source_type || 'enriched',
+          source_type: validSourceTypes.includes(source_type) ? source_type : 'enriched',
         });
 
         return res.json(brand);
       } catch (error) {
         logger.error({ error }, 'Failed to save discovered brand');
         return res.status(500).json({ error: 'Failed to save brand' });
+      }
+    });
+
+    // POST /api/brands/discovered/community - Create a new community brand (member-authenticated, pending review)
+    this.app.post('/api/brands/discovered/community', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to create brands' });
+        }
+
+        const { domain, brand_name, house_domain, keller_type, parent_brand, brand_manifest } = req.body;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBanned('brand', req.user!.id, domain.toLowerCase());
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from creating brands', reason: banCheck.ban?.reason });
+        }
+
+        const brand = await this.brandDb.createDiscoveredBrand({
+          domain,
+          brand_name,
+          house_domain,
+          keller_type,
+          parent_brand,
+          brand_manifest,
+          has_brand_manifest: !!brand_manifest,
+          source_type: 'community',
+        }, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryCreate({
+          entity_type: 'brand',
+          domain: brand.domain,
+          editor_email: req.user!.email,
+        }).then((slack_thread_ts) => {
+          reviewNewRecord({
+            entity_type: 'brand',
+            domain: brand.domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            snapshot: brand as unknown as Record<string, unknown>,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'New brand review failed'));
+        }).catch((err) => logger.error({ err }, 'New brand notification failed'));
+
+        return res.json({ brand, review_status: 'pending' });
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Brand already exists for this domain' });
+        }
+        logger.error({ error }, 'Failed to create community brand');
+        return res.status(500).json({ error: 'Failed to create brand' });
       }
     });
 
@@ -2183,9 +2314,200 @@ export class HTTPServer {
       }
     });
 
+    // ========== Brand Wiki Routes ==========
+
+    // PUT /api/brands/discovered/:domain - Edit a community/enriched brand with revision tracking
+    this.app.put('/api/brands/discovered/:domain', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to edit brands' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const { edit_summary, ...fields } = req.body;
+        if (!edit_summary || typeof edit_summary !== 'string') {
+          return res.status(400).json({ error: 'edit_summary required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBanned('brand', req.user!.id, domain);
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+        }
+
+        const { brand, revision_number } = await this.brandDb.editDiscoveredBrand(domain, {
+          ...fields,
+          edit_summary,
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Get old snapshot for review
+        const oldRevision = await this.brandDb.getBrandRevision(domain, revision_number);
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryEdit({
+          entity_type: 'brand',
+          domain,
+          editor_email: req.user!.email,
+          edit_summary,
+          revision_number,
+        }).then((slack_thread_ts) => {
+          reviewRegistryEdit({
+            entity_type: 'brand',
+            domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            edit_summary,
+            old_snapshot: oldRevision?.snapshot || {},
+            new_snapshot: brand as unknown as Record<string, unknown>,
+            revision_number,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'Registry review failed'));
+        }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
+
+        return res.json({ brand, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        if (error.message?.includes('Cannot edit')) {
+          return res.status(403).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to edit discovered brand');
+        return res.status(500).json({ error: 'Failed to edit brand' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/revisions - Brand revision history
+    this.app.get('/api/brands/discovered/:domain/revisions', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const revisions = await this.brandDb.getBrandRevisions(domain, { limit, offset });
+        const total = await this.brandDb.getBrandRevisionCount(domain);
+        return res.json({ revisions, total });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get brand revisions');
+        return res.status(500).json({ error: 'Failed to get revisions' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/revisions/:num - Single revision
+    this.app.get('/api/brands/discovered/:domain/revisions/:num', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const num = parseInt(req.params.num);
+        if (isNaN(num)) {
+          return res.status(400).json({ error: 'Invalid revision number' });
+        }
+        const revision = await this.brandDb.getBrandRevision(domain, num);
+        if (!revision) {
+          return res.status(404).json({ error: 'Revision not found' });
+        }
+        return res.json(revision);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get brand revision');
+        return res.status(500).json({ error: 'Failed to get revision' });
+      }
+    });
+
+    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision (admin only)
+    this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const { to_revision } = req.body;
+        if (!to_revision || typeof to_revision !== 'number') {
+          return res.status(400).json({ error: 'to_revision (number) required' });
+        }
+
+        const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        notifyRegistryRollback({
+          entity_type: 'brand',
+          domain,
+          rolled_back_to: to_revision,
+          rolled_back_by_email: req.user!.email,
+          revision_number,
+        }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
+
+        return res.json({ brand, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to rollback brand');
+        return res.status(500).json({ error: 'Failed to rollback brand' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/edit-status - Check if brand is editable
+    this.app.get('/api/brands/discovered/:domain/edit-status', optionalAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+
+        if (!brand) {
+          return res.json({ editable: false, reason: 'Brand not found in registry' });
+        }
+        if (brand.source_type === 'brand_json') {
+          return res.json({ editable: false, reason: 'Managed by brand owner via brand.json' });
+        }
+        if (brand.review_status === 'pending') {
+          return res.json({ editable: false, reason: 'Pending review' });
+        }
+
+        // Check ban if authenticated
+        if (req.user) {
+          const banCheck = await this.bansDb.isUserBanned('brand', req.user.id, domain);
+          if (banCheck.banned) {
+            return res.json({ editable: false, reason: 'You are banned from editing this brand', ban_reason: banCheck.ban?.reason });
+          }
+        }
+
+        return res.json({
+          editable: true,
+          source_type: brand.source_type,
+          brand_name: brand.brand_name,
+          brand_manifest: brand.brand_manifest,
+          house_domain: brand.house_domain,
+          keller_type: brand.keller_type,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to check brand edit status');
+        return res.status(500).json({ error: 'Failed to check edit status' });
+      }
+    });
+
+    // brand.json builder tool (must be before wildcard /brand/view/:domain)
+    this.app.get('/brand/builder', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-builder.html');
+    });
+
     // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
     this.app.get('/brand/view/:domain(*)', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
+    });
+
+    // GET /property/view/:domain - Property viewer page (wildcard captures dots in domain names)
+    this.app.get('/property/view/:domain(*)', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
     // GET /brand/:id/brand.json - Serve hosted brand.json
@@ -2221,6 +2543,7 @@ export class HTTPServer {
           total: properties.length,
           adagents_json: properties.filter(p => p.source === 'adagents_json').length,
           hosted: properties.filter(p => p.source === 'hosted').length,
+          community: properties.filter(p => p.source === 'community').length,
           discovered: properties.filter(p => p.source === 'discovered').length,
         };
 
@@ -2307,8 +2630,8 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/properties/hosted - Create a hosted property
-    this.app.post('/api/properties/hosted', optionalAuth, async (req, res) => {
+    // POST /api/properties/hosted - Create a hosted property (authenticated)
+    this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
         const { publisher_domain, adagents_json, source_type } = req.body;
         if (!publisher_domain || !adagents_json) {
@@ -2330,6 +2653,63 @@ export class HTTPServer {
       }
     });
 
+    // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
+    this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to create properties' });
+        }
+
+        const { publisher_domain, adagents_json } = req.body;
+        if (!publisher_domain || !adagents_json) {
+          return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBanned('property', req.user!.id, publisher_domain.toLowerCase());
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from creating properties', reason: banCheck.ban?.reason });
+        }
+
+        const property = await this.propertyDb.createCommunityProperty({
+          publisher_domain: publisher_domain.toLowerCase(),
+          adagents_json,
+          source_type: 'community',
+          created_by_user_id: req.user!.id,
+          created_by_email: req.user!.email,
+        }, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryCreate({
+          entity_type: 'property',
+          domain: property.publisher_domain,
+          editor_email: req.user!.email,
+        }).then((slack_thread_ts) => {
+          reviewNewRecord({
+            entity_type: 'property',
+            domain: property.publisher_domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            snapshot: property as unknown as Record<string, unknown>,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'New property review failed'));
+        }).catch((err) => logger.error({ err }, 'New property notification failed'));
+
+        return res.json({ property, review_status: 'pending' });
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Property already exists for this domain' });
+        }
+        logger.error({ error }, 'Failed to create community property');
+        return res.status(500).json({ error: 'Failed to create property' });
+      }
+    });
+
     // DELETE /api/properties/hosted/:domain - Delete a hosted property
     this.app.delete('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
@@ -2341,7 +2721,7 @@ export class HTTPServer {
         }
 
         // Check ownership
-        const isCreator = property.created_by_email && property.created_by_email === req.user?.email;
+        const isCreator = property.created_by_user_id && property.created_by_user_id === req.user?.id;
         const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
@@ -2352,6 +2732,271 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Failed to delete hosted property');
         return res.status(500).json({ error: 'Failed to delete property' });
+      }
+    });
+
+    // ========== Property Wiki Routes ==========
+
+    // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
+    this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to edit properties' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+
+        const { edit_summary, adagents_json } = req.body;
+        if (!edit_summary || typeof edit_summary !== 'string') {
+          return res.status(400).json({ error: 'edit_summary required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBanned('property', req.user!.id, domain);
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from editing this property', reason: banCheck.ban?.reason });
+        }
+
+        const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
+          adagents_json,
+          edit_summary,
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Get old snapshot for review
+        const oldRevision = await this.propertyDb.getPropertyRevision(domain, revision_number);
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryEdit({
+          entity_type: 'property',
+          domain,
+          editor_email: req.user!.email,
+          edit_summary,
+          revision_number,
+        }).then((slack_thread_ts) => {
+          reviewRegistryEdit({
+            entity_type: 'property',
+            domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            edit_summary,
+            old_snapshot: oldRevision?.snapshot || {},
+            new_snapshot: property as unknown as Record<string, unknown>,
+            revision_number,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'Registry review failed'));
+        }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
+
+        return res.json({ property, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        if (error.message?.includes('Cannot edit')) {
+          return res.status(403).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to edit hosted property');
+        return res.status(500).json({ error: 'Failed to edit property' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/revisions - Property revision history
+    this.app.get('/api/properties/hosted/:domain/revisions', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const revisions = await this.propertyDb.getPropertyRevisions(domain, { limit, offset });
+        const total = await this.propertyDb.getPropertyRevisionCount(domain);
+        return res.json({ revisions, total });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get property revisions');
+        return res.status(500).json({ error: 'Failed to get revisions' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/revisions/:num - Single revision
+    this.app.get('/api/properties/hosted/:domain/revisions/:num', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const num = parseInt(req.params.num);
+        if (isNaN(num)) {
+          return res.status(400).json({ error: 'Invalid revision number' });
+        }
+        const revision = await this.propertyDb.getPropertyRevision(domain, num);
+        if (!revision) {
+          return res.status(404).json({ error: 'Revision not found' });
+        }
+        return res.json(revision);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get property revision');
+        return res.status(500).json({ error: 'Failed to get revision' });
+      }
+    });
+
+    // POST /api/properties/hosted/:domain/rollback - Rollback property (admin only)
+    this.app.post('/api/properties/hosted/:domain/rollback', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const { to_revision } = req.body;
+        if (!to_revision || typeof to_revision !== 'number') {
+          return res.status(400).json({ error: 'to_revision (number) required' });
+        }
+
+        const { property, revision_number } = await this.propertyDb.rollbackProperty(domain, to_revision, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        notifyRegistryRollback({
+          entity_type: 'property',
+          domain,
+          rolled_back_to: to_revision,
+          rolled_back_by_email: req.user!.email,
+          revision_number,
+        }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
+
+        return res.json({ property, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to rollback property');
+        return res.status(500).json({ error: 'Failed to rollback property' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/edit-status - Check if property is editable
+    this.app.get('/api/properties/hosted/:domain/edit-status', optionalAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const property = await this.propertyDb.getHostedPropertyByDomain(domain);
+
+        if (!property) {
+          return res.json({ editable: false, reason: 'Property not found in registry' });
+        }
+
+        // Check for authoritative lock
+        const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
+        if (discovered.length > 0) {
+          return res.json({ editable: false, reason: 'Managed by property owner via adagents.json' });
+        }
+
+        if (property.review_status === 'pending') {
+          return res.json({ editable: false, reason: 'Pending review' });
+        }
+
+        if (req.user) {
+          const banCheck = await this.bansDb.isUserBanned('property', req.user.id, domain);
+          if (banCheck.banned) {
+            return res.json({ editable: false, reason: 'You are banned from editing this property', ban_reason: banCheck.ban?.reason });
+          }
+        }
+
+        return res.json({
+          editable: true,
+          source_type: property.source_type,
+          publisher_domain: property.publisher_domain,
+          adagents_json: property.adagents_json,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to check property edit status');
+        return res.status(500).json({ error: 'Failed to check edit status' });
+      }
+    });
+
+    // ========== Registry Edit Bans (shared, admin only) ==========
+
+    // POST /api/registry/edit-bans - Create an edit ban
+    this.app.post('/api/registry/edit-bans', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { entity_type, banned_user_id, banned_email, entity_domain, reason, expires_at } = req.body;
+        if (!entity_type || !banned_user_id || !reason) {
+          return res.status(400).json({ error: 'entity_type, banned_user_id, and reason required' });
+        }
+        if (!['brand', 'property'].includes(entity_type)) {
+          return res.status(400).json({ error: 'entity_type must be "brand" or "property"' });
+        }
+
+        const ban = await this.bansDb.createEditBan({
+          entity_type,
+          banned_user_id,
+          banned_email,
+          entity_domain: entity_domain?.toLowerCase(),
+          banned_by_user_id: req.user!.id,
+          banned_by_email: req.user!.email,
+          reason,
+          expires_at: expires_at ? new Date(expires_at) : undefined,
+        });
+
+        notifyRegistryBan({
+          entity_type,
+          banned_email,
+          entity_domain,
+          reason,
+          banned_by_email: req.user!.email,
+        }).catch((err) => logger.error({ err }, 'Registry ban notification failed'));
+
+        return res.json(ban);
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Ban already exists for this user/scope' });
+        }
+        logger.error({ error }, 'Failed to create edit ban');
+        return res.status(500).json({ error: 'Failed to create ban' });
+      }
+    });
+
+    // GET /api/registry/edit-bans - List active edit bans
+    this.app.get('/api/registry/edit-bans', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const bans = await this.bansDb.listEditBans({
+          entity_type: req.query.entity_type as 'brand' | 'property' | undefined,
+          banned_user_id: req.query.banned_user_id as string | undefined,
+          entity_domain: req.query.entity_domain as string | undefined,
+        });
+        return res.json({ bans });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list edit bans');
+        return res.status(500).json({ error: 'Failed to list bans' });
+      }
+    });
+
+    // DELETE /api/registry/edit-bans/:id - Remove an edit ban
+    this.app.delete('/api/registry/edit-bans/:id', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const removed = await this.bansDb.removeEditBan(req.params.id);
+        if (!removed) {
+          return res.status(404).json({ error: 'Ban not found' });
+        }
+        return res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Failed to remove edit ban');
+        return res.status(500).json({ error: 'Failed to remove ban' });
       }
     });
 

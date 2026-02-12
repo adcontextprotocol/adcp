@@ -5,13 +5,8 @@
 -- This supports member-contributed references where members host their own manifests
 -- and we maintain a directory of pointers to them.
 
--- Drop old tables that stored manifest content
-DROP TABLE IF EXISTS brand_properties CASCADE;
-DROP TABLE IF EXISTS discovered_brands CASCADE;
-DROP TABLE IF EXISTS hosted_brands CASCADE;
-DROP TABLE IF EXISTS hosted_properties CASCADE;
-
--- Create unified manifest_references table
+-- Create manifest_references table (additional index alongside existing brand/property tables)
+-- NOTE: discovered_brands, hosted_brands, hosted_properties remain in use
 -- Stores pointers to member-hosted manifests (either URL or agent reference)
 CREATE TABLE manifest_references (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

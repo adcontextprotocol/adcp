@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Property Viewer - AgenticAdvertising.org</title>
+    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/design-system.css">
+    <style>
+      body {
+        font-family: var(--font-sans);
+        line-height: var(--leading-normal);
+        color: var(--color-text);
+        margin: 0;
+        padding: 60px 0 0 0;
+        min-height: 100vh;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-bottom: var(--space-4);
+      }
+      .section-icon { font-size: var(--text-xl); }
+
+      .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: var(--space-4);
+      }
+      .info-item {
+        background: var(--color-bg-card);
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
+        border: var(--border-1) solid var(--color-border-light);
+      }
+      .info-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+      .info-value {
+        font-size: var(--text-sm);
+        color: var(--color-text);
+        word-break: break-word;
+      }
+
+      .property-list-item {
+        padding: var(--space-3);
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .property-list-item:last-child { border-bottom: none; }
+
+      .tag {
+        display: inline-block;
+        font-size: var(--text-xs);
+        padding: 2px 8px;
+        border-radius: var(--radius-full);
+        background: var(--color-bg-subtle);
+        color: var(--color-text-secondary);
+        margin-right: var(--space-1);
+        margin-top: var(--space-1);
+      }
+
+      .loading-state { text-align: center; padding: var(--space-16) 0; color: var(--color-text-muted); }
+      .spinner { width: 40px; height: 40px; border: 3px solid var(--color-border); border-top: 3px solid var(--color-brand); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto var(--space-4); }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      .error-state { text-align: center; padding: var(--space-16) 0; }
+      .error-icon { font-size: 48px; margin-bottom: var(--space-4); }
+      .hidden { display: none !important; }
+
+      /* Edit form styles */
+      .edit-form-card {
+        background: var(--color-bg-card);
+        border-radius: var(--radius-lg);
+        padding: var(--space-6);
+        box-shadow: var(--shadow-sm);
+        border-left: 4px solid var(--color-purple-400);
+        margin-bottom: var(--space-8);
+      }
+
+      .edit-form-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-5);
+      }
+
+      .edit-form-header h3 {
+        font-size: var(--text-lg);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+        margin: 0;
+      }
+
+      .edit-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-4);
+      }
+
+      .edit-form-field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+      }
+
+      .edit-form-field--full {
+        grid-column: 1 / -1;
+      }
+
+      .edit-form-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+      }
+
+      .edit-form-input,
+      .edit-form-textarea,
+      .edit-form-select {
+        padding: 8px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-bg-card);
+        transition: border-color var(--duration-normal) var(--ease-in-out);
+      }
+
+      .edit-form-input:focus,
+      .edit-form-textarea:focus,
+      .edit-form-select:focus {
+        outline: none;
+        border-color: var(--color-brand);
+        box-shadow: 0 0 0 3px var(--color-primary-100);
+      }
+
+      .edit-form-textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+
+      .edit-form-actions {
+        display: flex;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border);
+      }
+
+      /* Community property info grid */
+      .community-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: var(--space-4);
+        margin-top: var(--space-4);
+      }
+
+      .community-info-item {
+        padding: var(--space-3);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
+      }
+
+      .community-info-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+
+      .community-info-value {
+        font-size: var(--text-sm);
+        color: var(--color-text-heading);
+      }
+
+      .community-info-value--muted {
+        color: var(--color-text-muted);
+        font-style: italic;
+      }
+
+      .community-empty-message {
+        padding: var(--space-4);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
+        border: 1px dashed var(--color-border);
+        text-align: center;
+        margin-top: var(--space-4);
+      }
+
+      .community-empty-message p {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        line-height: var(--leading-relaxed);
+        margin: 0;
+      }
+
+      /* Dynamic list items */
+      .edit-list-item {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: var(--space-2);
+        align-items: center;
+        margin-bottom: var(--space-2);
+        padding: var(--space-2);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+      }
+
+      .edit-list-remove {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: var(--text-lg);
+        padding: 0 4px;
+        line-height: 1;
+        transition: color var(--duration-normal) var(--ease-in-out);
+      }
+
+      .edit-list-remove:hover {
+        color: var(--color-error-500);
+      }
+
+      @media (max-width: 640px) {
+        .edit-form-grid {
+          grid-template-columns: 1fr;
+        }
+        .community-info-grid {
+          grid-template-columns: 1fr;
+        }
+        .edit-list-item {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .info-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <!-- Hero -->
+    <section class="hero hero--article" id="hero-section">
+      <div class="hero-container">
+        <div class="hero-breadcrumb">
+          <a href="/registry?type=properties">Properties</a> &rsaquo; Property Viewer
+        </div>
+        <h1 id="hero-title">Property Viewer</h1>
+        <p class="hero-subtitle" id="hero-subtitle">Loading property data...</p>
+      </div>
+    </section>
+
+    <!-- Main content -->
+    <div class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-16);">
+      <!-- Loading state -->
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Fetching property data...</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="error-state hidden">
+        <div class="error-icon">&#9888;</div>
+        <h2 id="error-title">Property not found</h2>
+        <p id="error-message">Could not load property data for this domain.</p>
+      </div>
+
+      <!-- Property summary section -->
+      <div id="property-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="card" style="padding: var(--space-6);">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+            <div>
+              <h2 id="property-domain-title" style="margin-bottom: var(--space-1);"></h2>
+              <span id="property-domain-sub" style="color: var(--color-text-muted); font-size: var(--text-sm);"></span>
+            </div>
+            <div style="display: flex; gap: var(--space-2); align-items: center;">
+              <span id="property-source-badge" style="font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-full);"></span>
+              <button id="edit-property-btn" class="hidden" onclick="showEditForm()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Edit</button>
+            </div>
+          </div>
+          <div id="property-details"></div>
+        </div>
+      </div>
+
+      <!-- Edit form (shown when Edit button is clicked) -->
+      <div id="edit-form-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="edit-form-card">
+          <div class="edit-form-header">
+            <span style="width: 28px; height: 28px; font-size: var(--text-sm); background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; color: white;">&#9998;</span>
+            <h3>Edit Property</h3>
+          </div>
+          <div class="edit-form-grid">
+            <!-- Properties list -->
+            <div class="edit-form-field edit-form-field--full">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label class="edit-form-label">Properties</label>
+                <button type="button" onclick="addPropertyRow()" style="font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer; font-weight: var(--font-semibold);">+ Add Property</button>
+              </div>
+              <div id="edit-properties-container"></div>
+            </div>
+            <!-- Authorized agents list -->
+            <div class="edit-form-field edit-form-field--full">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label class="edit-form-label">Authorized Agents</label>
+                <button type="button" onclick="addAgentRow()" style="font-size: var(--text-xs); color: var(--color-brand); background: none; border: none; cursor: pointer; font-weight: var(--font-semibold);">+ Add Agent</button>
+              </div>
+              <div id="edit-agents-container"></div>
+            </div>
+            <!-- Contact info -->
+            <div class="edit-form-field">
+              <label class="edit-form-label">Contact Name</label>
+              <input type="text" id="edit-contact-name" class="edit-form-input" placeholder="e.g. Ad Operations Team">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label">Contact Email</label>
+              <input type="email" id="edit-contact-email" class="edit-form-input" placeholder="e.g. ads@example.com">
+            </div>
+            <div class="edit-form-field edit-form-field--full">
+              <label class="edit-form-label">Contact URL</label>
+              <input type="url" id="edit-contact-url" class="edit-form-input" placeholder="e.g. https://example.com/advertising">
+            </div>
+            <!-- Edit summary -->
+            <div class="edit-form-field edit-form-field--full">
+              <label class="edit-form-label">Edit Summary *</label>
+              <textarea id="edit-summary" class="edit-form-textarea" placeholder="Describe your changes (required)" rows="2"></textarea>
+            </div>
+          </div>
+          <div class="edit-form-actions">
+            <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            <button class="btn btn-ghost" onclick="hideEditForm()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Properties list -->
+      <div id="properties-list-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading">
+          <span class="section-icon">&#128196;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Properties</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="properties-list"></div>
+        </div>
+      </div>
+
+      <!-- Authorized agents -->
+      <div id="agents-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading">
+          <span class="section-icon">&#129302;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Authorized Agents</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="agents-list"></div>
+        </div>
+      </div>
+
+      <!-- Contact info -->
+      <div id="contact-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading">
+          <span class="section-icon">&#128231;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Contact</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="contact-details" class="info-grid"></div>
+        </div>
+      </div>
+
+      <!-- Revision History -->
+      <div id="history-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading">
+          <span class="section-icon">&#128196;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Revision History</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="revisions-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="adcp-footer"></div>
+
+    <script>
+      let currentEditStatus = null;
+      let currentDomain = '';
+
+      function escapeHtml(str) {
+        if (str == null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+      }
+
+      function escapeAttr(str) {
+        if (str == null) return '';
+        return escapeHtml(String(str)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function showError(title, message) {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+        document.getElementById('error-title').textContent = title;
+        document.getElementById('error-message').textContent = message;
+      }
+
+      function renderPropertySummary(domain, data, sourceType) {
+        const section = document.getElementById('property-section');
+        section.classList.remove('hidden');
+
+        document.getElementById('property-domain-title').textContent = domain;
+        document.getElementById('property-domain-sub').innerHTML = `<a href="https://${escapeHtml(domain)}" target="_blank" style="color: var(--color-brand); text-decoration: none;">${escapeHtml(domain)}</a>`;
+
+        // Update hero title
+        document.getElementById('hero-title').textContent = domain;
+
+        // Source badge
+        const badge = document.getElementById('property-source-badge');
+        if (sourceType === 'community') {
+          badge.textContent = 'Community Contributed';
+          badge.style.background = 'var(--color-purple-100)';
+          badge.style.color = 'var(--color-purple-700)';
+        } else if (sourceType === 'adagents_json') {
+          badge.textContent = 'Authoritative';
+          badge.style.background = 'var(--color-success-100)';
+          badge.style.color = 'var(--color-success-700)';
+        } else {
+          badge.textContent = sourceType || 'Hosted';
+          badge.style.background = 'var(--color-bg-subtle)';
+          badge.style.color = 'var(--color-text-light)';
+        }
+
+        // Details
+        const details = document.getElementById('property-details');
+        const adagents = data?.adagents_json || data;
+        const propCount = adagents?.properties?.length || 0;
+        const agentCount = adagents?.authorized_agents?.length || 0;
+        const description = adagents?.description;
+
+        let html = '';
+
+        // Description
+        if (description) {
+          html += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-4);">${escapeHtml(description)}</p>`;
+        }
+
+        // Info grid
+        let gridHtml = '';
+        gridHtml += `
+          <div class="community-info-item">
+            <div class="community-info-label">Properties</div>
+            <div class="community-info-value">${propCount}</div>
+          </div>`;
+        gridHtml += `
+          <div class="community-info-item">
+            <div class="community-info-label">Authorized Agents</div>
+            <div class="community-info-value">${agentCount}</div>
+          </div>`;
+        if (sourceType) {
+          gridHtml += `
+            <div class="community-info-item">
+              <div class="community-info-label">Source</div>
+              <div class="community-info-value">${escapeHtml(sourceType)}</div>
+            </div>`;
+        }
+        html += `<div class="community-info-grid">${gridHtml}</div>`;
+
+        // Empty state for minimal data
+        if (propCount === 0 && agentCount === 0 && !description) {
+          html += `
+            <div class="community-empty-message">
+              <p>This property entry has minimal data. Help improve it by adding properties, authorized agents, and contact information.</p>
+            </div>`;
+        }
+
+        details.innerHTML = html;
+      }
+
+      function renderPropertiesList(adagentsJson) {
+        const props = adagentsJson?.properties;
+        if (!props || props.length === 0) return;
+
+        const section = document.getElementById('properties-list-section');
+        section.classList.remove('hidden');
+
+        const list = document.getElementById('properties-list');
+        list.innerHTML = props.map(prop => `
+          <div class="property-list-item">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong>${escapeHtml(prop.name || prop.domain || 'Unnamed')}</strong>
+                ${prop.domain ? `<span style="color: var(--color-text-muted); font-size: var(--text-sm); margin-left: var(--space-2);">${escapeHtml(prop.domain)}</span>` : ''}
+              </div>
+              ${prop.type ? `<span class="tag">${escapeHtml(prop.type)}</span>` : ''}
+            </div>
+            ${(prop.categories && prop.categories.length > 0) ? `
+            <div style="margin-top: var(--space-2);">
+              ${prop.categories.map(c => `<span class="tag">${escapeHtml(c)}</span>`).join('')}
+            </div>
+            ` : ''}
+            ${(prop.tags && prop.tags.length > 0) ? `
+            <div style="margin-top: var(--space-2);">
+              ${prop.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+            </div>
+            ` : ''}
+          </div>
+        `).join('');
+      }
+
+      function renderAuthorizedAgents(adagentsJson) {
+        const agents = adagentsJson?.authorized_agents;
+        if (!agents || agents.length === 0) return;
+
+        const section = document.getElementById('agents-section');
+        section.classList.remove('hidden');
+
+        const list = document.getElementById('agents-list');
+        list.innerHTML = agents.map(agent => `
+          <div class="property-list-item">
+            <div>
+              <strong>${escapeHtml(agent.url || agent.name || 'Unknown')}</strong>
+              ${agent.authorized_for ? `<span style="color: var(--color-text-muted); font-size: var(--text-sm); margin-left: var(--space-2);">${escapeHtml(agent.authorized_for)}</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function renderContact(adagentsJson) {
+        const contact = adagentsJson?.contact;
+        if (!contact) return;
+
+        const section = document.getElementById('contact-section');
+        section.classList.remove('hidden');
+
+        const details = document.getElementById('contact-details');
+        const items = [];
+        if (contact.name) items.push(`<div class="info-item"><div class="info-label">Name</div><div class="info-value">${escapeHtml(contact.name)}</div></div>`);
+        if (contact.email) items.push(`<div class="info-item"><div class="info-label">Email</div><div class="info-value">${escapeHtml(contact.email)}</div></div>`);
+        if (contact.domain) items.push(`<div class="info-item"><div class="info-label">Domain</div><div class="info-value">${escapeHtml(contact.domain)}</div></div>`);
+        if (contact.url) items.push(`<div class="info-item"><div class="info-label">URL</div><div class="info-value">${escapeHtml(contact.url)}</div></div>`);
+
+        if (items.length > 0) {
+          details.innerHTML = items.join('');
+        } else {
+          section.classList.add('hidden');
+        }
+      }
+
+      function renderRevisions(revisions, total) {
+        if (!revisions || revisions.length === 0) return;
+
+        const historySection = document.getElementById('history-section');
+        historySection.classList.remove('hidden');
+
+        const list = document.getElementById('revisions-list');
+        list.innerHTML = revisions.map(rev => `
+          <div style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border-light);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong>Revision ${rev.revision_number}</strong>
+                ${rev.is_rollback ? '<span style="color: var(--color-warning-600); font-size: var(--text-xs); margin-left: 4px;">ROLLBACK</span>' : ''}
+              </div>
+              <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${new Date(rev.created_at).toLocaleString()}</span>
+            </div>
+            <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">
+              ${escapeHtml(rev.edit_summary)}
+            </div>
+            <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+              by ${escapeHtml(rev.editor_name || rev.editor_email || rev.editor_user_id)}
+            </div>
+          </div>
+        `).join('');
+
+        if (total > revisions.length) {
+          list.innerHTML += `<div style="padding: var(--space-3) 0; text-align: center; color: var(--color-text-muted); font-size: var(--text-sm);">
+            Showing ${revisions.length} of ${total} revisions
+          </div>`;
+        }
+      }
+
+      function showEditForm() {
+        const form = document.getElementById('edit-form-section');
+        form.classList.remove('hidden');
+        document.getElementById('edit-property-btn').classList.add('hidden');
+
+        // Pre-fill from currentEditStatus
+        const adagents = currentEditStatus?.adagents_json || {};
+
+        // Clear and populate properties
+        const propsContainer = document.getElementById('edit-properties-container');
+        propsContainer.innerHTML = '';
+        const props = adagents.properties || [];
+        if (props.length > 0) {
+          props.forEach(p => addPropertyRow(p.name, p.domain, p.type));
+        } else {
+          addPropertyRow();
+        }
+
+        // Clear and populate agents
+        const agentsContainer = document.getElementById('edit-agents-container');
+        agentsContainer.innerHTML = '';
+        const agents = adagents.authorized_agents || [];
+        if (agents.length > 0) {
+          agents.forEach(a => addAgentRow(a.url || a.name, a.authorized_for));
+        } else {
+          addAgentRow();
+        }
+
+        // Contact
+        const contact = adagents.contact || {};
+        document.getElementById('edit-contact-name').value = contact.name || '';
+        document.getElementById('edit-contact-email').value = contact.email || '';
+        document.getElementById('edit-contact-url').value = contact.url || '';
+
+        // Clear edit summary
+        document.getElementById('edit-summary').value = '';
+
+        // Scroll form into view
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      function hideEditForm() {
+        document.getElementById('edit-form-section').classList.add('hidden');
+        document.getElementById('edit-property-btn').classList.remove('hidden');
+      }
+
+      function addPropertyRow(name, domain, type) {
+        const container = document.getElementById('edit-properties-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-item';
+        row.innerHTML = `
+          <input type="text" class="edit-form-input prop-name" placeholder="Property name" value="${escapeAttr(name || '')}">
+          <input type="text" class="edit-form-input prop-domain" placeholder="Domain" value="${escapeAttr(domain || '')}">
+          <div style="display: flex; gap: var(--space-2); align-items: center;">
+            <select class="edit-form-select prop-type" style="padding: 6px 8px; font-size: var(--text-xs);">
+              <option value="">Type</option>
+              <option value="website" ${type === 'website' ? 'selected' : ''}>Website</option>
+              <option value="mobile_app" ${type === 'mobile_app' ? 'selected' : ''}>Mobile App</option>
+              <option value="ctv" ${type === 'ctv' ? 'selected' : ''}>CTV</option>
+              <option value="dooh" ${type === 'dooh' ? 'selected' : ''}>DOOH</option>
+              <option value="podcast" ${type === 'podcast' ? 'selected' : ''}>Podcast</option>
+              <option value="radio" ${type === 'radio' ? 'selected' : ''}>Radio</option>
+              <option value="newsletter" ${type === 'newsletter' ? 'selected' : ''}>Newsletter</option>
+            </select>
+            <button type="button" class="edit-list-remove" onclick="this.closest('.edit-list-item').remove()">&times;</button>
+          </div>
+        `;
+        container.appendChild(row);
+      }
+
+      function addAgentRow(url, authorizedFor) {
+        const container = document.getElementById('edit-agents-container');
+        const row = document.createElement('div');
+        row.className = 'edit-list-item';
+        row.style.gridTemplateColumns = '1fr 1fr auto';
+        row.innerHTML = `
+          <input type="text" class="edit-form-input agent-url" placeholder="Agent URL" value="${escapeAttr(url || '')}">
+          <input type="text" class="edit-form-input agent-auth" placeholder="Authorized for (e.g. media_buying)" value="${escapeAttr(authorizedFor || '')}">
+          <button type="button" class="edit-list-remove" onclick="this.closest('.edit-list-item').remove()">&times;</button>
+        `;
+        container.appendChild(row);
+      }
+
+      async function saveEdit() {
+        const editSummary = document.getElementById('edit-summary').value.trim();
+        if (!editSummary) {
+          alert('Edit summary is required');
+          return;
+        }
+
+        const btn = document.getElementById('save-edit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        try {
+          // Collect properties
+          const properties = [];
+          document.querySelectorAll('#edit-properties-container .edit-list-item').forEach(row => {
+            const name = row.querySelector('.prop-name').value.trim();
+            const domain = row.querySelector('.prop-domain').value.trim();
+            const type = row.querySelector('.prop-type').value;
+            if (name || domain) {
+              const prop = {};
+              if (name) prop.name = name;
+              if (domain) prop.domain = domain;
+              if (type) prop.type = type;
+              properties.push(prop);
+            }
+          });
+
+          // Collect agents
+          const authorized_agents = [];
+          document.querySelectorAll('#edit-agents-container .edit-list-item').forEach(row => {
+            const url = row.querySelector('.agent-url').value.trim();
+            const auth = row.querySelector('.agent-auth').value.trim();
+            if (url) {
+              const agent = { url };
+              if (auth) agent.authorized_for = auth;
+              authorized_agents.push(agent);
+            }
+          });
+
+          // Contact
+          const contact = {};
+          const contactName = document.getElementById('edit-contact-name').value.trim();
+          const contactEmail = document.getElementById('edit-contact-email').value.trim();
+          const contactUrl = document.getElementById('edit-contact-url').value.trim();
+          if (contactName) contact.name = contactName;
+          if (contactEmail) contact.email = contactEmail;
+          if (contactUrl) contact.url = contactUrl;
+
+          // Build adagents_json
+          const adagents_json = {
+            ...(currentEditStatus?.adagents_json || {}),
+          };
+          adagents_json.properties = properties;
+          adagents_json.authorized_agents = authorized_agents;
+          if (Object.keys(contact).length > 0) {
+            adagents_json.contact = contact;
+          } else {
+            delete adagents_json.contact;
+          }
+
+          const response = await fetch(`/api/properties/hosted/${encodeURIComponent(currentDomain)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ edit_summary: editSummary, adagents_json }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save');
+          }
+
+          // Reload page to show updated data
+          window.location.reload();
+        } catch (error) {
+          alert('Failed to save: ' + error.message);
+          btn.disabled = false;
+          btn.textContent = 'Save Changes';
+        }
+      }
+
+      async function loadRevisionHistory(domain) {
+        try {
+          const editStatusResp = await fetch(`/api/properties/hosted/${encodeURIComponent(domain)}/edit-status`);
+          const editStatus = await editStatusResp.json();
+
+          if (!editStatus.editable && editStatus.reason === 'Property not found in registry') {
+            return false;
+          }
+
+          // Store for edit form
+          currentEditStatus = editStatus;
+          currentDomain = domain;
+
+          // Show edit button if editable and user is logged in
+          if (editStatus.editable && window.__APP_CONFIG__?.user) {
+            document.getElementById('edit-property-btn').classList.remove('hidden');
+          }
+
+          // Load revisions
+          const revisionsResp = await fetch(`/api/properties/hosted/${encodeURIComponent(domain)}/revisions?limit=20`);
+          if (!revisionsResp.ok) return false;
+          const { revisions, total } = await revisionsResp.json();
+
+          // Always use editStatus as the source of current data (latestSnapshot is the state BEFORE the latest edit)
+          const propertyInfo = editStatus.adagents_json ? {
+            publisher_domain: editStatus.publisher_domain || domain,
+            adagents_json: editStatus.adagents_json,
+            source_type: editStatus.source_type,
+          } : null;
+
+          if (propertyInfo) {
+            const adagents = propertyInfo.adagents_json || propertyInfo;
+            const sourceType = propertyInfo.source_type || editStatus.source_type || 'community';
+
+            renderPropertySummary(domain, propertyInfo, sourceType);
+            renderPropertiesList(adagents);
+            renderAuthorizedAgents(adagents);
+            renderContact(adagents);
+          }
+
+          // Always show history for community properties
+          const historySection = document.getElementById('history-section');
+          historySection.classList.remove('hidden');
+          if (revisions && revisions.length > 0) {
+            renderRevisions(revisions, total);
+          } else {
+            document.getElementById('revisions-list').innerHTML = `
+              <div class="community-empty-message">
+                <p>No edits yet. Be the first to improve this entry!</p>
+              </div>
+            `;
+          }
+
+          // Show edit status badge in hero
+          if (editStatus.editable) {
+            const subtitle = document.getElementById('hero-subtitle');
+            subtitle.innerHTML = escapeHtml(domain) + ' <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full); margin-left: var(--space-2);">Community Contributed</span>';
+          } else if (editStatus.reason === 'Managed by property owner via adagents.json') {
+            const subtitle = document.getElementById('hero-subtitle');
+            subtitle.innerHTML = escapeHtml(domain) + ' <span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 8px; border-radius: var(--radius-full); margin-left: var(--space-2);">Authoritative</span>';
+          }
+
+          return !!(propertyInfo || (revisions && revisions.length > 0));
+        } catch (err) {
+          console.error('Failed to load revision history:', err);
+          return false;
+        }
+      }
+
+      async function init() {
+        const pathParts = window.location.pathname.split('/');
+        const domain = pathParts.slice(3).join('/');
+
+        if (!domain) {
+          showError('No domain specified', 'Please provide a domain in the URL, e.g. /property/view/example.com');
+          return;
+        }
+
+        document.getElementById('hero-subtitle').textContent = domain;
+
+        let resolvedData = null;
+
+        // Try resolving property data
+        try {
+          const resp = await fetch(`/api/properties/resolve?domain=${encodeURIComponent(domain)}`);
+          if (resp.ok) {
+            resolvedData = await resp.json();
+          }
+        } catch (err) {
+          // Will try community fallback
+        }
+
+        // Load revision history and community data
+        const hasCommunityData = await loadRevisionHistory(domain);
+
+        // Hide loading state
+        document.getElementById('loading-state').classList.add('hidden');
+
+        if (resolvedData && !hasCommunityData) {
+          // Only resolved data (adagents.json source), no community edits
+          const sourceType = resolvedData.source || 'adagents_json';
+          renderPropertySummary(domain, resolvedData, sourceType);
+          renderPropertiesList(resolvedData);
+          renderAuthorizedAgents(resolvedData);
+          renderContact(resolvedData);
+
+          const subtitle = document.getElementById('hero-subtitle');
+          subtitle.innerHTML = escapeHtml(domain) + ' <span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 8px; border-radius: var(--radius-full); margin-left: var(--space-2);">Authoritative</span>';
+        } else if (!resolvedData && !hasCommunityData) {
+          showError(
+            `Could not load property data for ${escapeHtml(domain)}`,
+            'Property not found or invalid'
+          );
+        }
+        // If hasCommunityData is true, loadRevisionHistory already rendered everything
+      }
+
+      window.addEventListener('DOMContentLoaded', init);
+    </script>
+  </body>
+</html>

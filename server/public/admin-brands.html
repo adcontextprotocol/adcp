@@ -401,6 +401,18 @@
     </div>
   </div>
 
+  <!-- Edit Bans Section -->
+  <div class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
+        <h3>Edit Bans</h3>
+      </div>
+      <div id="bansContent">
+        <p style="color: var(--color-text-muted);">Loading bans...</p>
+      </div>
+    </div>
+  </div>
+
   <!-- Research Brand Modal -->
   <div id="researchModal" class="modal">
     <div class="modal-content">
@@ -535,24 +547,25 @@
       tbody.innerHTML = brands.map(brand => `
         <tr>
           <td>
-            <a href="https://${brand.domain}" target="_blank" class="domain-link">${brand.domain}</a>
+            <a href="https://${encodeURIComponent(brand.domain)}" target="_blank" class="domain-link">${escapeHtml(brand.domain)}</a>
           </td>
-          <td>${brand.brand_name || '-'}</td>
+          <td>${escapeHtml(brand.brand_name) || '-'}</td>
           <td>
-            <span class="source-badge source-${brand.source}">${formatSource(brand.source)}</span>
+            <span class="source-badge source-${escapeHtml(brand.source)}">${escapeHtml(formatSource(brand.source))}</span>
           </td>
           <td>
-            ${brand.keller_type ? `<span class="keller-badge">${brand.keller_type}</span>` : '-'}
+            ${brand.keller_type ? `<span class="keller-badge">${escapeHtml(brand.keller_type)}</span>` : '-'}
           </td>
-          <td>${brand.house_domain || '-'}</td>
+          <td>${escapeHtml(brand.house_domain) || '-'}</td>
           <td>
             <span class="${brand.has_manifest ? 'has-manifest' : 'no-manifest'}">
               ${brand.has_manifest ? 'Yes' : 'No'}
             </span>
           </td>
           <td>
-            <button class="btn-icon" onclick="viewBrand('${brand.domain}')" title="View Details">View</button>
-            ${brand.source === 'hosted' ? `<button class="btn-icon" onclick="deleteBrand('${brand.domain}')" title="Delete">Delete</button>` : ''}
+            <button class="btn-icon" onclick="viewBrand('${encodeURIComponent(brand.domain)}')" title="View Details">View</button>
+            ${['community', 'enriched'].includes(brand.source) ? `<button class="btn-icon" onclick="window.location.href='/brand/view/${encodeURIComponent(brand.domain)}'" title="History">History</button>` : ''}
+            ${brand.source === 'hosted' ? `<button class="btn-icon" onclick="deleteBrand('${encodeURIComponent(brand.domain)}')" title="Delete">Delete</button>` : ''}
           </td>
         </tr>
       `).join('');
@@ -562,7 +575,7 @@
       const labels = {
         'brand_json': 'Authoritative',
         'hosted': 'Hosted',
-        'community': 'Community',
+        'community': 'Community Contributed',
         'enriched': 'Enriched'
       };
       return labels[source] || source;
@@ -626,21 +639,21 @@
 
       html += `
         <div>
-          <strong>${manifest.name || data.domain}</strong><br>
-          <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">${data.domain}</span>
+          <strong>${escapeHtml(manifest.name || data.domain)}</strong><br>
+          <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">${escapeHtml(data.domain)}</span>
         </div>
       </div>`;
 
       // Description
       if (manifest.description) {
-        html += `<p style="margin: var(--space-3) 0;">${manifest.description}</p>`;
+        html += `<p style="margin: var(--space-3) 0;">${escapeHtml(manifest.description)}</p>`;
       }
 
       // Colors
       if (manifest.colors) {
         html += '<div style="margin: var(--space-2) 0;"><strong>Colors:</strong> ';
         for (const [name, hex] of Object.entries(manifest.colors)) {
-          html += `<span class="color-swatch" style="background: ${hex};"></span>${name}: ${hex} `;
+          html += `<span class="color-swatch" style="background: ${escapeHtml(hex)};"></span>${escapeHtml(name)}: ${escapeHtml(hex)} `;
         }
         html += '</div>';
       }
@@ -648,9 +661,9 @@
       // Company info
       if (data.company) {
         html += '<div style="margin: var(--space-2) 0;"><strong>Company:</strong> ';
-        if (data.company.industry) html += `Industry: ${data.company.industry}. `;
-        if (data.company.employees) html += `Employees: ${data.company.employees}. `;
-        if (data.company.location) html += `Location: ${data.company.location}`;
+        if (data.company.industry) html += `Industry: ${escapeHtml(data.company.industry)}. `;
+        if (data.company.employees) html += `Employees: ${escapeHtml(data.company.employees)}. `;
+        if (data.company.location) html += `Location: ${escapeHtml(data.company.location)}`;
         html += '</div>';
       }
 
@@ -785,7 +798,7 @@
 
         document.getElementById('viewContent').innerHTML = html;
       } catch (error) {
-        document.getElementById('viewContent').innerHTML = `<div class="error-message">${error.message}</div>`;
+        document.getElementById('viewContent').innerHTML = `<div class="error-message">${escapeHtml(error.message)}</div>`;
       }
     }
 
@@ -821,8 +834,61 @@
       }
     };
 
+    // Edit bans
+    async function loadBans() {
+      try {
+        const resp = await fetch('/api/registry/edit-bans');
+        if (!resp.ok) {
+          document.getElementById('bansContent').innerHTML = '<p style="color: var(--color-text-muted);">Could not load bans.</p>';
+          return;
+        }
+        const { bans } = await resp.json();
+        const container = document.getElementById('bansContent');
+
+        if (!bans || bans.length === 0) {
+          container.innerHTML = '<p style="color: var(--color-text-muted);">No active edit bans.</p>';
+          return;
+        }
+
+        container.innerHTML = `<table class="brands-table">
+          <thead><tr><th>Type</th><th>User</th><th>Scope</th><th>Reason</th><th>Banned By</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${bans.map(ban => `<tr>
+              <td><span class="source-badge">${escapeHtml(ban.entity_type)}</span></td>
+              <td>${escapeHtml(ban.banned_email || ban.banned_user_id)}</td>
+              <td>${escapeHtml(ban.entity_domain) || 'Global'}</td>
+              <td>${escapeHtml(ban.reason)}</td>
+              <td>${escapeHtml(ban.banned_by_email || ban.banned_by_user_id)}</td>
+              <td><button class="btn-icon" onclick="removeBan('${escapeHtml(ban.id)}')">Remove</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+      } catch (err) {
+        console.error('Failed to load bans:', err);
+      }
+    }
+
+    async function removeBan(banId) {
+      if (!confirm('Remove this edit ban?')) return;
+      try {
+        const resp = await fetch(`/api/registry/edit-bans/${banId}`, { method: 'DELETE' });
+        if (resp.ok) loadBans();
+        else alert('Failed to remove ban');
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (str == null) return '';
+      const div = document.createElement('div');
+      div.textContent = String(str);
+      return div.innerHTML;
+    }
+
     // Initialize
     loadBrands();
+    loadBans();
   </script>
 </body>
 </html>

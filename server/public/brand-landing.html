@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>brand.json - Machine-Readable Brand Identity | AdCP</title>
+  <meta name="description" content="brand.json is a standard file at /.well-known/brand.json that tells AI agents who your brand is, what it looks like, and how it wants to be represented in advertising.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       brand.json Landing Page styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    body {
+      padding-top: var(--nav-height);
+    }
+
+    /* Hero */
+    .hero--brand {
+      background: linear-gradient(135deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%);
+      color: white;
+      padding: var(--space-16) var(--space-5);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero--brand::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image:
+        radial-gradient(circle at 20% 80%, rgba(164,194,244,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(164,194,244,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255,255,255,0.08) 0%, transparent 30%);
+      pointer-events: none;
+    }
+    .hero--brand .hero-container {
+      max-width: var(--container-md);
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .hero--brand h1 {
+      font-size: var(--text-5xl);
+      font-weight: var(--font-bold);
+      margin-bottom: var(--space-4);
+      line-height: var(--leading-tight);
+      font-family: var(--font-mono);
+    }
+    .hero--brand .hero-subtitle {
+      font-size: var(--text-xl);
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: var(--space-6);
+      line-height: var(--leading-relaxed);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero--brand .hero-description {
+      font-size: var(--text-base);
+      color: rgba(255, 255, 255, 0.8);
+      line-height: var(--leading-relaxed);
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .hero--brand .hero-description code {
+      background: rgba(255, 255, 255, 0.15);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+
+    /* Main content container */
+    .brand-container {
+      max-width: var(--container-lg);
+      margin: 0 auto;
+      padding: var(--space-12) var(--space-5);
+    }
+
+    /* Section spacing */
+    .brand-section {
+      margin-bottom: var(--space-12);
+    }
+    .brand-section:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Section headings */
+    .brand-section h2 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+    .brand-section > p {
+      font-size: var(--text-lg);
+      line-height: var(--leading-relaxed);
+      color: var(--color-gray-600);
+      max-width: var(--container-md);
+    }
+
+    /* Features grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+    }
+    .feature-card {
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6);
+      transition: var(--transition-all);
+    }
+    .feature-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: var(--shadow-primary-md);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-4);
+      font-size: var(--text-2xl);
+    }
+    .feature-card h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+    .feature-card p {
+      font-size: var(--text-sm);
+      color: var(--color-gray-500);
+      line-height: var(--leading-relaxed);
+      margin: 0;
+    }
+
+    /* Quick Start section */
+    .quick-start-content {
+      margin-top: var(--space-6);
+    }
+    .code-block {
+      background: var(--color-gray-900);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      overflow-x: auto;
+      margin-bottom: var(--space-5);
+    }
+    .code-block pre {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-gray-100);
+      line-height: var(--leading-relaxed);
+    }
+    .code-label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-gray-400);
+      margin-bottom: var(--space-3);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+      font-weight: var(--font-semibold);
+    }
+    .quick-start-note {
+      font-size: var(--text-base);
+      line-height: var(--leading-relaxed);
+      color: var(--color-gray-600);
+    }
+    .quick-start-note code {
+      background: var(--color-primary-50);
+      color: var(--color-brand);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+
+    /* JSON syntax highlighting */
+    .json-key { color: #7dd3fc; }
+    .json-string { color: #86efac; }
+    .json-punctuation { color: var(--color-gray-400); }
+
+    /* CTA cards grid */
+    .cta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+    }
+    .cta-card {
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-6);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-all);
+      display: flex;
+      flex-direction: column;
+    }
+    .cta-card:hover {
+      border-color: var(--color-brand);
+      box-shadow: var(--shadow-primary-md);
+      transform: translateY(-2px);
+    }
+    .cta-card-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--color-primary-50);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-4);
+      font-size: var(--text-xl);
+    }
+    .cta-card h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+    .cta-card p {
+      font-size: var(--text-sm);
+      color: var(--color-gray-500);
+      line-height: var(--leading-relaxed);
+      margin: 0;
+      flex: 1;
+    }
+    .cta-card .cta-arrow {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--color-brand);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      margin-top: var(--space-4);
+    }
+    .cta-card .cta-arrow svg {
+      transition: transform var(--duration-normal);
+    }
+    .cta-card:hover .cta-arrow svg {
+      transform: translateX(4px);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero--brand {
+        padding: var(--space-10) var(--space-4) var(--space-8);
+      }
+      .hero--brand h1 {
+        font-size: var(--text-3xl);
+      }
+      .hero--brand .hero-subtitle {
+        font-size: var(--text-lg);
+      }
+      .brand-container {
+        padding: var(--space-8) var(--space-4);
+      }
+      .brand-section {
+        margin-bottom: var(--space-8);
+      }
+      .features-grid,
+      .cta-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+
+  <!-- Hero Section -->
+  <section class="hero--brand">
+    <div class="hero-container">
+      <h1>brand.json</h1>
+      <p class="hero-subtitle">Machine-readable brand identity for the agentic advertising era</p>
+      <p class="hero-description">
+        A standard file at <code>/.well-known/brand.json</code> that tells AI agents who your brand is, what it looks like, and how it wants to be represented in advertising.
+      </p>
+    </div>
+  </section>
+
+  <!-- Main Content -->
+  <div class="brand-container">
+
+    <!-- Why brand.json? -->
+    <section class="brand-section">
+      <h2>Why brand.json?</h2>
+      <p>
+        AI agents need structured brand data to make advertising decisions &mdash; colors, tone, portfolio structure, category preferences. Without a standard, every platform asks for this differently. brand.json provides a single source of truth that any agent can discover and consume automatically.
+      </p>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="brand-section">
+      <h2>What it includes</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+          </div>
+          <h3>Brand Identity</h3>
+          <p>Name, description, logos, colors, and typography. Everything an agent needs to represent your brand correctly.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
+          </div>
+          <h3>Portfolio Structure</h3>
+          <p>Define your brand architecture: master brands, sub-brands, endorsed brands, and their relationships.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          </div>
+          <h3>Advertising Preferences</h3>
+          <p>Categories, restrictions, tone guidelines, and audience targeting preferences that agents should follow.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section class="brand-section">
+      <h2>Quick Start</h2>
+      <div class="quick-start-content">
+        <span class="code-label">/.well-known/brand.json</span>
+        <div class="code-block">
+          <pre><span class="json-punctuation">{</span>
+  <span class="json-key">"$schema"</span><span class="json-punctuation">:</span> <span class="json-string">"https://adcontextprotocol.org/schemas/v1/brand.json"</span><span class="json-punctuation">,</span>
+  <span class="json-key">"brand_name"</span><span class="json-punctuation">:</span> <span class="json-string">"Acme Corp"</span><span class="json-punctuation">,</span>
+  <span class="json-key">"domain"</span><span class="json-punctuation">:</span> <span class="json-string">"acme.com"</span><span class="json-punctuation">,</span>
+  <span class="json-key">"description"</span><span class="json-punctuation">:</span> <span class="json-string">"Leading provider of innovative solutions"</span><span class="json-punctuation">,</span>
+  <span class="json-key">"brand_colors"</span><span class="json-punctuation">:</span> <span class="json-punctuation">{</span>
+    <span class="json-key">"primary"</span><span class="json-punctuation">:</span> <span class="json-string">"#2563eb"</span>
+  <span class="json-punctuation">}</span>
+<span class="json-punctuation">}</span></pre>
+        </div>
+        <p class="quick-start-note">
+          Place this file at <code>https://yourdomain.com/.well-known/brand.json</code> and AI advertising agents will automatically discover your brand identity.
+        </p>
+      </div>
+    </section>
+
+    <!-- CTA Cards -->
+    <section class="brand-section">
+      <h2>Get Started</h2>
+      <div class="cta-grid">
+        <a href="/brand/builder" class="cta-card">
+          <div class="cta-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+          </div>
+          <h3>Build your brand.json</h3>
+          <p>Use our interactive builder to create and validate your brand.json file.</p>
+          <span class="cta-arrow">
+            Get started
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </span>
+        </a>
+        <a href="/brands" class="cta-card">
+          <div class="cta-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </div>
+          <h3>Browse the Brand Registry</h3>
+          <p>Explore brands in the community-contributed registry.</p>
+          <span class="cta-arrow">
+            View registry
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </span>
+        </a>
+        <a href="https://docs.adcontextprotocol.org/docs/brand-protocol/brand-json" target="_blank" rel="noopener noreferrer" class="cta-card">
+          <div class="cta-card-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>
+          </div>
+          <h3>Read the Specification</h3>
+          <p>Full specification and field reference for brand.json.</p>
+          <span class="cta-arrow">
+            Read docs
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </span>
+        </a>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Shared Footer -->
+  <div id="adcp-footer"></div>
+
+  <script src="/nav.js"></script>
+</body>
+</html>
