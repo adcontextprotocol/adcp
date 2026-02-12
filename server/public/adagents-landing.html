@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>adagents.json - Declare Your Advertising Inventory for AI Sales Agents</title>
+  <meta name="description" content="adagents.json is a standard file that tells AI advertising agents what you publish, what inventory is available, and which agents are authorized to sell it.">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       adagents.json Landing Page styles
+       Uses design system variables - see /design-system.css for tokens.
+       Purple theme variables defined locally (not yet in design-system.css).
+       ============================================================================= */
+
+    :root {
+      --color-purple-50:  #faf5ff;
+      --color-purple-100: #f3e8ff;
+      --color-purple-200: #e9d5ff;
+      --color-purple-300: #d8b4fe;
+      --color-purple-400: #c084fc;
+      --color-purple-500: #a855f7;
+      --color-purple-600: #9333ea;
+      --color-purple-700: #7e22ce;
+      --color-purple-800: #6b21a8;
+      --color-purple-900: #581c87;
+    }
+
+    body {
+      padding-top: var(--nav-height);
+    }
+
+    /* Hero */
+    .hero--adagents {
+      background: linear-gradient(135deg, var(--color-purple-600) 0%, var(--color-purple-800) 100%);
+      color: white;
+      padding: var(--space-16) var(--space-5);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero--adagents::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image:
+        radial-gradient(circle at 20% 80%, rgba(216, 180, 254, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(216, 180, 254, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.08) 0%, transparent 30%);
+      pointer-events: none;
+    }
+    .hero--adagents .hero-container {
+      max-width: var(--container-md);
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .hero--adagents h1 {
+      font-size: var(--text-5xl);
+      font-weight: var(--font-bold);
+      font-family: var(--font-mono);
+      margin-bottom: var(--space-4);
+      line-height: var(--leading-tight);
+    }
+    .hero--adagents .hero-subtitle {
+      font-size: var(--text-xl);
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: var(--space-6);
+      line-height: var(--leading-relaxed);
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero--adagents .hero-description {
+      font-size: var(--text-base);
+      color: rgba(255, 255, 255, 0.8);
+      line-height: var(--leading-relaxed);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .hero--adagents .hero-description code {
+      background: rgba(255, 255, 255, 0.15);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+
+    /* Sections */
+    .landing-section {
+      max-width: var(--container-lg);
+      margin: 0 auto;
+      padding: var(--space-12) var(--space-5);
+    }
+    .landing-section h2 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      text-align: center;
+    }
+    .landing-section .section-subtitle {
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto var(--space-8);
+    }
+
+    /* Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+    }
+    .feature-card {
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-8);
+      transition: var(--transition-all);
+    }
+    .feature-card:hover {
+      border-color: var(--color-purple-400);
+      box-shadow: 0 4px 12px rgba(126, 34, 206, 0.12);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--color-purple-600) 0%, var(--color-purple-800) 100%);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-5);
+      font-size: var(--text-2xl);
+    }
+    .feature-card h3 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+    .feature-card p {
+      font-size: var(--text-base);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin: 0;
+    }
+
+    /* Quick Start */
+    .quickstart-section {
+      background: var(--color-bg-subtle);
+    }
+    .quickstart-inner {
+      max-width: var(--container-lg);
+      margin: 0 auto;
+      padding: var(--space-12) var(--space-5);
+    }
+    .quickstart-inner h2 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      text-align: center;
+    }
+    .quickstart-inner .section-subtitle {
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto var(--space-8);
+    }
+    .code-block-wrapper {
+      max-width: 700px;
+      margin: 0 auto var(--space-6);
+    }
+    .code-block-header {
+      background: var(--color-gray-800);
+      color: var(--color-gray-300);
+      padding: var(--space-3) var(--space-5);
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .code-block-header .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: var(--radius-full);
+      display: inline-block;
+    }
+    .code-block-header .dot--red { background: #ff5f57; }
+    .code-block-header .dot--yellow { background: #febc2e; }
+    .code-block-header .dot--green { background: #28c840; }
+    .code-block-header .filename {
+      margin-left: var(--space-3);
+    }
+    .code-block {
+      background: var(--color-gray-950);
+      color: #e2e8f0;
+      padding: var(--space-6);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      -webkit-overflow-scrolling: touch;
+    }
+    .code-block code {
+      white-space: pre;
+    }
+    .code-key { color: #7dd3fc; }
+    .code-string { color: #86efac; }
+    .code-bracket { color: #e2e8f0; }
+    .code-comment { color: #94a3b8; font-style: italic; }
+
+    .quickstart-note {
+      text-align: center;
+      font-size: var(--text-base);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .quickstart-note code {
+      background: var(--color-gray-100);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: var(--color-purple-700);
+    }
+
+    /* CTA Cards */
+    .cta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+    }
+    .cta-card {
+      display: block;
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-8);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-all);
+    }
+    .cta-card:hover {
+      border-color: var(--color-purple-400);
+      box-shadow: 0 4px 12px rgba(126, 34, 206, 0.12);
+      transform: translateY(-2px);
+    }
+    .cta-card-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--color-purple-600) 0%, var(--color-purple-800) 100%);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: var(--space-5);
+      font-size: var(--text-2xl);
+    }
+    .cta-card h3 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+    .cta-card p {
+      font-size: var(--text-base);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin: 0;
+    }
+    .cta-card .cta-arrow {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      margin-top: var(--space-4);
+      color: var(--color-purple-600);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+    }
+    .cta-card:hover .cta-arrow svg {
+      transform: translateX(4px);
+    }
+    .cta-card .cta-arrow svg {
+      transition: transform var(--duration-normal) var(--ease-out);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .hero--adagents {
+        padding: var(--space-10) var(--space-4) var(--space-8);
+      }
+      .hero--adagents h1 {
+        font-size: var(--text-3xl);
+      }
+      .hero--adagents .hero-subtitle {
+        font-size: var(--text-lg);
+      }
+      .features-grid,
+      .cta-grid {
+        grid-template-columns: 1fr;
+      }
+      .landing-section,
+      .quickstart-inner {
+        padding: var(--space-8) var(--space-4);
+      }
+      .landing-section h2,
+      .quickstart-inner h2 {
+        font-size: var(--text-2xl);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+
+  <!-- Hero Section -->
+  <section class="hero--adagents">
+    <div class="hero-container">
+      <h1>adagents.json</h1>
+      <p class="hero-subtitle">Declare your advertising inventory for AI sales agents</p>
+      <p class="hero-description">
+        A standard file at <code>/.well-known/adagents.json</code> that tells AI advertising agents
+        what you publish, what inventory is available, and which agents are authorized to sell it.
+      </p>
+    </div>
+  </section>
+
+  <!-- Why adagents.json? -->
+  <section class="landing-section">
+    <h2>Why adagents.json?</h2>
+    <p class="section-subtitle">
+      Publishers need a way to declare their properties and authorize specific AI sales agents
+      to sell their inventory. Like robots.txt for advertising, adagents.json gives publishers
+      control over which AI agents can represent their inventory.
+    </p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3>Property Declarations</h3>
+        <p>List your websites, apps, CTV channels, and other advertising properties with categories and metadata.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Agent Authorization</h3>
+        <p>Specify exactly which MCP-based sales agents are authorized to sell inventory on your properties.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Verification &amp; Contact</h3>
+        <p>Domain verification and publisher contact information for agent-to-publisher communication.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section class="quickstart-section">
+    <div class="quickstart-inner">
+      <h2>Quick Start</h2>
+      <p class="section-subtitle">Get started with a minimal adagents.json file and place it at your domain's well-known location.</p>
+
+      <div class="code-block-wrapper">
+        <div class="code-block-header">
+          <span class="dot dot--red"></span>
+          <span class="dot dot--yellow"></span>
+          <span class="dot dot--green"></span>
+          <span class="filename">/.well-known/adagents.json</span>
+        </div>
+        <div class="code-block"><code><span class="code-bracket">{</span>
+  <span class="code-key">"$schema"</span>: <span class="code-string">"https://adcontextprotocol.org/schemas/v1/adagents.json"</span>,
+  <span class="code-key">"publisher_domain"</span>: <span class="code-string">"publisher.com"</span>,
+  <span class="code-key">"properties"</span>: <span class="code-bracket">[</span>
+    <span class="code-bracket">{</span>
+      <span class="code-key">"name"</span>: <span class="code-string">"Publisher News"</span>,
+      <span class="code-key">"domain"</span>: <span class="code-string">"news.publisher.com"</span>,
+      <span class="code-key">"categories"</span>: <span class="code-bracket">[</span><span class="code-string">"news"</span>, <span class="code-string">"technology"</span><span class="code-bracket">]</span>
+    <span class="code-bracket">}</span>
+  <span class="code-bracket">]</span>,
+  <span class="code-key">"authorized_agents"</span>: <span class="code-bracket">[</span>
+    <span class="code-bracket">{</span>
+      <span class="code-key">"url"</span>: <span class="code-string">"https://agent.example.com"</span>,
+      <span class="code-key">"authorized_for"</span>: <span class="code-bracket">[</span><span class="code-string">"display"</span>, <span class="code-string">"video"</span><span class="code-bracket">]</span>
+    <span class="code-bracket">}</span>
+  <span class="code-bracket">]</span>
+<span class="code-bracket">}</span></code></div>
+      </div>
+
+      <p class="quickstart-note">
+        Place this file at <code>https://yourdomain.com/.well-known/adagents.json</code> and AI sales agents will discover your properties and authorization rules.
+      </p>
+    </div>
+  </section>
+
+  <!-- CTA Cards -->
+  <section class="landing-section">
+    <h2>Get Started</h2>
+    <p class="section-subtitle">Build, browse, and learn about the adagents.json standard.</p>
+
+    <div class="cta-grid">
+      <a href="/adagents/builder" class="cta-card">
+        <div class="cta-card-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+        <h3>Build your adagents.json</h3>
+        <p>Use our interactive builder to create and validate your adagents.json file.</p>
+        <span class="cta-arrow">
+          Get started
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </span>
+      </a>
+      <a href="/publishers" class="cta-card">
+        <div class="cta-card-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <h3>Browse the Publisher Registry</h3>
+        <p>Explore publishers and their advertising properties.</p>
+        <span class="cta-arrow">
+          View registry
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </span>
+      </a>
+      <a href="https://docs.adcontextprotocol.org/docs/media-buy/capability-discovery/adagents" target="_blank" rel="noopener noreferrer" class="cta-card">
+        <div class="cta-card-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </div>
+        <h3>Read the Specification</h3>
+        <p>Full specification and field reference for adagents.json.</p>
+        <span class="cta-arrow">
+          Read docs
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <div id="adcp-footer"></div>
+
+  <script src="/nav.js"></script>
+</body>
+</html>

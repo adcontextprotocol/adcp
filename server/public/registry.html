@@ -175,6 +175,8 @@
         .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
         .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
         .error-text { color: var(--color-error-500); font-size: var(--text-sm); }
+        .hidden { display: none !important; }
+        .add-record-cta { margin-top: var(--space-4); text-align: center; }
         .view { display: none; }
         .view.active { display: block; }
         .tab-content { display: none; }
@@ -403,11 +405,6 @@
                 <div class="quick-link-title">Signals Agents</div>
                 <div class="quick-link-desc">Find audience and signals agents</div>
             </a>
-            <a href="?type=brands" class="quick-link">
-                <div class="quick-link-icon">🏷️</div>
-                <div class="quick-link-title">Brands</div>
-                <div class="quick-link-desc">Discover brand identities and manifests</div>
-            </a>
         </div>
     </div>
 
@@ -418,7 +415,6 @@
                 <button class="tab active" onclick="switchTab('sales')">🏢 Sales Agents</button>
                 <button class="tab" onclick="switchTab('creative')">🎨 Creative Agents</button>
                 <button class="tab" onclick="switchTab('signals')">📊 Signals Agents</button>
-                <button class="tab" onclick="switchTab('brands')">🏷️ Brands</button>
             </div>
 
             <!-- Sales Tab -->
@@ -484,25 +480,6 @@
                 <div id="signals-agents" class="agent-grid"></div>
             </div>
 
-            <!-- Brands Tab -->
-            <div id="brands-tab" class="tab-content">
-                <div class="search-filters">
-                    <div class="search-box">
-                        <input type="text" id="brands-search" placeholder="Search by brand name or domain..." onkeyup="filterBrands()">
-                    </div>
-                    <div class="filter-row">
-                        <div class="filter-group">
-                            <label>Source:</label>
-                            <button class="filter-btn active" data-source="all" onclick="setBrandsSourceFilter('all')">All</button>
-                            <button class="filter-btn" data-source="brand_json" onclick="setBrandsSourceFilter('brand_json')">brand.json</button>
-                            <button class="filter-btn" data-source="hosted" onclick="setBrandsSourceFilter('hosted')">Hosted</button>
-                            <button class="filter-btn" data-source="community" onclick="setBrandsSourceFilter('community')">Community</button>
-                            <button class="filter-btn" data-source="enriched" onclick="setBrandsSourceFilter('enriched')">Enriched</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="brands-grid" class="agent-grid"></div>
-            </div>
         </div>
     </div>
 
@@ -551,14 +528,12 @@
         let salesAgents = [];
         let creativeAgents = [];
         let signalsAgents = [];
-        let brands = [];
         let salesAgentsEnriched = []; // With properties data
         let creativeAgentsEnriched = []; // With formats data
         let currentTab = 'sales';
         let salesFilters = { status: 'all', channel: null, country: null, search: '' };
         let creativeFilters = { status: 'all', format: null, search: '' };
         let signalsFilters = { status: 'all', search: '' };
-        let brandsFilters = { source: 'all', search: '' };
         let isLoading = true;
 
         // Initialize
@@ -577,7 +552,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const type = urlParams.get('type');
 
-            if (type && ['sales', 'creative', 'signals', 'brands'].includes(type)) {
+            if (type && ['sales', 'creative', 'signals'].includes(type)) {
                 // Update tab buttons
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                 const activeTab = Array.from(document.querySelectorAll('.tab')).find(t =>
@@ -596,11 +571,7 @@
 
         async function loadAllAgents() {
             try {
-                // Load agents and brands in parallel
-                const [agentsResponse] = await Promise.all([
-                    fetch('/api/registry/agents?health=true&properties=true&capabilities=true'),
-                    loadBrands(),
-                ]);
+                const agentsResponse = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
 
                 const data = await agentsResponse.json();
                 const agents = data.agents || data; // Handle both wrapped and unwrapped response
@@ -711,7 +682,6 @@
             if (currentTab === 'sales') renderSalesAgents();
             else if (currentTab === 'creative') renderCreativeAgents();
             else if (currentTab === 'signals') renderSignalsAgents();
-            else if (currentTab === 'brands') renderBrands();
         }
 
         function renderLoadingSkeleton(count = 3) {
@@ -965,103 +935,6 @@
             `).join('');
         }
 
-        async function loadBrands() {
-            try {
-                const response = await fetch('/api/brands/registry');
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                const data = await response.json();
-                brands = data.brands || [];
-            } catch (error) {
-                console.error('Failed to load brands:', error);
-                brands = [];
-            }
-        }
-
-        function renderBrands() {
-            const container = document.getElementById('brands-grid');
-
-            if (isLoading) {
-                container.innerHTML = renderLoadingSkeleton(4);
-                return;
-            }
-
-            const filtered = brands.filter(brand => {
-                if (brandsFilters.source !== 'all' && brand.source !== brandsFilters.source) {
-                    return false;
-                }
-
-                if (brandsFilters.search) {
-                    const query = brandsFilters.search.toLowerCase();
-                    const matchesName = brand.brand_name?.toLowerCase().includes(query);
-                    const matchesDomain = brand.domain?.toLowerCase().includes(query);
-                    const matchesHouse = brand.house_domain?.toLowerCase().includes(query);
-                    if (!matchesName && !matchesDomain && !matchesHouse) return false;
-                }
-
-                return true;
-            });
-
-            if (filtered.length === 0) {
-                const message = brands.length === 0
-                    ? 'No brands registered yet.'
-                    : 'No brands found matching your filters.';
-                container.innerHTML = `<div class="loading">${message}</div>`;
-                return;
-            }
-
-            container.innerHTML = filtered.map(brand => {
-                const sourceLabel = {
-                    'brand_json': 'brand.json',
-                    'hosted': 'Hosted',
-                    'community': 'Community',
-                    'enriched': 'Enriched',
-                }[brand.source] || brand.source;
-
-                return `
-                    <div class="agent-card">
-                        <div class="agent-header">
-                            <div class="agent-title">
-                                <div class="agent-name">${brand.brand_name || brand.domain}</div>
-                                <div class="agent-url">${brand.domain}</div>
-                            </div>
-                            <span class="status-badge ${brand.source === 'brand_json' ? 'online' : ''}" style="${brand.source !== 'brand_json' ? 'background: var(--color-bg-subtle); color: var(--color-text-light);' : ''}">
-                                ${sourceLabel}
-                            </span>
-                        </div>
-
-                        <div class="agent-meta">
-                            ${brand.has_manifest ? `
-                            <div class="meta-item">
-                                <span>📋</span>
-                                <span class="meta-value">Manifest</span>
-                            </div>
-                            ` : ''}
-                            ${brand.verified ? `
-                            <div class="meta-item">
-                                <span>✓</span>
-                                <span class="meta-value">Verified</span>
-                            </div>
-                            ` : ''}
-                            ${brand.house_domain ? `
-                            <div class="meta-item">
-                                <span>🏠</span>
-                                <span class="meta-value">${brand.house_domain}</span>
-                            </div>
-                            ` : ''}
-                        </div>
-
-                        ${brand.keller_type ? `
-                        <div class="property-tags">
-                            <span class="property-tag">${brand.keller_type}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                `;
-            }).join('');
-        }
-
         // Filter functions for sales
         window.setSalesStatusFilter = function(status) {
             salesFilters.status = status;
@@ -1118,20 +991,6 @@
         window.filterSignalsAgents = function() {
             signalsFilters.search = document.getElementById('signals-search').value;
             renderSignalsAgents();
-        };
-
-        // Filter functions for brands
-        window.setBrandsSourceFilter = function(source) {
-            brandsFilters.source = source;
-            document.querySelectorAll('#brands-tab .filter-btn[data-source]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.source === source);
-            });
-            renderBrands();
-        };
-
-        window.filterBrands = function() {
-            brandsFilters.search = document.getElementById('brands-search').value;
-            renderBrands();
         };
 
         // Navigation

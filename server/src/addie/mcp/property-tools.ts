@@ -227,6 +227,37 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       adagentsJson.contact = contact;
     }
 
+    // Check if property already exists
+    const existing = await propertyDb.getHostedPropertyByDomain(publisherDomain);
+
+    if (existing) {
+      // Check for authoritative lock
+      const discovered = await propertyDb.getDiscoveredPropertiesByDomain(publisherDomain);
+      if (discovered.length > 0) {
+        return JSON.stringify({
+          error: 'Cannot edit authoritative property (managed via adagents.json)',
+          domain: publisherDomain,
+        });
+      }
+
+      // Use revision-tracked edit
+      const { property, revision_number } = await propertyDb.editCommunityProperty(publisherDomain, {
+        adagents_json: adagentsJson,
+        edit_summary: 'Addie enrichment: updated property data',
+        editor_user_id: 'system:addie',
+        editor_email: 'addie@agenticadvertising.org',
+        editor_name: 'Addie',
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: `Property "${publisherDomain}" updated in registry (revision ${revision_number})`,
+        id: property.id,
+        revision_number,
+      }, null, 2);
+    }
+
+    // New property: create directly (Addie is trusted, no pending review)
     const saved = await propertyDb.createHostedProperty({
       publisher_domain: publisherDomain,
       adagents_json: adagentsJson,

@@ -1,9 +1,10 @@
-import { query } from './client.js';
+import { query, getClient } from './client.js';
 import type {
   HostedBrand,
   DiscoveredBrand,
   LocalizedName,
   KellerType,
+  RegistryRevision,
 } from '../types.js';
 
 /**
@@ -317,7 +318,8 @@ export class BrandDatabase {
   }>> {
     const limit = options.limit || 100;
     const offset = options.offset || 0;
-    const search = options.search ? `%${options.search}%` : null;
+    const escapedSearch = options.search ? options.search.replace(/[%_\\]/g, '\\$&') : null;
+    const search = escapedSearch ? `%${escapedSearch}%` : null;
 
     const result = await query<{
       domain: string;
@@ -353,6 +355,7 @@ export class BrandDatabase {
         keller_type
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
+        AND (review_status IS NULL OR review_status = 'approved')
         AND domain NOT IN (SELECT brand_domain FROM hosted_brands WHERE is_public = true)
 
       ORDER BY brand_name, domain
@@ -364,6 +367,362 @@ export class BrandDatabase {
     return result.rows;
   }
 
+  // ========== Wiki Editing ==========
+
+  /**
+   * Create a new community brand with pending review status and initial revision.
+   */
+  async createDiscoveredBrand(
+    input: UpsertDiscoveredBrandInput,
+    editor: { user_id: string; email?: string; name?: string }
+  ): Promise<DiscoveredBrand> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      const insertResult = await client.query<DiscoveredBrand>(
+        `INSERT INTO discovered_brands (
+          domain, canonical_domain, house_domain, brand_name, brand_names,
+          keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
+          has_brand_manifest, brand_manifest, source_type, review_status, last_validated, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', NOW(), $13)
+        RETURNING *`,
+        [
+          input.domain.toLowerCase(),
+          input.canonical_domain || null,
+          input.house_domain || null,
+          input.brand_name || null,
+          input.brand_names ? JSON.stringify(input.brand_names) : '[]',
+          input.keller_type || null,
+          input.parent_brand || null,
+          input.brand_agent_url || null,
+          input.brand_agent_capabilities || null,
+          input.has_brand_manifest ?? false,
+          input.brand_manifest ? JSON.stringify(input.brand_manifest) : null,
+          input.source_type,
+          input.expires_at || null,
+        ]
+      );
+
+      const brand = insertResult.rows[0];
+
+      // Create revision #1
+      await client.query(
+        `INSERT INTO brand_revisions (
+          brand_domain, revision_number, snapshot,
+          editor_user_id, editor_email, editor_name, edit_summary
+        ) VALUES ($1, 1, $2, $3, $4, $5, 'Initial record')`,
+        [
+          brand.domain,
+          JSON.stringify(brand),
+          editor.user_id,
+          editor.email || null,
+          editor.name || null,
+        ]
+      );
+
+      await client.query('COMMIT');
+      return this.deserializeDiscoveredBrand(brand);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Approve a pending brand (called by Addie after review).
+   */
+  async approveBrand(domain: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE discovered_brands SET review_status = 'approved' WHERE domain = $1`,
+      [domain.toLowerCase()]
+    );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  /**
+   * Edit a discovered brand with revision tracking.
+   * Rejects edits to authoritative (brand_json) or pending records.
+   */
+  async editDiscoveredBrand(
+    domain: string,
+    input: {
+      brand_name?: string;
+      brand_names?: LocalizedName[];
+      keller_type?: KellerType;
+      parent_brand?: string;
+      house_domain?: string;
+      canonical_domain?: string;
+      brand_agent_url?: string;
+      brand_agent_capabilities?: string[];
+      brand_manifest?: Record<string, unknown>;
+      has_brand_manifest?: boolean;
+      edit_summary: string;
+      editor_user_id: string;
+      editor_email?: string;
+      editor_name?: string;
+    }
+  ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Lock the row
+      const lockResult = await client.query<DiscoveredBrand>(
+        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        [domain.toLowerCase()]
+      );
+      if (lockResult.rows.length === 0) {
+        throw new Error(`Brand not found: ${domain}`);
+      }
+
+      const current = lockResult.rows[0];
+
+      if (current.source_type === 'brand_json') {
+        throw new Error('Cannot edit authoritative brand (managed via brand.json)');
+      }
+      if (current.review_status === 'pending') {
+        throw new Error('Cannot edit brand pending review');
+      }
+
+      // Get next revision number
+      const revResult = await client.query<{ next_rev: number }>(
+        'SELECT COALESCE(MAX(revision_number), 0) + 1 as next_rev FROM brand_revisions WHERE brand_domain = $1',
+        [domain.toLowerCase()]
+      );
+      const revisionNumber = revResult.rows[0].next_rev;
+
+      // Snapshot current state as revision
+      await client.query(
+        `INSERT INTO brand_revisions (
+          brand_domain, revision_number, snapshot,
+          editor_user_id, editor_email, editor_name, edit_summary
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          domain.toLowerCase(),
+          revisionNumber,
+          JSON.stringify(current),
+          input.editor_user_id,
+          input.editor_email || null,
+          input.editor_name || null,
+          input.edit_summary,
+        ]
+      );
+
+      // Build dynamic UPDATE
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (input.brand_name !== undefined) {
+        updates.push(`brand_name = $${paramIndex++}`);
+        values.push(input.brand_name);
+      }
+      if (input.brand_names !== undefined) {
+        updates.push(`brand_names = $${paramIndex++}`);
+        values.push(JSON.stringify(input.brand_names));
+      }
+      if (input.keller_type !== undefined) {
+        updates.push(`keller_type = $${paramIndex++}`);
+        values.push(input.keller_type);
+      }
+      if (input.parent_brand !== undefined) {
+        updates.push(`parent_brand = $${paramIndex++}`);
+        values.push(input.parent_brand);
+      }
+      if (input.house_domain !== undefined) {
+        updates.push(`house_domain = $${paramIndex++}`);
+        values.push(input.house_domain);
+      }
+      if (input.canonical_domain !== undefined) {
+        updates.push(`canonical_domain = $${paramIndex++}`);
+        values.push(input.canonical_domain);
+      }
+      if (input.brand_agent_url !== undefined) {
+        updates.push(`brand_agent_url = $${paramIndex++}`);
+        values.push(input.brand_agent_url);
+      }
+      if (input.brand_agent_capabilities !== undefined) {
+        updates.push(`brand_agent_capabilities = $${paramIndex++}`);
+        values.push(input.brand_agent_capabilities);
+      }
+      if (input.brand_manifest !== undefined) {
+        updates.push(`brand_manifest = $${paramIndex++}`);
+        values.push(JSON.stringify(input.brand_manifest));
+      }
+      if (input.has_brand_manifest !== undefined) {
+        updates.push(`has_brand_manifest = $${paramIndex++}`);
+        values.push(input.has_brand_manifest);
+      }
+
+      if (updates.length === 0) {
+        await client.query('COMMIT');
+        return { brand: this.deserializeDiscoveredBrand(current), revision_number: revisionNumber };
+      }
+
+      values.push(domain.toLowerCase());
+      const updateResult = await client.query<DiscoveredBrand>(
+        `UPDATE discovered_brands SET ${updates.join(', ')} WHERE domain = $${paramIndex} RETURNING *`,
+        values
+      );
+
+      await client.query('COMMIT');
+      return {
+        brand: this.deserializeDiscoveredBrand(updateResult.rows[0]),
+        revision_number: revisionNumber,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Rollback a brand to a previous revision.
+   */
+  async rollbackBrand(
+    domain: string,
+    toRevisionNumber: number,
+    editor: { user_id: string; email?: string; name?: string }
+  ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Get target revision
+      const targetResult = await client.query<{ snapshot: string }>(
+        'SELECT snapshot FROM brand_revisions WHERE brand_domain = $1 AND revision_number = $2',
+        [domain.toLowerCase(), toRevisionNumber]
+      );
+      if (targetResult.rows.length === 0) {
+        throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
+      }
+
+      const snapshot = typeof targetResult.rows[0].snapshot === 'string'
+        ? JSON.parse(targetResult.rows[0].snapshot)
+        : targetResult.rows[0].snapshot;
+
+      // Lock current row and get current state for the new revision snapshot
+      const currentResult = await client.query<DiscoveredBrand>(
+        'SELECT * FROM discovered_brands WHERE domain = $1 FOR UPDATE',
+        [domain.toLowerCase()]
+      );
+      if (currentResult.rows.length === 0) {
+        throw new Error(`Brand not found: ${domain}`);
+      }
+
+      // Get next revision number
+      const revResult = await client.query<{ next_rev: number }>(
+        'SELECT COALESCE(MAX(revision_number), 0) + 1 as next_rev FROM brand_revisions WHERE brand_domain = $1',
+        [domain.toLowerCase()]
+      );
+      const revisionNumber = revResult.rows[0].next_rev;
+
+      // Create rollback revision (snapshots current state before rollback)
+      await client.query(
+        `INSERT INTO brand_revisions (
+          brand_domain, revision_number, snapshot,
+          editor_user_id, editor_email, editor_name,
+          edit_summary, is_rollback, rolled_back_to
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
+        [
+          domain.toLowerCase(),
+          revisionNumber,
+          JSON.stringify(currentResult.rows[0]),
+          editor.user_id,
+          editor.email || null,
+          editor.name || null,
+          `Rollback to revision ${toRevisionNumber}`,
+          toRevisionNumber,
+        ]
+      );
+
+      // Restore from snapshot
+      const updateResult = await client.query<DiscoveredBrand>(
+        `UPDATE discovered_brands SET
+          canonical_domain = $2,
+          house_domain = $3,
+          brand_name = $4,
+          brand_names = $5,
+          keller_type = $6,
+          parent_brand = $7,
+          brand_agent_url = $8,
+          brand_agent_capabilities = $9,
+          has_brand_manifest = $10,
+          brand_manifest = $11
+        WHERE domain = $1
+        RETURNING *`,
+        [
+          domain.toLowerCase(),
+          snapshot.canonical_domain || null,
+          snapshot.house_domain || null,
+          snapshot.brand_name || null,
+          snapshot.brand_names ? JSON.stringify(snapshot.brand_names) : '[]',
+          snapshot.keller_type || null,
+          snapshot.parent_brand || null,
+          snapshot.brand_agent_url || null,
+          snapshot.brand_agent_capabilities || null,
+          snapshot.has_brand_manifest ?? false,
+          snapshot.brand_manifest ? JSON.stringify(snapshot.brand_manifest) : null,
+        ]
+      );
+
+      await client.query('COMMIT');
+      return {
+        brand: this.deserializeDiscoveredBrand(updateResult.rows[0]),
+        revision_number: revisionNumber,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Get revision history for a brand, newest first.
+   */
+  async getBrandRevisions(
+    domain: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<RegistryRevision[]> {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+    const result = await query<RegistryRevision & { brand_domain: string }>(
+      `SELECT * FROM brand_revisions WHERE brand_domain = $1
+       ORDER BY revision_number DESC LIMIT $2 OFFSET $3`,
+      [domain.toLowerCase(), limit, offset]
+    );
+    return result.rows.map((row) => this.deserializeRevision(row));
+  }
+
+  /**
+   * Get a single revision.
+   */
+  async getBrandRevision(domain: string, revisionNumber: number): Promise<RegistryRevision | null> {
+    const result = await query<RegistryRevision & { brand_domain: string }>(
+      'SELECT * FROM brand_revisions WHERE brand_domain = $1 AND revision_number = $2',
+      [domain.toLowerCase(), revisionNumber]
+    );
+    return result.rows[0] ? this.deserializeRevision(result.rows[0]) : null;
+  }
+
+  /**
+   * Count revisions for a brand.
+   */
+  async getBrandRevisionCount(domain: string): Promise<number> {
+    const result = await query<{ count: string }>(
+      'SELECT COUNT(*) as count FROM brand_revisions WHERE brand_domain = $1',
+      [domain.toLowerCase()]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
   // ========== Helpers ==========
 
   private deserializeHostedBrand(row: HostedBrand): HostedBrand {
@@ -372,6 +731,15 @@ export class BrandDatabase {
       brand_json: typeof row.brand_json === 'string' ? JSON.parse(row.brand_json) : row.brand_json,
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
+    };
+  }
+
+  private deserializeRevision(row: RegistryRevision & { brand_domain?: string }): RegistryRevision {
+    return {
+      ...row,
+      domain: row.brand_domain || row.domain,
+      snapshot: typeof row.snapshot === 'string' ? JSON.parse(row.snapshot) : row.snapshot,
+      created_at: new Date(row.created_at),
     };
   }
 

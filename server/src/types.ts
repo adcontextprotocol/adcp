@@ -381,6 +381,7 @@ export interface DiscoveredBrand {
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
   source_type: 'brand_json' | 'community' | 'enriched';
+  review_status?: 'pending' | 'approved';
   discovered_at: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -417,6 +418,7 @@ export interface HostedProperty {
   verification_token?: string;
   is_public: boolean;
   source_type: 'community' | 'enriched';
+  review_status?: 'pending' | 'approved';
   created_at: Date;
   updated_at: Date;
 }
@@ -443,6 +445,39 @@ export interface ResolvedProperty {
     email?: string;
   };
   verified: boolean;
+}
+
+/**
+ * Registry revision record (snapshot of a brand or property at a point in time)
+ */
+export interface RegistryRevision {
+  id: string;
+  domain: string;
+  revision_number: number;
+  snapshot: Record<string, unknown>;
+  editor_user_id: string;
+  editor_email?: string;
+  editor_name?: string;
+  edit_summary: string;
+  is_rollback: boolean;
+  rolled_back_to?: number;
+  created_at: Date;
+}
+
+/**
+ * Registry edit ban record
+ */
+export interface RegistryEditBan {
+  id: string;
+  entity_type: 'brand' | 'property';
+  banned_user_id: string;
+  banned_email?: string;
+  entity_domain?: string;
+  banned_by_user_id: string;
+  banned_by_email?: string;
+  reason: string;
+  expires_at?: Date;
+  created_at: Date;
 }
 
 /**

@@ -340,6 +340,19 @@
         color: var(--color-error-800);
       }
 
+      .result-info {
+        background: var(--color-primary-50);
+        border: 1px solid var(--color-primary-200);
+        color: var(--color-primary-800);
+      }
+
+      .btn-disabled-hint {
+        font-size: var(--text-xs);
+        color: var(--text-muted);
+        margin-top: var(--space-1);
+        text-align: right;
+      }
+
       .dashboard-header {
         background: var(--color-primary-50);
         border: 1px solid var(--color-primary-200);
@@ -883,7 +896,7 @@
         justify-content: space-between;
         padding: var(--space-3) var(--space-4);
         font-weight: var(--font-semibold);
-        font-size: var(--text-sm);
+        font-size: var(--text-base);
         color: var(--text-primary);
         cursor: pointer;
       }
@@ -1156,7 +1169,10 @@
               <a id="view-brand-link" class="btn btn-view-brand" href="#" target="_blank" style="display:none;">View Brand</a>
               <button class="btn btn-secondary" onclick="copyJson()">Copy JSON</button>
               <button class="btn btn-secondary" onclick="downloadJson()">Download</button>
-              <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save to Registry</button>
+              <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                <button class="btn" id="save-registry-btn" onclick="saveToRegistry()" disabled title="Log in to save">Save to Registry</button>
+                <span id="save-registry-hint" class="btn-disabled-hint">Log in as a member to save</span>
+              </div>
             </div>
           </div>
 
@@ -1280,11 +1296,13 @@
             </div>
             <div>
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
-                Properties (websites, apps)
-                <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+                Properties (websites, apps) <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span>
+                <button class="btn" onclick="addSingleBrandProperty()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-sm);">+ Add Property</button>
               </label>
               <div id="single-brand-properties">
-                <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>
+                <div style="padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center;">
+                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">Add your website, app, or other digital properties where your brand appears</p>
+                </div>
               </div>
             </div>
 
@@ -1292,21 +1310,22 @@
               <summary>Brand Identity</summary>
               <div class="brand-section-content">
                 <div class="form-group">
-                  <label>Description</label>
-                  <textarea id="single-description" rows="2" placeholder="Brief description of the brand" oninput="updateSingleIdentity('description', this.value)"></textarea>
+                  <label>Description <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                  <textarea id="single-description" rows="2" placeholder="Brief description of the brand" oninput="updateSingleIdentity('description', this.value); updateDescCharCount(this.value)"></textarea>
+                  <p class="hint" id="single-desc-char-count">0 / 500 characters</p>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Tagline</label>
+                    <label>Tagline <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="text" id="single-tagline" placeholder="Just Do It" oninput="updateSingleIdentity('tagline', this.value)" />
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Brand Voice</label>
+                    <label>Brand Voice <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="text" id="single-tone-voice" placeholder="professional and trustworthy" oninput="updateSingleTone('voice', this.value)" />
                   </div>
                 </div>
                 <div class="form-group" style="margin-bottom: var(--space-4);">
-                  <label>Voice Attributes</label>
+                  <label>Voice Attributes <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                   <div class="chip-container" id="single-tone-attributes-container" onclick="document.getElementById('single-tone-attributes-input').focus()">
                     <span id="single-tone-attributes-chips"></span>
                     <input type="text" class="chip-input" id="single-tone-attributes-input"
@@ -1316,27 +1335,27 @@
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Do's</label>
+                    <label>Brand Do's <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <div class="chip-container" id="single-tone-dos-container" onclick="document.getElementById('single-tone-dos-input').focus()">
                       <span id="single-tone-dos-chips"></span>
                       <input type="text" class="chip-input" id="single-tone-dos-input"
-                        placeholder="Type guideline and press Enter"
+                        placeholder="e.g., Use bold typography, Reference sustainability"
                         onkeydown="handleToneChipKeydown(event, 'single', 'dos')" />
                     </div>
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Don'ts</label>
+                    <label>Brand Don'ts <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <div class="chip-container" id="single-tone-donts-container" onclick="document.getElementById('single-tone-donts-input').focus()">
                       <span id="single-tone-donts-chips"></span>
                       <input type="text" class="chip-input" id="single-tone-donts-input"
-                        placeholder="Type guideline and press Enter"
+                        placeholder="e.g., Never use slang, Avoid competitor comparisons"
                         onkeydown="handleToneChipKeydown(event, 'single', 'donts')" />
                     </div>
                   </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Industry</label>
+                    <label>Industry <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <div class="dropdown-wrapper" id="single-industry-wrapper">
                       <div class="chip-container" onclick="focusIndustryInput('single')">
                         <span id="single-industry-chips"></span>
@@ -1350,12 +1369,12 @@
                     </div>
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Target Audience</label>
+                    <label>Target Audience <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="text" id="single-target_audience" placeholder="Young professionals" oninput="updateSingleIdentity('target_audience', this.value)" />
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>Privacy Policy URL</label>
+                  <label>Privacy Policy URL <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                   <input type="url" id="single-privacy_policy_url" placeholder="https://example.com/privacy" oninput="updateSingleIdentity('privacy_policy_url', this.value)" />
                 </div>
               </div>
@@ -1365,17 +1384,20 @@
               <summary>Creative Assets</summary>
               <div class="brand-section-content">
                 <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
-                  Logos
-                  <button class="btn" onclick="addSingleLogo()" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
+                  Logos <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span>
+                  <button class="btn" onclick="addSingleLogo()" style="padding: var(--space-2) var(--space-3); font-size: var(--text-xs);">+ Add Logo</button>
                 </label>
                 <div id="single-logos-container">
-                  <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 var(--space-4) 0;">No logos yet</p>
+                  <div style="padding: var(--space-3); border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center; margin-bottom: var(--space-4);">
+                    <p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No logos yet. Add a URL to your brand logo.</p>
+                  </div>
                 </div>
 
-                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Colors</label>
+                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Colors <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                <p style="font-size: var(--text-xs); color: var(--text-muted); margin: 0 0 var(--space-2) 0;">Define your brand color palette. Each color name can have one or more hex values.</p>
                 <div id="single-colors-container" style="margin-bottom: var(--space-4);"></div>
 
-                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Fonts</label>
+                <label style="display: block; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">Fonts <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
                   <div class="form-group" style="margin-bottom: 0;">
                     <input type="text" id="single-font-primary" placeholder="Primary font family" oninput="updateSingleFont('primary', this.value)" />
@@ -1494,15 +1516,15 @@
               <div class="brand-section-content">
                 <div class="contact-grid">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Name</label>
+                    <label>Name <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="text" id="contact-name" placeholder="Brand Team" oninput="updateContact('name', this.value)" />
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Email</label>
+                    <label>Email <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="email" id="contact-email" placeholder="brands@example.com" oninput="updateContact('email', this.value)" />
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Domain</label>
+                    <label>Domain <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <input type="text" id="contact-domain" placeholder="example.com" oninput="updateContact('domain', this.value)" />
                   </div>
                 </div>
@@ -1511,14 +1533,18 @@
           </div>
 
           <!-- JSON Preview -->
-          <div style="margin-top: var(--space-6)">
-            <h4 style="margin-bottom: var(--space-3)">Generated brand.json</h4>
+          <details open style="margin-top: var(--space-6);">
+            <summary style="cursor: pointer; font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--text-primary); margin-bottom: var(--space-2); list-style: none; display: flex; align-items: center; gap: var(--space-2);">
+              <span>Live Preview</span>
+              <span style="font-size: var(--text-xs); font-weight: var(--font-normal); color: var(--text-muted);">brand.json</span>
+            </summary>
+            <p style="font-size: var(--text-xs); color: var(--text-muted); margin: 0 0 var(--space-3) 0;">Updates automatically as you fill in fields above</p>
             <pre class="json-preview" id="json-preview">{}</pre>
-          </div>
+          </details>
 
           <!-- Next Steps / Success State -->
           <div class="next-steps" id="next-steps">
-            <h4>✅ Next Steps</h4>
+            <h4>Next Steps</h4>
             <ol>
               <li>
                 <div class="step-number">1</div>
@@ -1950,9 +1976,9 @@
         }
 
         validationResults.innerHTML = `
-          <div class="validation-result result-warning">
-            <strong>No brand.json found</strong><br>
-            Create a new brand.json for ${escapeHtml(domain)}
+          <div class="validation-result result-info">
+            <strong>No existing brand.json</strong><br>
+            Let's create one for ${escapeHtml(domain)}
           </div>
         `;
         validationResults.classList.remove('hidden');
@@ -2202,7 +2228,7 @@
       function renderSingleBrandProperties() {
         const container = document.getElementById('single-brand-properties');
         if (singleBrandProperties.length === 0) {
-          container.innerHTML = `<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No properties yet</p>`;
+          container.innerHTML = `<div style="padding: var(--space-4); border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center;"><p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">Add your website, app, or other digital properties where your brand appears</p></div>`;
           return;
         }
 
@@ -2223,7 +2249,7 @@
               <input type="checkbox" ${prop.primary ? 'checked' : ''} onchange="updateSingleBrandProperty(${i}, 'primary', this.checked)" />
               Primary
             </label>
-            <button class="btn btn-secondary" onclick="removeSingleBrandProperty(${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+            <button class="btn btn-secondary" onclick="removeSingleBrandProperty(${i})" style="padding: var(--space-2) var(--space-3); font-size: var(--text-sm); min-width: 28px; min-height: 28px;">×</button>
           </div>
         `).join('');
       }
@@ -2456,6 +2482,11 @@
         updatePreview();
       }
 
+      function updateDescCharCount(value) {
+        const el = document.getElementById('single-desc-char-count');
+        if (el) el.textContent = `${(value || '').length} / 500 characters`;
+      }
+
       function addSingleLogo() {
         singleBrandIdentity.logos.push({ url: '', tags: [], width: null, height: null });
         renderSingleLogos();
@@ -2482,14 +2513,15 @@
       function renderSingleLogos() {
         const container = document.getElementById('single-logos-container');
         if (singleBrandIdentity.logos.length === 0) {
-          container.innerHTML = '<p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0 0 var(--space-4) 0;">No logos yet</p>';
+          container.innerHTML = '<div style="padding: var(--space-3); border: 1px dashed var(--color-border); border-radius: var(--radius-md); text-align: center; margin-bottom: var(--space-4);"><p style="color: var(--text-muted); font-size: var(--text-sm); margin: 0;">No logos yet. Add a URL to your brand logo.</p></div>';
           return;
         }
         container.innerHTML = singleBrandIdentity.logos.map((logo, i) => `
           <div class="logo-entry">
             <div class="logo-entry-row">
-              <input type="url" value="${escapeHtml(logo.url)}" placeholder="https://example.com/logo.svg" oninput="updateSingleLogo(${i}, 'url', this.value)" />
-              <button class="btn btn-secondary" onclick="removeSingleLogo(${i})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">×</button>
+              ${logo.url ? `<img src="${escapeHtml(logo.url)}" style="width: 40px; height: 40px; object-fit: contain; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-subtle); flex-shrink: 0;" onerror="this.style.display='none'" />` : ''}
+              <input type="url" value="${escapeHtml(logo.url)}" placeholder="https://example.com/logo.svg" oninput="updateSingleLogo(${i}, 'url', this.value)" onblur="renderSingleLogos()" />
+              <button class="btn btn-secondary" onclick="removeSingleLogo(${i})" style="padding: var(--space-2) var(--space-3); font-size: var(--text-sm); min-width: 28px; min-height: 28px;">×</button>
             </div>
             <div class="logo-entry-row">
               <input type="text" value="${escapeHtml((logo.tags || []).join(', '))}" placeholder="Tags: icon, dark-bg, square" oninput="updateSingleLogo(${i}, 'tags', this.value)" style="flex: 1;" />
@@ -3466,17 +3498,21 @@
 
       function updateRegistryButton() {
         const btn = document.getElementById('save-registry-btn');
+        const hint = document.getElementById('save-registry-hint');
         if (!btn) return;
         const config = window.__APP_CONFIG__;
         if (!config?.user) {
           btn.disabled = true;
           btn.title = 'Log in to save to registry';
+          if (hint) { hint.textContent = 'Log in as a member to save'; hint.style.display = ''; }
         } else if (!config.user.isMember) {
           btn.disabled = true;
           btn.title = 'Members only';
+          if (hint) { hint.textContent = 'Members only'; hint.style.display = ''; }
         } else {
           btn.disabled = false;
           btn.title = 'Save brand.json to the AgenticAdvertising.org registry';
+          if (hint) { hint.style.display = 'none'; }
         }
       }
 

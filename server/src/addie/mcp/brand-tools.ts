@@ -221,6 +221,38 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       return JSON.stringify({ error: 'brand_name is required' });
     }
 
+    // Check if brand already exists
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+    if (existing) {
+      // Existing brand: use revision-tracked edit (skip brand_json sources)
+      if (existing.source_type === 'brand_json') {
+        return JSON.stringify({
+          error: 'Cannot edit authoritative brand (managed via brand.json)',
+          domain,
+        });
+      }
+
+      const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, {
+        brand_name: brandName,
+        brand_manifest: brandManifest,
+        has_brand_manifest: !!brandManifest,
+        edit_summary: `Addie enrichment: updated brand data`,
+        editor_user_id: 'system:addie',
+        editor_email: 'addie@agenticadvertising.org',
+        editor_name: 'Addie',
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: `Brand "${brandName}" updated in registry (revision ${revision_number})`,
+        domain: brand.domain,
+        id: brand.id,
+        revision_number,
+      }, null, 2);
+    }
+
+    // New brand: upsert directly (Addie is trusted, no pending review)
     const saved = await brandDb.upsertDiscoveredBrand({
       domain,
       brand_name: brandName,
