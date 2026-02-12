@@ -118,6 +118,18 @@
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
         },
+        "delivery-forecast": {
+          "$ref": "/schemas/core/delivery-forecast.json",
+          "description": "Forecasted delivery metrics for a proposal or product allocation"
+        },
+        "forecast-range": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "A forecast value with optional low/high bounds"
+        },
+        "forecast-point": {
+          "$ref": "/schemas/core/forecast-point.json",
+          "description": "A single point on a budget-to-outcome curve"
+        },
         "promoted-offerings": {
           "$ref": "/schemas/core/promoted-offerings.json",
           "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
@@ -209,6 +221,10 @@
         "data-provider-signal-selector": {
           "$ref": "/schemas/core/data-provider-signal-selector.json",
           "description": "Selects signals from a data provider's adagents.json - supports three patterns: all signals, specific IDs, or by tags"
+        },
+        "daypart-target": {
+          "$ref": "/schemas/core/daypart-target.json",
+          "description": "A time window for daypart targeting with days of week and hour range"
         },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
@@ -384,6 +400,10 @@
           "$ref": "/schemas/enums/daast-tracking-event.json",
           "description": "Standard DAAST tracking events for audio playback and interaction"
         },
+        "day-of-week": {
+          "$ref": "/schemas/enums/day-of-week.json",
+          "description": "Days of the week for daypart targeting"
+        },
         "signal-catalog-type": {
           "$ref": "/schemas/enums/signal-catalog-type.json",
           "description": "Types of signal catalogs (marketplace, custom, owned)"
@@ -395,6 +415,26 @@
         "feedback-source": {
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
+        },
+        "forecast-method": {
+          "$ref": "/schemas/enums/forecast-method.json",
+          "description": "Method used to produce a delivery forecast (estimate, modeled, guaranteed)"
+        },
+        "forecastable-metric": {
+          "$ref": "/schemas/enums/forecastable-metric.json",
+          "description": "Standard metric names for delivery forecasts (audience_size, reach, impressions, clicks, spend, etc.)"
+        },
+        "forecast-range-unit": {
+          "$ref": "/schemas/enums/forecast-range-unit.json",
+          "description": "How to interpret forecast points: spend curve, reach/frequency curve, temporal (weekly/daily), or outcome targets (clicks/conversions)"
+        },
+        "demographic-system": {
+          "$ref": "/schemas/enums/demographic-system.json",
+          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+        },
+        "reach-unit": {
+          "$ref": "/schemas/enums/reach-unit.json",
+          "description": "Unit of measurement for reach metrics (individuals, households, devices, accounts, cookies, custom)"
         },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
