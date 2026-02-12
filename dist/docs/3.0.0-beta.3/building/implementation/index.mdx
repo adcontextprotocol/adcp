@@ -1,0 +1,101 @@
+---
+title: Implementation Patterns
+sidebarTitle: Overview
+description: Build production-ready systems with AdCP
+---
+
+This section covers patterns and best practices for building robust, production-ready systems that integrate with AdCP.
+
+## Core Patterns
+
+<CardGroup cols={2}>
+  <Card title="Task Lifecycle" icon="arrows-spin" href="/docs/building/implementation/task-lifecycle">
+    Status values, state transitions, and polling patterns. The foundation for handling any AdCP operation.
+  </Card>
+  <Card title="Async Operations" icon="clock" href="/docs/building/implementation/async-operations">
+    Handling sync, async, and interactive operations. Timeouts, progress tracking, and completion handling.
+  </Card>
+  <Card title="Webhooks" icon="bell" href="/docs/building/implementation/webhooks">
+    Push notification architecture, reliability patterns, circuit breakers, and idempotent handlers.
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/docs/building/implementation/error-handling">
+    Error categories, standard error codes, recovery strategies, and retry logic.
+  </Card>
+</CardGroup>
+
+## System Design
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/docs/building/implementation/security">
+    Security considerations for AdCP integrations. Webhook verification, replay prevention, and access control.
+  </Card>
+  <Card title="Orchestrator Design" icon="sitemap" href="/docs/building/implementation/orchestrator-design">
+    State machine design, operation tracking, persistence patterns, and reconciliation.
+  </Card>
+</CardGroup>
+
+## Who This Section Is For
+
+This section is primarily for **orchestrator builders** - developers building systems that:
+
+- Manage multiple AdCP operations concurrently
+- Need to survive restarts and recover state
+- Handle long-running operations (hours to days)
+- Require high reliability and auditability
+
+If you're building a simple integration that makes occasional AdCP calls, the [Integration](/docs/building/integration) section may be sufficient.
+
+## Key Design Principles
+
+### 1. Asynchronous First
+
+AdCP operations may take seconds, hours, or days. Design all operations as async:
+
+- Store operation state persistently
+- Handle orchestrator restarts gracefully
+- Implement proper timeout handling
+
+### 2. Status-Driven Logic
+
+Every response includes a `status` field. Build your logic around status values:
+
+```javascript
+switch (response.status) {
+  case 'completed': return processResults(response);
+  case 'working': return pollForUpdates(response.task_id);
+  case 'input-required': return promptUser(response.message);
+  case 'failed': return handleError(response);
+}
+```
+
+### 3. Webhooks + Polling
+
+Never rely solely on webhooks:
+
+- Configure webhooks for immediate notification
+- Implement polling as backup
+- Use circuit breakers for reliability
+
+### 4. Idempotent Operations
+
+Make all operations idempotent:
+
+- Check for existing operations before creating new ones
+- Handle duplicate webhook deliveries gracefully
+- Use event IDs for deduplication
+
+## Reading Order
+
+For comprehensive understanding, read in this order:
+
+1. **[Task Lifecycle](/docs/building/implementation/task-lifecycle)** - Understand status values and transitions
+2. **[Async Operations](/docs/building/implementation/async-operations)** - Handle different operation types
+3. **[Webhooks](/docs/building/implementation/webhooks)** - Implement push notifications reliably
+4. **[Error Handling](/docs/building/implementation/error-handling)** - Handle failures gracefully
+5. **[Orchestrator Design](/docs/building/implementation/orchestrator-design)** - Put it all together
+
+## Next Steps
+
+- **Start with basics**: [Task Lifecycle](/docs/building/implementation/task-lifecycle)
+- **Building webhooks**: [Webhooks](/docs/building/implementation/webhooks)
+- **Complete architecture**: [Orchestrator Design](/docs/building/implementation/orchestrator-design)

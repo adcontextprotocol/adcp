@@ -1,0 +1,270 @@
+---
+title: Understanding Authorization
+description: Understanding property authorization in AdCP - preventing unauthorized resale and validating sales agent relationships
+keywords: [authorized properties, adagents.json, unauthorized resale, ads.txt, sales agent authorization, property validation]
+---
+
+
+One of the foundational challenges in digital advertising is **unauthorized resale** - ensuring that sales agents are actually authorized to represent the advertising properties they claim to sell. AdCP solves this problem through a comprehensive authorization system that builds on the lessons learned from ads.txt in programmatic advertising.
+
+<Tip>
+**New to AdCP authorization?** Read [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) for an accessible introduction to how authorization works in agentic advertising.
+</Tip>
+
+## The Problem: Unauthorized Resale
+
+### Historical Context
+In programmatic advertising, the Ads.txt initiative was created to solve a critical problem: unauthorized reselling of advertising inventory. Before ads.txt, bad actors could claim to represent popular websites and sell their inventory without permission, leading to:
+
+- **Revenue theft**: Publishers lost money to unauthorized sellers
+- **Brand safety issues**: Buyers couldn't verify legitimate inventory sources  
+- **Market fragmentation**: No way to distinguish authorized from unauthorized sellers
+
+### The Same Problem in AI-Powered Advertising
+AdCP faces similar challenges as AI agents begin to buy and sell advertising programmatically:
+
+- **AI sales agents** may claim to represent properties they don't actually control
+- **Buyer agents** need to verify authorization before making purchases
+- **Publishers** need a way to explicitly authorize specific sales agents
+- **Scale challenges**: Manual verification doesn't work for networks with thousands of properties
+
+## The Solution: AdCP Authorization System
+
+AdCP prevents unauthorized resale through a two-part system:
+
+1. **Publisher Authorization**: Publishers explicitly authorize sales agents via `adagents.json`
+2. **Agent Discovery**: Sales agents declare their portfolio via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `media_buy.portfolio` section
+
+This creates a verifiable chain of authorization that buyer agents can validate.
+
+## How Publishers Authorize Sales Agents
+
+Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-known/adagents.json` on their domain. This file lists all authorized agents and their permissions.
+
+### Example adagents.json
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json",
+  "contact": {
+    "name": "Sports Network Media",
+    "email": "adops@sportsnetwork.com",
+    "domain": "sportsnetwork.com"
+  },
+  "properties": [
+    {
+      "property_id": "sports_network_main",
+      "property_type": "website",
+      "name": "Sports Network",
+      "identifiers": [
+        {"type": "domain", "value": "sportsnetwork.com"}
+      ],
+      "tags": ["premium", "sports"]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://sports-media-sales.com",
+      "authorized_for": "All Sports Network properties",
+      "authorization_type": "property_tags",
+      "property_tags": ["sports"]
+    },
+    {
+      "url": "https://premium-ad-network.com",
+      "authorized_for": "Premium inventory only",
+      "authorization_type": "property_tags",
+      "property_tags": ["premium"]
+    }
+  ],
+  "last_updated": "2025-01-10T12:00:00Z"
+}
+```
+
+### Key Fields
+
+- **contact**: Identifies the publisher/entity managing this file
+- **properties**: Defines the properties covered by this authorization file
+- **authorized_agents**: List of sales agents authorized to represent properties
+  - **url**: Agent's API endpoint URL
+  - **authorized_for**: Human-readable description of authorization scope
+  - **authorization_type**: How properties are selected (`property_ids`, `property_tags`, `inline_properties`, `publisher_properties`)
+- **last_updated**: ISO 8601 timestamp of last modification
+
+## How Sales Agents Share Authorized Properties
+
+Sales agents use the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) task to declare their portfolio information in the `media_buy.portfolio` section. This serves multiple purposes:
+
+1. **Transparency**: Buyers can see what publishers an agent represents
+2. **Validation enablement**: Provides publisher domains for buyers to verify authorization via `adagents.json`
+3. **Portfolio overview**: Includes primary channels, countries, and portfolio description
+
+### Property Declaration Example
+
+```json
+{
+  "properties": [
+    {
+      "property_type": "website",
+      "name": "Sports Network",
+      "identifiers": [
+        {"type": "domain", "value": "sportsnetwork.com"}
+      ],
+      "tags": ["sports_network", "premium"],
+      "publisher_domain": "sportsnetwork.com"
+    },
+    {
+      "property_type": "radio",
+      "name": "WXYZ-FM Chicago",
+      "identifiers": [
+        {"type": "call_sign", "value": "WXYZ-FM"},
+        {"type": "market", "value": "chicago"}
+      ],
+      "tags": ["local_radio", "midwest"],
+      "publisher_domain": "radionetwork.com"
+    }
+  ],
+  "tags": {
+    "sports_network": {
+      "name": "Sports Network Properties",
+      "description": "145 sports properties and networks"
+    },
+    "local_radio": {
+      "name": "Local Radio Stations",
+      "description": "1847 local radio stations across US markets"
+    }
+  },
+  "advertising_policies": "We maintain strict brand safety standards. Prohibited categories include: tobacco and vaping products, online gambling and sports betting, cannabis and CBD products, political advertising, and speculative financial products (crypto, NFTs, penny stocks).\n\nWe also prohibit misleading tactics such as clickbait headlines, false scarcity claims, hidden pricing, and ads targeting vulnerable populations.\n\nCompetitor brands in the streaming media space are blocked by policy.\n\nFull advertising guidelines: https://publisher.com/advertising-policies"
+}
+```
+
+### Property Tags for Scale
+
+For large networks representing thousands of properties, AdCP supports **property tags** to make the system manageable:
+
+- **Products** can reference `["local_radio", "midwest"]` instead of listing hundreds of stations
+- **Buyers** use `get_adcp_capabilities` to discover the agent's portfolio and validate authorization
+- **Authorization validation** works on the resolved properties via `adagents.json`
+
+## Authorization Validation Workflow
+
+Here's how a buyer agent validates that a sales agent is authorized to represent claimed properties:
+
+### 1. One-Time Setup
+```javascript
+// Get portfolio information from capabilities
+const capabilities = await salesAgent.call('get_adcp_capabilities');
+const portfolio = capabilities.media_buy?.portfolio;
+const publisherDomains = portfolio?.publisher_domains || [];
+
+// For each publisher domain, fetch and cache adagents.json
+const authorizationCache = {};
+
+for (const domain of publisherDomains) {
+  try {
+    const adagents = await fetch(`https://${domain}/.well-known/adagents.json`);
+    authorizationCache[domain] = await adagents.json();
+  } catch (error) {
+    console.warn(`Could not verify authorization for ${domain}`);
+    authorizationCache[domain] = null;
+  }
+}
+```
+
+### 2. Product Validation
+```javascript
+// When evaluating a product
+const result = await salesAgent.call('get_products', {brief: "Chicago radio ads"});
+const product = result.products[0];
+
+// Validate authorization for each publisher in publisher_properties
+const authorized = product.publisher_properties.every(pubProp => {
+  const domain = pubProp.publisher_domain;
+  const adagents = authorizationCache[domain];
+
+  if (!adagents) return false; // No adagents.json found
+
+  // Verify the sales agent is in publisher's authorized_agents
+  return adagents.authorized_agents.some(agent =>
+    agent.url === salesAgent.url &&
+    isAuthorizedForProperties(agent, pubProp)
+  );
+});
+
+if (!authorized) {
+  throw new Error("Sales agent not authorized for claimed properties");
+}
+```
+
+### 3. Ongoing Validation
+- **Cache adagents.json** responses with reasonable TTL (e.g., 24 hours)
+- **Re-validate periodically** for long-running campaigns
+- **Handle authorization changes** gracefully (pause vs. reject)
+
+## Benefits of This Approach
+
+### For Publishers
+- **Explicit control** over who can sell their inventory
+- **Granular permissions** by property, date range, and product type
+- **Standard web hosting** - no special infrastructure required
+- **Audit trail** of authorized agents
+
+### For Sales Agents
+- **Clear authorization proof** that buyers can verify
+- **Efficient tag-based grouping** for large property portfolios
+- **Standardized declaration** across all AdCP interactions
+
+### For Buyer Agents
+- **Automated verification** of seller authorization
+- **Fraud prevention** through cryptographic verification
+- **Confidence in purchases** from verified inventory sources
+- **Scalable validation** for large-scale automated buying
+
+## Security Considerations
+
+### Domain Verification
+- **HTTPS required**: adagents.json must be served over HTTPS
+- **Domain ownership**: Only domain owners can authorize agents for their properties
+- **Regular validation**: Buyers should re-check authorization periodically
+
+### Authorization Scope
+- **Least privilege**: Grant minimal necessary permissions
+- **Time bounds**: Use start/end dates for temporary authorizations
+- **Property restrictions**: Limit to specific paths or property types when appropriate
+
+### Error Handling
+- **Missing adagents.json**: Treat as unauthorized (fail closed)
+- **Invalid JSON**: Reject malformed authorization files
+- **Network errors**: Implement retry logic with fallback policies
+- **Expired authorization**: Handle gracefully in active campaigns
+
+## Integration with Product Discovery
+
+Authorization validation integrates seamlessly with [Product Discovery](../../media-buy/product-discovery/):
+
+1. **Discover products** using [`get_products`](../../media-buy/task-reference/get_products)
+2. **Validate authorization** for properties referenced in products
+3. **Proceed confidently** with authorized inventory
+4. **Flag unauthorized** products for manual review
+
+This creates a trustworthy foundation for AI-powered advertising that prevents unauthorized resale while enabling efficient, automated transactions.
+
+## Technical Implementation
+
+For complete technical details on implementing the `adagents.json` file format, including:
+
+- File location and format requirements (`/.well-known/adagents.json`)
+- JSON schema definitions and validation rules
+- Mobile application and CTV implementation patterns
+- Detailed property type specifications (website, mobile app, CTV, DOOH, podcast)
+- Domain matching rules and wildcard patterns
+- Validation code examples and error handling
+- Security considerations and best practices
+
+See the **[adagents.json Tech Spec](./adagents)** for complete implementation guidance.
+
+## Related Documentation
+
+- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities and portfolio information
+- **[Product Discovery](../../media-buy/product-discovery/)** - How authorization integrates with product discovery
+- **[Properties Schema](https://adcontextprotocol.org/schemas/v2/core/property.json)** - Technical property data model
+- **[adagents.json Tech Spec](./adagents)** - Complete `adagents.json` implementation guide

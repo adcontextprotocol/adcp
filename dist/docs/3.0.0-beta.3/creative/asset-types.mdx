@@ -1,0 +1,434 @@
+---
+title: Asset Types
+---
+
+
+Creative formats in AdCP use standardized asset types with well-defined properties. Assets are the discrete, typed building blocks used by formats to define requirements and by manifests to supply concrete values.
+
+Standardizing asset types ensures consistency across formats and makes requirements easier for buyers and systems to understand.
+
+## Important: Payload vs Requirements
+
+For payload schemas (the structure of the actual asset data supplied in creative manifests), see:
+- [Asset Type Registry](https://adcontextprotocol.org/schemas/v2/creative/asset-types/index.json) - Links to all payload schemas
+- Core Asset Schemas at `/schemas/v2/core/assets/` - Individual asset payload definitions
+
+**Key distinction:**
+
+**Format requirements** (this document) define constraints such as:
+- Whether an asset is required or optional
+- Acceptable file or container formats
+- Duration, dimension, or aspect ratio limits
+- File size and bitrate limits
+- Allowed or restricted features (for tag-based assets)
+
+**Payload schemas** (core schemas) define the supplied values, such as:
+- `url`
+- `content` (for inline text or inline tag markup)
+- `width` / `height` (when declared)
+- `duration_ms` (when applicable)
+- `format` (declared container type)
+
+## Asset Type Schema
+
+The official JSON schema for asset types is available at:
+- **Production**: https://adcontextprotocol.org/schemas/asset-types-v1.json
+- **GitHub**: https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/asset-types-v1.json
+
+## Core Asset Types
+
+### Video Asset
+
+Video assets represent video files with specific technical requirements.
+
+```json
+{
+  "asset_type": "video",
+  "required": true,
+  "duration_seconds": 15,
+  "acceptable_formats": ["mp4"],
+  "acceptable_codecs": ["h264"],
+  "acceptable_resolutions": ["1920x1080", "1280x720"],
+  "aspect_ratio": "16:9",
+  "max_file_size_mb": 30,
+  "min_bitrate_mbps": 8,
+  "max_bitrate_mbps": 10
+}
+```
+
+**Properties:**
+- `duration_seconds`: Expected video duration
+- `min_duration_seconds` / `max_duration_seconds`: Duration range (if flexible)
+- `acceptable_formats`: Container formats (mp4, webm, mov)
+- `acceptable_codecs`: Video codecs (h264, h265, vp8, vp9, av1)
+- `acceptable_resolutions`: List of width x height strings
+- `aspect_ratio`: Required aspect ratio (16:9, 9:16, 1:1, etc.)
+- `max_file_size_mb`: Maximum file size in megabytes
+- `min_bitrate_mbps` / `max_bitrate_mbps`: Bitrate range in Mbps
+- `features`: Additional requirements (e.g., ["non-skippable", "sound on"])
+
+### Image Asset
+
+Static image assets for banners, logos, and visual content.
+
+```json
+{
+  "asset_type": "image",
+  "required": true,
+  "width": 300,
+  "height": 250,
+  "acceptable_formats": ["jpg", "png", "gif"],
+  "max_file_size_kb": 200,
+  "animation_allowed": true
+}
+```
+
+**Properties:**
+- `width` / `height`: Dimensions in pixels
+- `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
+- `aspect_ratio`: Required aspect ratio
+- `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
+- `max_file_size_kb`: Maximum file size in kilobytes
+- `transparency`: Whether transparency is required/supported
+- `animation_allowed`: Whether animated GIFs are accepted
+- `notes`: Additional requirements (e.g., "Must be free of text")
+
+**Use Cases:**
+- Fixed layout: provide `width` and `height`. Do not include `min_width`, `min_height`, or `aspect_ratio`.
+- Responsive (fixed image aspect ratio): provide `min_width`, `min_height` and `aspect_ratio`. Do not include `width` or `height`.
+- Responsive (any image aspect ratio): provide `min_width` and `min_height` only. Do not include `width`, `height`, or `aspect_ratio`.
+
+**Note**: In fixed layouts, the image slot is an exact pixel box, so specify `width` and `height`. In responsive layouts, the renderer will resize the image; use `min_width`/`min_height` to ensure there are enough pixels for a sharp result after scaling. Use `aspect_ratio` only when the image asset itself must be a specific shape (e.g., 16:9); omit it if any image aspect ratio is acceptable
+
+### Text Asset
+
+Text content for headlines, descriptions, CTAs, etc.
+
+```json
+{
+  "asset_type": "text",
+  "required": true,
+  "text_type": "headline",
+  "max_length": 90,
+  "min_length": 10
+}
+```
+
+**Properties:**
+- `text_type`: Specific type (title, headline, description, body, cta, advertiser_name, disclaimer)
+- `max_length`: Maximum character count
+- `min_length`: Minimum character count
+- `default`: Default value if not provided
+- `allowed_characters`: Regex pattern for validation
+- `format`: Expected format (plain, currency, percentage)
+
+### URL Asset
+
+Links for clickthroughs, tracking, and landing pages.
+
+```json
+{
+  "asset_type": "url",
+  "required": true,
+  "url_type": "clickthrough",
+  "must_be_https": true,
+  "tracking_macros_supported": true
+}
+```
+
+**Properties:**
+- `url_type`: The purpose of the URL (used only in format requirements):
+  - `clickthrough` - User clicks this URL (may redirect through ad tech platforms before reaching destination)
+  - `impression_tracker` - Fires in background (returns 1x1 pixel, JavaScript snippet, or 204 No Content)
+  - `video_tracker` - Video ad tracking URL (for VAST, video events, etc.)
+  - `landing_page` - Landing page URL
+- `must_be_https`: Whether HTTPS is required
+- `allowed_domains`: List of allowed domains (if restricted)
+- `tracking_macros_supported`: Whether URL macros are supported
+
+**Note**: The `url_type` field is only used in format requirements to specify how the URL will be used. When providing URLs in creative manifests, you only need to supply the `url` value - the `asset_id` already indicates the semantic purpose (e.g., `impression_tracker`, `video_start_tracker`, `landing_url`).
+
+### Audio Asset
+
+Audio files for audio ads and podcasts.
+
+```json
+{
+  "asset_type": "audio",
+  "required": true,
+  "duration_seconds": 30,
+  "acceptable_formats": ["mp3", "m4a"],
+  "min_bitrate_kbps": 128,
+  "max_file_size_mb": 5
+}
+```
+
+**Properties:**
+- `duration_seconds`: Expected duration
+- `acceptable_formats`: Audio formats (mp3, m4a, aac, ogg)
+- `min_bitrate_kbps`: Minimum bitrate in kilobits per second
+- `max_file_size_mb`: Maximum file size in megabytes
+- `stereo_required`: Whether stereo audio is required
+
+### HTML Asset
+
+HTML5 creative assets for rich media formats and third-party display tags.
+
+```json
+{
+  "asset_type": "html",
+  "required": true,
+  "format": "html5",
+  "max_initial_load_kb": 200,
+  "max_total_size_kb": 500,
+  "restricted_features": ["document.write", "eval"]
+}
+```
+
+**Properties:**
+- `content`: Inline HTML content
+- `url`: URL to externally hosted HTML file (alternative to inline content)
+- `format`: HTML format type (html5, amphtml)
+- `max_initial_load_kb`: Maximum initial load size
+- `max_total_size_kb`: Maximum total size including all assets
+- `allowed_features`: Allowed HTML5 features
+- `restricted_features`: Features that must not be used
+
+### VAST Asset
+
+VAST (Video Ad Serving Template) tags for third-party video ad serving.
+
+**URL Delivery:**
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "delivery_type": "url",
+  "url": "https://vast.example.com/video/123",
+  "vast_version": "4.1",
+  "vpaid_enabled": false
+}
+```
+
+**Inline Delivery:**
+```json
+{
+  "asset_type": "vast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<VAST version=\"4.2\">...</VAST>",
+  "vast_version": "4.2",
+  "vpaid_enabled": false
+}
+```
+
+**Properties:**
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns VAST XML (required when delivery_type is "url")
+- `content`: Inline VAST XML content (required when delivery_type is "inline")
+- `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2)
+- `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
+- `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
+- `duration_ms`: Expected video duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events
+
+**Use Cases:**
+- Third-party video ad servers
+- Programmatic video buying
+- Video ad networks
+- VPAID interactive video ads
+
+### DAAST Asset
+
+DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
+
+**URL Delivery:**
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "delivery_type": "url",
+  "url": "https://daast.example.com/audio/456",
+  "daast_version": "1.0"
+}
+```
+
+**Inline Delivery:**
+```json
+{
+  "asset_type": "daast",
+  "required": true,
+  "delivery_type": "inline",
+  "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DAAST version=\"1.0\">...</DAAST>",
+  "daast_version": "1.0"
+}
+```
+
+**Properties:**
+- `delivery_type`: "url" or "inline" (required discriminator)
+- `url`: URL endpoint that returns DAAST XML (required when delivery_type is "url")
+- `content`: Inline DAAST XML content (required when delivery_type is "inline")
+- `daast_version`: DAAST specification version (1.0, 1.1)
+- `duration_ms`: Expected audio duration in milliseconds (if known)
+- `tracking_events`: Array of supported tracking events
+- `companion_ads`: Whether companion display ads are included
+
+**Use Cases:**
+- Third-party audio ad servers
+- Podcast advertising networks
+- Streaming audio platforms
+- Radio-style digital audio ads
+
+## Common Properties
+
+All asset types share these common fields:
+
+- `asset_id`: Unique identifier within the format
+- `asset_type`: The asset's type (image, video, text, url, etc.)
+- `asset_role`: Semantic purpose (hero_video, logo, cta_button)
+- `required`: Whether the asset is mandatory
+
+### Asset ID vs Asset Role
+
+**`asset_id`**: A stable identifier used by manifests to supply values.
+
+**`asset_role`**: A semantic label describing the asset's purpose.
+
+**Example**:
+```json
+{
+  "asset_id": "main_video",
+  "asset_type": "video",
+  "asset_role": "hero_video",
+  "required": true
+}
+```
+
+Asset roles enable consistent rendering, validation, and AI-assisted generation without hard-coding layout assumptions.
+
+**Common asset roles**:
+- `hero_image` / `hero_video` - Primary visual content
+- `logo` - Brand logo
+- `headline` - Main headline text
+- `description` - Body copy or description text
+- `cta_button` - Call-to-action button
+- `background_image` - Background visual
+- `thumbnail` - Preview image
+- `companion_banner` - Secondary display ad
+
+### Asset ID Usage
+
+The `asset_id` field is crucial for orchestrators and creative management systems. It provides a stable identifier for mapping uploaded assets to their correct positions in the creative format.
+
+#### Example: Uploading Assets
+
+When submitting creative assets, the orchestrator uses `asset_id` to map files:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "foundational_immersive_canvas"
+  },
+  "assets": {
+    "hero_image": "https://cdn.example.com/campaign123/hero.jpg",
+    "brand_logo": "https://cdn.example.com/brand/logo.png",
+    "headline": "Discover Our New Collection",
+    "description": "Experience premium quality with our latest products",
+    "video_content": "https://cdn.example.com/campaign123/video.mp4"
+  }
+}
+```
+
+The keys in the assets object correspond to the `asset_id` values defined in the format.
+
+## Usage in Creative Formats
+
+Creative formats specify their assets using the `assets` array. Each asset has a `required` boolean:
+- **`required: true`** - Asset MUST be provided for a valid creative
+- **`required: false`** - Asset is optional, enhances the creative (e.g., companion banners, third-party tracking pixels)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_15s_hosted"
+  },
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "required": true,
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "impression_tracker",
+      "asset_type": "url",
+      "required": false,
+      "requirements": {
+        "format": ["url"],
+        "description": "Third-party impression tracking pixel URL"
+      }
+    }
+  ],
+
+  // DEPRECATED: Use "assets" above instead. Kept for backward compatibility.
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "video_file",
+      "asset_type": "video",
+      "requirements": {
+        "duration_seconds": 15,
+        "acceptable_formats": ["mp4"],
+        "acceptable_codecs": ["h264"],
+        "acceptable_resolutions": ["1920x1080", "1280x720"],
+        "max_file_size_mb": 30
+      }
+    }
+  ]
+}
+```
+
+## Repeatable Asset Groups
+
+For formats with asset sequences (like carousels, slideshows, stories), see the [Carousel & Multi-Asset Formats guide](/docs/creative/channels/carousels) for complete documentation on repeatable asset group patterns.
+
+## Validation
+
+Implementations should validate assets against these schemas to ensure compatibility. The JSON schema can be used for automated validation:
+
+```javascript
+// Example validation (pseudocode)
+const assetSchema = await fetch('https://adcontextprotocol.org/schemas/asset-types-v1.json');
+const validator = new JsonSchemaValidator(assetSchema);
+
+const videoAsset = {
+  asset_type: "video",
+  required: true,
+  duration_seconds: 15,
+  // ... other properties
+};
+
+const isValid = validator.validate(videoAsset, 'video');
+```
+
+## Best Practices
+
+1. **Be specific where possible**
+2. **Declare all constraints explicitly**
+3. **Use standard units:**
+   - File size: MB (video/audio), KB (images)
+   - Duration: seconds
+   - Bitrate: Mbps (video), Kbps (audio)
+   - Dimensions: pixels
+4. **Balance quality with performance**
+5. **Document edge cases using notes**

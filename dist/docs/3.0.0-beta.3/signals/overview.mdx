@@ -1,0 +1,53 @@
+---
+title: Signals Protocol
+sidebarTitle: Overview
+description: Discover, activate, and manage data signals for AI-powered advertising
+---
+
+# Signals Protocol
+
+The Signals Protocol enables AI agents to discover, activate, and manage data signals for advertising campaigns. Signals represent targetable audiences, contextual categories, geographic regions, and other data attributes.
+
+## What Are Signals?
+
+Signals are data segments that can be used for targeting or measurement in advertising campaigns. They include:
+
+- **Audience Signals**: User segments based on demographics, interests, or behaviors
+- **Contextual Signals**: Content categories or page contexts
+- **Geographic Signals**: Location-based targeting data
+- **Temporal Signals**: Time-based targeting patterns
+- **Multi-dimensional Signals**: Combined or custom signal types
+
+## Key Capabilities
+
+The Signals Protocol provides:
+
+- Natural language signal discovery based on marketing objectives
+- Multi-platform signal discovery in a single request
+- Signal activation for specific platforms and accounts
+- Transparent pricing with CPM and revenue share models
+- Signal size reporting with unit types (individuals, devices, households)
+
+## Tasks
+
+| Task | Purpose |
+|------|---------|
+| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
+
+## Agent Integration
+
+The Signals Protocol operates within the broader [AdCP Ecosystem](/docs/intro#the-adcp-ecosystem-layers), enabling signal agents to integrate directly with decisioning platforms (DSPs, orchestration platforms).
+
+### Direct Integration Model
+
+Signal agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once signals are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
+
+## Getting Started
+
+1. **Discover signals** using `get_signals` with a natural language brief
+2. **Review pricing** and signal sizes in the response
+3. **Activate signals** using `activate_signal` for your target platform
+4. **Use in campaigns** via the platform's standard targeting interface
+
+See the [Protocol Specification](/docs/signals/specification) for complete technical details.

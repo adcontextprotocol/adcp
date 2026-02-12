@@ -1,0 +1,328 @@
+---
+title: preview_creative
+---
+
+
+Generate preview renderings of creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
+
+## Quick Start
+
+### Single Creative Preview
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": { /* includes format_id, assets */ }
+}
+```
+
+Response:
+
+```json
+{
+  "response_type": "single",
+  "previews": [
+    {
+      "preview_url": "https://creative-agent.example.com/preview/abc123",
+      "input": { "name": "Default", "macros": {} }
+    }
+  ],
+  "expires_at": "2025-02-15T18:00:00Z"
+}
+```
+
+Embed in an iframe:
+
+```html
+<iframe src="https://creative-agent.example.com/preview/abc123"
+        width="600" height="400"></iframe>
+```
+
+### Direct HTML Embedding
+
+For faster rendering without iframe overhead, request HTML directly:
+
+```json
+{
+  "request_type": "single",
+  "creative_manifest": { /* includes format_id, assets */ },
+  "output_format": "html"
+}
+```
+
+Response contains raw HTML:
+
+```json
+{
+  "response_type": "single",
+  "previews": [
+    {
+      "preview_html": "<div class=\"creative\">...</div>",
+      "input": { "name": "Default", "macros": {} }
+    }
+  ]
+}
+```
+
+<Warning>
+Only use `output_format: "html"` with trusted creative agents. Direct HTML embedding bypasses iframe sandboxing.
+</Warning>
+
+### Batch Preview (Multiple Creatives)
+
+Preview multiple creatives in one API call (5-10x faster):
+
+```json
+{
+  "request_type": "batch",
+  "requests": [
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
+  ]
+}
+```
+
+Response contains results in order:
+
+```json
+{
+  "response_type": "batch",
+  "results": [
+    { "success": true, "response": { "previews": [...], "expires_at": "..." } },
+    { "success": true, "response": { "previews": [...], "expires_at": "..." } }
+  ]
+}
+```
+
+### Variant Preview (Post-Flight)
+
+Preview what a specific variant looked like when served. Use `variant_id` from `get_creative_delivery` response:
+
+```json
+{
+  "request_type": "variant",
+  "variant_id": "gen_mobile_morning"
+}
+```
+
+Response:
+
+```json
+{
+  "response_type": "variant",
+  "variant_id": "gen_mobile_morning",
+  "previews": [
+    {
+      "preview_id": "prev_gen_morning",
+      "renders": [
+        {
+          "render_id": "render_1",
+          "output_format": "url",
+          "preview_url": "https://creative-agent.example.com/preview/variant/gen_mobile_morning",
+          "role": "primary",
+          "dimensions": { "width": 300, "height": 250 }
+        }
+      ]
+    }
+  ],
+  "manifest": {
+    "format_id": {
+      "agent_url": "https://creative.example.com",
+      "id": "display_300x250_generative"
+    },
+    "assets": {
+      "hero_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative.example.com/generated/mobile_morning_v1.jpg",
+        "width": 300,
+        "height": 250
+      },
+      "headline": {
+        "asset_type": "text",
+        "content": "Start Your Summer Right"
+      }
+    }
+  },
+  "expires_at": "2026-02-15T18:00:00Z"
+}
+```
+
+Since each variant from `get_creative_delivery` includes its full `manifest`, you can also pass the manifest directly to `preview_creative` as a standard single request to re-render it.
+
+## Request Parameters
+
+### Variant Mode
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_type` | string | Yes | `"variant"` |
+| `variant_id` | string | Yes | Platform-assigned variant identifier from `get_creative_delivery` |
+| `creative_id` | string | No | Creative identifier for context |
+| `output_format` | string | No | `"url"` (default) or `"html"` |
+
+### Single Mode
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_type` | string | Yes | `"single"` |
+| `format_id` | FormatID | No | Format identifier (agent_url + id). Defaults to `creative_manifest.format_id` if omitted. |
+| `creative_manifest` | object | Yes | Complete creative manifest |
+| `inputs` | array | No | Array of input sets for multiple preview variants |
+| `output_format` | string | No | `"url"` (default) or `"html"` |
+
+### Batch Mode
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `request_type` | string | Yes | `"batch"` |
+| `requests` | array | Yes | Array of 1-50 preview requests |
+| `output_format` | string | No | Default output format for all requests |
+
+### Input Sets
+
+Generate multiple preview variants by providing different contexts:
+
+```json
+{
+  "inputs": [
+    { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
+    { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } },
+    { "name": "Morning Context", "context_description": "User commuting to work" }
+  ]
+}
+```
+
+**Available macros**: `DEVICE_TYPE`, `COUNTRY`, `CITY`, `DMA`, `GDPR`, `US_PRIVACY`, `CONTENT_GENRE`, etc.
+
+**Context descriptions**: For AI-generated content like host-read audio ads.
+
+## Response Format
+
+### Single Mode Response
+
+```typescript
+{
+  response_type: "single";
+  previews: Preview[];       // One per input (or one default)
+  interactive_url?: string;  // Optional testing page
+  expires_at: string;        // ISO 8601 expiration
+}
+```
+
+### Batch Mode Response
+
+```typescript
+{
+  response_type: "batch";
+  results: Array<{
+    success: boolean;
+    response?: { previews: Preview[]; expires_at: string; };
+    error?: { code: string; message: string; };
+  }>;
+}
+```
+
+### Preview Structure
+
+```typescript
+{
+  preview_id: string;
+  renders: [{
+    render_id: string;
+    output_format: "url" | "html" | "both";
+    preview_url?: string;     // When output_format is "url" or "both"
+    preview_html?: string;    // When output_format is "html" or "both"
+    role: string;             // "primary", "companion", etc.
+    dimensions?: { width: number; height: number; };
+  }];
+  input: {
+    name: string;
+    macros?: object;
+    context_description?: string;
+  };
+}
+```
+
+**Multi-render formats**: Some formats produce multiple pieces (video + companion banner). Each has its own `render_id` and `role`.
+
+## Examples
+
+### Device Variants
+
+```json
+{
+  "$schema": "/schemas/creative/preview-creative-request.json",
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "native_responsive" },
+    "assets": {
+      "hero_image": { "url": "https://cdn.example.com/hero.jpg", "width": 1200, "height": 627 },
+      "headline": { "content": "Veterinarian Recommended" }
+    }
+  },
+  "inputs": [
+    { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
+    { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } }
+  ]
+}
+```
+
+### Batch with HTML Output
+
+Preview multiple creatives for a grid layout:
+
+```json
+{
+  "request_type": "batch",
+  "output_format": "html",
+  "requests": [
+    { "creative_manifest": { /* creative 1 */ } },
+    { "creative_manifest": { /* creative 2 */ } }
+  ]
+}
+```
+
+### AI-Generated Audio Preview
+
+```json
+{
+  "$schema": "/schemas/creative/preview-creative-request.json",
+  "request_type": "single",
+  "creative_manifest": {
+    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "audio_host_read_30s" },
+    "assets": {
+      "script_template": { "content": "This episode brought to you by {{BRAND_NAME}}..." },
+      "brand_voice": { "content": "Friendly, enthusiastic, conversational." }
+    }
+  },
+  "inputs": [
+    { "name": "Weather Podcast", "context_description": "Podcast discussing weather patterns" },
+    { "name": "Fitness Podcast", "context_description": "Podcast about marathon training" }
+  ]
+}
+```
+
+## HTTP Status Codes
+
+**Single mode:**
+- **200 OK** - Preview generated successfully
+- **400 Bad Request** - Invalid manifest or format_id
+- **404 Not Found** - Format not supported
+
+**Batch mode:**
+- **200 OK** - Batch processed (check individual `success` fields)
+- **400 Bad Request** - Invalid batch structure
+
+## Key Points
+
+- Every `preview_url` returns an HTML page for iframe embedding
+- Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
+- Batch mode is 5-10x faster than individual requests
+- Preview URLs expire (check `expires_at`)
+- Handle partial batch failures by checking each result's `success` field
+
+## Related Documentation
+
+- [Advanced Preview Patterns](/docs/creative/task-reference/preview_creative-advanced) - Caching, workflows, implementation notes
+- [Creative Manifests](/docs/creative/creative-manifests) - Manifest structure
+- [Creative Formats](/docs/creative/formats) - Format specifications
