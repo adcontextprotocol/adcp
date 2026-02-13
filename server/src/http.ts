@@ -2028,7 +2028,15 @@ export class HTTPServer {
             });
           }
           this.registryRequestsDb.trackRequest('brand', domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
-          return res.status(404).json({ error: 'Brand not found', domain });
+
+          // Include file_status so callers can distinguish "file not found" from "file found but invalid format".
+          // Cache was just populated by resolveBrand's internal validateDomain call, so no extra HTTP request.
+          const validation = await this.brandManager.validateDomain(domain);
+          return res.status(404).json({
+            error: 'Brand not found',
+            domain,
+            file_status: validation.status_code,
+          });
         }
 
         this.registryRequestsDb.markResolved('brand', domain, resolved.canonical_domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
