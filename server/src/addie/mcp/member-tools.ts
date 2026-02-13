@@ -28,6 +28,7 @@ import {
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { getPool } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -673,6 +674,21 @@ export const MEMBER_TOOLS: AddieTool[] = [
       required: [],
     },
   },
+  {
+    name: 'set_outreach_preference',
+    description: `Set the user's preference for receiving proactive outreach messages from Addie (tips, reminders, follow-ups). Opt out to stop receiving them.`,
+    usage_hints: 'use for "stop sending me messages", "unsubscribe from reminders", "opt out of outreach", "turn off notifications"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        opt_out: {
+          type: 'boolean',
+          description: 'true to stop receiving proactive outreach, false to resume',
+        },
+      },
+      required: ['opt_out'],
+    },
+  },
 ];
 
 /**
@@ -747,7 +763,8 @@ async function callApi(
  * Create tool handlers that are scoped to the current user
  */
 export function createMemberToolHandlers(
-  memberContext: MemberContext | null
+  memberContext: MemberContext | null,
+  slackUserId?: string
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -2747,6 +2764,35 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Addie: get_my_search_analytics failed');
       return `Failed to fetch analytics: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // Set outreach preference (opt in/out of proactive messages)
+  handlers.set('set_outreach_preference', async (input) => {
+    if (!slackUserId) {
+      return '❌ Unable to identify your Slack user. This tool is only available in Slack.';
+    }
+
+    const optOut = input.opt_out === true;
+
+    try {
+      const pool = getPool();
+      await pool.query(
+        `UPDATE slack_user_mappings
+         SET outreach_opt_out = $2,
+             outreach_opt_out_at = CASE WHEN $2 THEN NOW() ELSE NULL END
+         WHERE slack_user_id = $1`,
+        [slackUserId, optOut]
+      );
+
+      if (optOut) {
+        return '✅ You\'ve been opted out of proactive outreach messages. You can opt back in anytime by asking me to turn them on again.';
+      } else {
+        return '✅ Proactive outreach messages are now turned on. I\'ll send you helpful tips and reminders from time to time.';
+      }
+    } catch (error) {
+      logger.error({ error, slackUserId }, 'Addie: Error setting outreach preference');
+      return '❌ Failed to update outreach preference. Please try again.';
     }
   });
 
