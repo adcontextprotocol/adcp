@@ -7,7 +7,7 @@
   "properties": {
     "requires": {
       "type": "array",
-      "description": "Content requirements for this format's promoted offerings. Values use dot-notation paths: top-level fields (si_agent_url, offerings) are checked on the PromotedOfferings object; brand_manifest.* paths are checked on the resolved brand manifest.",
+      "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand_manifest.* paths, the validating agent resolves the brand_manifest reference first.",
       "items": {
         "$ref": "/schemas/enums/promoted-offerings-requirement.json"
       },
