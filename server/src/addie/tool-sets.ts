@@ -80,12 +80,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'propose_content',
       'get_my_content',
       'bookmark_resource',
+      'set_outreach_preference',
     ],
   },
 
   directory: {
     name: 'directory',
-    description: 'Find member organizations, request introductions, search for vendors/partners, explore the member directory, and research or manage brands',
+    description: 'Find member organizations, request introductions, search for vendors/partners, explore the member directory, research or manage brands, look up brand assets (logos, colors), and find registry gaps',
     tools: [
       'search_members',
       'request_introduction',
@@ -100,6 +101,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'resolve_brand',
       'save_brand',
       'list_brands',
+      'list_missing_brands',
     ],
   },
 
@@ -115,6 +117,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'resolve_property',
       'save_property',
       'list_properties',
+      'list_missing_properties',
     ],
   },
 
@@ -196,6 +199,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'remove_discount',
       'list_discounts',
       'create_promotion_code',
+      'resend_invoice',
+      'update_billing_email',
     ],
     requiresPrecision: true,
   },
@@ -291,6 +296,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'tag_insight',
       'list_pending_insights',
       'run_synthesis',
+      'resend_invoice',
+      'update_billing_email',
+      'rename_working_group',
+      'list_missing_brands',
+      'list_missing_properties',
     ],
     adminOnly: true,
   },

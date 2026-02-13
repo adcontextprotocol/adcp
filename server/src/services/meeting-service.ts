@@ -365,6 +365,45 @@ export async function addAttendeesToMeeting(
 }
 
 /**
+ * Add attendees to all upcoming meetings in a series
+ */
+export async function addAttendeeToSeries(
+  seriesId: string,
+  attendees: Array<{ email: string; name?: string; workosUserId?: string }>
+): Promise<{ addedToMeetings: number; errors: string[] }> {
+  const series = await meetingsDb.getSeriesById(seriesId);
+  if (!series) {
+    throw new Error(`Series not found: ${seriesId}`);
+  }
+
+  const upcomingMeetings = await meetingsDb.listMeetings({
+    series_id: seriesId,
+    upcoming_only: true,
+  });
+
+  const errors: string[] = [];
+  let addedToMeetings = 0;
+
+  for (const meeting of upcomingMeetings) {
+    try {
+      const result = await addAttendeesToMeeting(meeting.id, attendees);
+      if (result.addedCount > 0) {
+        addedToMeetings++;
+      }
+      errors.push(...result.errors);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Failed for meeting ${meeting.id}: ${msg}`);
+      logger.error({ err: error, meetingId: meeting.id, seriesId }, 'Failed to add attendee to series meeting');
+    }
+  }
+
+  logger.info({ seriesId, addedToMeetings, totalUpcoming: upcomingMeetings.length }, 'Added attendees to series');
+
+  return { addedToMeetings, errors };
+}
+
+/**
  * Handle Zoom recording completed webhook
  * Stores transcript and fetches Zoom AI Companion summary
  */

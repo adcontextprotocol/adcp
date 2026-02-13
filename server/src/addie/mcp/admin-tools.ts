@@ -29,6 +29,8 @@ import {
   createOrgDiscount,
   createCoupon,
   createPromotionCode,
+  resendInvoice,
+  updateCustomerEmail,
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
@@ -331,6 +333,45 @@ Returns a list of organizations with open or draft invoices.`,
         },
       },
       required: ['query'],
+    },
+  },
+
+  {
+    name: 'resend_invoice',
+    description: `Resend an existing open invoice to the customer's billing email. Use list_pending_invoices first to find the invoice ID. If the invoice needs to go to a different email, use update_billing_email first.`,
+    usage_hints: 'Use list_pending_invoices to find invoice IDs. Combine with update_billing_email to change recipient.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        invoice_id: {
+          type: 'string',
+          description: 'Stripe invoice ID (starts with in_)',
+        },
+      },
+      required: ['invoice_id'],
+    },
+  },
+  {
+    name: 'update_billing_email',
+    description: `Update the billing email on a Stripe customer. Use this when invoices need to go to a different email address (e.g., accounts payable). Can look up by org_id or direct customer_id.`,
+    usage_hints: 'Use before resend_invoice if the email needs to change. Get org_id from get_account.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_...) — will look up Stripe customer',
+        },
+        customer_id: {
+          type: 'string',
+          description: 'Direct Stripe customer ID (cus_...) — use if org_id is not available',
+        },
+        email: {
+          type: 'string',
+          description: 'New billing email address',
+        },
+      },
+      required: ['email'],
     },
   },
 
@@ -822,6 +863,30 @@ Roles: member (default), admin (can manage team)`,
     },
   },
 
+  {
+    name: 'rename_working_group',
+    description: `Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").`,
+    usage_hints: 'Look up current slug first with list_working_groups or list_chapters.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        working_group_slug: {
+          type: 'string',
+          description: 'Current slug of the working group/chapter',
+        },
+        new_name: {
+          type: 'string',
+          description: 'New display name',
+        },
+        new_slug: {
+          type: 'string',
+          description: 'New slug (optional — auto-generated from name if not provided)',
+        },
+      },
+      required: ['working_group_slug', 'new_name'],
+    },
+  },
+
   // ============================================
   // PROSPECT OWNERSHIP & PIPELINE TOOLS
   // ============================================
@@ -1283,6 +1348,70 @@ export function createAdminToolHandlers(
         error: 'Failed to list pending invoices. Please try again.',
       });
     }
+  });
+
+  // Resend an open invoice
+  handlers.set('resend_invoice', async (input) => {
+    const invoiceId = input.invoice_id as string;
+
+    if (!invoiceId || !invoiceId.startsWith('in_')) {
+      return '❌ A valid Stripe invoice ID (starting with in_) is required.';
+    }
+
+    logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+
+    const result = await resendInvoice(invoiceId);
+    if (!result.success) {
+      return `❌ Could not resend invoice: ${result.error}`;
+    }
+
+    let msg = `✅ Invoice ${invoiceId} has been resent.`;
+    if (result.hosted_invoice_url) {
+      msg += `\n\nPayment link: ${result.hosted_invoice_url}`;
+    }
+    return msg;
+  });
+
+  // Update billing email on a Stripe customer
+  handlers.set('update_billing_email', async (input) => {
+    const orgId = input.org_id as string | undefined;
+    const directCustomerId = input.customer_id as string | undefined;
+    const email = input.email as string;
+
+    if (!email) {
+      return '❌ Email is required.';
+    }
+
+    let customerId = directCustomerId;
+
+    if (customerId && !customerId.startsWith('cus_')) {
+      return '❌ A valid Stripe customer ID (starting with cus_) is required.';
+    }
+
+    // Look up Stripe customer from org if needed
+    if (!customerId && orgId) {
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return `❌ Organization ${orgId} not found.`;
+      }
+      if (!org.stripe_customer_id) {
+        return `❌ Organization "${org.name}" has no Stripe customer linked.`;
+      }
+      customerId = org.stripe_customer_id;
+    }
+
+    if (!customerId) {
+      return '❌ Either org_id or customer_id is required.';
+    }
+
+    logger.info({ customerId, email }, 'Addie: Admin updating billing email');
+
+    const result = await updateCustomerEmail(customerId, email);
+    if (!result.success) {
+      return `❌ Could not update email: ${result.error}`;
+    }
+
+    return `✅ Billing email for customer ${customerId} updated to ${email}. Future invoices will be sent to this address.`;
   });
 
   // Shared handler for get_account and get_organization_details
@@ -3796,6 +3925,42 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
   // ORGANIZATION MANAGEMENT HANDLERS
   // ============================================
+
+  // Rename a working group / chapter / committee
+  handlers.set('rename_working_group', async (input) => {
+    const slug = input.working_group_slug as string;
+    const newName = input.new_name as string;
+    const newSlug = input.new_slug as string | undefined;
+
+    if (!slug || !newName) {
+      return '❌ Both working_group_slug and new_name are required.';
+    }
+
+    try {
+      const wg = await wgDb.getWorkingGroupBySlug(slug);
+      if (!wg) {
+        return `❌ Working group with slug "${slug}" not found.`;
+      }
+
+      const generatedSlug = newSlug || newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      if (!generatedSlug) {
+        return '❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.';
+      }
+
+      await wgDb.updateWorkingGroup(wg.id, {
+        name: newName,
+        slug: generatedSlug,
+      });
+
+      logger.info({ oldSlug: slug, newSlug: generatedSlug, newName }, 'Addie: Admin renamed working group');
+
+      return `✅ Renamed "${wg.name}" → "${newName}"\n\nSlug: ${slug} → ${generatedSlug}\nType: ${wg.committee_type}`;
+    } catch (error) {
+      logger.error({ error, slug, newName }, 'Addie: Error renaming working group');
+      return '❌ Failed to rename working group. Please try again.';
+    }
+  });
 
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {
