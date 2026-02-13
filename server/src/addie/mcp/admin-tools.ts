@@ -1384,6 +1384,10 @@ export function createAdminToolHandlers(
 
     let customerId = directCustomerId;
 
+    if (customerId && !customerId.startsWith('cus_')) {
+      return '❌ A valid Stripe customer ID (starting with cus_) is required.';
+    }
+
     // Look up Stripe customer from org if needed
     if (!customerId && orgId) {
       const org = await orgDb.getOrganization(orgId);
@@ -3939,6 +3943,10 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const generatedSlug = newSlug || newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      if (!generatedSlug) {
+        return '❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.';
+      }
 
       await wgDb.updateWorkingGroup(wg.id, {
         name: newName,

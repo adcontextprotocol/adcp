@@ -1309,7 +1309,11 @@ export function createMeetingToolHandlers(
         ]);
 
         if (result.addedToMeetings > 0) {
-          return `✅ Added ${name || email} to ${result.addedToMeetings} upcoming meeting(s) in the series **${meeting.title}**.`;
+          let msg = `✅ Added ${name || email} to ${result.addedToMeetings} upcoming meeting(s) in the series **${meeting.title}**.`;
+          if (result.errors.length > 0) {
+            msg += `\n\n⚠️ Some calendar updates failed: ${result.errors.join('; ')}`;
+          }
+          return msg;
         } else {
           return `${name || email} was already on the invite list for all upcoming meetings in this series.`;
         }

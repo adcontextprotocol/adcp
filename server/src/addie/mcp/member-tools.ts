@@ -2777,13 +2777,17 @@ export function createMemberToolHandlers(
 
     try {
       const pool = getPool();
-      await pool.query(
+      const result = await pool.query(
         `UPDATE slack_user_mappings
          SET outreach_opt_out = $2,
              outreach_opt_out_at = CASE WHEN $2 THEN NOW() ELSE NULL END
          WHERE slack_user_id = $1`,
         [slackUserId, optOut]
       );
+
+      if (result.rowCount === 0) {
+        return '❌ Could not find your Slack user mapping. Please try again or contact support.';
+      }
 
       if (optOut) {
         return '✅ You\'ve been opted out of proactive outreach messages. You can opt back in anytime by asking me to turn them on again.';
