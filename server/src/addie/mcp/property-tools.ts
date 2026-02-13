@@ -9,6 +9,7 @@
 import type { AddieTool } from '../types.js';
 import { AdAgentsManager } from '../../adagents-manager.js';
 import { PropertyDatabase } from '../../db/property-db.js';
+import { registryRequestsDb } from '../../db/registry-requests-db.js';
 
 const adagentsManager = new AdAgentsManager();
 const propertyDb = new PropertyDatabase();
@@ -120,6 +121,20 @@ export const PROPERTY_TOOLS: AddieTool[] = [
       },
     },
   },
+  {
+    name: 'list_missing_properties',
+    description: 'List the most-requested publisher domains that are not yet in the registry. Shows demand signals — which properties people are looking for but we don\'t have.',
+    usage_hints: 'Use when asked about gaps in the property registry, or to find publishers worth onboarding. Pair with save_property to fill gaps.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -199,6 +214,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       }, null, 2);
     }
 
+    registryRequestsDb.trackRequest('property', domain).catch(() => { /* fire-and-forget */ });
     return JSON.stringify({
       error: 'Property not found',
       domain,
@@ -310,6 +326,26 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     }));
 
     return JSON.stringify({ properties: result, count: result.length }, null, 2);
+  });
+
+  handlers.set('list_missing_properties', async (args) => {
+    const rawLimit = typeof args.limit === 'number' ? args.limit : 20;
+    const limit = Math.min(Math.max(1, rawLimit), 100);
+
+    const requests = await registryRequestsDb.listUnresolved('property', { limit });
+
+    if (requests.length === 0) {
+      return 'No missing property requests recorded yet.';
+    }
+
+    const result = requests.map(r => ({
+      domain: r.domain,
+      request_count: r.request_count,
+      first_requested_at: r.first_requested_at,
+      last_requested_at: r.last_requested_at,
+    }));
+
+    return JSON.stringify({ missing_properties: result, count: result.length }, null, 2);
   });
 
   return handlers;

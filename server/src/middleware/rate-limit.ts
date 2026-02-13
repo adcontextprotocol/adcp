@@ -78,3 +78,28 @@ export const orgCreationRateLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Rate limiter for bulk resolve endpoints
+ * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
+ */
+export const bulkResolveRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for bulk resolve');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Bulk resolve rate limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
