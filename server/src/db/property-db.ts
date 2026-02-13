@@ -28,7 +28,7 @@ export interface UpdateHostedPropertyInput {
  * Options for listing properties
  */
 export interface ListPropertiesOptions {
-  source?: 'adagents_json' | 'hosted' | 'discovered';
+  source?: 'adagents_json' | 'hosted' | 'community' | 'discovered' | 'enriched';
   search?: string;
   has_agents?: boolean;
   limit?: number;
@@ -237,7 +237,7 @@ export class PropertyDatabase {
    */
   async getAllPropertiesForRegistry(options: ListPropertiesOptions = {}): Promise<Array<{
     domain: string;
-    source: 'adagents_json' | 'hosted' | 'community' | 'discovered';
+    source: 'adagents_json' | 'hosted' | 'community' | 'discovered' | 'enriched';
     property_count: number;
     agent_count: number;
     verified: boolean;
@@ -249,7 +249,7 @@ export class PropertyDatabase {
 
     const result = await query<{
       domain: string;
-      source: 'adagents_json' | 'hosted' | 'community' | 'discovered';
+      source: 'adagents_json' | 'hosted' | 'community' | 'discovered' | 'enriched';
       property_count: number;
       agent_count: number;
       verified: boolean;
@@ -290,6 +290,45 @@ export class PropertyDatabase {
     );
 
     return result.rows;
+  }
+
+  /**
+   * Get aggregated stats for the property registry (counts by source type)
+   */
+  async getPropertyRegistryStats(search?: string): Promise<Record<string, number>> {
+    const escapedSearch = search ? search.replace(/[%_\\]/g, '\\$&') : null;
+    const searchParam = escapedSearch ? `%${escapedSearch}%` : null;
+
+    const result = await query<{ source: string; count: number }>(
+      `
+      SELECT source, COUNT(*)::int as count FROM (
+        -- Hosted properties
+        SELECT COALESCE(source_type, 'hosted') as source
+        FROM hosted_properties
+        WHERE is_public = true
+          AND (review_status IS NULL OR review_status = 'approved')
+          AND ($1::text IS NULL OR publisher_domain ILIKE $1)
+
+        UNION ALL
+
+        -- Discovered properties
+        SELECT CASE WHEN source_type = 'adagents_json' OR source_type IS NULL THEN 'adagents_json' ELSE 'discovered' END as source
+        FROM discovered_properties
+        WHERE ($1::text IS NULL OR publisher_domain ILIKE $1)
+          AND publisher_domain NOT IN (SELECT publisher_domain FROM hosted_properties WHERE is_public = true)
+        GROUP BY publisher_domain, source_type
+      ) sub
+      GROUP BY source
+      `,
+      [searchParam]
+    );
+
+    const stats: Record<string, number> = { total: 0, adagents_json: 0, hosted: 0, community: 0, discovered: 0, enriched: 0 };
+    for (const row of result.rows) {
+      stats[row.source] = row.count;
+      stats.total += row.count;
+    }
+    return stats;
   }
 
   // ========== Wiki Editing ==========

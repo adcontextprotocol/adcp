@@ -341,6 +341,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (devUser) {
       req.user = devUser;
       req.accessToken = 'dev-mode-token';
+      // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
+      const devConfig = getDevUser(req);
+      if (devConfig) {
+        (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
+      }
       return next();
     }
     // No dev session - redirect to dev login page
@@ -905,6 +910,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     if (devUser) {
       req.user = devUser;
       req.accessToken = 'dev-mode-token';
+      // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
+      const devConfig = getDevUser(req);
+      if (devConfig) {
+        (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
+      }
     }
     // No dev session = not logged in (which is fine for optional auth)
     return next();

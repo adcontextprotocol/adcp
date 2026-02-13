@@ -113,13 +113,12 @@
       }
     }
 
-    // Build Registry dropdown with submenu (Members, Agents, Brands, Publishers, Properties)
+    // Build Registry dropdown with submenu (Members, Agents, Brands, Publishers)
     const agentsUrl = isLocal ? '/registry' : `${aaoBaseUrl}/registry`;
     const brandsUrl = isLocal ? '/brands' : `${aaoBaseUrl}/brands`;
     const publishersUrl = isLocal ? '/publishers' : `${aaoBaseUrl}/publishers`;
-    const propertiesUrl = isLocal ? '/properties' : `${aaoBaseUrl}/properties`;
     const isRegistryActive = currentPath === '/members' || currentPath.startsWith('/members/') ||
-                              currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers' || currentPath === '/properties';
+                              currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers';
     const registryDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isRegistryActive ? 'active' : ''}">
@@ -133,7 +132,6 @@
             <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
             <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
             <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-            <a href="${propertiesUrl}" class="navbar__dropdown-item ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
             <div class="navbar__dropdown-divider"></div>
             <div class="navbar__dropdown-mcp">
               <span class="navbar__mcp-badge">MCP</span>
@@ -170,7 +168,7 @@
     const isProjectsActive = currentPath === '/adagents' || currentPath.startsWith('/adagents/') ||
                              currentPath === '/brand' || currentPath.startsWith('/brand/') ||
                              currentPath === '/members' || currentPath.startsWith('/members/') ||
-                             currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers' || currentPath === '/properties';
+                             currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers';
     const projectsDropdown = `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isProjectsActive ? 'active' : ''}">
             Projects
@@ -188,7 +186,6 @@
             <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
             <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
             <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-            <a href="${propertiesUrl}" class="navbar__dropdown-item ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           </div>
         </div>`;
 
@@ -305,7 +302,6 @@
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
           <a href="${brandsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-          <a href="${propertiesUrl}" class="navbar__link navbar__link--indent ${currentPath === '/properties' ? 'active' : ''}">Properties</a>
           ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/perspectives" class="navbar__link navbar__link--indent ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>` : ''}
@@ -1322,7 +1318,6 @@
                 <li><a href="/registry">Agents</a></li>
                 <li><a href="/brands">Brands</a></li>
                 <li><a href="/publishers">Publishers</a></li>
-                <li><a href="/properties">Properties</a></li>
               </ul>
             </div>
             <div class="aao-footer__column">
@@ -1603,31 +1598,34 @@
         html += '</div>';
       }
 
+      // Merge publishers (member-org) and properties (registry) into one group
+      var allPublishers = [];
+      var seenDomains = {};
+      if (data.properties && data.properties.length > 0) {
+        data.properties.forEach(function(prop) {
+          allPublishers.push({ domain: prop.domain, meta: prop.source + (prop.property_count ? ' \u00b7 ' + prop.property_count + ' properties' : '') });
+          seenDomains[prop.domain] = true;
+        });
+      }
       if (data.publishers && data.publishers.length > 0) {
+        data.publishers.forEach(function(pub) {
+          if (!seenDomains[pub.domain]) {
+            allPublishers.push({ domain: pub.domain, meta: pub.member && pub.member.display_name ? pub.member.display_name : '' });
+            seenDomains[pub.domain] = true;
+          }
+        });
+      }
+      if (allPublishers.length > 0) {
         html += '<div class="navbar__search-group">';
         html += '<div class="navbar__search-group-header">Publishers</div>';
-        data.publishers.forEach(function(pub) {
-          html += '<a href="/publishers?q=' + encodeURIComponent(pub.domain) + '" class="navbar__search-item" role="option">';
+        allPublishers.forEach(function(pub) {
+          html += '<a href="/property/view/' + encodeURIComponent(pub.domain) + '" class="navbar__search-item" role="option">';
           html += '<div class="navbar__search-item-icon navbar__search-item-icon--publisher">P</div>';
           html += '<div class="navbar__search-item-content">';
           html += '<div class="navbar__search-item-title">' + escapeHtml(pub.domain) + '</div>';
-          if (pub.member && pub.member.display_name) {
-            html += '<div class="navbar__search-item-meta">' + escapeHtml(pub.member.display_name) + '</div>';
+          if (pub.meta) {
+            html += '<div class="navbar__search-item-meta">' + escapeHtml(pub.meta) + '</div>';
           }
-          html += '</div></a>';
-        });
-        html += '</div>';
-      }
-
-      if (data.properties && data.properties.length > 0) {
-        html += '<div class="navbar__search-group">';
-        html += '<div class="navbar__search-group-header">Properties</div>';
-        data.properties.forEach(function(prop) {
-          html += '<a href="/property/view/' + encodeURIComponent(prop.domain) + '" class="navbar__search-item" role="option">';
-          html += '<div class="navbar__search-item-icon navbar__search-item-icon--property">S</div>';
-          html += '<div class="navbar__search-item-content">';
-          html += '<div class="navbar__search-item-title">' + escapeHtml(prop.domain) + '</div>';
-          html += '<div class="navbar__search-item-meta">' + escapeHtml(prop.source) + (prop.property_count ? ' \u00b7 ' + prop.property_count + ' properties' : '') + '</div>';
           html += '</div></a>';
         });
         html += '</div>';

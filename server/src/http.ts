@@ -1666,9 +1666,9 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'publishers.html');
     });
 
-    // Properties registry page
-    this.app.get("/properties", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'properties.html');
+    // Properties registry page (redirects to publishers - consolidated)
+    this.app.get("/properties", (_req, res) => {
+      res.redirect(301, '/publishers');
     });
 
     // About AAO page - serve about.html at /about
@@ -2532,20 +2532,14 @@ export class HTTPServer {
     // GET /api/properties/registry - List all properties in the registry
     this.app.get('/api/properties/registry', async (req, res) => {
       try {
-        const properties = await this.propertyDb.getAllPropertiesForRegistry({
-          search: req.query.search as string,
-          limit: parseInt(req.query.limit as string) || 100,
-          offset: parseInt(req.query.offset as string) || 0,
-        });
+        const limit = Math.min(parseInt(req.query.limit as string) || 100, 5000);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const search = req.query.search as string;
 
-        // Calculate stats
-        const stats = {
-          total: properties.length,
-          adagents_json: properties.filter(p => p.source === 'adagents_json').length,
-          hosted: properties.filter(p => p.source === 'hosted').length,
-          community: properties.filter(p => p.source === 'community').length,
-          discovered: properties.filter(p => p.source === 'discovered').length,
-        };
+        const [properties, stats] = await Promise.all([
+          this.propertyDb.getAllPropertiesForRegistry({ search, limit, offset }),
+          this.propertyDb.getPropertyRegistryStats(search),
+        ]);
 
         return res.json({ properties, stats });
       } catch (error) {
@@ -7483,7 +7477,7 @@ Disallow: /api/admin/
       }
     });
 
-    // List all public publishers from member organizations (public endpoint for publishers registry)
+    // DEPRECATED: Returns only member-org-linked publishers. Use /api/properties/registry for the full registry.
     this.app.get('/api/public/publishers', async (req, res) => {
       try {
         const memberDb = new MemberDatabase();
