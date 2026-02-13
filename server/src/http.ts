@@ -34,7 +34,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -76,6 +76,7 @@ import { InsightsDatabase } from "./db/insights-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { RegistryBansDatabase } from "./db/registry-bans-db.js";
+import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 
@@ -392,6 +393,7 @@ export class HTTPServer {
   private brandManager: BrandManager;
   private propertyDb: PropertyDatabase;
   private bansDb: RegistryBansDatabase;
+  private registryRequestsDb = registryRequestsDb;
 
   constructor() {
     this.app = express();
@@ -2016,6 +2018,7 @@ export class HTTPServer {
           // Check discovered brands as fallback
           const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
           if (discovered) {
+            this.registryRequestsDb.markResolved('brand', domain, discovered.canonical_domain || discovered.domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
             return res.json({
               canonical_id: discovered.canonical_domain || discovered.domain,
               canonical_domain: discovered.canonical_domain || discovered.domain,
@@ -2024,9 +2027,11 @@ export class HTTPServer {
               brand_manifest: discovered.brand_manifest,
             });
           }
+          this.registryRequestsDb.trackRequest('brand', domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
           return res.status(404).json({ error: 'Brand not found', domain });
         }
 
+        this.registryRequestsDb.markResolved('brand', domain, resolved.canonical_domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
         return res.json(resolved);
       } catch (error) {
         logger.error({ error }, 'Failed to resolve brand');
@@ -2495,6 +2500,191 @@ export class HTTPServer {
       }
     });
 
+    // GET /api/registry/requests - List unresolved registry requests (admin only)
+    this.app.get('/api/registry/requests', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const entityType = (req.query.type as string) || 'brand';
+        if (entityType !== 'brand' && entityType !== 'property') {
+          return res.status(400).json({ error: 'type must be "brand" or "property"' });
+        }
+
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        const requests = await this.registryRequestsDb.listUnresolved(entityType, { limit, offset });
+        return res.json({ requests, limit, offset });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list registry requests');
+        return res.status(500).json({ error: 'Failed to list registry requests' });
+      }
+    });
+
+    // GET /api/registry/requests/stats - Registry request statistics (admin only)
+    this.app.get('/api/registry/requests/stats', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const entityType = (req.query.type as string) || 'brand';
+        if (entityType !== 'brand' && entityType !== 'property') {
+          return res.status(400).json({ error: 'type must be "brand" or "property"' });
+        }
+
+        const stats = await this.registryRequestsDb.getStats(entityType);
+        return res.json(stats);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get registry request stats');
+        return res.status(500).json({ error: 'Failed to get registry request stats' });
+      }
+    });
+
+    // POST /api/brands/resolve/bulk - Resolve multiple domains at once
+    this.app.post('/api/brands/resolve/bulk', bulkResolveRateLimiter, async (req, res) => {
+      try {
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains) || domains.length === 0) {
+          return res.status(400).json({ error: 'domains array required' });
+        }
+        if (domains.length > 100) {
+          return res.status(400).json({ error: 'Maximum 100 domains per request' });
+        }
+        if (!domains.every((d: unknown) => typeof d === 'string' && d.length > 0)) {
+          return res.status(400).json({ error: 'All domains must be non-empty strings' });
+        }
+
+        const CONCURRENCY = 10;
+        const results: Record<string, unknown> = {};
+        const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+
+        for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
+          const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+          const settled = await Promise.allSettled(
+            batch.map(async (domain) => {
+              const resolved = await this.brandManager.resolveBrand(domain);
+              if (resolved) {
+                this.registryRequestsDb.markResolved('brand', domain, resolved.canonical_domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+                return { domain, result: resolved };
+              }
+
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
+              if (discovered) {
+                this.registryRequestsDb.markResolved('brand', domain, discovered.canonical_domain || discovered.domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+                return {
+                  domain,
+                  result: {
+                    canonical_id: discovered.canonical_domain || discovered.domain,
+                    canonical_domain: discovered.canonical_domain || discovered.domain,
+                    brand_name: discovered.brand_name,
+                    source: discovered.source_type,
+                    brand_manifest: discovered.brand_manifest,
+                  },
+                };
+              }
+
+              this.registryRequestsDb.trackRequest('brand', domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+              return { domain, result: null };
+            })
+          );
+
+          for (const outcome of settled) {
+            if (outcome.status === 'fulfilled') {
+              results[outcome.value.domain] = outcome.value.result;
+            }
+          }
+        }
+
+        return res.json({ results });
+      } catch (error) {
+        logger.error({ error }, 'Failed to bulk resolve brands');
+        return res.status(500).json({ error: 'Failed to bulk resolve brands' });
+      }
+    });
+
+    // POST /api/properties/resolve/bulk - Resolve multiple property domains at once
+    this.app.post('/api/properties/resolve/bulk', bulkResolveRateLimiter, async (req, res) => {
+      try {
+        const { domains } = req.body;
+
+        if (!Array.isArray(domains) || domains.length === 0) {
+          return res.status(400).json({ error: 'domains array required' });
+        }
+        if (domains.length > 100) {
+          return res.status(400).json({ error: 'Maximum 100 domains per request' });
+        }
+        if (!domains.every((d: unknown) => typeof d === 'string' && d.length > 0)) {
+          return res.status(400).json({ error: 'All domains must be non-empty strings' });
+        }
+
+        const CONCURRENCY = 10;
+        const results: Record<string, unknown> = {};
+        const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+
+        for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
+          const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+          const settled = await Promise.allSettled(
+            batch.map(async (domain) => {
+              const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
+              if (hosted && hosted.is_public) {
+                this.registryRequestsDb.markResolved('property', domain, hosted.publisher_domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+                return {
+                  domain,
+                  result: {
+                    publisher_domain: hosted.publisher_domain,
+                    source: 'hosted',
+                    authorized_agents: hosted.adagents_json.authorized_agents,
+                    properties: hosted.adagents_json.properties,
+                    verified: hosted.domain_verified,
+                  },
+                };
+              }
+
+              const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
+              if (discovered.length > 0) {
+                this.registryRequestsDb.markResolved('property', domain, domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+                const agents = await this.propertyDb.getAgentAuthorizationsForDomain(domain);
+                return {
+                  domain,
+                  result: {
+                    publisher_domain: domain,
+                    source: 'adagents_json',
+                    authorized_agents: [...new Set(agents.map(a => a.agent_url))].map(url => ({ url })),
+                    properties: discovered.map(p => ({
+                      id: p.property_id,
+                      type: p.property_type,
+                      name: p.name,
+                    })),
+                    verified: true,
+                  },
+                };
+              }
+
+              this.registryRequestsDb.trackRequest('property', domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
+              return { domain, result: null };
+            })
+          );
+
+          for (const outcome of settled) {
+            if (outcome.status === 'fulfilled') {
+              results[outcome.value.domain] = outcome.value.result;
+            }
+          }
+        }
+
+        return res.json({ results });
+      } catch (error) {
+        logger.error({ error }, 'Failed to bulk resolve properties');
+        return res.status(500).json({ error: 'Failed to bulk resolve properties' });
+      }
+    });
+
     // brand.json builder tool (must be before wildcard /brand/view/:domain)
     this.app.get('/brand/builder', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'brand-builder.html');
@@ -2559,6 +2749,7 @@ export class HTTPServer {
         // Check hosted first
         const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
         if (hosted && hosted.is_public) {
+          this.registryRequestsDb.markResolved('property', domain, hosted.publisher_domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
           return res.json({
             publisher_domain: hosted.publisher_domain,
             source: 'hosted',
@@ -2572,6 +2763,7 @@ export class HTTPServer {
         // Check discovered
         const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
         if (discovered.length > 0) {
+          this.registryRequestsDb.markResolved('property', domain, domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
           const agents = await this.propertyDb.getAgentAuthorizationsForDomain(domain);
           return res.json({
             publisher_domain: domain,
@@ -2591,6 +2783,7 @@ export class HTTPServer {
         // Try live validation
         const validation = await this.adagentsManager.validateDomain(domain);
         if (validation.valid && validation.raw_data) {
+          this.registryRequestsDb.markResolved('property', domain, domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
           return res.json({
             publisher_domain: domain,
             source: 'adagents_json',
@@ -2601,6 +2794,7 @@ export class HTTPServer {
           });
         }
 
+        this.registryRequestsDb.trackRequest('property', domain).catch(err => logger.debug({ err }, 'Registry request tracking failed'));
         return res.status(404).json({ error: 'Property not found', domain });
       } catch (error) {
         logger.error({ error }, 'Failed to resolve property');

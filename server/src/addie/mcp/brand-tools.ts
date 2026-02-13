@@ -9,6 +9,7 @@
 import type { AddieTool } from '../types.js';
 import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
+import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { fetchBrandData, isBrandfetchConfigured } from '../../services/brandfetch.js';
 
 const brandManager = new BrandManager();
@@ -92,6 +93,20 @@ export const BRAND_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Search term for brand name or domain',
         },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_missing_brands',
+    description: 'List the most-requested brand domains that are not yet in the registry. Shows demand signals — which brands people are looking for but we don\'t have.',
+    usage_hints: 'Use when asked about gaps in the brand registry, or to find brands worth researching. Pair with research_brand to fill gaps.',
+    input_schema: {
+      type: 'object',
+      properties: {
         limit: {
           type: 'number',
           description: 'Maximum results (default: 20)',
@@ -188,6 +203,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         }, null, 2);
       }
 
+      registryRequestsDb.trackRequest('brand', domain).catch(() => { /* fire-and-forget */ });
       return JSON.stringify({
         error: 'Brand not found',
         domain,
@@ -302,6 +318,26 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }));
 
     return JSON.stringify({ brands: result, count: result.length }, null, 2);
+  });
+
+  handlers.set('list_missing_brands', async (args) => {
+    const rawLimit = typeof args.limit === 'number' ? args.limit : 20;
+    const limit = Math.min(Math.max(1, rawLimit), 100);
+
+    const requests = await registryRequestsDb.listUnresolved('brand', { limit });
+
+    if (requests.length === 0) {
+      return 'No missing brand requests recorded yet.';
+    }
+
+    const result = requests.map(r => ({
+      domain: r.domain,
+      request_count: r.request_count,
+      first_requested_at: r.first_requested_at,
+      last_requested_at: r.last_requested_at,
+    }));
+
+    return JSON.stringify({ missing_brands: result, count: result.length }, null, 2);
   });
 
   return handlers;
