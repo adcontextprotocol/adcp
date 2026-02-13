@@ -1271,10 +1271,10 @@
           <!-- Single Brand Form (simplest case) -->
           <div id="form-single">
             <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
-            <h4 style="margin-bottom: var(--space-4)">Brand Information</h4>
+            <h4 style="margin-bottom: var(--space-4)">Brand information</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
               <div class="form-group" style="margin-bottom: 0">
-                <label>Brand Name</label>
+                <label>Brand name</label>
                 <input
                   type="text"
                   id="single-brand-name"
@@ -1307,48 +1307,48 @@
             </div>
 
             <details class="brand-section-toggle" style="margin-top: var(--space-5);">
-              <summary>Brand Identity</summary>
+              <summary>Brand identity</summary>
               <div class="brand-section-content">
                 <div class="form-group">
-                  <label>Description <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
-                  <textarea id="single-description" rows="2" placeholder="Brief description of the brand" oninput="updateSingleIdentity('description', this.value); updateDescCharCount(this.value)"></textarea>
+                  <label>Brand description <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                  <textarea id="single-description" rows="2" placeholder="Describe your brand, e.g. A wholesome snack brand focused on fresh, natural ingredients" oninput="updateSingleIdentity('description', this.value); updateDescCharCount(this.value)"></textarea>
                   <p class="hint" id="single-desc-char-count">0 / 500 characters</p>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Tagline <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
-                    <input type="text" id="single-tagline" placeholder="Just Do It" oninput="updateSingleIdentity('tagline', this.value)" />
+                    <label>Brand tagline <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                    <input type="text" id="single-tagline" placeholder="Real food. Real Happiness." oninput="updateSingleIdentity('tagline', this.value)" />
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Brand Voice <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
-                    <input type="text" id="single-tone-voice" placeholder="professional and trustworthy" oninput="updateSingleTone('voice', this.value)" />
+                    <label>Brand voice <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                    <input type="text" id="single-tone-voice" placeholder="Describe your brand's overall personality and tone (e.g. Professional, Trustworthy, Friendly, Approachable)" oninput="updateSingleTone('voice', this.value)" />
                   </div>
                 </div>
                 <div class="form-group" style="margin-bottom: var(--space-4);">
-                  <label>Voice Attributes <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                  <label>Voice characteristics <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                   <div class="chip-container" id="single-tone-attributes-container" onclick="document.getElementById('single-tone-attributes-input').focus()">
                     <span id="single-tone-attributes-chips"></span>
                     <input type="text" class="chip-input" id="single-tone-attributes-input"
-                      placeholder="Type attribute and press Enter (e.g., confident, innovative)"
+                      placeholder="e.g. Confident, Innovative, Bold, Clear"
                       onkeydown="handleToneChipKeydown(event, 'single', 'attributes')" />
                   </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Brand Do's <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                    <label>On-brand communication <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <div class="chip-container" id="single-tone-dos-container" onclick="document.getElementById('single-tone-dos-input').focus()">
                       <span id="single-tone-dos-chips"></span>
                       <input type="text" class="chip-input" id="single-tone-dos-input"
-                        placeholder="e.g., Use bold typography, Reference sustainability"
+                        placeholder="e.g. Made with real ingredients, Fresh from the farm, Snack happy"
                         onkeydown="handleToneChipKeydown(event, 'single', 'dos')" />
                     </div>
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Brand Don'ts <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                    <label>Off-brand communication <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
                     <div class="chip-container" id="single-tone-donts-container" onclick="document.getElementById('single-tone-donts-input').focus()">
                       <span id="single-tone-donts-chips"></span>
                       <input type="text" class="chip-input" id="single-tone-donts-input"
-                        placeholder="e.g., Never use slang, Avoid competitor comparisons"
+                        placeholder="e.g. Ultimate super-snack, Miracle ingredients, Peak vitality snack, Soul-nourishing"
                         onkeydown="handleToneChipKeydown(event, 'single', 'donts')" />
                     </div>
                   </div>
@@ -1360,7 +1360,7 @@
                       <div class="chip-container" onclick="focusIndustryInput('single')">
                         <span id="single-industry-chips"></span>
                         <input type="text" class="chip-input" id="single-industry-input"
-                          placeholder="Select or type industry"
+                          placeholder="e.g. Food &amp; Beverage, Beauty &amp; Cosmetics"
                           onfocus="showIndustryDropdown('single')"
                           oninput="filterIndustryDropdown('single', this.value)"
                           onkeydown="handleIndustryKeydown(event, 'single')" />
@@ -1369,19 +1369,19 @@
                     </div>
                   </div>
                   <div class="form-group" style="margin-bottom: 0;">
-                    <label>Target Audience <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
-                    <input type="text" id="single-target_audience" placeholder="Young professionals" oninput="updateSingleIdentity('target_audience', this.value)" />
+                    <label>Target audience <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                    <input type="text" id="single-target_audience" placeholder="e.g. Health-conscious parents, Young urban professionals, Skincare enthusiasts" oninput="updateSingleIdentity('target_audience', this.value)" />
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>Privacy Policy URL <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
-                  <input type="url" id="single-privacy_policy_url" placeholder="https://example.com/privacy" oninput="updateSingleIdentity('privacy_policy_url', this.value)" />
+                  <label>Privacy policy URL <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span></label>
+                  <input type="url" id="single-privacy_policy_url" placeholder="e.g. https://example.com/privacy" oninput="updateSingleIdentity('privacy_policy_url', this.value)" />
                 </div>
               </div>
             </details>
 
             <details class="brand-section-toggle">
-              <summary>Creative Assets</summary>
+              <summary>Creative assets</summary>
               <div class="brand-section-content">
                 <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
                   Logos <span style="font-weight: var(--font-normal); color: var(--text-muted); font-size: var(--text-xs);">(optional)</span>
@@ -1415,10 +1415,10 @@
           <!-- Brand Portfolio Form (multi-brand) -->
           <div id="form-portfolio" class="hidden">
             <button class="back-link" onclick="goBackTo('step-multiple-domain')">← Back</button>
-            <h4 style="margin-bottom: var(--space-4)">House Information</h4>
+            <h4 style="margin-bottom: var(--space-4)">House information</h4>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-5)">
               <div class="form-group" style="margin-bottom: 0">
-                <label>House Domain</label>
+                <label>House domain</label>
                 <input
                   type="text"
                   id="portfolio-house-domain"
@@ -1428,7 +1428,7 @@
                 <p class="hint">Corporate/parent company domain</p>
               </div>
               <div class="form-group" style="margin-bottom: 0">
-                <label>House Name</label>
+                <label>House name</label>
                 <input
                   type="text"
                   id="portfolio-house-name"
@@ -1438,7 +1438,7 @@
               </div>
             </div>
 
-            <h4 style="margin: var(--space-6) 0 var(--space-4) 0;">Brand Portfolio</h4>
+            <h4 style="margin: var(--space-6) 0 var(--space-4) 0;">Brand portfolio</h4>
 
             <!-- Two-Panel Layout -->
             <div class="portfolio-layout">
@@ -1462,8 +1462,8 @@
             <!-- Brand Files Dashboard -->
             <div id="brand-files-dashboard" class="brand-files-dashboard hidden">
               <h4>
-                <span>Brand Files</span>
-                <button class="btn" onclick="validateAllFiles()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-xs);">Validate All</button>
+                <span>Brand files</span>
+                <button class="btn" onclick="validateAllFiles()" style="padding: var(--space-2) var(--space-4); font-size: var(--text-xs);">Validate all</button>
               </h4>
               <div id="brand-files-list"></div>
             </div>
@@ -1473,7 +1473,7 @@
           <div id="form-redirect" class="hidden">
             <button class="back-link" onclick="goBackTo('step-multiple-domain')">← Back</button>
             <div class="form-group">
-              <label>House Domain</label>
+              <label>House domain</label>
               <input
                 type="text"
                 id="redirect-house-domain"
@@ -1512,7 +1512,7 @@
           <!-- Contact Information (root-level, shown for single + portfolio) -->
           <div id="contact-section" class="hidden" style="margin-top: var(--space-5);">
             <details class="brand-section-toggle">
-              <summary>Contact Information</summary>
+              <summary>Contact information</summary>
               <div class="brand-section-content">
                 <div class="contact-grid">
                   <div class="form-group" style="margin-bottom: 0;">
@@ -1544,7 +1544,7 @@
 
           <!-- Next Steps / Success State -->
           <div class="next-steps" id="next-steps">
-            <h4>Next Steps</h4>
+            <h4>Next steps</h4>
             <ol>
               <li>
                 <div class="step-number">1</div>
@@ -2930,7 +2930,7 @@
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
             <div class="form-group" style="margin-bottom: 0;">
-              <label>Brand Name</label>
+              <label>Brand name</label>
               <input type="text" data-field="name" value="${escapeHtml(brand.name)}" placeholder="Nike" oninput="updateBrand(${brand.id}, 'name', this.value)" />
             </div>
             <div class="form-group" style="margin-bottom: 0;">
@@ -2941,7 +2941,7 @@
           </div>
 
           <div class="form-group">
-            <label>Primary Website</label>
+            <label>Primary website</label>
             <input type="text" value="${escapeHtml(brand.domain || '')}" placeholder="nike.com" oninput="updateBrand(${brand.id}, 'domain', this.value)" />
             <p class="hint">Added as primary property; a redirect file will be needed here</p>
           </div>
@@ -2963,7 +2963,7 @@
               </p>
             </div>
             <div class="form-group" style="margin-bottom: 0;">
-              <label>Parent Brand</label>
+              <label>Parent brand</label>
               <select onchange="updateBrand(${brand.id}, 'parent_brand', this.value)">
                 <option value="">None (root brand)</option>
                 ${parentOptions.map(p => `<option value="${escapeAttr(p.id)}" ${brand.parent_brand === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
@@ -2973,7 +2973,7 @@
 
           <div>
             <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
-              Additional Properties (apps, other sites)
+              Additional properties (apps, other sites)
               <button class="btn" onclick="addProperty(${brand.id})" style="padding: var(--space-1) var(--space-2); font-size: var(--text-xs);">+ Add</button>
             </label>
             <div>
@@ -2997,47 +2997,47 @@
           </div>
 
           <details class="brand-section-toggle" style="margin-top: var(--space-5);">
-            <summary>Brand Identity</summary>
+            <summary>Brand identity</summary>
             <div class="brand-section-content">
               <div class="form-group">
-                <label>Description</label>
-                <textarea rows="2" placeholder="Brief description of the brand" oninput="updateBrandIdentity(${brand.id}, 'description', this.value)">${escapeHtml(brand.description || '')}</textarea>
+                <label>Brand description</label>
+                <textarea rows="2" placeholder="Describe your brand, e.g. A wholesome snack brand focused on fresh, natural ingredients" oninput="updateBrandIdentity(${brand.id}, 'description', this.value)">${escapeHtml(brand.description || '')}</textarea>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Tagline</label>
-                  <input type="text" value="${escapeHtml(brand.tagline || '')}" placeholder="Just Do It" oninput="updateBrandIdentity(${brand.id}, 'tagline', this.value)" />
+                  <label>Brand tagline</label>
+                  <input type="text" value="${escapeHtml(brand.tagline || '')}" placeholder="Real food. Real Happiness." oninput="updateBrandIdentity(${brand.id}, 'tagline', this.value)" />
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Brand Voice</label>
-                  <input type="text" value="${escapeHtml((brand.tone && brand.tone.voice) || '')}" placeholder="professional and trustworthy" oninput="updateBrandTone(${brand.id}, 'voice', this.value)" />
+                  <label>Brand voice</label>
+                  <input type="text" value="${escapeHtml((brand.tone && brand.tone.voice) || '')}" placeholder="Describe your brand's overall personality and tone (e.g. Professional, Trustworthy, Friendly, Approachable)" oninput="updateBrandTone(${brand.id}, 'voice', this.value)" />
                 </div>
               </div>
               <div class="form-group" style="margin-bottom: var(--space-4);">
-                <label>Voice Attributes</label>
+                <label>Voice characteristics</label>
                 <div class="chip-container" id="brand-${brand.id}-tone-attributes-container" onclick="document.getElementById('brand-${brand.id}-tone-attributes-input').focus()">
                   <span id="brand-${brand.id}-tone-attributes-chips"></span>
                   <input type="text" class="chip-input" id="brand-${brand.id}-tone-attributes-input"
-                    placeholder="Type attribute and press Enter"
+                    placeholder="e.g. Confident, Innovative, Bold, Clear"
                     onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'attributes', ${brand.id})" />
                 </div>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4);">
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Do's</label>
+                  <label>On-brand communication</label>
                   <div class="chip-container" id="brand-${brand.id}-tone-dos-container" onclick="document.getElementById('brand-${brand.id}-tone-dos-input').focus()">
                     <span id="brand-${brand.id}-tone-dos-chips"></span>
                     <input type="text" class="chip-input" id="brand-${brand.id}-tone-dos-input"
-                      placeholder="Type guideline and press Enter"
+                      placeholder="e.g. Made with real ingredients, Fresh from the farm, Snack happy"
                       onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'dos', ${brand.id})" />
                   </div>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Don'ts</label>
+                  <label>Off-brand communication</label>
                   <div class="chip-container" id="brand-${brand.id}-tone-donts-container" onclick="document.getElementById('brand-${brand.id}-tone-donts-input').focus()">
                     <span id="brand-${brand.id}-tone-donts-chips"></span>
                     <input type="text" class="chip-input" id="brand-${brand.id}-tone-donts-input"
-                      placeholder="Type guideline and press Enter"
+                      placeholder="e.g. Ultimate super-snack, Miracle ingredients, Peak vitality snack, Soul-nourishing"
                       onkeydown="handleToneChipKeydown(event, 'brand-${brand.id}', 'donts', ${brand.id})" />
                   </div>
                 </div>
@@ -3049,7 +3049,7 @@
                     <div class="chip-container" onclick="focusIndustryInput('brand-${brand.id}')">
                       <span id="brand-${brand.id}-industry-chips"></span>
                       <input type="text" class="chip-input" id="brand-${brand.id}-industry-input"
-                        placeholder="Select or type industry"
+                        placeholder="e.g. Food &amp; Beverage, Beauty &amp; Cosmetics"
                         onfocus="showIndustryDropdown('brand-${brand.id}', ${brand.id})"
                         oninput="filterIndustryDropdown('brand-${brand.id}', this.value, ${brand.id})"
                         onkeydown="handleIndustryKeydown(event, 'brand-${brand.id}', ${brand.id})" />
@@ -3058,19 +3058,19 @@
                   </div>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                  <label>Target Audience</label>
-                  <input type="text" value="${escapeHtml(brand.target_audience || '')}" placeholder="Young professionals" oninput="updateBrandIdentity(${brand.id}, 'target_audience', this.value)" />
+                  <label>Target audience</label>
+                  <input type="text" value="${escapeHtml(brand.target_audience || '')}" placeholder="e.g. Health-conscious parents, Young urban professionals, Skincare enthusiasts" oninput="updateBrandIdentity(${brand.id}, 'target_audience', this.value)" />
                 </div>
               </div>
               <div class="form-group">
-                <label>Privacy Policy URL</label>
-                <input type="url" value="${escapeHtml(brand.privacy_policy_url || '')}" placeholder="https://example.com/privacy" oninput="updateBrandIdentity(${brand.id}, 'privacy_policy_url', this.value)" />
+                <label>Privacy policy URL</label>
+                <input type="url" value="${escapeHtml(brand.privacy_policy_url || '')}" placeholder="e.g. https://example.com/privacy" oninput="updateBrandIdentity(${brand.id}, 'privacy_policy_url', this.value)" />
               </div>
             </div>
           </details>
 
           <details class="brand-section-toggle">
-            <summary>Creative Assets</summary>
+            <summary>Creative assets</summary>
             <div class="brand-section-content">
               <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); font-size: var(--text-sm); font-weight: var(--font-medium);">
                 Logos
