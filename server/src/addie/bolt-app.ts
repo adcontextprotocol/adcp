@@ -74,6 +74,7 @@ import { getMemberContext, formatMemberContextForPrompt, type MemberContext } fr
 import {
   sanitizeInput,
   validateOutput,
+  wrapUrlsForSlack,
   logInteraction,
 } from './security.js';
 import type { RequestTools } from './claude-client.js';
@@ -1241,15 +1242,16 @@ async function handleUserMessage({
 
       // Send response via say() with feedback buttons
       const outputValidation = validateOutput(response.text);
+      const slackText = wrapUrlsForSlack(outputValidation.sanitized);
       try {
         await say({
-          text: outputValidation.sanitized,
+          text: slackText,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: outputValidation.sanitized,
+                text: slackText,
               },
             },
             buildFeedbackBlock(),
@@ -1603,7 +1605,7 @@ async function handleAppMention({
   // Send response in thread (must explicitly pass thread_ts for app_mention events)
   try {
     await say({
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs,
     });
   } catch (error) {
@@ -2071,7 +2073,7 @@ async function handleDirectMessage(
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: event.ts,
     });
   } catch (error) {
@@ -2360,7 +2362,7 @@ async function handleActiveThreadReply({
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -3281,7 +3283,7 @@ async function handleReactionAdded({
   try {
     await client.chat.postMessage({
       channel: itemChannel,
-      text: response.text,
+      text: wrapUrlsForSlack(response.text),
       thread_ts: threadTs,
     });
   } catch (error) {
