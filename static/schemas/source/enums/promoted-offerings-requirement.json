@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/promoted-offerings-requirement.json",
+  "title": "Promoted Offerings Requirement",
+  "description": "Content requirements that a creative format can impose on promoted offerings. Each value asserts that the referenced content must be present and non-empty. Top-level values (si_agent_url, offerings) are checked directly on the PromotedOfferings object. For brand_manifest.* paths, the brand_manifest reference must be resolved (URL dereferenced if needed) before checking the nested field. If the reference cannot be resolved, all brand_manifest.* requirements are considered unmet. Paths are limited to two segments.",
+  "type": "string",
+  "enum": [
+    "si_agent_url",
+    "offerings",
+    "brand_manifest.logos",
+    "brand_manifest.colors",
+    "brand_manifest.tone",
+    "brand_manifest.assets",
+    "brand_manifest.product_catalog"
+  ]
+}
