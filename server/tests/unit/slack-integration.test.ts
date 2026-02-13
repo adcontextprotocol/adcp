@@ -387,4 +387,11 @@ describe("wrapUrlsForSlack", () => {
     const text = "Link: https://example.com/path%20with%20spaces?foo=bar%26baz";
     expect(wrapUrlsForSlack(text)).toBe("Link: <https://example.com/path%20with%20spaces?foo=bar%26baz>");
   });
+
+  it("should wrap URL inside markdown-style link (Claude mrkdwn mismatch)", () => {
+    // If Claude outputs markdown instead of Slack mrkdwn, the URL inside () gets wrapped.
+    // This documents current behavior — Claude should output <url|text> for Slack.
+    const text = "[Click here](https://example.com/checkout)";
+    expect(wrapUrlsForSlack(text)).toBe("[Click here](<https://example.com/checkout>)");
+  });
 });

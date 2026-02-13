@@ -263,6 +263,47 @@ describe('billing-tools', () => {
       );
     });
 
+    test('falls back to AI-provided email when slack_user.email is null', async () => {
+      const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
+      (createCheckoutSession as jest.Mock).mockResolvedValue({
+        url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
+      });
+
+      // Member context with slack_user but null email
+      const contextWithNullEmail: MemberContext = {
+        is_mapped: true,
+        is_member: true,
+        slack_linked: true,
+        slack_user: {
+          slack_user_id: 'U123',
+          display_name: 'Irina',
+          email: null,
+        },
+        organization: {
+          workos_organization_id: 'org_test_123',
+          name: 'Test Corp',
+          subscription_status: 'active',
+          is_personal: false,
+        },
+      };
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(contextWithNullEmail);
+      const createLink = handlers.get('create_payment_link')!;
+
+      await createLink({
+        lookup_key: 'aao_membership_corporate_5m',
+        customer_email: 'user@company.com',
+      });
+
+      expect(createCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerEmail: 'user@company.com',
+        })
+      );
+    });
+
     test('returns error when price not found', async () => {
       const { getPriceByLookupKey } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock).mockResolvedValue(null);

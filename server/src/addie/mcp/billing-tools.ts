@@ -64,7 +64,7 @@ If the user doesn't have an account, tell them to sign up first.`,
         },
         customer_email: {
           type: 'string',
-          description: 'Customer email address (optional, will pre-fill checkout)',
+          description: 'Customer email address (optional fallback — the authenticated user email is preferred and used automatically)',
         },
       },
       required: ['lookup_key'],
