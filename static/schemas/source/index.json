@@ -993,6 +993,16 @@
             "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
             "description": "Response payload with content artifacts for validation"
           }
+        },
+        "get-creative-features": {
+          "request": {
+            "$ref": "/schemas/creative/get-creative-features-request.json",
+            "description": "Request parameters for evaluating creative features from a governance agent"
+          },
+          "response": {
+            "$ref": "/schemas/creative/get-creative-features-response.json",
+            "description": "Response payload with feature values for the evaluated creative"
+          }
         }
       }
     },

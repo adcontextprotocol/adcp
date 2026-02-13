@@ -143,6 +143,13 @@
                     ]
                   }
                 ]
+              },
+              {
+                "group": "Creative Governance",
+                "pages": [
+                  "docs/governance/creative/index",
+                  "docs/governance/creative/get_creative_features"
+                ]
               }
             ]
           },
@@ -592,6 +599,13 @@
                       "docs/governance/content-standards/tasks/validate_content_delivery"
                     ]
                   }
+                ]
+              },
+              {
+                "group": "Creative Governance",
+                "pages": [
+                  "docs/governance/creative/index",
+                  "docs/governance/creative/get_creative_features"
                 ]
               }
             ]

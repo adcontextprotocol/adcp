@@ -1,0 +1,157 @@
+---
+title: Creative Governance
+sidebarTitle: Overview
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This protocol is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+Creative Governance standardizes how creatives are evaluated by specialized governance agents. It applies the same feature-based pattern as [Property Governance](../property/index) — agents declare features they can evaluate, accept creative manifests, and return feature values.
+
+## Overview
+
+Creative governance agents evaluate creatives and return feature values. Different agents evaluate different features:
+
+| Agent type | Example features | Feature type |
+|------------|-----------------|--------------|
+| **Security scanner** | `auto_redirect`, `credential_harvest`, `cloaking` | Binary |
+| **Creative quality** | `brand_consistency`, `platform_optimized`, `creative_quality_score` | Quantitative, binary |
+| **Content categorization** | `iab_casinos_gambling`, `iab_automotive` | Binary (with confidence) |
+
+The protocol doesn't define a fixed feature taxonomy. Vendors declare what they evaluate via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and compete on coverage.
+
+## How it works
+
+### 1. Agent declares features
+
+A creative governance agent advertises its capabilities using the same feature definition pattern as property governance:
+
+<CodeGroup>
+```json Security scanner
+{
+  "governance": {
+    "creative_features": [
+      {
+        "feature_id": "auto_redirect",
+        "type": "binary",
+        "description": "Unauthorized navigation away from publisher context without user interaction",
+        "methodology_url": "https://scanner.example.com/methodology"
+      },
+      {
+        "feature_id": "credential_harvest",
+        "type": "binary",
+        "description": "Phishing techniques to gather user credentials or PII",
+        "methodology_url": "https://scanner.example.com/methodology"
+      },
+      {
+        "feature_id": "cloaking",
+        "type": "binary",
+        "description": "Creative masks or misrepresents content to evade detection",
+        "methodology_url": "https://scanner.example.com/methodology"
+      }
+    ]
+  }
+}
+```
+
+```json Creative quality platform
+{
+  "governance": {
+    "creative_features": [
+      {
+        "feature_id": "brand_consistency",
+        "type": "quantitative",
+        "range": { "min": 0, "max": 100 },
+        "description": "Adherence to brand guidelines including logo placement, colors, and typography",
+        "methodology_url": "https://quality.example.com/methodology"
+      },
+      {
+        "feature_id": "platform_optimized",
+        "type": "binary",
+        "description": "Creative meets platform-specific best practices (aspect ratio, text overlay limits)",
+        "methodology_url": "https://quality.example.com/methodology"
+      }
+    ]
+  }
+}
+```
+
+```json Content categorizer
+{
+  "governance": {
+    "creative_features": [
+      {
+        "feature_id": "iab_casinos_gambling",
+        "type": "binary",
+        "description": "Creative contains casinos or gambling content (IAB Content Taxonomy 3.1, ID 181)",
+        "methodology_url": "https://categorizer.example.com/methodology"
+      },
+      {
+        "feature_id": "iab_automotive",
+        "type": "binary",
+        "description": "Creative contains automotive content (IAB Content Taxonomy 3.1, ID 1)",
+        "methodology_url": "https://categorizer.example.com/methodology"
+      }
+    ]
+  }
+}
+```
+</CodeGroup>
+
+### 2. Orchestrator evaluates a creative
+
+The orchestrator calls [`get_creative_features`](./get_creative_features) with a creative manifest:
+
+```json
+{
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "html5-display-300x250"
+    },
+    "assets": {
+      "creative_html": {
+        "url": "https://cdn.agency.com/creative/abc123.html"
+      }
+    }
+  }
+}
+```
+
+### 3. Agent returns feature values
+
+The agent evaluates the creative and returns feature values. The response shape is the same regardless of agent type:
+
+```json
+{
+  "results": [
+    { "feature_id": "auto_redirect", "value": true, "confidence": 0.97 },
+    { "feature_id": "credential_harvest", "value": false },
+    { "feature_id": "cloaking", "value": false }
+  ],
+  "detail_url": "https://scanner.example.com/reports/ctx_abc123"
+}
+```
+
+### 4. Orchestrator applies requirements
+
+The orchestrator evaluates the feature values against buyer-defined requirements — the same pattern as property list feature requirements:
+
+- Security: reject if `auto_redirect` is `true`
+- Quality: reject if `brand_consistency` is below 80
+- Categorization: reject if `iab_casinos_gambling` is `true` and campaign excludes gambling
+
+## Design principles
+
+**Reuses existing patterns.** Creative governance follows the same feature-based model as property governance. Agents declare features, return values, and keep detailed intelligence behind `detail_url` and `methodology_url`.
+
+**Vendor-agnostic features.** The protocol doesn't define which features exist. Vendors declare their own feature catalogs. A security vendor and a creative quality vendor both use `get_creative_features` — the protocol doesn't need to know the difference.
+
+**Opaque results.** Feature values on the wire are pass/fail (binary) or scores (quantitative). Detailed methodology, detection techniques, and threat intelligence stay behind the vendor's access-controlled URLs.
+
+**Orchestrator decides.** Agents return values, orchestrators evaluate against requirements. The separation of measurement from decision-making is the same as property governance.
+
+## Async evaluation
+
+If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/docs/building/implementation/async-operations) handles this.
