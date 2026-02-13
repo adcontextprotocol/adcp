@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/promoted-offerings-field.json",
+  "title": "Promoted Offerings Field",
+  "description": "Fields of the PromotedOfferings object that can be required by specific creative formats. brand_manifest is always required and not listed here.",
+  "type": "string",
+  "enum": [
+    "si_agent_url",
+    "product_selectors",
+    "offerings",
+    "asset_selectors"
+  ]
+}
