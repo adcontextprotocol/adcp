@@ -46,6 +46,11 @@ All HTML files in `server/public/` MUST use CSS variables from `/server/public/d
 /* ❌ */ color: #667eea;
 ```
 
+### UI Text Casing
+Use **sentence case** for all UI labels, headings, and section headers:
+- ✅ "Brand identity", "Creative assets", "Contact information"
+- ❌ "Brand Identity", "Creative Assets", "Contact Information"
+
 ## JSON Schema Guidelines
 
 ### Discriminated Unions
