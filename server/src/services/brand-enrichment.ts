@@ -91,6 +91,40 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   // Phase 2: Classify brand architecture (optional — enrichment succeeds without it)
   const classification = await classifyBrand(domain, result);
 
+  // Handle regional/variant domains: if the classifier identifies a different canonical domain,
+  // this is a variant (e.g., amazon.co.uk → amazon.com). Don't create a full brand entry —
+  // just point to the canonical via canonical_domain and delete the variant row.
+  const isVariant = classification &&
+    classification.canonical_domain &&
+    classification.canonical_domain.toLowerCase() !== domain.toLowerCase();
+
+  if (isVariant) {
+    // Remove the variant from discovered_brands (it's just a regional redirect)
+    try {
+      await brandDb.deleteDiscoveredBrand(domain);
+    } catch {
+      // May not exist, that's fine
+    }
+
+    logger.info(
+      { domain, canonical: classification!.canonical_domain },
+      'Variant domain removed (canonical is different)'
+    );
+
+    // Mark resolved pointing to canonical
+    registryRequestsDb.markResolved('brand', domain, classification!.canonical_domain).catch(err => {
+      logger.warn({ err, domain }, 'Failed to mark registry request as resolved');
+    });
+
+    return {
+      domain,
+      status: 'skipped',
+      brand_name: result.manifest.name,
+      classification: classification || undefined,
+      error: `Variant of ${classification!.canonical_domain}`,
+    };
+  }
+
   // Map to discovered brand input
   const input: UpsertDiscoveredBrandInput = {
     domain,
