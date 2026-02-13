@@ -2140,6 +2140,19 @@
             const viewLink = document.getElementById('view-brand-link');
             viewLink.href = viewUrl;
             viewLink.style.display = '';
+          } else if (result.file_status === 200) {
+            resultDiv.innerHTML = `
+              <div class="verify-result error">
+                ⚠️ <strong>Found a file, but it doesn't match the AdCP brand.json format.</strong><br>
+                <span style="font-size: var(--text-sm); opacity: 0.8;">
+                  Your domain has a brand.json file, but it doesn't use one of the recognized variants
+                  (house portfolio, house redirect, brand agent, or authoritative location).
+                </span><br>
+                <span style="font-size: var(--text-sm); margin-top: var(--space-1); display: inline-block;">
+                  Use the Brand Builder to generate a compatible file, then re-upload.
+                </span>
+              </div>
+            `;
           } else {
             resultDiv.innerHTML = `
               <div class="verify-result error">
