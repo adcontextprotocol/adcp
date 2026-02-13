@@ -6,8 +6,6 @@
   "type": "string",
   "enum": [
     "si_agent_url",
-    "product_selectors",
-    "offerings",
-    "asset_selectors"
+    "offerings"
   ]
 }
