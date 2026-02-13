@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/promoted-offerings-requirement.json",
+  "title": "Promoted Offerings Requirement",
+  "description": "Content requirements that a creative format can impose on promoted offerings. Values use dot-notation paths relative to the PromotedOfferings object. For brand_manifest paths, the reference must be resolved before checking.",
+  "type": "string",
+  "enum": [
+    "si_agent_url",
+    "offerings",
+    "brand_manifest.logos",
+    "brand_manifest.product_catalog",
+    "brand_manifest.colors"
+  ]
+}

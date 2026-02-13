@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/requirements/promoted-offerings-asset-requirements.json",
   "title": "Promoted Offerings Asset Requirements",
-  "description": "Requirements for promoted offerings creative assets. Allows formats to declare which optional PromotedOfferings fields are required for this specific format.",
+  "description": "Requirements for promoted offerings creative assets. Allows formats to declare what content the promoted offerings must provide.",
   "type": "object",
   "properties": {
-    "required_fields": {
+    "requires": {
       "type": "array",
-      "description": "PromotedOfferings fields that must be present for this format. brand_manifest is always required and need not be listed.",
+      "description": "Content requirements for this format's promoted offerings. Values use dot-notation paths: top-level fields (si_agent_url, offerings) are checked on the PromotedOfferings object; brand_manifest.* paths are checked on the resolved brand manifest.",
       "items": {
-        "$ref": "/schemas/enums/promoted-offerings-field.json"
+        "$ref": "/schemas/enums/promoted-offerings-requirement.json"
       },
       "minItems": 1,
       "uniqueItems": true
