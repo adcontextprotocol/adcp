@@ -387,6 +387,7 @@ export async function expandHouse(houseDomain: string, options: {
   discovered: number;
   seeded: number;
   enriched: number;
+  enriching: number;
   failed: number;
   brands: Array<{ domain: string; brand_name: string; status: string }>;
 }> {
@@ -444,13 +445,13 @@ export async function expandHouse(houseDomain: string, options: {
     existingBrands.add(row.domain.toLowerCase());
   }
 
+  // Phase 1: Seed all discovered brands synchronously (fast — just DB inserts)
   const results: Array<{ domain: string; brand_name: string; status: string }> = [];
+  const toEnrich: string[] = [];
   let seeded = 0;
-  let enriched = 0;
   let failed = 0;
 
-  for (let i = 0; i < discovered.length; i++) {
-    const brand = discovered[i];
+  for (const brand of discovered) {
     const domain = brand.domain?.toLowerCase().trim();
 
     if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
@@ -464,7 +465,6 @@ export async function expandHouse(houseDomain: string, options: {
       continue;
     }
 
-    // Seed the brand as a discovered sub-brand
     try {
       await brandDb.upsertDiscoveredBrand({
         domain,
@@ -477,32 +477,48 @@ export async function expandHouse(houseDomain: string, options: {
       });
       seeded++;
       existingBrands.add(domain);
+      results.push({ domain, brand_name: brand.brand_name, status: 'seeded' });
+      toEnrich.push(domain);
     } catch (err) {
       logger.warn({ err, domain }, 'Failed to seed sub-brand');
       results.push({ domain, brand_name: brand.brand_name, status: 'seed_failed' });
       failed++;
-      continue;
-    }
-
-    // Optionally enrich via Brandfetch
-    if (enrichAfterSeed && isBrandfetchConfigured()) {
-      const enrichResult = await enrichBrand(domain);
-      results.push({ domain, brand_name: brand.brand_name, status: enrichResult.status });
-      if (enrichResult.status === 'enriched') enriched++;
-      else if (enrichResult.status === 'failed') failed++;
-
-      // Rate limit
-      if (delayMs > 0 && i < discovered.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    } else {
-      results.push({ domain, brand_name: brand.brand_name, status: 'seeded' });
     }
   }
 
+  // Phase 2: Enrich via Brandfetch in the background (fire-and-forget)
+  // This runs after the response is sent so we don't hit proxy timeouts
+  if (enrichAfterSeed && isBrandfetchConfigured() && toEnrich.length > 0) {
+    const enrichInBackground = async () => {
+      let enriched = 0;
+      let enrichFailed = 0;
+      for (let i = 0; i < toEnrich.length; i++) {
+        try {
+          const result = await enrichBrand(toEnrich[i]);
+          if (result.status === 'enriched') enriched++;
+          else if (result.status === 'failed') enrichFailed++;
+        } catch (err) {
+          logger.warn({ err, domain: toEnrich[i] }, 'Background enrichment failed');
+          enrichFailed++;
+        }
+        if (delayMs > 0 && i < toEnrich.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+      logger.info(
+        { houseDomain, total: toEnrich.length, enriched, failed: enrichFailed },
+        'Background enrichment complete'
+      );
+    };
+    // Fire and forget — don't await
+    enrichInBackground().catch(err => {
+      logger.error({ err, houseDomain }, 'Background enrichment crashed');
+    });
+  }
+
   logger.info(
-    { houseDomain, discovered: discovered.length, seeded, enriched, failed },
-    'House expansion complete'
+    { houseDomain, discovered: discovered.length, seeded, failed, enriching: toEnrich.length },
+    'House expansion seeded (enrichment running in background)'
   );
 
   return {
@@ -510,8 +526,9 @@ export async function expandHouse(houseDomain: string, options: {
     house_name: houseName,
     discovered: discovered.length,
     seeded,
-    enriched,
+    enriched: 0, // enrichment happens in background
     failed,
+    enriching: toEnrich.length,
     brands: results,
   };
 }
