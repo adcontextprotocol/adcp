@@ -8,12 +8,14 @@
  * Phase 2 is optional — if classification fails, we still save the Brandfetch data.
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
 import { fetchBrandData, isBrandfetchConfigured } from './brandfetch.js';
 import { classifyBrand } from './brand-classifier.js';
 import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
 import { query } from '../db/client.js';
+import { ModelConfig } from '../config/models.js';
 import type { UpsertDiscoveredBrandInput } from '../db/brand-db.js';
 import type { BrandfetchEnrichmentResult } from './brandfetch.js';
 import type { BrandClassification } from './brand-classifier.js';
@@ -340,5 +342,176 @@ export async function getBrandEnrichmentStats(): Promise<BrandEnrichmentStats> {
     community_no_manifest: parseInt(communityResult.rows[0].count, 10),
     brand_json: parseInt(brandJsonResult.rows[0].count, 10),
     unresolved_requests: parseInt(requestsResult.rows[0].count, 10),
+  };
+}
+
+// ========== House Expansion ==========
+
+interface DiscoveredSubBrand {
+  brand_name: string;
+  domain: string;
+  keller_type: 'sub_brand' | 'endorsed';
+}
+
+const DISCOVER_PROMPT = `You are listing the major consumer/product brands owned by a corporate house.
+
+For the given company, list their well-known consumer-facing brands. Each brand must have:
+- brand_name: The consumer-facing brand name (e.g., "Tide", "Gillette")
+- domain: The primary consumer website domain (e.g., "tide.com", "gillette.com")
+- keller_type: "sub_brand" (uses parent name, e.g., "Disney+") or "endorsed" (standalone brand backed by parent, e.g., "Tide" by P&G)
+
+Rules:
+- Only include brands with their OWN consumer-facing domain (not just a page on the parent site)
+- Do NOT include the house/parent brand itself
+- Do NOT include regional variants (e.g., skip amazon.co.uk if amazon.com is listed)
+- Do NOT include B2B-only brands, internal divisions, or holding companies
+- Focus on the top consumer brands — aim for completeness but prioritize well-known brands
+- Domains must be real, active consumer websites
+
+Respond with ONLY valid JSON (no markdown fences):
+{
+  "brands": [
+    { "brand_name": "Tide", "domain": "tide.com", "keller_type": "sub_brand" }
+  ]
+}`;
+
+/**
+ * Use Sonnet to discover sub-brands for a house, then seed and enrich each one.
+ */
+export async function expandHouse(houseDomain: string, options: {
+  delayMs?: number;
+  enrichAfterSeed?: boolean;
+} = {}): Promise<{
+  house_domain: string;
+  house_name: string;
+  discovered: number;
+  seeded: number;
+  enriched: number;
+  failed: number;
+  brands: Array<{ domain: string; brand_name: string; status: string }>;
+}> {
+  const delayMs = options.delayMs ?? 1000;
+  const enrichAfterSeed = options.enrichAfterSeed ?? true;
+
+  // Look up the house brand
+  const house = await brandDb.getDiscoveredBrandByDomain(houseDomain);
+  if (!house) {
+    throw new Error(`House brand not found: ${houseDomain}`);
+  }
+  if (house.keller_type !== 'master' && house.keller_type !== 'independent') {
+    throw new Error(`${houseDomain} is not a house brand (keller_type: ${house.keller_type})`);
+  }
+
+  const houseName = house.brand_name || nameFromDomain(houseDomain);
+  logger.info({ houseDomain, houseName }, 'Expanding house brand');
+
+  // Ask Sonnet to discover sub-brands
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+
+  const anthropic = new Anthropic();
+  const response = await anthropic.messages.create({
+    model: ModelConfig.primary,
+    max_tokens: 4096,
+    messages: [{
+      role: 'user',
+      content: `${DISCOVER_PROMPT}\n\nCompany: ${houseName}\nCorporate domain: ${houseDomain}\nIndustry: ${(house.brand_manifest?.company as Record<string, unknown>)?.industry || 'unknown'}`,
+    }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const cleaned = text.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+
+  let discovered: DiscoveredSubBrand[];
+  try {
+    const parsed = JSON.parse(cleaned);
+    discovered = Array.isArray(parsed.brands) ? parsed.brands : [];
+  } catch {
+    logger.error({ houseDomain, text: cleaned.slice(0, 200) }, 'Failed to parse Sonnet response');
+    throw new Error('Failed to parse brand discovery response');
+  }
+
+  logger.info({ houseDomain, count: discovered.length }, 'Discovered sub-brands');
+
+  // Filter out already-known brands
+  const existingBrands = new Set<string>();
+  const existing = await query<{ domain: string }>(
+    'SELECT domain FROM discovered_brands WHERE house_domain = $1',
+    [houseDomain]
+  );
+  for (const row of existing.rows) {
+    existingBrands.add(row.domain.toLowerCase());
+  }
+
+  const results: Array<{ domain: string; brand_name: string; status: string }> = [];
+  let seeded = 0;
+  let enriched = 0;
+  let failed = 0;
+
+  for (let i = 0; i < discovered.length; i++) {
+    const brand = discovered[i];
+    const domain = brand.domain?.toLowerCase().trim();
+
+    if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+      results.push({ domain: domain || 'invalid', brand_name: brand.brand_name, status: 'invalid_domain' });
+      failed++;
+      continue;
+    }
+
+    if (existingBrands.has(domain)) {
+      results.push({ domain, brand_name: brand.brand_name, status: 'already_known' });
+      continue;
+    }
+
+    // Seed the brand as a discovered sub-brand
+    try {
+      await brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_name: brand.brand_name,
+        source_type: 'enriched',
+        has_brand_manifest: false,
+        keller_type: brand.keller_type || 'sub_brand',
+        house_domain: houseDomain,
+        parent_brand: houseName,
+      });
+      seeded++;
+      existingBrands.add(domain);
+    } catch (err) {
+      logger.warn({ err, domain }, 'Failed to seed sub-brand');
+      results.push({ domain, brand_name: brand.brand_name, status: 'seed_failed' });
+      failed++;
+      continue;
+    }
+
+    // Optionally enrich via Brandfetch
+    if (enrichAfterSeed && isBrandfetchConfigured()) {
+      const enrichResult = await enrichBrand(domain);
+      results.push({ domain, brand_name: brand.brand_name, status: enrichResult.status });
+      if (enrichResult.status === 'enriched') enriched++;
+      else if (enrichResult.status === 'failed') failed++;
+
+      // Rate limit
+      if (delayMs > 0 && i < discovered.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    } else {
+      results.push({ domain, brand_name: brand.brand_name, status: 'seeded' });
+    }
+  }
+
+  logger.info(
+    { houseDomain, discovered: discovered.length, seeded, enriched, failed },
+    'House expansion complete'
+  );
+
+  return {
+    house_domain: houseDomain,
+    house_name: houseName,
+    discovered: discovered.length,
+    seeded,
+    enriched,
+    failed,
+    brands: results,
   };
 }
