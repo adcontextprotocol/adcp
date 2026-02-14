@@ -315,8 +315,12 @@ export class BrandDatabase {
     verified: boolean;
     house_domain?: string;
     keller_type?: string;
+    logo_url?: string;
+    primary_color?: string;
+    industry?: string;
+    sub_brand_count: number;
   }>> {
-    const limit = options.limit || 100;
+    const limit = options.limit || 500;
     const offset = options.offset || 0;
     const escapedSearch = options.search ? options.search.replace(/[%_\\]/g, '\\$&') : null;
     const search = escapedSearch ? `%${escapedSearch}%` : null;
@@ -329,6 +333,10 @@ export class BrandDatabase {
       verified: boolean;
       house_domain?: string;
       keller_type?: string;
+      logo_url?: string;
+      primary_color?: string;
+      industry?: string;
+      sub_brand_count: number;
     }>(
       `
       SELECT
@@ -338,7 +346,11 @@ export class BrandDatabase {
         true as has_manifest,
         domain_verified as verified,
         NULL as house_domain,
-        NULL as keller_type
+        NULL as keller_type,
+        brand_json->'logos'->0->>'url' as logo_url,
+        brand_json->'colors'->>'primary' as primary_color,
+        brand_json->'company'->>'industry' as industry,
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count
       FROM hosted_brands
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
@@ -352,7 +364,11 @@ export class BrandDatabase {
         has_brand_manifest as has_manifest,
         true as verified,
         house_domain,
-        keller_type
+        keller_type,
+        brand_manifest->'logos'->0->>'url' as logo_url,
+        brand_manifest->'colors'->>'primary' as primary_color,
+        brand_manifest->'company'->>'industry' as industry,
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
         AND (review_status IS NULL OR review_status = 'approved')
