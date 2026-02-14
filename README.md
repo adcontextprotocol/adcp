@@ -99,10 +99,6 @@ adcontextprotocol/
 │   └── public/           # Static HTML pages (homepage, registry UI)
 ├── static/               # Static assets
 │   └── schemas/          # JSON schemas
-├── registry/             # Agent registry
-│   ├── creative/         # Creative agents
-│   ├── media-buy/        # Media buy agents
-│   └── signals/          # Signal agents
 └── README.md            # This file
 ```
 
