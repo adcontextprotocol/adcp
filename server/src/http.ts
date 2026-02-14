@@ -1984,7 +1984,7 @@ export class HTTPServer {
       try {
         const brands = await this.brandDb.getAllBrandsForRegistry({
           search: req.query.search as string,
-          limit: parseInt(req.query.limit as string) || 100,
+          limit: parseInt(req.query.limit as string) || 500,
           offset: parseInt(req.query.offset as string) || 0,
         });
 

@@ -20,6 +20,37 @@ import type { BrandClassification } from './brand-classifier.js';
 
 const logger = createLogger('brand-enrichment');
 
+// Generic page titles that Brandfetch sometimes returns instead of brand names
+const GENERIC_NAMES = new Set([
+  'about', 'home', 'welcome', 'homepage', 'contact', 'products', 'services',
+  'blog', 'news', 'careers', 'login', 'sign in', 'register',
+]);
+
+/**
+ * Derive a readable brand name from a domain string.
+ * e.g., "coca-cola.com" → "Coca Cola", "nike.com" → "Nike"
+ */
+function nameFromDomain(domain: string): string {
+  const base = domain.split('.')[0];
+  return base
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Check if a Brandfetch name looks legitimate.
+ * Returns a clean brand name, falling back to domain-derived name.
+ */
+function sanitizeBrandName(name: string | undefined, domain: string): string {
+  if (!name) return nameFromDomain(domain);
+  const trimmed = name.trim();
+  if (trimmed.length === 0) return nameFromDomain(domain);
+  if (GENERIC_NAMES.has(trimmed.toLowerCase())) return nameFromDomain(domain);
+  // Single character names are suspicious
+  if (trimmed.length <= 1) return nameFromDomain(domain);
+  return trimmed;
+}
+
 export interface BrandEnrichmentResult {
   domain: string;
   status: 'enriched' | 'skipped' | 'failed' | 'not_found';
@@ -125,12 +156,15 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     };
   }
 
+  // Sanitize brand name — Brandfetch sometimes returns garbage (e.g., "About", "Home")
+  const brandName = sanitizeBrandName(result.manifest.name, domain);
+
   // Map to discovered brand input
   const input: UpsertDiscoveredBrandInput = {
     domain,
-    brand_name: result.manifest.name,
+    brand_name: brandName,
     brand_manifest: {
-      name: result.manifest.name,
+      name: brandName,
       url: result.manifest.url,
       description: result.manifest.description,
       logos: result.manifest.logos,
@@ -170,13 +204,13 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   });
 
   logger.info(
-    { domain, brandName: result.manifest.name, keller_type: classification?.keller_type },
+    { domain, brandName, keller_type: classification?.keller_type },
     'Brand enriched'
   );
   return {
     domain,
     status: 'enriched',
-    brand_name: result.manifest.name,
+    brand_name: brandName,
     classification: classification || undefined,
   };
 }
