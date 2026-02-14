@@ -189,7 +189,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   billing: {
     name: 'billing',
-    description: 'Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions',
+    description: 'Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions, look up pending invoices',
     tools: [
       'find_membership_products',
       'create_payment_link',
@@ -201,6 +201,8 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'create_promotion_code',
       'resend_invoice',
       'update_billing_email',
+      'list_pending_invoices',
+      'get_account',
     ],
     requiresPrecision: true,
   },
