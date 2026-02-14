@@ -338,8 +338,8 @@ Returns a list of organizations with open or draft invoices.`,
 
   {
     name: 'resend_invoice',
-    description: `Resend an existing open invoice to the customer's billing email. Use list_pending_invoices first to find the invoice ID. If the invoice needs to go to a different email, use update_billing_email first.`,
-    usage_hints: 'Use list_pending_invoices to find invoice IDs. Combine with update_billing_email to change recipient.',
+    description: `Resend an existing open invoice to the customer's billing email. Use get_account to look up the organization and find pending invoice IDs, or use list_pending_invoices to see all open invoices. If the invoice needs to go to a different email, use update_billing_email first.`,
+    usage_hints: 'Use get_account to find invoice IDs for a specific organization. Combine with update_billing_email to change recipient.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1241,10 +1241,18 @@ function formatDate(date: Date): string {
   });
 }
 
-/**
- * Format pending invoice for response
- */
-function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> {
+interface FormattedInvoice {
+  id: string;
+  status: string;
+  amount: string;
+  product: string;
+  sent_to: string;
+  created: string;
+  due_date: string;
+  payment_url: string | null;
+}
+
+function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
   return {
     id: invoice.id,
     status: invoice.status,
@@ -1255,6 +1263,21 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
     due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
     payment_url: invoice.hosted_invoice_url || null,
   };
+}
+
+function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
+  if (pendingInvoices.length === 0) return '';
+  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  for (const inv of pendingInvoices.slice(0, 3)) {
+    const formatted = formatPendingInvoice(inv);
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
+    result += '\n';
+  }
+  if (pendingInvoices.length > 3) {
+    result += `  _... and ${pendingInvoices.length - 3} more (use list_pending_invoices for all)_\n`;
+  }
+  return result;
 }
 
 /**
@@ -1571,6 +1594,7 @@ export function createAdminToolHandlers(
       }
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
+      if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
       response += '\n';
 
       // Membership details (if member or has subscription history)
@@ -1612,12 +1636,7 @@ export function createAdminToolHandlers(
           }
         }
 
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
-          }
-        }
+        response += renderPendingInvoiceSection(pendingInvoices);
 
         // Discount info
         if (org.discount_percent || org.discount_amount_cents) {
@@ -1650,12 +1669,7 @@ export function createAdminToolHandlers(
           response += '\n';
         }
         // Show pending invoices for prospects in negotiating stage too
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
-          }
-        }
+        response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
       }
 
