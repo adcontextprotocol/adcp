@@ -338,17 +338,20 @@ Returns a list of organizations with open or draft invoices.`,
 
   {
     name: 'resend_invoice',
-    description: `Resend an existing open invoice to the customer's billing email. Use get_account to look up the organization and find pending invoice IDs, or use list_pending_invoices to see all open invoices. If the invoice needs to go to a different email, use update_billing_email first.`,
-    usage_hints: 'Use get_account to find invoice IDs for a specific organization. Combine with update_billing_email to change recipient.',
+    description: `Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.`,
+    usage_hints: 'Pass company_name to look up and resend in one step. Use update_billing_email first if the email needs to change.',
     input_schema: {
       type: 'object' as const,
       properties: {
         invoice_id: {
           type: 'string',
-          description: 'Stripe invoice ID (starts with in_)',
+          description: 'Stripe invoice ID (starts with in_) — if you already have it',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name to look up (will find their open invoices)',
         },
       },
-      required: ['invoice_id'],
     },
   },
   {
@@ -1373,26 +1376,127 @@ export function createAdminToolHandlers(
     }
   });
 
-  // Resend an open invoice
+  // Resend an open invoice — by invoice_id or company_name lookup
   handlers.set('resend_invoice', async (input) => {
-    const invoiceId = input.invoice_id as string;
+    const invoiceId = input.invoice_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
 
-    if (!invoiceId || !invoiceId.startsWith('in_')) {
-      return '❌ A valid Stripe invoice ID (starting with in_) is required.';
+    // Direct resend by invoice ID
+    if (invoiceId) {
+      if (!invoiceId.startsWith('in_')) {
+        return '❌ Invoice ID must start with in_ (e.g., in_1234567890).';
+      }
+
+      logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+
+      const result = await resendInvoice(invoiceId);
+      if (!result.success) {
+        return `❌ Could not resend invoice: ${result.error}`;
+      }
+
+      let msg = `✅ Invoice ${invoiceId} has been resent.`;
+      if (result.hosted_invoice_url) {
+        msg += `\n\nPayment link: ${result.hosted_invoice_url}`;
+      }
+      return msg;
     }
 
-    logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+    // Lookup by company name
+    if (companyName) {
+      const pool = getPool();
+      const escaped = companyName.replace(/[%_\\]/g, '\\$&');
+      const searchPattern = `%${escaped}%`;
+      const orgResult = await pool.query(
+        `SELECT workos_organization_id, name, stripe_customer_id
+         FROM organizations
+         WHERE is_personal = false
+           AND (LOWER(name) LIKE LOWER($1) ESCAPE '\\' OR LOWER(email_domain) LIKE LOWER($1) ESCAPE '\\')
+         LIMIT 5`,
+        [searchPattern]
+      );
 
-    const result = await resendInvoice(invoiceId);
-    if (!result.success) {
-      return `❌ Could not resend invoice: ${result.error}`;
+      if (orgResult.rows.length === 0) {
+        return `❌ No organization found matching "${companyName}".`;
+      }
+
+      // Fetch invoices for all orgs with Stripe customers (cache to avoid duplicate API calls)
+      const invoicesByOrg = new Map<string, PendingInvoice[]>();
+      for (const org of orgResult.rows) {
+        if (!org.stripe_customer_id) continue;
+        invoicesByOrg.set(org.workos_organization_id, await getPendingInvoices(org.stripe_customer_id));
+      }
+
+      // Find orgs with open invoices
+      const orgsWithOpen: { org: typeof orgResult.rows[0]; invoices: PendingInvoice[] }[] = [];
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const openInvoices = invoices.filter(inv => inv.status === 'open');
+        if (openInvoices.length > 0) {
+          orgsWithOpen.push({ org, invoices: openInvoices });
+        }
+      }
+
+      // If exactly one org with exactly one open invoice — resend it
+      if (orgsWithOpen.length === 1 && orgsWithOpen[0].invoices.length === 1) {
+        const { org, invoices: openInvoices } = orgsWithOpen[0];
+        const inv = openInvoices[0];
+        logger.info({ invoiceId: inv.id, orgName: org.name }, 'Addie: Admin resending invoice by company lookup');
+
+        const result = await resendInvoice(inv.id);
+        if (!result.success) {
+          return `❌ Found invoice \`${inv.id}\` for ${org.name} but could not resend: ${result.error}`;
+        }
+
+        let msg = `✅ Invoice \`${inv.id}\` for **${org.name}** has been resent.`;
+        msg += `\n**Amount:** ${formatCurrency(inv.amount_due, inv.currency)}`;
+        if (inv.customer_email) msg += `\n**Sent to:** ${inv.customer_email}`;
+        if (result.hosted_invoice_url) msg += `\n**Payment link:** ${result.hosted_invoice_url}`;
+        return msg;
+      }
+
+      // Multiple matches or multiple invoices — list them for the user to choose
+      if (orgsWithOpen.length > 0) {
+        let msg = `Found open invoices for "${companyName}". Which one should I resend?\n\n`;
+        for (const { org, invoices: openInvoices } of orgsWithOpen) {
+          msg += `**${org.name}:**\n`;
+          for (const inv of openInvoices) {
+            const formatted = formatPendingInvoice(inv);
+            msg += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+            if (formatted.sent_to !== 'Unknown') msg += ` → ${formatted.sent_to}`;
+            msg += '\n';
+          }
+        }
+        msg += `\nCall resend_invoice with the specific invoice_id.`;
+        return msg;
+      }
+
+      // No open invoices found — check for drafts and explain
+      const orgNames = orgResult.rows.map((r: { name: string }) => r.name).join(', ');
+      const noStripe = orgResult.rows.filter((r: { stripe_customer_id: string | null }) => !r.stripe_customer_id);
+      let msg = `❌ No open invoices found for "${companyName}".`;
+      if (noStripe.length === orgResult.rows.length) {
+        msg += `\n\nNote: None of the matching organizations (${orgNames}) have a Stripe customer linked.`;
+      } else if (noStripe.length > 0) {
+        msg += `\n\nNote: Some of the matching organizations (${orgNames}) have no Stripe customer linked.`;
+      }
+
+      // Report any draft invoices from the cached results
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const draftInvoices = invoices.filter(inv => inv.status === 'draft');
+        if (draftInvoices.length > 0) {
+          msg += `\n\n**${org.name}** has ${draftInvoices.length} draft invoice(s) that haven't been sent yet:`;
+          for (const inv of draftInvoices) {
+            msg += `\n- \`${inv.id}\` — ${formatCurrency(inv.amount_due, inv.currency)} (draft)`;
+          }
+          msg += `\n\nDraft invoices need to be finalized in Stripe before they can be resent.`;
+        }
+      }
+
+      return msg;
     }
 
-    let msg = `✅ Invoice ${invoiceId} has been resent.`;
-    if (result.hosted_invoice_url) {
-      msg += `\n\nPayment link: ${result.hosted_invoice_url}`;
-    }
-    return msg;
+    return '❌ Please provide either an invoice_id (e.g., in_...) or a company_name to look up.';
   });
 
   // Update billing email on a Stripe customer
