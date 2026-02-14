@@ -12,6 +12,7 @@ import { isBrandfetchConfigured } from '../../services/brandfetch.js';
 import {
   enrichBrand,
   enrichBrands,
+  expandHouse,
   getEnrichmentCandidates,
   getBrandEnrichmentStats,
 } from '../../services/brand-enrichment.js';
@@ -148,6 +149,48 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         res.status(500).json({
           error: 'Internal server error',
           message: 'Unable to enrich brand domain',
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/brand-enrichment/expand-house/:domain
+  // Discovers sub-brands for a house via Sonnet, seeds them, and optionally enriches via Brandfetch
+  apiRouter.post(
+    '/brand-enrichment/expand-house/:domain',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { domain } = req.params;
+        const delayMs = typeof req.body.delay_ms === 'number'
+          ? Math.max(0, Math.floor(req.body.delay_ms))
+          : 1000;
+        const enrichAfterSeed = req.body.enrich !== false;
+
+        if (enrichAfterSeed && !isBrandfetchConfigured()) {
+          return res.status(503).json({
+            error: 'Brandfetch not configured',
+            message: 'BRANDFETCH_API_KEY not set. Pass { "enrich": false } to seed without enriching.',
+          });
+        }
+
+        logger.info({ domain, delayMs, enrichAfterSeed }, 'Starting house expansion');
+
+        const result = await expandHouse(domain, { delayMs, enrichAfterSeed });
+
+        logger.info(
+          { domain, discovered: result.discovered, seeded: result.seeded, enriched: result.enriched },
+          'House expansion complete'
+        );
+
+        res.json(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        logger.error({ err: error }, 'Error expanding house');
+        res.status(500).json({
+          error: 'House expansion failed',
+          message,
         });
       }
     }
