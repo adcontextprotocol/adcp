@@ -338,10 +338,10 @@
         <!-- Stats Bar -->
         <div class="stats-bar">
             <div class="stat"><span id="stat-total">0</span> <div class="stat-label">Total</div></div>
+            <div class="stat"><span id="stat-houses">0</span> <div class="stat-label">Houses</div></div>
+            <div class="stat"><span id="stat-sub-brands">0</span> <div class="stat-label">Sub-brands</div></div>
+            <div class="stat"><span id="stat-manifest">0</span> <div class="stat-label">With manifest</div></div>
             <div class="stat"><span id="stat-brand-json">0</span> <div class="stat-label">brand.json</div></div>
-            <div class="stat"><span id="stat-hosted">0</span> <div class="stat-label">Hosted</div></div>
-            <div class="stat"><span id="stat-community">0</span> <div class="stat-label">Community</div></div>
-            <div class="stat"><span id="stat-enriched">0</span> <div class="stat-label">Enriched</div></div>
         </div>
 
         <!-- Search and Filters -->
@@ -351,12 +351,11 @@
             </div>
             <div class="filter-row">
                 <div class="filter-group">
-                    <label>Source:</label>
-                    <button class="filter-btn active" data-source="all" onclick="setSourceFilter('all')">All</button>
-                    <button class="filter-btn" data-source="brand_json" onclick="setSourceFilter('brand_json')">brand.json</button>
-                    <button class="filter-btn" data-source="hosted" onclick="setSourceFilter('hosted')">Hosted</button>
-                    <button class="filter-btn" data-source="community" onclick="setSourceFilter('community')">Community contributed</button>
-                    <button class="filter-btn" data-source="enriched" onclick="setSourceFilter('enriched')">Enriched</button>
+                    <label>Type:</label>
+                    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="house" onclick="setFilter('house')">Houses</button>
+                    <button class="filter-btn" data-filter="sub_brand" onclick="setFilter('sub_brand')">Sub-brands</button>
+                    <button class="filter-btn" data-filter="brand_json" onclick="setFilter('brand_json')">brand.json</button>
                 </div>
             </div>
         </div>
@@ -377,7 +376,7 @@
 
     <script type="module">
         let brands = [];
-        let filters = { source: 'all', search: '' };
+        let filters = { type: 'all', search: '' };
 
         window.addEventListener('DOMContentLoaded', async () => {
             await loadBrands();
@@ -396,10 +395,10 @@
                 // Update stats
                 const stats = data.stats || {};
                 document.getElementById('stat-total').textContent = stats.total || brands.length;
+                document.getElementById('stat-houses').textContent = stats.houses || 0;
+                document.getElementById('stat-sub-brands').textContent = stats.sub_brands || 0;
+                document.getElementById('stat-manifest').textContent = stats.with_manifest || 0;
                 document.getElementById('stat-brand-json').textContent = stats.brand_json || 0;
-                document.getElementById('stat-hosted').textContent = stats.hosted || 0;
-                document.getElementById('stat-community').textContent = stats.community || 0;
-                document.getElementById('stat-enriched').textContent = stats.enriched || 0;
 
                 renderBrands();
             } catch (error) {
@@ -442,7 +441,9 @@
         function renderBrands() {
             const grid = document.getElementById('brands-grid');
             const filtered = brands.filter(brand => {
-                if (filters.source !== 'all' && brand.source !== filters.source) return false;
+                if (filters.type === 'house' && brand.keller_type !== 'master' && brand.keller_type !== 'independent') return false;
+                if (filters.type === 'sub_brand' && brand.keller_type !== 'sub_brand' && brand.keller_type !== 'endorsed') return false;
+                if (filters.type === 'brand_json' && brand.source !== 'brand_json' && brand.source !== 'hosted') return false;
                 if (filters.search) {
                     const q = filters.search.toLowerCase();
                     if (!brand.brand_name?.toLowerCase().includes(q) &&
@@ -461,12 +462,12 @@
             grid.innerHTML = filtered.map(brand => {
                 const sourceLabel = {
                     'brand_json': 'brand.json',
-                    'hosted': 'Hosted',
+                    'hosted': 'brand.json',
                     'community': 'Community',
-                    'enriched': 'Enriched',
+                    'enriched': 'Community',
                 }[brand.source] || brand.source;
 
-                const sourceClass = brand.source === 'brand_json' ? 'brand-card__source--valid' : 'brand-card__source--neutral';
+                const sourceClass = (brand.source === 'brand_json' || brand.source === 'hosted') ? 'brand-card__source--valid' : 'brand-card__source--neutral';
                 const displayName = escapeHtml(brand.brand_name || brand.domain);
                 const firstLetter = (brand.brand_name || brand.domain || '?').charAt(0);
                 const validColor = safeHex(brand.primary_color);
@@ -530,10 +531,10 @@
             }).join('');
         }
 
-        window.setSourceFilter = function(source) {
-            filters.source = source;
-            document.querySelectorAll('.filter-btn[data-source]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.source === source);
+        window.setFilter = function(type) {
+            filters.type = type;
+            document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === type);
             });
             renderBrands();
         };
