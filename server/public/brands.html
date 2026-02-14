@@ -492,13 +492,16 @@
                     ? `<div class="brand-card__details">${detailParts.join('<span class="brand-card__separator">&middot;</span>')}</div>`
                     : '';
 
-                // Meta row: manifest, verified, house domain
+                // Meta row: manifest, verified, house domain, sub-brands
                 const metaParts = [];
                 if (brand.has_manifest) {
                     metaParts.push('<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F4CB;</span> Manifest</span>');
                 }
                 if (brand.verified) {
                     metaParts.push('<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x2713;</span> Verified</span>');
+                }
+                if (brand.sub_brand_count > 0) {
+                    metaParts.push(`<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F517;</span> ${brand.sub_brand_count} sub-brand${brand.sub_brand_count === 1 ? '' : 's'}</span>`);
                 }
                 if (brand.house_domain) {
                     metaParts.push(`<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F3E0;</span> ${escapeHtml(brand.house_domain)}</span>`);

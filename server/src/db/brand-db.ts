@@ -318,6 +318,7 @@ export class BrandDatabase {
     logo_url?: string;
     primary_color?: string;
     industry?: string;
+    sub_brand_count: number;
   }>> {
     const limit = options.limit || 500;
     const offset = options.offset || 0;
@@ -335,6 +336,7 @@ export class BrandDatabase {
       logo_url?: string;
       primary_color?: string;
       industry?: string;
+      sub_brand_count: number;
     }>(
       `
       SELECT
@@ -347,7 +349,8 @@ export class BrandDatabase {
         NULL as keller_type,
         brand_json->'logos'->0->>'url' as logo_url,
         brand_json->'colors'->>'primary' as primary_color,
-        brand_json->'company'->>'industry' as industry
+        brand_json->'company'->>'industry' as industry,
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count
       FROM hosted_brands
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
@@ -364,7 +367,8 @@ export class BrandDatabase {
         keller_type,
         brand_manifest->'logos'->0->>'url' as logo_url,
         brand_manifest->'colors'->>'primary' as primary_color,
-        brand_manifest->'company'->>'industry' as industry
+        brand_manifest->'company'->>'industry' as industry,
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
         AND (review_status IS NULL OR review_status = 'approved')
