@@ -352,8 +352,8 @@
             <div class="filter-row">
                 <div class="filter-group">
                     <label>Type:</label>
-                    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
-                    <button class="filter-btn" data-filter="house" onclick="setFilter('house')">Houses</button>
+                    <button class="filter-btn" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn active" data-filter="house" onclick="setFilter('house')">Houses</button>
                     <button class="filter-btn" data-filter="sub_brand" onclick="setFilter('sub_brand')">Sub-brands</button>
                     <button class="filter-btn" data-filter="brand_json" onclick="setFilter('brand_json')">brand.json</button>
                 </div>
@@ -376,7 +376,7 @@
 
     <script type="module">
         let brands = [];
-        let filters = { type: 'all', search: '' };
+        let filters = { type: 'house', search: '' };
 
         window.addEventListener('DOMContentLoaded', async () => {
             await loadBrands();
