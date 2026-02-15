@@ -15,7 +15,7 @@ import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
-import { getPool } from '../db/client.js';
+import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 
 const slackDb = new SlackDatabase();
@@ -216,6 +216,13 @@ export interface MemberContext {
     global_unsubscribed: boolean;
     subscribed_categories: string[];
     unsubscribed_categories: string[];
+  };
+
+  /** Community profile status */
+  community_profile?: {
+    is_public: boolean;
+    slug: string | null;
+    completeness: number;  // 0-100
   };
 
   /** Whether the Slack user is linked to their AgenticAdvertising.org account */
@@ -474,6 +481,38 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       };
     }
 
+    // Community profile
+    try {
+      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number }>(
+        `SELECT
+          COALESCE(is_public, false) as is_public,
+          slug,
+          (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
+           + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
+           + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
+           + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
+           + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
+           + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
+           + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
+          ) * 10 as completeness
+         FROM users WHERE workos_user_id = $1`,
+        [workosUserId]
+      );
+      const row = communityResult.rows[0];
+      if (row) {
+        context.community_profile = {
+          is_public: row.is_public,
+          slug: row.slug,
+          completeness: Number(row.completeness),
+        };
+      }
+    } catch (err) {
+      // Non-critical - community profile columns may not exist yet
+    }
+
     // Get pending content for committee leads and AAO admins
     const ledCommitteeIds = context.working_groups
       ?.filter(wg => wg.is_leader)
@@ -723,6 +762,38 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get email preferences');
     }
 
+    // Step 10b: Community profile
+    try {
+      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number }>(
+        `SELECT
+          COALESCE(is_public, false) as is_public,
+          slug,
+          (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
+           + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
+           + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
+           + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
+           + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
+           + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
+           + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
+           + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
+          ) * 10 as completeness
+         FROM users WHERE workos_user_id = $1`,
+        [workosUserId]
+      );
+      const row = communityResult.rows[0];
+      if (row) {
+        context.community_profile = {
+          is_public: row.is_public,
+          slug: row.slug,
+          completeness: Number(row.completeness),
+        };
+      }
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get community profile');
+    }
+
     // Step 11: Get combined conversation activity (Slack + web chat) from addie_threads
     try {
       const threadService = getThreadService();
@@ -969,6 +1040,17 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       if (context.email_status.unsubscribed_categories.length > 0) {
         lines.push(`Unsubscribed from: ${context.email_status.unsubscribed_categories.join(', ')}`);
       }
+    }
+  }
+
+  // Community profile status
+  if (context.community_profile) {
+    if (context.community_profile.is_public) {
+      lines.push('');
+      lines.push(`Community profile: Public (${context.community_profile.completeness}% complete) — https://agenticadvertising.org/community/people/${context.community_profile.slug}`);
+    } else {
+      lines.push('');
+      lines.push('Community profile: Not yet public. Encourage them to visit https://agenticadvertising.org/community to set up their profile and join the people directory.');
     }
   }
 

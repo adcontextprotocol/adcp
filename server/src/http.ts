@@ -68,6 +68,8 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createCommunityRouters } from "./routes/community.js";
+import { CommunityDatabase } from "./db/community-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -873,6 +875,13 @@ export class HTTPServer {
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
 
+    // Mount community routes
+    const communityDb = new CommunityDatabase();
+    const communitySlackDb = new SlackDatabase();
+    const { publicRouter: communityPublicRouter, userRouter: communityUserRouter } = createCommunityRouters({ communityDb, slackDb: communitySlackDb });
+    this.app.use('/api/community', communityPublicRouter);
+    this.app.use('/api/me', communityUserRouter);
+
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
     this.app.use('/admin', eventsPageRouter);               // Admin page: /admin/events
@@ -1651,6 +1660,23 @@ export class HTTPServer {
     // Individual member profile page
     this.app.get("/members/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'members.html');
+    });
+
+    // Community pages
+    this.app.get("/community", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/hub.html');
+    });
+    this.app.get("/community/people", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/people.html');
+    });
+    this.app.get("/community/people/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/person-profile.html');
+    });
+    this.app.get("/community/connections", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/connections.html');
+    });
+    this.app.get("/community/profile/edit", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');
     });
 
     // brand.json project landing page
@@ -7799,12 +7825,13 @@ Disallow: /api/admin/
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
 
-      // Seed dev organizations if dev mode is enabled
+      // Seed dev organizations and users if dev mode is enabled
       if (isDevModeEnabled()) {
         try {
-          await this.seedDevOrganizations(orgDb);
+          const { seedDevData } = await import("./dev-setup.js");
+          await seedDevData(orgDb);
         } catch (error) {
-          logger.warn({ error }, 'Failed to seed dev organizations (non-fatal)');
+          logger.warn({ error }, 'Failed to seed dev data (non-fatal)');
         }
       }
     }
@@ -7912,53 +7939,6 @@ Disallow: /api/admin/
     logger.info('Database connection closed');
 
     logger.info('Graceful shutdown complete');
-  }
-
-  /**
-   * Seed dev organizations in the database
-   * Creates organizations for dev users so they can access dashboard without onboarding
-   */
-  private async seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
-    const devOrgs = [
-      {
-        id: 'org_dev_company_001',
-        name: 'Dev Company (Member)',
-        is_personal: false,
-        company_type: 'brand' as const,
-        revenue_tier: '5m_50m' as const,
-      },
-      {
-        id: 'org_dev_personal_001',
-        name: 'Dev Personal Workspace',
-        is_personal: true,
-        company_type: null,
-        revenue_tier: null,
-      },
-    ];
-
-    for (const devOrg of devOrgs) {
-      try {
-        // Check if org already exists
-        const existing = await orgDb.getOrganization(devOrg.id);
-        if (!existing) {
-          await orgDb.createOrganization({
-            workos_organization_id: devOrg.id,
-            name: devOrg.name,
-            is_personal: devOrg.is_personal,
-            company_type: devOrg.company_type || undefined,
-            revenue_tier: devOrg.revenue_tier || undefined,
-          });
-          logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
-        }
-      } catch (error) {
-        // Ignore duplicate key errors (org already exists)
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          logger.debug({ orgId: devOrg.id }, 'Dev organization already exists');
-        } else {
-          throw error;
-        }
-      }
-    }
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {

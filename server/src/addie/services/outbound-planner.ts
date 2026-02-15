@@ -284,7 +284,23 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3: Vendor membership (tech companies benefit from profile visibility)
+    // PRIORITY 3: Community directory (for mapped users not yet in the directory)
+    if (caps && caps.account_linked && !caps.community_profile_public) {
+      const communityGoal = goals.find(g =>
+        g.name.toLowerCase().includes('community directory') && g.category === 'admin'
+      );
+      if (communityGoal) {
+        return {
+          goal: communityGoal,
+          reason: 'User has not joined the community directory yet',
+          priority_score: 75,
+          alternative_goals: goals.filter(g => g.id !== communityGoal.id).slice(0, 3),
+          decision_method: 'rule_match',
+        };
+      }
+    }
+
+    // PRIORITY 4: Vendor membership (tech companies benefit from profile visibility)
     // Only for non-members at vendor-type companies
     const vendorTypes = ['adtech', 'ai', 'data'];
     if (ctx.user.is_mapped && !ctx.user.is_member && ctx.company?.type && vendorTypes.includes(ctx.company.type)) {
@@ -302,7 +318,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 4: Working group discovery (for engaged users with none)
+    // PRIORITY 5: Working group discovery (for engaged users with none)
     // Skip for committee leaders - they lead working groups even if not counted as members
     // Note: Leaders are now included in working_group_count via the query, but this explicit
     // check is kept for clarity and defense against query changes
@@ -321,7 +337,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 5: Re-engagement for dormant users
+    // PRIORITY 6: Re-engagement for dormant users
     if (caps && caps.last_active_days_ago !== null && caps.last_active_days_ago > 30) {
       const reengageGoal = goals.find(g =>
         g.name.toLowerCase().includes('re-engage') || g.name.toLowerCase().includes('dormant')
@@ -415,6 +431,9 @@ export class OutboundPlanner {
       else capabilityLines.push('✗ Not in any working groups');
 
       if (caps.council_count > 0) capabilityLines.push(`✓ In ${caps.council_count} council(s)`);
+
+      if (caps.community_profile_public) capabilityLines.push(`✓ In community directory (${caps.community_profile_completeness}% complete)`);
+      else capabilityLines.push('✗ Not in community directory');
 
       if (caps.events_registered > 0) capabilityLines.push(`✓ Registered for ${caps.events_registered} event(s)`);
       else capabilityLines.push('✗ No event registrations');

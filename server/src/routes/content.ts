@@ -15,6 +15,7 @@ import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { notifyPublishedPost } from '../notifications/slack.js';
+import { CommunityDatabase } from '../db/community-db.js';
 
 const logger = createLogger('content-routes');
 
@@ -312,6 +313,15 @@ export async function proposeContentForUser(
       isMembersOnly: false,
     }).catch(err => {
       logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
+    });
+
+    // Award community points + check badges (fire-and-forget)
+    const communityDb = new CommunityDatabase();
+    communityDb.awardPoints(user.id, 'content_published', 50, perspective.id, 'perspective').catch(err => {
+      logger.error({ err, userId: user.id }, 'Failed to award content publishing points');
+    });
+    communityDb.checkAndAwardBadges(user.id, 'content').catch(err => {
+      logger.error({ err, userId: user.id }, 'Failed to check content badges');
     });
   }
 

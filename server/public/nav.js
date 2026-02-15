@@ -200,8 +200,11 @@
     const councilsUrl = `${committeesBaseUrl}?type=council`;
     const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
     const gatheringsUrl = `${committeesBaseUrl}?type=industry_gathering`;
+    const communityHubUrl = isLocal ? '/community' : `${aaoBaseUrl}/community`;
+    const communityPeopleUrl = isLocal ? '/community/people' : `${aaoBaseUrl}/community/people`;
+    const isCommunityActive = currentPath.startsWith('/community');
     const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
-    const isParticipateActive = isEventsActive || isCommitteesActive;
+    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive;
     const participateDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isParticipateActive ? 'active' : ''}">
@@ -211,6 +214,9 @@
             </svg>
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
+            <a href="${communityHubUrl}" class="navbar__dropdown-item ${currentPath === '/community' ? 'active' : ''}">Community hub</a>
+            <a href="${communityPeopleUrl}" class="navbar__dropdown-item ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>
+            <div class="navbar__dropdown-divider"></div>
             <a href="${eventsUrl}" class="navbar__dropdown-item ${isEventsActive ? 'active' : ''}">Events</a>
             <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">Committees</a>
             <a href="${meetingsUrl}" class="navbar__dropdown-item ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>
@@ -278,6 +284,8 @@
           ${membershipEnabled ? `<a href="${latestBaseUrl}/learning" class="navbar__link navbar__link--indent ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Participate</span>` : ''}
+          ${membershipEnabled ? `<a href="${communityHubUrl}" class="navbar__link navbar__link--indent ${currentPath === '/community' ? 'active' : ''}">Community hub</a>` : ''}
+          ${membershipEnabled ? `<a href="${communityPeopleUrl}" class="navbar__link navbar__link--indent ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>` : ''}
           ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
           ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">Committees</a>` : ''}
           ${membershipEnabled ? `<a href="${meetingsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>` : ''}
