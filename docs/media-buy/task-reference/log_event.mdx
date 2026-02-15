@@ -108,7 +108,7 @@ asyncio.run(main())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `event_source_id` | string | Yes | Event source configured on the account via `sync_event_sources` |
-| `events` | Event[] | Yes | Events to log (min 1, max 10,000) |
+| `events` | [Event](/docs/media-buy/conversion-tracking/#event)[] | Yes | Events to log (min 1, max 10,000) |
 | `test_event_code` | string | No | Test event code for validation without affecting production data |
 
 ### Event Object
@@ -116,11 +116,11 @@ asyncio.run(main())
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `event_id` | string | Yes | Unique identifier for deduplication (scoped to event_type + event_source_id). Max 256 chars. |
-| `event_type` | EventType | Yes | Standard event type (e.g. `purchase`, `lead`, `add_to_cart`) |
+| `event_type` | [EventType](/docs/media-buy/conversion-tracking/#event-types) | Yes | Standard event type (e.g. `purchase`, `lead`, `add_to_cart`) |
 | `event_time` | date-time | Yes | ISO 8601 timestamp when the event occurred |
-| `user_match` | UserMatch | No | User identifiers for attribution matching |
-| `custom_data` | CustomData | No | Event-specific data (value, currency, items) |
-| `action_source` | ActionSource | No | Where the event occurred (`website`, `app`, `in_store`, etc.) |
+| `user_match` | [UserMatch](/docs/media-buy/conversion-tracking/#user-match) | No | User identifiers for attribution matching |
+| `custom_data` | [CustomData](/docs/media-buy/conversion-tracking/#custom-data) | No | Event-specific data (value, currency, items) |
+| `action_source` | [ActionSource](/docs/media-buy/conversion-tracking/#action-sources) | No | Where the event occurred (`website`, `app`, `in_store`, etc.) |
 | `event_source_url` | uri | No | URL where the event occurred (required when action_source is `website`) |
 | `custom_event_name` | string | No | Name for custom events (used when event_type is `custom`) |
 
@@ -524,6 +524,7 @@ Choose `event_id` values that are stable across retries:
 
 ## Next Steps
 
+- [Conversion Tracking](/docs/media-buy/conversion-tracking/) - Data model, optimization goals, and the end-to-end flow
 - [sync_event_sources](/docs/media-buy/task-reference/sync_event_sources) - Configure event sources before logging events
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Set optimization goals on packages
+- [create_media_buy](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization) - Set optimization goals on packages
 - [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor conversion metrics in delivery reports
