@@ -6,16 +6,21 @@ jest.mock('../../server/src/billing/stripe-client.js', () => ({
   getProductsForCustomer: jest.fn(),
   createCheckoutSession: jest.fn(),
   createAndSendInvoice: jest.fn(),
+  createStripeCustomer: jest.fn().mockResolvedValue('cus_new_123'),
   getPriceByLookupKey: jest.fn(),
 }));
 
 // Mock the organization-db module
 const mockGetOrganization = jest.fn();
 const mockSearchOrganizations = jest.fn();
+const mockGetOrCreateStripeCustomer = jest.fn().mockImplementation(
+  async (_orgId: string, createFn: () => Promise<string | null>) => createFn()
+);
 jest.mock('../../server/src/db/organization-db.js', () => ({
   OrganizationDatabase: jest.fn().mockImplementation(() => ({
     getOrganization: mockGetOrganization,
     searchOrganizations: mockSearchOrganizations,
+    getOrCreateStripeCustomer: mockGetOrCreateStripeCustomer,
   })),
 }));
 
@@ -194,7 +199,7 @@ describe('billing-tools', () => {
     });
 
     test('creates payment link using memberContext email by default', async () => {
-      const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as jest.Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
@@ -216,11 +221,17 @@ describe('billing-tools', () => {
       expect(parsed.message).toContain('Payment link created successfully');
 
       expect(getPriceByLookupKey).toHaveBeenCalledWith('aao_membership_corporate_5m');
-      // Should use memberContext email, not the AI-provided email
+      // Should pre-create a Stripe customer with the memberContext email
+      expect(createStripeCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'irina@solutionsmarketingconsulting.com',
+          metadata: { workos_organization_id: 'org_test_123' },
+        })
+      );
       expect(createCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({
           priceId: 'price_abc123',
-          customerEmail: 'irina@solutionsmarketingconsulting.com',
+          customerId: 'cus_new_123',
           workosOrganizationId: 'org_test_123',
           isPersonalWorkspace: false,
         })
@@ -228,7 +239,7 @@ describe('billing-tools', () => {
     });
 
     test('falls back to AI-provided email when memberContext has no email', async () => {
-      const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as jest.Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
@@ -256,15 +267,22 @@ describe('billing-tools', () => {
         customer_email: 'user@company.com',
       });
 
+      // Should pre-create a Stripe customer with the AI-provided email
+      expect(createStripeCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'user@company.com',
+          metadata: { workos_organization_id: 'org_test_123' },
+        })
+      );
       expect(createCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          customerEmail: 'user@company.com',
+          customerId: 'cus_new_123',
         })
       );
     });
 
     test('falls back to AI-provided email when slack_user.email is null', async () => {
-      const { getPriceByLookupKey, createCheckoutSession } = await import('../../server/src/billing/stripe-client.js');
+      const { getPriceByLookupKey, createCheckoutSession, createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
       (getPriceByLookupKey as jest.Mock).mockResolvedValue('price_abc123');
       (createCheckoutSession as jest.Mock).mockResolvedValue({
         url: 'https://checkout.stripe.com/c/pay/cs_test_xxx',
@@ -297,9 +315,16 @@ describe('billing-tools', () => {
         customer_email: 'user@company.com',
       });
 
+      // Should pre-create a Stripe customer with the AI-provided email
+      expect(createStripeCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'user@company.com',
+          metadata: { workos_organization_id: 'org_test_123' },
+        })
+      );
       expect(createCheckoutSession).toHaveBeenCalledWith(
         expect.objectContaining({
-          customerEmail: 'user@company.com',
+          customerId: 'cus_new_123',
         })
       );
     });

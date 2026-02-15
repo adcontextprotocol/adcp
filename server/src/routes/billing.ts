@@ -853,11 +853,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
       const result = await pool.query(
         `
-        SELECT workos_organization_id, name, email_domain, stripe_customer_id
+        SELECT workos_organization_id, name, email_domain, stripe_customer_id, is_personal
         FROM organizations
-        WHERE is_personal = false
-          AND (name ILIKE $1 OR email_domain ILIKE $1)
-        ORDER BY name
+        WHERE (name ILIKE $1 OR email_domain ILIKE $1)
+        ORDER BY is_personal, name
         LIMIT 20
       `,
         [`%${escapedQuery}%`]

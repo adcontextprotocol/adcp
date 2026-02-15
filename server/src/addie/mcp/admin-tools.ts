@@ -66,6 +66,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
@@ -2223,6 +2224,7 @@ export function createAdminToolHandlers(
       prospect_contact_name?: string;
       enrichment_employee_count?: number;
       enrichment_revenue?: number;
+      stripe_customer_id?: string;
       // Discount fields
       discount_percent?: number;
       discount_amount_cents?: number;
@@ -2236,7 +2238,7 @@ export function createAdminToolHandlers(
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
-              enrichment_employee_count, enrichment_revenue,
+              enrichment_employee_count, enrichment_revenue, stripe_customer_id,
               discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
@@ -2270,7 +2272,7 @@ export function createAdminToolHandlers(
       const newOrgResult = await pool.query(
         `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
                 prospect_contact_email, prospect_contact_name,
-                enrichment_employee_count, enrichment_revenue,
+                enrichment_employee_count, enrichment_revenue, stripe_customer_id,
                 discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
          FROM organizations WHERE workos_organization_id = $1`,
         [createResult.organization.workos_organization_id]
@@ -2485,9 +2487,27 @@ export function createAdminToolHandlers(
             : `$${(org.discount_amount_cents || 0) / 100} off`;
         }
 
+        // Ensure a Stripe customer exists with org metadata before creating the
+        // checkout session. Without this, Stripe creates a new customer during
+        // checkout that has no workos_organization_id metadata, so the subscription
+        // webhook can't link the payment back to the organization.
+        let customerId: string | undefined;
+        if (emailToUse) {
+          customerId = await orgDb.getOrCreateStripeCustomer(org.workos_organization_id, () =>
+            createStripeCustomer({
+              email: emailToUse,
+              name: org.name,
+              metadata: { workos_organization_id: org.workos_organization_id },
+            })
+          ) || undefined;
+        } else {
+          customerId = org.stripe_customer_id;
+        }
+
         const session = await createCheckoutSession({
           priceId: finalProduct.price_id,
-          customerEmail: emailToUse || undefined,
+          customerId: customerId || undefined,
+          customerEmail: customerId ? undefined : (emailToUse || undefined),
           successUrl: `${baseUrl}/dashboard?payment=success`,
           cancelUrl: `${baseUrl}/membership?payment=cancelled`,
           workosOrganizationId: org.workos_organization_id,

@@ -14,6 +14,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   getPriceByLookupKey,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
@@ -250,10 +251,25 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       // Look up org to get Stripe customer ID and discount info
       const org = await orgDb.getOrganization(orgId);
 
+      // Ensure a Stripe customer exists with org metadata before creating the
+      // checkout session so that subscription webhooks can link the payment.
+      let customerId: string | undefined;
+      if (effectiveEmail) {
+        customerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+          createStripeCustomer({
+            email: effectiveEmail,
+            name: org?.name || 'Unknown',
+            metadata: { workos_organization_id: orgId },
+          })
+        ) || undefined;
+      } else {
+        customerId = org?.stripe_customer_id || undefined;
+      }
+
       const session = await createCheckoutSession({
         priceId,
-        customerId: org?.stripe_customer_id || undefined,
-        customerEmail: org?.stripe_customer_id ? undefined : effectiveEmail,
+        customerId: customerId || undefined,
+        customerEmail: customerId ? undefined : effectiveEmail,
         successUrl: 'https://agenticadvertising.org/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}',
         cancelUrl: 'https://agenticadvertising.org/dashboard?checkout=cancelled',
         workosOrganizationId: orgId,
