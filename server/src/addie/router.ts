@@ -186,6 +186,11 @@ export const ROUTING_RULES = {
       tools: ['search_members', 'request_introduction'],
       description: 'Find member organizations who can help with specific needs - searching for vendors, partners, consultants',
     },
+    community_directory: {
+      patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
+      tools: ['get_my_profile', 'update_my_profile'],
+      description: 'Community directory, people profiles, connections, and coffee chats',
+    },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
       tools: ['search_slack'],
