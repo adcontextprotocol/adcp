@@ -27,7 +27,7 @@ import { ROUTING_RULES } from './router.js';
  * Format: YYYY.MM.N where N is incremented for multiple changes in a month
  * Example: 2025.01.1, 2025.01.2, 2025.02.1
  */
-export const CODE_VERSION = '2026.02.1';
+export const CODE_VERSION = '2026.02.2';
 
 // Types
 export interface ConfigVersion {
