@@ -244,6 +244,12 @@
                 ]
               },
               {
+                "group": "Conversion Tracking",
+                "pages": [
+                  "docs/media-buy/conversion-tracking/index"
+                ]
+              },
+              {
                 "group": "Advanced Topics",
                 "pages": [
                   "docs/media-buy/advanced-topics/index",
@@ -691,6 +697,12 @@
                 "group": "Creatives",
                 "pages": [
                   "docs/media-buy/creatives/index"
+                ]
+              },
+              {
+                "group": "Conversion Tracking",
+                "pages": [
+                  "docs/media-buy/conversion-tracking/index"
                 ]
               },
               {
