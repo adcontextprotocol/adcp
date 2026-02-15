@@ -4267,6 +4267,45 @@ export class HTTPServer {
             break;
           }
 
+          case 'checkout.session.completed': {
+            const session = event.data.object as Stripe.Checkout.Session;
+            const customerId = session.customer as string | null;
+            const workosOrgId = session.metadata?.workos_organization_id;
+
+            if (customerId && workosOrgId) {
+              // Ensure the Stripe customer is linked to the organization.
+              // This catches cases where the checkout session was created with
+              // customerEmail instead of customerId, causing Stripe to create
+              // a new customer without workos_organization_id metadata.
+              const org = await orgDb.getOrganization(workosOrgId);
+              if (org && !org.stripe_customer_id) {
+                try {
+                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to org from checkout.session.completed');
+                } catch (err) {
+                  logger.warn({ err, workosOrgId, customerId }, 'Could not link Stripe customer to org from checkout (possible conflict)');
+                }
+              }
+
+              // Ensure the Stripe customer has org metadata so that subsequent
+              // subscription and invoice webhooks can find the org.
+              try {
+                const customer = await stripe.customers.retrieve(customerId);
+                if ('deleted' in customer && customer.deleted) {
+                  logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
+                } else if (!customer.metadata?.workos_organization_id) {
+                  await stripe.customers.update(customerId, {
+                    metadata: { workos_organization_id: workosOrgId },
+                  });
+                  logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
+                }
+              } catch (err) {
+                logger.error({ err, customerId, workosOrgId }, 'Failed to update Stripe customer metadata from checkout session');
+              }
+            }
+            break;
+          }
+
           default:
             logger.debug({ eventType: event.type }, 'Unhandled webhook event type');
         }
