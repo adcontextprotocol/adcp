@@ -1,4 +1,4 @@
--- Migration: 210_community_backfill.sql
+-- Migration: 211_community_backfill.sql
 -- Backfill community points from existing activity data
 -- and auto-award badges based on thresholds.
 

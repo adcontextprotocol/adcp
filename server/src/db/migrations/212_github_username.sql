@@ -1,4 +1,4 @@
--- Migration: 211_github_username.sql
+-- Migration: 212_github_username.sql
 -- Add github_username to users, seed GitHub-related badges.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS github_username VARCHAR(100);
