@@ -15,7 +15,31 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
+import { brandDb } from "./db/brand-db.js";
+import { propertyDb } from "./db/property-db.js";
+import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured } from "./services/brandfetch.js";
+import { AdAgentsManager } from "./adagents-manager.js";
+import { registryBansDb } from "./db/registry-bans-db.js";
+import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/registry.js";
+import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
+import type { MCPAuthContext } from "./mcp/auth.js";
+import { createLogger } from "./logger.js";
+
+const logger = createLogger('mcp-tools');
+
+const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/**
+ * Normalize and validate a domain string.
+ * Strips protocol prefix and trailing slashes, lowercases, then validates format.
+ * Returns null if invalid.
+ */
+function sanitizeDomain(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+  return DOMAIN_REGEX.test(cleaned) ? cleaned : null;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -231,6 +255,45 @@ export const TOOL_DEFINITIONS = [
       required: ["agent_url"],
     },
   },
+  // Property tools
+  {
+    name: "resolve_property",
+    description:
+      "Resolve a publisher domain to its property information. Checks hosted properties, discovered properties, and live adagents.json.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Publisher domain to resolve (e.g., 'cnn.com')",
+        },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "list_properties",
+    description:
+      "List publisher properties in the registry. Includes hosted properties (synthetic adagents.json) and discovered properties (from crawled adagents.json). Can filter by source type and search by domain.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        source: {
+          type: "string",
+          enum: ["adagents_json", "hosted", "community", "discovered", "enriched"],
+          description: "Filter by source type (hosted = synthetic, adagents_json = crawled from live site)",
+        },
+        search: {
+          type: "string",
+          description: "Search term for publisher domain",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum results (default: 20, max: 100)",
+        },
+      },
+    },
+  },
   // Brand tools
   {
     name: "resolve_brand",
@@ -300,6 +363,119 @@ export const TOOL_DEFINITIONS = [
       required: ["domain"],
     },
   },
+  {
+    name: "list_brands",
+    description:
+      "List brands in the registry. Includes brands with published brand.json, community-contributed brands, and enriched brands. Can filter by source type and search by name or domain.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        source_type: {
+          type: "string",
+          enum: ["brand_json", "hosted", "community", "enriched"],
+          description: "Filter by how the brand was added (brand_json = published manifest, hosted = self-hosted, community = contributed, enriched = via Brandfetch)",
+        },
+        search: {
+          type: "string",
+          description: "Search term for brand name or domain",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum results (default: 20, max: 100)",
+        },
+      },
+    },
+  },
+  // Community registry write tools
+  {
+    name: "save_brand",
+    description:
+      "Save a brand to the community registry. Creates a new brand (pending review) or edits an existing one (revision-tracked). Requires authentication.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        domain: {
+          type: "string",
+          description: "Brand domain (e.g., 'acme-corp.com')",
+        },
+        brand_name: {
+          type: "string",
+          description: "Brand name",
+        },
+        house_domain: {
+          type: "string",
+          description: "Parent house/corporate brand domain (e.g., 'unilever.com')",
+        },
+        keller_type: {
+          type: "string",
+          enum: ["master", "sub_brand", "endorsed", "independent"],
+          description: "Keller brand architecture type",
+        },
+        parent_brand: {
+          type: "string",
+          description: "Parent brand domain within the house portfolio",
+        },
+        brand_manifest: {
+          type: "object",
+          description: "Brand manifest data (logo, colors, company info)",
+        },
+        edit_summary: {
+          type: "string",
+          description: "Summary of changes (required for edits, ignored for new brands)",
+        },
+      },
+      required: ["domain", "brand_name"],
+    },
+  },
+  {
+    name: "save_property",
+    description:
+      "Save a publisher property to the community registry. Creates a new property (pending review) or edits an existing one (revision-tracked). Requires authentication.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        publisher_domain: {
+          type: "string",
+          description: "Publisher domain (e.g., 'example-news.com')",
+        },
+        authorized_agents: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              authorized_for: { type: "string" },
+            },
+          },
+          description: "Authorized agents for this property",
+        },
+        properties: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string" },
+              name: { type: "string" },
+            },
+          },
+          description: "Property inventory types",
+        },
+        contact: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            email: { type: "string" },
+          },
+          description: "Contact information for the property",
+        },
+        edit_summary: {
+          type: "string",
+          description: "Summary of changes (required for edits, ignored for new properties)",
+        },
+      },
+      required: ["publisher_domain"],
+    },
+  },
 ];
 
 /**
@@ -343,6 +519,18 @@ export const RESOURCE_DEFINITIONS = [
     description: "All public publisher domains hosting adagents.json",
   },
   {
+    uri: "properties://registry",
+    name: "Property Registry",
+    mimeType: "application/json",
+    description: "All publisher properties in the registry (hosted + discovered)",
+  },
+  {
+    uri: "brands://registry",
+    name: "Brand Registry",
+    mimeType: "application/json",
+    description: "All brands in the registry (hosted + discovered)",
+  },
+  {
     uri: "ui://si/{session_id}",
     name: "SI Agent UI",
     mimeType: "text/html",
@@ -360,6 +548,7 @@ export class MCPToolHandler {
   private validator: AgentValidator;
   private federatedIndex: FederatedIndexService;
   private brandManager: BrandManager;
+  private adagentsManager: AdAgentsManager;
 
   constructor() {
     this.agentService = new AgentService();
@@ -367,12 +556,13 @@ export class MCPToolHandler {
     this.validator = new AgentValidator();
     this.federatedIndex = new FederatedIndexService();
     this.brandManager = new BrandManager();
+    this.adagentsManager = new AdAgentsManager();
   }
 
   /**
    * Handle a tool call by name and return the result.
    */
-  async handleToolCall(name: string, args: Record<string, unknown> | undefined): Promise<{
+  async handleToolCall(name: string, args: Record<string, unknown> | undefined, authContext?: MCPAuthContext): Promise<{
     content: Array<{ type: string; text?: string; resource?: { uri: string; mimeType: string; text: string } }>;
     isError?: boolean;
   }> {
@@ -806,6 +996,37 @@ export class MCPToolHandler {
           };
         }
         const result = await this.federatedIndex.lookupDomain(domain);
+
+        // Enrich with hosted property data when federated index has no results
+        if (result.authorized_agents.length === 0 && result.sales_agents_claiming.length === 0) {
+          const hostedProp = await propertyDb.getHostedPropertyByDomain(domain);
+          if (hostedProp && hostedProp.is_public && (!hostedProp.review_status || hostedProp.review_status === 'approved')) {
+            const adagents = hostedProp.adagents_json as Record<string, unknown>;
+            const authorizedAgents = (adagents.authorized_agents as Array<{ url: string; authorized_for?: string }>) || [];
+            return {
+              content: [
+                {
+                  type: "resource",
+                  resource: {
+                    uri: `federated://domain/${encodeURIComponent(domain)}`,
+                    mimeType: "application/json",
+                    text: JSON.stringify({
+                      domain,
+                      source: "hosted",
+                      authorized_agents: authorizedAgents.map(a => ({
+                        url: a.url,
+                        authorized_for: a.authorized_for,
+                        source: "hosted",
+                      })),
+                      sales_agents_claiming: [],
+                    }, null, 2),
+                  },
+                },
+              ],
+            };
+          }
+        }
+
         return {
           content: [
             {
@@ -865,6 +1086,38 @@ export class MCPToolHandler {
         }
         const resolved = await this.brandManager.resolveBrand(domain, { skipCache: fresh });
         if (!resolved) {
+          // Fallback to discovered brands registry (skip pending review)
+          const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+          if (discovered && (!discovered.review_status || discovered.review_status === 'approved')) {
+            return {
+              content: [
+                {
+                  type: "resource",
+                  resource: {
+                    uri: `brand://${encodeURIComponent(domain)}`,
+                    mimeType: "application/json",
+                    text: JSON.stringify({
+                      source: "registry",
+                      source_type: discovered.source_type,
+                      domain: discovered.domain,
+                      canonical_domain: discovered.canonical_domain,
+                      brand_name: discovered.brand_name,
+                      house_domain: discovered.house_domain,
+                      keller_type: discovered.keller_type,
+                      brand_agent_url: discovered.brand_agent_url,
+                      has_manifest: discovered.has_brand_manifest,
+                    }, null, 2),
+                  },
+                },
+              ],
+            };
+          }
+
+          // Track demand signal for missing brand
+          registryRequestsDb.trackRequest('brand', domain).catch((err) => {
+            logger.warn({ err, domain }, 'Failed to track brand demand signal');
+          });
+
           return {
             content: [
               {
@@ -875,7 +1128,7 @@ export class MCPToolHandler {
                   text: JSON.stringify({
                     error: "Could not resolve brand",
                     domain,
-                    hint: "Ensure the domain has a valid /.well-known/brand.json file",
+                    hint: "No brand.json found and not in registry",
                   }, null, 2),
                 },
               },
@@ -1006,6 +1259,533 @@ export class MCPToolHandler {
         };
       }
 
+      case "list_brands": {
+        const sourceType = args?.source_type as 'brand_json' | 'hosted' | 'community' | 'enriched' | undefined;
+        const search = args?.search as string | undefined;
+        const rawLimit = typeof args?.limit === 'number' ? args.limit : 20;
+        const limit = Math.min(Math.max(1, rawLimit), 100);
+
+        // Over-fetch when filtering by source_type since filtering happens in-memory
+        const fetchLimit = sourceType ? limit * 5 : limit;
+        const brands = await brandDb.getAllBrandsForRegistry({ search, limit: fetchLimit });
+
+        // Filter by source type if specified, then apply the requested limit
+        const filtered = sourceType
+          ? brands.filter(b => b.source === sourceType).slice(0, limit)
+          : brands;
+
+        const result = filtered.map(b => ({
+          domain: b.domain,
+          brand_name: b.brand_name,
+          source: b.source,
+          has_manifest: b.has_manifest,
+          house_domain: b.house_domain,
+          keller_type: b.keller_type,
+        }));
+
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: "brands://registry",
+                mimeType: "application/json",
+                text: JSON.stringify({ brands: result, count: result.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      // Property tools
+      case "resolve_property": {
+        const domain = sanitizeDomain(args?.domain as string);
+        if (!domain) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Missing required parameter: domain" }),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Check hosted properties first
+        const hosted = await propertyDb.getHostedPropertyByDomain(domain);
+        if (hosted && hosted.is_public && (!hosted.review_status || hosted.review_status === 'approved')) {
+          const adagents = hosted.adagents_json as Record<string, unknown>;
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `property://${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    source: "hosted",
+                    publisher_domain: hosted.publisher_domain,
+                    verified: hosted.domain_verified,
+                    authorized_agents: (adagents.authorized_agents as unknown[])?.length || 0,
+                    properties: (adagents.properties as unknown[])?.length || 0,
+                    has_contact: !!adagents.contact,
+                  }, null, 2),
+                },
+              },
+            ],
+          };
+        }
+
+        // Check discovered properties
+        const discovered = await propertyDb.getDiscoveredPropertiesByDomain(domain);
+        if (discovered.length > 0) {
+          const agents = await propertyDb.getAgentAuthorizationsForDomain(domain);
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `property://${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    source: "adagents_json",
+                    publisher_domain: domain,
+                    verified: true,
+                    authorized_agents: [...new Set(agents.map(a => a.agent_url))].length,
+                    agent_urls: [...new Set(agents.map(a => a.agent_url))],
+                    properties: discovered.length,
+                    property_types: [...new Set(discovered.map(p => p.property_type))],
+                  }, null, 2),
+                },
+              },
+            ],
+          };
+        }
+
+        // Try live validation
+        const validation = await this.adagentsManager.validateDomain(domain);
+        if (validation.valid && validation.raw_data) {
+          return {
+            content: [
+              {
+                type: "resource",
+                resource: {
+                  uri: `property://${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    source: "adagents_json",
+                    publisher_domain: domain,
+                    verified: true,
+                    authorized_agents: validation.raw_data.authorized_agents?.length || 0,
+                    agent_urls: validation.raw_data.authorized_agents?.map((a: { url: string }) => a.url) || [],
+                    properties: validation.raw_data.properties?.length || 0,
+                    has_contact: !!validation.raw_data.contact,
+                  }, null, 2),
+                },
+              },
+            ],
+          };
+        }
+
+        // Track demand signal for missing property
+        registryRequestsDb.trackRequest('property', domain).catch((err) => {
+          logger.warn({ err, domain }, 'Failed to track property demand signal');
+        });
+
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: `property://${encodeURIComponent(domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify({
+                  error: "Property not found",
+                  domain,
+                  hint: "No adagents.json found and not in registry",
+                }, null, 2),
+              },
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      case "list_properties": {
+        const source = args?.source as 'adagents_json' | 'hosted' | 'community' | 'discovered' | 'enriched' | undefined;
+        const search = args?.search as string | undefined;
+        const rawLimit = typeof args?.limit === 'number' ? args.limit : 20;
+        const limit = Math.min(Math.max(1, rawLimit), 100);
+
+        // Over-fetch when filtering by source since filtering happens in-memory
+        const fetchLimit = source ? limit * 5 : limit;
+        const properties = await propertyDb.getAllPropertiesForRegistry({ search, limit: fetchLimit });
+
+        const filtered = source
+          ? properties.filter(p => p.source === source).slice(0, limit)
+          : properties;
+
+        const result = filtered.map(p => ({
+          domain: p.domain,
+          source: p.source,
+          property_count: p.property_count,
+          agent_count: p.agent_count,
+          verified: p.verified,
+        }));
+
+        return {
+          content: [
+            {
+              type: "resource",
+              resource: {
+                uri: "properties://registry",
+                mimeType: "application/json",
+                text: JSON.stringify({ properties: result, count: result.length }, null, 2),
+              },
+            },
+          ],
+        };
+      }
+
+      // Community registry write tools
+      case "save_brand": {
+        if (!authContext || authContext.sub === 'anonymous') {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "Authentication required to save brands" }) }],
+            isError: true,
+          };
+        }
+
+        const domain = sanitizeDomain(args?.domain as string);
+        const brandName = args?.brand_name as string;
+        if (!domain || !brandName) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "domain and brand_name are required" }) }],
+            isError: true,
+          };
+        }
+
+        const banCheck = await registryBansDb.isUserBanned('brand', authContext.sub, domain);
+        if (banCheck.banned) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "You are banned from editing brands", reason: banCheck.ban?.reason }) }],
+            isError: true,
+          };
+        }
+
+        // Validate brand_manifest size if provided
+        if (args?.brand_manifest) {
+          const manifestJson = JSON.stringify(args.brand_manifest);
+          if (manifestJson.length > 50000) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "brand_manifest exceeds 50KB size limit" }) }],
+              isError: true,
+            };
+          }
+        }
+
+        try {
+          const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+          // Reject edits to authoritative brands (managed via brand.json)
+          if (existing && existing.source_type === 'brand_json') {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "Cannot edit authoritative brand (managed via brand.json)" }) }],
+              isError: true,
+            };
+          }
+
+          if (existing) {
+            // Edit existing brand with revision tracking
+            const editSummary = (args?.edit_summary as string) || 'MCP community edit';
+            const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, {
+              brand_name: brandName,
+              house_domain: args?.house_domain as string | undefined,
+              keller_type: args?.keller_type as 'master' | 'sub_brand' | 'endorsed' | 'independent' | undefined,
+              parent_brand: args?.parent_brand as string | undefined,
+              brand_manifest: args?.brand_manifest as Record<string, unknown> | undefined,
+              has_brand_manifest: args?.brand_manifest ? true : undefined,
+              edit_summary: editSummary,
+              editor_user_id: authContext.sub,
+              editor_email: authContext.email,
+              editor_name: authContext.email,
+            });
+
+            const oldRevision = revision_number > 1
+              ? await brandDb.getBrandRevision(domain, revision_number - 1)
+              : null;
+
+            // Fire-and-forget: notify then review (review runs even if notification fails)
+            notifyRegistryEdit({
+              entity_type: 'brand',
+              domain,
+              editor_email: authContext.email,
+              edit_summary: editSummary,
+              revision_number,
+            }).catch((err) => { logger.error({ err }, 'MCP: Brand edit notification failed'); return null; })
+              .then((slack_thread_ts) => {
+                reviewRegistryEdit({
+                  entity_type: 'brand',
+                  domain,
+                  editor_user_id: authContext.sub,
+                  editor_email: authContext.email,
+                  edit_summary: editSummary,
+                  old_snapshot: oldRevision?.snapshot || {},
+                  new_snapshot: brand as unknown as Record<string, unknown>,
+                  revision_number,
+                  slack_thread_ts: slack_thread_ts || undefined,
+                }).catch((err) => logger.error({ err }, 'MCP: Brand edit review failed'));
+              });
+
+            return {
+              content: [{
+                type: "resource",
+                resource: {
+                  uri: `brand://${encodeURIComponent(domain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    success: true,
+                    action: "edited",
+                    domain: brand.domain,
+                    brand_name: brand.brand_name,
+                    revision_number,
+                  }, null, 2),
+                },
+              }],
+            };
+          }
+
+          // Create new community brand with pending review
+          const brand = await brandDb.createDiscoveredBrand({
+            domain,
+            brand_name: brandName,
+            house_domain: args?.house_domain as string | undefined,
+            keller_type: args?.keller_type as 'master' | 'sub_brand' | 'endorsed' | 'independent' | undefined,
+            parent_brand: args?.parent_brand as string | undefined,
+            brand_manifest: args?.brand_manifest as Record<string, unknown> | undefined,
+            has_brand_manifest: !!args?.brand_manifest,
+            source_type: 'community',
+          }, {
+            user_id: authContext.sub,
+            email: authContext.email,
+            name: authContext.email,
+          });
+
+          // Fire-and-forget: notify then review (review runs even if notification fails)
+          notifyRegistryCreate({
+            entity_type: 'brand',
+            domain: brand.domain,
+            editor_email: authContext.email,
+          }).catch((err) => { logger.error({ err }, 'MCP: New brand notification failed'); return null; })
+            .then((slack_thread_ts) => {
+              reviewNewRecord({
+                entity_type: 'brand',
+                domain: brand.domain,
+                editor_user_id: authContext.sub,
+                editor_email: authContext.email,
+                snapshot: brand as unknown as Record<string, unknown>,
+                slack_thread_ts: slack_thread_ts || undefined,
+              }).catch((err) => logger.error({ err }, 'MCP: New brand review failed'));
+            });
+
+          return {
+            content: [{
+              type: "resource",
+              resource: {
+                uri: `brand://${encodeURIComponent(domain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify({
+                  success: true,
+                  action: "created",
+                  domain: brand.domain,
+                  brand_name: brand.brand_name,
+                  review_status: "pending",
+                }, null, 2),
+              },
+            }],
+          };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+            isError: true,
+          };
+        }
+      }
+
+      case "save_property": {
+        if (!authContext || authContext.sub === 'anonymous') {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "Authentication required to save properties" }) }],
+            isError: true,
+          };
+        }
+
+        const publisherDomain = sanitizeDomain(args?.publisher_domain as string);
+        if (!publisherDomain) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required or invalid format" }) }],
+            isError: true,
+          };
+        }
+
+        const propBanCheck = await registryBansDb.isUserBanned('property', authContext.sub, publisherDomain);
+        if (propBanCheck.banned) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: "You are banned from editing properties", reason: propBanCheck.ban?.reason }) }],
+            isError: true,
+          };
+        }
+
+        const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
+        const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
+        const contact = args?.contact as { name?: string; email?: string } | undefined;
+
+        // Validate agent URLs
+        for (const agent of authorizedAgents) {
+          try {
+            const parsed = new URL(agent.url);
+            if (parsed.protocol !== 'https:') {
+              return {
+                content: [{ type: "text", text: JSON.stringify({ error: `Agent URL must use HTTPS: ${agent.url}` }) }],
+                isError: true,
+              };
+            }
+          } catch {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: `Invalid agent URL: ${agent.url}` }) }],
+              isError: true,
+            };
+          }
+        }
+
+        const adagentsJson: Record<string, unknown> = {
+          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          authorized_agents: authorizedAgents,
+          properties: propertyItems,
+        };
+        if (contact) {
+          adagentsJson.contact = contact;
+        }
+
+        try {
+          // Check for authoritative lock — reject if domain has a live adagents.json
+          const discoveredProps = await propertyDb.getDiscoveredPropertiesByDomain(publisherDomain);
+          if (discoveredProps.length > 0) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "Cannot edit authoritative property (managed via adagents.json)" }) }],
+              isError: true,
+            };
+          }
+
+          const existing = await propertyDb.getHostedPropertyByDomain(publisherDomain);
+
+          if (existing) {
+            const editSummary = (args?.edit_summary as string) || 'MCP community edit';
+            const { property, revision_number } = await propertyDb.editCommunityProperty(publisherDomain, {
+              adagents_json: adagentsJson,
+              edit_summary: editSummary,
+              editor_user_id: authContext.sub,
+              editor_email: authContext.email,
+              editor_name: authContext.email,
+            });
+
+            const oldPropRevision = revision_number > 1
+              ? await propertyDb.getPropertyRevision(publisherDomain, revision_number - 1)
+              : null;
+
+            // Fire-and-forget: notify then review (review runs even if notification fails)
+            notifyRegistryEdit({
+              entity_type: 'property',
+              domain: publisherDomain,
+              editor_email: authContext.email,
+              edit_summary: editSummary,
+              revision_number,
+            }).catch((err) => { logger.error({ err }, 'MCP: Property edit notification failed'); return null; })
+              .then((slack_thread_ts) => {
+                reviewRegistryEdit({
+                  entity_type: 'property',
+                  domain: publisherDomain,
+                  editor_user_id: authContext.sub,
+                  editor_email: authContext.email,
+                  edit_summary: editSummary,
+                  old_snapshot: oldPropRevision?.snapshot || {},
+                  new_snapshot: property as unknown as Record<string, unknown>,
+                  revision_number,
+                  slack_thread_ts: slack_thread_ts || undefined,
+                }).catch((err) => logger.error({ err }, 'MCP: Property edit review failed'));
+              });
+
+            return {
+              content: [{
+                type: "resource",
+                resource: {
+                  uri: `property://${encodeURIComponent(publisherDomain)}`,
+                  mimeType: "application/json",
+                  text: JSON.stringify({
+                    success: true,
+                    action: "edited",
+                    publisher_domain: property.publisher_domain,
+                    revision_number,
+                  }, null, 2),
+                },
+              }],
+            };
+          }
+
+          // Create new community property with pending review
+          const property = await propertyDb.createCommunityProperty({
+            publisher_domain: publisherDomain,
+            adagents_json: adagentsJson,
+            source_type: 'community',
+          }, {
+            user_id: authContext.sub,
+            email: authContext.email,
+            name: authContext.email,
+          });
+
+          // Fire-and-forget: notify then review (review runs even if notification fails)
+          notifyRegistryCreate({
+            entity_type: 'property',
+            domain: property.publisher_domain,
+            editor_email: authContext.email,
+          }).catch((err) => { logger.error({ err }, 'MCP: New property notification failed'); return null; })
+            .then((slack_thread_ts) => {
+              reviewNewRecord({
+                entity_type: 'property',
+                domain: property.publisher_domain,
+                editor_user_id: authContext.sub,
+                editor_email: authContext.email,
+                snapshot: property as unknown as Record<string, unknown>,
+                slack_thread_ts: slack_thread_ts || undefined,
+              }).catch((err) => logger.error({ err }, 'MCP: New property review failed'));
+            });
+
+          return {
+            content: [{
+              type: "resource",
+              resource: {
+                uri: `property://${encodeURIComponent(publisherDomain)}`,
+                mimeType: "application/json",
+                text: JSON.stringify({
+                  success: true,
+                  action: "created",
+                  publisher_domain: property.publisher_domain,
+                  review_status: "pending",
+                }, null, 2),
+              },
+            }],
+          };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          return {
+            content: [{ type: "text", text: JSON.stringify({ error: message }) }],
+            isError: true,
+          };
+        }
+      }
+
       default:
         return {
           content: [
@@ -1079,6 +1859,51 @@ export class MCPToolHandler {
             uri,
             mimeType: "application/json",
             text: JSON.stringify(publishers, null, 2),
+          },
+        ],
+      };
+    }
+
+    // Handle properties resource
+    if (uri === "properties://registry") {
+      const properties = await propertyDb.getAllPropertiesForRegistry({ limit: 500 });
+      const result = properties.map(p => ({
+        domain: p.domain,
+        source: p.source,
+        property_count: p.property_count,
+        agent_count: p.agent_count,
+        verified: p.verified,
+      }));
+
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    }
+
+    // Handle brands resource
+    if (uri === "brands://registry") {
+      const brands = await brandDb.getAllBrandsForRegistry({ limit: 500 });
+      const result = brands.map(b => ({
+        domain: b.domain,
+        brand_name: b.brand_name,
+        source: b.source,
+        has_manifest: b.has_manifest,
+        house_domain: b.house_domain,
+        keller_type: b.keller_type,
+      }));
+
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };

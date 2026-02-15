@@ -15,8 +15,8 @@ export { configureMCPRoutes } from './routes.js';
 export {
   mcpAuthMiddleware,
   getOAuthProtectedResourceMetadata,
-  getAuthorizationServerMetadataUrl,
   MCP_AUTH_ENABLED,
+  AUTHKIT_ISSUER,
   type MCPAuthContext,
   type MCPAuthenticatedRequest,
 } from './auth.js';
