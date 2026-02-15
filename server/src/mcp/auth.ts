@@ -174,6 +174,7 @@ export async function mcpAuthMiddleware(
     res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}"`);
     res.status(401).json({
       jsonrpc: '2.0',
+      id: null,
       error: {
         code: -32001,
         message: 'Authentication required. Provide a bearer token.',
@@ -202,6 +203,7 @@ export async function mcpAuthMiddleware(
     );
     res.status(401).json({
       jsonrpc: '2.0',
+      id: null,
       error: {
         code: -32001,
         message: 'Invalid or expired token.',
@@ -234,6 +236,7 @@ export function getOAuthProtectedResourceMetadata(req: Request) {
     resource: `${baseUrl}/mcp`,
     authorization_servers: [AUTHKIT_ISSUER],
     bearer_methods_supported: ['header'],
+    scopes_supported: ['openid', 'profile', 'email'],
   };
 }
 

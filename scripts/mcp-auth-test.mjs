@@ -95,8 +95,8 @@ async function main() {
       const error = url.searchParams.get('error');
 
       if (error) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<h2>❌ Auth Error: ${error}</h2><p>${url.searchParams.get('error_description')}</p>`);
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`Auth Error: ${error}\n${url.searchParams.get('error_description')}`);
         server.close();
         reject(new Error(error));
         return;

@@ -42,6 +42,7 @@ const mcpRateLimiter = rateLimit({
   handler: (req, res) => {
     res.status(429).json({
       jsonrpc: '2.0',
+      id: null,
       error: {
         code: -32000,
         message: 'Rate limit exceeded. Try again later.',
@@ -116,9 +117,10 @@ export function configureMCPRoutes(router: Router): void {
     async (req: MCPAuthenticatedRequest, res: Response) => {
       setCORSHeaders(res);
 
+      let server: ReturnType<typeof createUnifiedMCPServer> | null = null;
       try {
         // Create a new MCP server and transport for each request (stateless mode)
-        const server = createUnifiedMCPServer(req.mcpAuth);
+        server = createUnifiedMCPServer(req.mcpAuth);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // Stateless mode - no sessions
         });
@@ -143,12 +145,16 @@ export function configureMCPRoutes(router: Router): void {
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
+            id: null,
             error: {
               code: -32603,
               message: 'Internal server error',
             },
           });
         }
+      } finally {
+        // Clean up per-request server to avoid event listener leaks
+        await server?.close().catch(() => {});
       }
     }
   );
@@ -156,10 +162,12 @@ export function configureMCPRoutes(router: Router): void {
   // MCP GET handler - not supported in stateless mode
   router.get('/mcp', (req: Request, res: Response) => {
     setCORSHeaders(res);
+    res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({
       jsonrpc: '2.0',
+      id: null,
       error: {
-        code: -32601,
+        code: -32000,
         message: 'Method not allowed. Use POST for MCP requests.',
       },
     });
@@ -168,10 +176,12 @@ export function configureMCPRoutes(router: Router): void {
   // MCP DELETE handler - not needed in stateless mode
   router.delete('/mcp', (req: Request, res: Response) => {
     setCORSHeaders(res);
+    res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({
       jsonrpc: '2.0',
+      id: null,
       error: {
-        code: -32601,
+        code: -32000,
         message: 'Method not allowed. Session management not supported in stateless mode.',
       },
     });
@@ -187,4 +197,5 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id');
+  res.setHeader('Access-Control-Expose-Headers', 'WWW-Authenticate, Content-Type');
 }

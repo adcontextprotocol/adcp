@@ -28,6 +28,19 @@ import { createLogger } from "./logger.js";
 
 const logger = createLogger('mcp-tools');
 
+const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/**
+ * Normalize and validate a domain string.
+ * Strips protocol prefix and trailing slashes, lowercases, then validates format.
+ * Returns null if invalid.
+ */
+function sanitizeDomain(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+  return DOMAIN_REGEX.test(cleaned) ? cleaned : null;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -1286,7 +1299,7 @@ export class MCPToolHandler {
 
       // Property tools
       case "resolve_property": {
-        const domain = (args?.domain as string)?.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+        const domain = sanitizeDomain(args?.domain as string);
         if (!domain) {
           return {
             content: [
@@ -1444,18 +1457,11 @@ export class MCPToolHandler {
           };
         }
 
-        const domain = (args?.domain as string)?.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+        const domain = sanitizeDomain(args?.domain as string);
         const brandName = args?.brand_name as string;
         if (!domain || !brandName) {
           return {
             content: [{ type: "text", text: JSON.stringify({ error: "domain and brand_name are required" }) }],
-            isError: true,
-          };
-        }
-        const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
-        if (!domainRegex.test(domain)) {
-          return {
-            content: [{ type: "text", text: JSON.stringify({ error: "Invalid domain format" }) }],
             isError: true,
           };
         }
@@ -1468,8 +1474,27 @@ export class MCPToolHandler {
           };
         }
 
+        // Validate brand_manifest size if provided
+        if (args?.brand_manifest) {
+          const manifestJson = JSON.stringify(args.brand_manifest);
+          if (manifestJson.length > 50000) {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "brand_manifest exceeds 50KB size limit" }) }],
+              isError: true,
+            };
+          }
+        }
+
         try {
           const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+          // Reject edits to authoritative brands (managed via brand.json)
+          if (existing && existing.source_type === 'brand_json') {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: "Cannot edit authoritative brand (managed via brand.json)" }) }],
+              isError: true,
+            };
+          }
 
           if (existing) {
             // Edit existing brand with revision tracking
@@ -1597,17 +1622,10 @@ export class MCPToolHandler {
           };
         }
 
-        const publisherDomain = (args?.publisher_domain as string)?.replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
+        const publisherDomain = sanitizeDomain(args?.publisher_domain as string);
         if (!publisherDomain) {
           return {
-            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required" }) }],
-            isError: true,
-          };
-        }
-        const propDomainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
-        if (!propDomainRegex.test(publisherDomain)) {
-          return {
-            content: [{ type: "text", text: JSON.stringify({ error: "Invalid domain format" }) }],
+            content: [{ type: "text", text: JSON.stringify({ error: "publisher_domain is required or invalid format" }) }],
             isError: true,
           };
         }
@@ -1623,6 +1641,24 @@ export class MCPToolHandler {
         const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
         const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
         const contact = args?.contact as { name?: string; email?: string } | undefined;
+
+        // Validate agent URLs
+        for (const agent of authorizedAgents) {
+          try {
+            const parsed = new URL(agent.url);
+            if (parsed.protocol !== 'https:') {
+              return {
+                content: [{ type: "text", text: JSON.stringify({ error: `Agent URL must use HTTPS: ${agent.url}` }) }],
+                isError: true,
+              };
+            }
+          } catch {
+            return {
+              content: [{ type: "text", text: JSON.stringify({ error: `Invalid agent URL: ${agent.url}` }) }],
+              isError: true,
+            };
+          }
+        }
 
         const adagentsJson: Record<string, unknown> = {
           $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
