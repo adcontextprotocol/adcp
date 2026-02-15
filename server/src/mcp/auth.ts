@@ -31,12 +31,11 @@ const logger = createLogger('mcp-auth');
  * AUTHKIT_ISSUER: The AuthKit issuer URL
  *                 Defaults to AgenticAdvertising.org's AuthKit domain
  *
- * MCP_RESOURCE_ID: Optional resource identifier for audience validation.
- *                  WorkOS MCP tokens use issuer validation only by default.
- *                  Set this only if you need strict audience checking.
+ * WORKOS_CLIENT_ID: The WorkOS application client ID, used as the expected audience
+ *                   for JWT validation. WorkOS tokens set aud to the app's client_id.
  */
 export const AUTHKIT_ISSUER = process.env.AUTHKIT_ISSUER || 'https://clean-gradient-46.authkit.app';
-const MCP_RESOURCE_ID = process.env.MCP_RESOURCE_ID;
+const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
 
 /**
  * Whether MCP auth is enabled
@@ -52,9 +51,12 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJWKS() {
   if (!jwks && MCP_AUTH_ENABLED) {
+    if (!WORKOS_CLIENT_ID) {
+      logger.warn('MCP Auth: WORKOS_CLIENT_ID not set — audience validation disabled');
+    }
     const jwksUrl = new URL(`${AUTHKIT_ISSUER}/oauth2/jwks`);
     jwks = createRemoteJWKSet(jwksUrl);
-    logger.info({ jwksUrl: jwksUrl.toString() }, 'MCP Auth: JWKS configured');
+    logger.info({ jwksUrl: jwksUrl.toString(), audienceValidation: !!WORKOS_CLIENT_ID }, 'MCP Auth: JWKS configured');
   }
   return jwks;
 }
@@ -109,13 +111,13 @@ async function validateToken(token: string): Promise<MCPAuthContext> {
   }
 
   // Build verification options
+  // WorkOS tokens set aud to the app's WORKOS_CLIENT_ID
   const verifyOptions: { issuer: string; audience?: string } = {
     issuer: AUTHKIT_ISSUER,
   };
 
-  // Only validate audience if MCP_RESOURCE_ID is configured
-  if (MCP_RESOURCE_ID) {
-    verifyOptions.audience = MCP_RESOURCE_ID;
+  if (WORKOS_CLIENT_ID) {
+    verifyOptions.audience = WORKOS_CLIENT_ID;
   }
 
   const { payload } = await jwtVerify(token, jwksInstance, verifyOptions);
