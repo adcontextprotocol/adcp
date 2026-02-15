@@ -450,12 +450,17 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       try {
         response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools);
       } catch (error) {
-        logger.error({ error }, "Addie Chat: Error processing message");
-
         // Provide user-friendly error message based on error type
-        const errorMessage = isRetriesExhaustedError(error)
-          ? `${error.reason}. Please try again in a moment.`
-          : "I'm sorry, I encountered an error. Please try again.";
+        let errorMessage: string;
+        if (error instanceof Error && error.message.includes('prompt is too long')) {
+          logger.warn({ error }, "Addie Chat: Conversation exceeded context limit");
+          errorMessage = "This conversation is too long for me to process. Please start a new conversation and I'll be happy to help!";
+        } else {
+          logger.error({ error }, "Addie Chat: Error processing message");
+          errorMessage = isRetriesExhaustedError(error)
+            ? `${error.reason}. Please try again in a moment.`
+            : "I'm sorry, I encountered an error. Please try again.";
+        }
 
         response = {
           text: errorMessage,
