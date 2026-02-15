@@ -1230,17 +1230,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   /**
    * POST /api/admin/stripe-mismatches/resolve
    * Resolve a Stripe customer mismatch by choosing which customer to keep for an org.
-   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean }
+   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean, stripe_metadata_customer_id?: string }
    *
    * - use_db: Keep the customer currently in DB, archive/delete the other customer
    * - use_stripe_metadata: Use the customer from Stripe metadata, archive/delete the DB customer
    * - delete_inactive: If true, delete the inactive customer in Stripe (only if it has no activity)
+   * - stripe_metadata_customer_id: Target a specific metadata customer (needed when org has 3+ Stripe customers)
    *
    * Safety: Will refuse to proceed if both customers have activity (open invoices, subscriptions, paid invoices)
    */
   apiRouter.post("/stripe-mismatches/resolve", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { org_id, action, delete_inactive } = req.body;
+      const { org_id, action, delete_inactive, stripe_metadata_customer_id } = req.body;
 
       if (!org_id || !action) {
         return res.status(400).json({
@@ -1273,9 +1274,11 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
-      // Find the mismatch for this org
+      // Find the specific mismatch for this org (and specific metadata customer if provided)
       const mismatches = await orgDb.findStripeCustomerMismatches();
-      const mismatch = mismatches.find(m => m.org_id === org_id);
+      const mismatch = stripe_metadata_customer_id
+        ? mismatches.find(m => m.org_id === org_id && m.stripe_metadata_customer_id === stripe_metadata_customer_id)
+        : mismatches.find(m => m.org_id === org_id);
 
       if (!mismatch) {
         return res.status(404).json({
