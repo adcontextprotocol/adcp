@@ -1262,14 +1262,16 @@ async function handleUserMessage({
       }
     }
   } catch (error) {
-    logger.error({ error }, 'Addie Bolt: Error processing message');
-
     // Provide user-friendly error message based on error type
     let errorMessage: string;
-    if (isRetriesExhaustedError(error)) {
-      errorMessage = `${error.reason}. Please try again in a moment.`;
+    if (error instanceof Error && error.message.includes('prompt is too long')) {
+      logger.warn({ error }, 'Addie Bolt: Conversation exceeded context limit');
+      errorMessage = "This conversation is too long for me to process. Please start a new chat and I'll be happy to help!";
     } else {
-      errorMessage = "I'm sorry, I encountered an error. Please try again.";
+      logger.error({ error }, 'Addie Bolt: Error processing message');
+      errorMessage = isRetriesExhaustedError(error)
+        ? `${error.reason}. Please try again in a moment.`
+        : "I'm sorry, I encountered an error. Please try again.";
     }
 
     response = {
