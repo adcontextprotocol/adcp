@@ -510,7 +510,7 @@
             <a href="/community/people" class="hub-card-link">Browse all people &rarr;</a>
           </div>
           <div class="suggestions-scroll">
-            ${suggested_connections.map(person => renderPersonCard(person, { showConnectBtn: true, compact: true, context: person.suggestion_context || '' })).join('')}
+            ${suggested_connections.map(person => renderPersonCard(person, { showConnectBtn: true, compact: true, context: person.suggestion_context || (profile_completeness < 100 ? 'Complete your profile to improve matches' : '') })).join('')}
           </div>
         </div>
       ` : '';
