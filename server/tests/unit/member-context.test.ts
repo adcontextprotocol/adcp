@@ -492,6 +492,12 @@ describe('MemberContext interface completeness', () => {
           'Help with VAST troubleshooting',
         ],
       },
+      community_profile: {
+        is_public: true,
+        slug: 'john-doe',
+        completeness: 70,
+        github_username: 'johndoe',
+      },
     };
 
     const result = formatMemberContextForPrompt(fullContext);
@@ -513,5 +519,86 @@ describe('MemberContext interface completeness', () => {
     expect(result).toContain('(leader)');
     expect(result).toContain('Enterprise Annual');
     expect(result).not.toContain('Slack account is not yet linked'); // Should NOT appear since slack_linked is true
+
+    // Verify community profile section
+    expect(result).toContain('Community profile: Public');
+    expect(result).toContain('john-doe');
+    expect(result).toContain('GitHub: johndoe');
+  });
+});
+
+describe('community_profile formatting', () => {
+  it('should show public profile with GitHub username', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'test@example.com',
+        first_name: 'Test',
+      },
+      community_profile: {
+        is_public: true,
+        slug: 'test-user',
+        completeness: 80,
+        github_username: 'testuser',
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('Community profile: Public (80% complete)');
+    expect(result).toContain('/community/people/test-user');
+    expect(result).toContain('GitHub: testuser');
+    expect(result).not.toContain('Not linked');
+  });
+
+  it('should show non-public profile with encouragement', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'test@example.com',
+        first_name: 'Test',
+      },
+      community_profile: {
+        is_public: false,
+        slug: null,
+        completeness: 20,
+        github_username: null,
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('Community profile: Not yet public');
+    expect(result).toContain('Encourage them to visit');
+    expect(result).toContain('GitHub: Not linked');
+    expect(result).toContain('suggest linking their GitHub username');
+  });
+
+  it('should show GitHub nudge when username is missing on public profile', () => {
+    const context: MemberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      workos_user: {
+        workos_user_id: 'user_123',
+        email: 'test@example.com',
+        first_name: 'Test',
+      },
+      community_profile: {
+        is_public: true,
+        slug: 'test-user',
+        completeness: 60,
+        github_username: null,
+      },
+    };
+
+    const result = formatMemberContextForPrompt(context);
+    expect(result).toContain('Community profile: Public');
+    expect(result).toContain('GitHub: Not linked');
+    expect(result).toContain('/community/profile/edit');
   });
 });

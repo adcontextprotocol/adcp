@@ -84,6 +84,42 @@ async function getPendingContentForUser(
   return { total, by_committee: byCommittee };
 }
 
+/**
+ * Fetch community profile data for a user.
+ * Shared between getMemberContext (Slack) and getWebMemberContext (web chat).
+ */
+async function fetchCommunityProfile(
+  workosUserId: string
+): Promise<MemberContext['community_profile'] | undefined> {
+  const result = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
+    `SELECT
+      COALESCE(is_public, false) as is_public,
+      slug,
+      github_username,
+      (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
+       + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
+       + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
+       + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
+       + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
+       + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
+       + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
+      ) * 10 as completeness
+     FROM users WHERE workos_user_id = $1`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    is_public: row.is_public,
+    slug: row.slug,
+    completeness: Number(row.completeness),
+    github_username: row.github_username,
+  };
+}
+
 // Cache for member context to avoid repeated lookups for the same user
 // TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
 const MEMBER_CONTEXT_CACHE_TTL_MS = 30 * 60 * 1000;
@@ -484,34 +520,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 
     // Community profile
     try {
-      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
-        `SELECT
-          COALESCE(is_public, false) as is_public,
-          slug,
-          github_username,
-          (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
-           + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
-           + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
-           + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
-           + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
-           + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
-           + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
-          ) * 10 as completeness
-         FROM users WHERE workos_user_id = $1`,
-        [workosUserId]
-      );
-      const row = communityResult.rows[0];
-      if (row) {
-        context.community_profile = {
-          is_public: row.is_public,
-          slug: row.slug,
-          completeness: Number(row.completeness),
-          github_username: row.github_username,
-        };
-      }
+      context.community_profile = await fetchCommunityProfile(workosUserId);
     } catch (err) {
       // Non-critical - community profile columns may not exist yet
     }
@@ -767,34 +776,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
 
     // Step 10b: Community profile
     try {
-      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
-        `SELECT
-          COALESCE(is_public, false) as is_public,
-          slug,
-          github_username,
-          (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
-           + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
-           + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
-           + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
-           + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
-           + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
-           + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
-           + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
-          ) * 10 as completeness
-         FROM users WHERE workos_user_id = $1`,
-        [workosUserId]
-      );
-      const row = communityResult.rows[0];
-      if (row) {
-        context.community_profile = {
-          is_public: row.is_public,
-          slug: row.slug,
-          completeness: Number(row.completeness),
-          github_username: row.github_username,
-        };
-      }
+      context.community_profile = await fetchCommunityProfile(workosUserId);
     } catch (error) {
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get community profile');
     }
