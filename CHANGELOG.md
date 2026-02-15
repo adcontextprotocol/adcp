@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.0-beta.4
+
+### Minor Changes
+
+- 2957069: Add promoted-offerings-requirement enum and `requires` property to promoted offerings asset requirements (#1040)
+
+### Patch Changes
+
+- acd9db7: Addie quality improvements from thread review: accurate spec claims, fictional example names, ads.txt knowledge, shorter deflections, agent type awareness, and session-level web feedback prompt.
+- 2b79286: Clarify that end_date is exclusive in get_media_buy_delivery documentation
+
+  - Add explicit "inclusive" and "exclusive" labels to start_date/end_date parameters
+  - Add callout explaining start-inclusive, end-exclusive behavior with examples
+  - Add examples table showing common date range patterns
+  - Reinforce behavior in Query Behavior section
+
 ## 3.0.0-beta.3
 
 ### Major Changes
