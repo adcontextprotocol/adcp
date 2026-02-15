@@ -7,6 +7,7 @@
  * Flow:
  * - User adds Addie to Claude Desktop or ChatGPT
  * - Client discovers auth server via /.well-known/oauth-protected-resource
+ * - Client registers via WorkOS dynamic client registration (RFC 7591)
  * - User redirected to WorkOS login, gets access token
  * - Client retries with bearer token
  *
@@ -14,7 +15,6 @@
  * - Token signature verification
  * - Issuer matches AuthKit
  * - Expiry (exp) and not-before (nbf) claims
- * - Audience matches resource identifier
  *
  * Can be disabled via MCP_AUTH_DISABLED=true for local development.
  */
@@ -31,12 +31,12 @@ const logger = createLogger('mcp-auth');
  * AUTHKIT_ISSUER: The AuthKit issuer URL
  *                 Defaults to AgenticAdvertising.org's AuthKit domain
  *
- * MCP_RESOURCE_ID: The resource identifier for this MCP server
- *                  Used as the expected audience in JWT validation
- *                  Defaults to production MCP endpoint
+ * MCP_RESOURCE_ID: Optional resource identifier for audience validation.
+ *                  WorkOS MCP tokens use issuer validation only by default.
+ *                  Set this only if you need strict audience checking.
  */
-const AUTHKIT_ISSUER = process.env.AUTHKIT_ISSUER || 'https://clean-gradient-46.authkit.app';
-const MCP_RESOURCE_ID = process.env.MCP_RESOURCE_ID || 'https://agenticadvertising.org/mcp';
+export const AUTHKIT_ISSUER = process.env.AUTHKIT_ISSUER || 'https://clean-gradient-46.authkit.app';
+const MCP_RESOURCE_ID = process.env.MCP_RESOURCE_ID;
 
 /**
  * Whether MCP auth is enabled
@@ -168,8 +168,10 @@ export async function mcpAuthMiddleware(
   if (!token) {
     logger.debug('MCP Auth: No bearer token provided');
 
-    // Return WWW-Authenticate header per MCP spec
-    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}"`);
+    // Return WWW-Authenticate header per RFC 6750 / MCP spec
+    // Omit error code when token is simply missing (per RFC 6750 Section 3.1)
+    const metadataUrl = getResourceMetadataUrl(req);
+    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}"`);
     res.status(401).json({
       jsonrpc: '2.0',
       error: {
@@ -194,7 +196,10 @@ export async function mcpAuthMiddleware(
   } catch (error) {
     logger.warn({ error }, 'MCP Auth: Token validation failed');
 
-    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${getResourceMetadataUrl(req)}", error="invalid_token"`);
+    const metadataUrl = getResourceMetadataUrl(req);
+    res.setHeader('WWW-Authenticate',
+      `Bearer error="invalid_token", error_description="Invalid or expired token", resource_metadata="${metadataUrl}"`
+    );
     res.status(401).json({
       jsonrpc: '2.0',
       error: {
@@ -229,16 +234,6 @@ export function getOAuthProtectedResourceMetadata(req: Request) {
     resource: `${baseUrl}/mcp`,
     authorization_servers: [AUTHKIT_ISSUER],
     bearer_methods_supported: ['header'],
-    scopes_supported: ['openid', 'profile', 'email'],
   };
 }
 
-/**
- * OAuth Authorization Server Metadata URL
- *
- * Returns the URL where clients can find OAuth server metadata.
- * WorkOS AuthKit provides this at /.well-known/openid-configuration
- */
-export function getAuthorizationServerMetadataUrl(): string {
-  return `${AUTHKIT_ISSUER}/.well-known/openid-configuration`;
-}

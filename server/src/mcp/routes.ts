@@ -3,12 +3,13 @@
  *
  * Configures Express routes for the unified MCP server:
  * - POST /mcp - MCP JSON-RPC endpoint (auth required, rate limited)
- * - GET /.well-known/oauth-protected-resource - OAuth resource metadata
+ * - GET /.well-known/oauth-protected-resource - OAuth resource metadata (RFC 9728)
+ * - GET /.well-known/oauth-authorization-server - Proxied WorkOS AS metadata (RFC 8414)
  * - OPTIONS /mcp - CORS preflight
  *
- * Authentication required via OAuth 2.1 (WorkOS AuthKit).
- * Unauthenticated requests receive 401 with OAuth discovery metadata,
- * allowing MCP clients to initiate the OAuth flow.
+ * Authentication via OAuth 2.1 (WorkOS AuthKit).
+ * WorkOS handles dynamic client registration (RFC 7591), authorization,
+ * and token issuance. This server validates bearer tokens via JWKS.
  */
 
 import type { Router, Request, Response } from 'express';
@@ -20,6 +21,7 @@ import {
   mcpAuthMiddleware,
   getOAuthProtectedResourceMetadata,
   MCP_AUTH_ENABLED,
+  AUTHKIT_ISSUER,
   type MCPAuthenticatedRequest,
 } from './auth.js';
 
@@ -52,12 +54,50 @@ const mcpRateLimiter = rateLimit({
  * Configure MCP routes on an Express router
  */
 export function configureMCPRoutes(router: Router): void {
-  // OAuth Protected Resource Metadata
+  // OAuth Protected Resource Metadata (RFC 9728)
   // MCP clients use this to discover where to authenticate
-  router.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
+  const servePRM = (req: Request, res: Response) => {
     const metadata = getOAuthProtectedResourceMetadata(req);
-    logger.debug({ metadata }, 'MCP: Serving resource metadata');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
     res.json(metadata);
+  };
+
+  router.get('/.well-known/oauth-protected-resource', servePRM);
+  // Path-specific PRM per RFC 9728 (for /mcp resource path)
+  router.get('/.well-known/oauth-protected-resource/mcp', servePRM);
+
+  // OAuth Authorization Server Metadata proxy (RFC 8414)
+  // Proxies WorkOS AuthKit metadata for clients that check the resource server's
+  // domain rather than following the authorization_servers URL directly.
+  let asMetadataCache: { data: unknown; expiresAt: number } | null = null;
+  const AS_METADATA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  router.get('/.well-known/oauth-authorization-server', async (req: Request, res: Response) => {
+    try {
+      const now = Date.now();
+      if (asMetadataCache && now < asMetadataCache.expiresAt) {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json(asMetadataCache.data);
+        return;
+      }
+
+      const response = await fetch(
+        `${AUTHKIT_ISSUER}/.well-known/oauth-authorization-server`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (!response.ok) {
+        logger.error({ status: response.status }, 'MCP: Failed to fetch AS metadata');
+        res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
+        return;
+      }
+      const metadata = await response.json();
+      asMetadataCache = { data: metadata, expiresAt: now + AS_METADATA_CACHE_TTL_MS };
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(metadata);
+    } catch (error) {
+      logger.error({ error }, 'MCP: Error proxying AS metadata');
+      res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
+    }
   });
 
   // CORS preflight for MCP endpoint
