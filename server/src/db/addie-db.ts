@@ -891,6 +891,7 @@ export class AddieDatabase {
          AND (
            fetch_status = 'pending'
            OR (fetch_status = 'success' AND last_fetched_at < NOW() - $1::integer * INTERVAL '1 day')
+           OR (fetch_status = 'failed' AND last_fetched_at < NOW() - INTERVAL '6 hours')
          )
        ORDER BY
          CASE WHEN fetch_status = 'pending' THEN 0 ELSE 1 END,

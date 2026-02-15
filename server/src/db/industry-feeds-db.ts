@@ -369,13 +369,10 @@ export async function getPendingRssPerspectives(limit: number = 10): Promise<Rss
        AND NOT EXISTS (
          SELECT 1 FROM addie_knowledge k
          WHERE k.source_url = p.external_url
-           AND k.fetch_status = 'success'
-       )
-       AND NOT EXISTS (
-         SELECT 1 FROM addie_knowledge k
-         WHERE k.source_url = p.external_url
-           AND k.fetch_status = 'failed'
-           AND k.last_fetched_at > NOW() - INTERVAL '6 hours'
+           AND (
+             k.fetch_status = 'success'
+             OR (k.fetch_status = 'failed' AND k.last_fetched_at > NOW() - INTERVAL '6 hours')
+           )
        )
      ORDER BY p.published_at DESC NULLS LAST
      LIMIT $1`,
@@ -448,8 +445,7 @@ export async function getFeedStats(): Promise<FeedStats> {
         WHERE p.source_type = 'rss'
           AND p.status = 'published'
           AND p.published_at > NOW() - INTERVAL '14 days'
-          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status = 'success')
-          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status = 'failed' AND k.last_fetched_at > NOW() - INTERVAL '6 hours')
+          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND (k.fetch_status = 'success' OR (k.fetch_status = 'failed' AND k.last_fetched_at > NOW() - INTERVAL '6 hours')))
        ) as pending_processing,
        (SELECT COUNT(*) FROM perspectives p
         JOIN addie_knowledge k ON k.source_url = p.external_url

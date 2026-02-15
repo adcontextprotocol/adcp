@@ -1477,11 +1477,10 @@ export class WorkingGroupDatabase {
       `SELECT cd.* FROM committee_documents cd
        JOIN working_groups wg ON wg.id = cd.working_group_id
        WHERE wg.status = 'active'
-         AND cd.index_status IN ('pending', 'success')
          AND cd.document_type IN ('google_doc', 'google_sheet')
          AND (
-           cd.last_indexed_at IS NULL
-           OR cd.last_indexed_at < NOW() - INTERVAL '1 hour'
+           (cd.index_status IN ('pending', 'success') AND (cd.last_indexed_at IS NULL OR cd.last_indexed_at < NOW() - INTERVAL '1 hour'))
+           OR (cd.index_status = 'failed' AND cd.last_indexed_at < NOW() - INTERVAL '6 hours')
          )
        ORDER BY cd.last_indexed_at ASC NULLS FIRST
        LIMIT $1`,
