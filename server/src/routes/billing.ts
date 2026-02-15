@@ -1231,11 +1231,12 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   /**
    * POST /api/admin/stripe-mismatches/resolve
    * Resolve a Stripe customer mismatch by choosing which customer to keep for an org.
-   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean }
+   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean, stripe_metadata_customer_id?: string }
    *
    * - use_db: Keep the customer currently in DB, archive/delete the other customer
    * - use_stripe_metadata: Use the customer from Stripe metadata, archive/delete the DB customer
    * - delete_inactive: If true, delete the inactive customer in Stripe (only if it has no activity)
+   * - stripe_metadata_customer_id: Target a specific metadata customer (needed when org has 3+ Stripe customers)
    *
    * Safety: Will refuse to proceed if both customers have activity (open invoices, subscriptions, paid invoices)
    */
