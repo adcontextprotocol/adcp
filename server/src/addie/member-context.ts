@@ -223,6 +223,7 @@ export interface MemberContext {
     is_public: boolean;
     slug: string | null;
     completeness: number;  // 0-100
+    github_username: string | null;
   };
 
   /** Whether the Slack user is linked to their AgenticAdvertising.org account */
@@ -483,10 +484,11 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 
     // Community profile
     try {
-      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number }>(
+      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
         `SELECT
           COALESCE(is_public, false) as is_public,
           slug,
+          github_username,
           (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
            + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
            + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
@@ -507,6 +509,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
           is_public: row.is_public,
           slug: row.slug,
           completeness: Number(row.completeness),
+          github_username: row.github_username,
         };
       }
     } catch (err) {
@@ -764,10 +767,11 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
 
     // Step 10b: Community profile
     try {
-      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number }>(
+      const communityResult = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
         `SELECT
           COALESCE(is_public, false) as is_public,
           slug,
+          github_username,
           (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
            + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
            + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
@@ -788,6 +792,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
           is_public: row.is_public,
           slug: row.slug,
           completeness: Number(row.completeness),
+          github_username: row.github_username,
         };
       }
     } catch (error) {
@@ -1051,6 +1056,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     } else {
       lines.push('');
       lines.push('Community profile: Not yet public. Encourage them to visit https://agenticadvertising.org/community to set up their profile and join the people directory.');
+    }
+    if (context.community_profile.github_username) {
+      lines.push(`GitHub: ${context.community_profile.github_username}`);
+    } else {
+      lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/community/profile/edit to make it visible on their community profile.');
     }
   }
 
