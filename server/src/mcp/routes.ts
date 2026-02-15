@@ -118,7 +118,7 @@ export function configureMCPRoutes(router: Router): void {
 
       try {
         // Create a new MCP server and transport for each request (stateless mode)
-        const server = createUnifiedMCPServer();
+        const server = createUnifiedMCPServer(req.mcpAuth);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: undefined, // Stateless mode - no sessions
         });
