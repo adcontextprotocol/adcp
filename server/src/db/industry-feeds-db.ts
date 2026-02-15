@@ -348,8 +348,15 @@ export async function createRssPerspectivesBatch(articles: RssArticleInput[]): P
 }
 
 /**
- * Get RSS perspectives that need content processing
- * (published but not yet in knowledge base, excluding failed ones)
+ * Get RSS perspectives that need content processing.
+ *
+ * Includes:
+ * - New articles with no addie_knowledge entry yet
+ * - Failed articles ready for retry (failed > 6 hours ago, published within last 14 days)
+ *
+ * Excludes:
+ * - Successfully processed articles
+ * - Recently failed articles (cooling off for 6 hours before retry)
  */
 export async function getPendingRssPerspectives(limit: number = 10): Promise<RssPerspective[]> {
   const result = await query<RssPerspective & { feed_name: string }>(
@@ -358,10 +365,17 @@ export async function getPendingRssPerspectives(limit: number = 10): Promise<Rss
      JOIN industry_feeds f ON p.feed_id = f.id
      WHERE p.source_type = 'rss'
        AND p.status = 'published'
+       AND p.published_at > NOW() - INTERVAL '14 days'
        AND NOT EXISTS (
          SELECT 1 FROM addie_knowledge k
          WHERE k.source_url = p.external_url
-           AND k.fetch_status IN ('success', 'failed')
+           AND k.fetch_status = 'success'
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM addie_knowledge k
+         WHERE k.source_url = p.external_url
+           AND k.fetch_status = 'failed'
+           AND k.last_fetched_at > NOW() - INTERVAL '6 hours'
        )
      ORDER BY p.published_at DESC NULLS LAST
      LIMIT $1`,
@@ -433,7 +447,9 @@ export async function getFeedStats(): Promise<FeedStats> {
         JOIN industry_feeds f ON p.feed_id = f.id
         WHERE p.source_type = 'rss'
           AND p.status = 'published'
-          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status IN ('success', 'failed'))
+          AND p.published_at > NOW() - INTERVAL '14 days'
+          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status = 'success')
+          AND NOT EXISTS (SELECT 1 FROM addie_knowledge k WHERE k.source_url = p.external_url AND k.fetch_status = 'failed' AND k.last_fetched_at > NOW() - INTERVAL '6 hours')
        ) as pending_processing,
        (SELECT COUNT(*) FROM perspectives p
         JOIN addie_knowledge k ON k.source_url = p.external_url
