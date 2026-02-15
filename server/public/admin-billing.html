@@ -608,7 +608,7 @@
           } else {
             resultsEl.innerHTML = data.organizations.map(org => `
               <div class="search-result-item" onclick="selectOrg('${customerId}', '${org.workos_organization_id}', '${org.name.replace(/'/g, "\\'")}', '${org.stripe_customer_id || ''}')">
-                <div class="search-result-name">${escapeHtml(org.name)}</div>
+                <div class="search-result-name">${escapeHtml(org.name)}${org.is_personal ? ' <span style="color: var(--color-text-muted); font-size: 0.85em;">(personal)</span>' : ''}</div>
                 ${org.email_domain ? `<div class="search-result-domain">${org.email_domain}</div>` : ''}
                 ${org.stripe_customer_id ? `<div class="search-result-linked">Linked to ${org.stripe_customer_id} (will replace)</div>` : ''}
               </div>
@@ -1071,6 +1071,7 @@
             org_id: mismatch.org_id,
             action: action,
             delete_inactive: deleteInactive,
+            stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
           }),
         });
 
@@ -1116,13 +1117,14 @@
               org_id: mismatch.org_id,
               action: mismatch.suggested_action,
               delete_inactive: true,
+              stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
             }),
           });
 
           if (response.ok) {
             resolved++;
             // Remove from array
-            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id);
+            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id && m.stripe_metadata_customer_id === mismatch.stripe_metadata_customer_id);
             if (idx !== -1) allMismatches.splice(idx, 1);
           } else {
             console.error('Auto-resolve failed for', mismatch.org_name, await response.text());

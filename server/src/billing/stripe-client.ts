@@ -998,6 +998,56 @@ export async function createAndSendInvoice(
   }
 }
 
+/**
+ * Resend an existing open invoice to the customer's billing email
+ */
+export async function resendInvoice(invoiceId: string): Promise<{
+  success: boolean;
+  hosted_invoice_url?: string;
+  error?: string;
+}> {
+  if (!stripe) {
+    return { success: false, error: 'Stripe not initialized' };
+  }
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    if (invoice.status !== 'open') {
+      return { success: false, error: `Invoice status is "${invoice.status}" — can only resend open invoices` };
+    }
+
+    const sent = await stripe.invoices.sendInvoice(invoiceId);
+    logger.info({ invoiceId, customerEmail: sent.customer_email }, 'Resent invoice');
+    return { success: true, hosted_invoice_url: sent.hosted_invoice_url || undefined };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ err: error, invoiceId }, 'Failed to resend invoice');
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Update the billing email on a Stripe customer
+ */
+export async function updateCustomerEmail(
+  customerId: string,
+  newEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!stripe) {
+    return { success: false, error: 'Stripe not initialized' };
+  }
+
+  try {
+    await stripe.customers.update(customerId, { email: newEmail });
+    logger.info({ customerId, newEmail }, 'Updated customer billing email');
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ err: error, customerId }, 'Failed to update customer email');
+    return { success: false, error: msg };
+  }
+}
+
 export interface CheckoutSessionData {
   priceId: string;
   customerId?: string; // Existing Stripe customer ID
@@ -1100,9 +1150,13 @@ export async function createCheckoutSession(
       workosOrganizationId: data.workosOrganizationId,
     }, 'Created checkout session');
 
+    if (!session.url) {
+      logger.error({ sessionId: session.id }, 'Checkout session created but URL is missing');
+      throw new Error('Stripe created checkout session but returned no URL');
+    }
     return {
       sessionId: session.id,
-      url: session.url || '',
+      url: session.url,
     };
   } catch (error) {
     logger.error({ err: error, data }, 'Error creating checkout session');

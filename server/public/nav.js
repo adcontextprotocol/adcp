@@ -113,33 +113,10 @@
       }
     }
 
-    // Build Registry dropdown with submenu (Members, Agents, Brands, Publishers)
+    // Registry URLs used in Projects dropdown and mobile menu
     const agentsUrl = isLocal ? '/registry' : `${aaoBaseUrl}/registry`;
     const brandsUrl = isLocal ? '/brands' : `${aaoBaseUrl}/brands`;
     const publishersUrl = isLocal ? '/publishers' : `${aaoBaseUrl}/publishers`;
-    const isRegistryActive = currentPath === '/members' || currentPath.startsWith('/members/') ||
-                              currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers';
-    const registryDropdown = membershipEnabled
-      ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isRegistryActive ? 'active' : ''}">
-            Registry
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
-              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-            </svg>
-          </button>
-          <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
-            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
-            <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
-            <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-            <div class="navbar__dropdown-divider"></div>
-            <div class="navbar__dropdown-mcp">
-              <span class="navbar__mcp-badge">MCP</span>
-              <span class="navbar__mcp-text">All data available via MCP</span>
-            </div>
-          </div>
-        </div>`
-      : '';
 
     // Build about dropdown (only on beta site - links to trade association)
     // Includes About page, Membership page, and Governance page
@@ -149,7 +126,7 @@
     const aboutDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${currentPath === '/about' || currentPath === '/membership' || currentPath === '/governance' ? 'active' : ''}">
-            AgenticAdvertising.org
+            About
             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
               <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
             </svg>
@@ -182,19 +159,17 @@
             <a href="${brandUrlLocal}" class="navbar__dropdown-item ${currentPath === '/brand' || currentPath.startsWith('/brand/') ? 'active' : ''}">brand.json</a>
             <div class="navbar__dropdown-divider"></div>
             <span class="navbar__dropdown-header-text">Registry</span>
+            <div class="navbar__dropdown-search">
+              <input type="search" class="navbar__dropdown-search-input" id="registrySearchInput"
+                     placeholder="Search registries..." autocomplete="off" aria-label="Search brands, publishers, and properties" />
+              <div class="navbar__dropdown-search-results" id="registrySearchResults" role="listbox" aria-label="Search results"></div>
+            </div>
             <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
             <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
             <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
             <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           </div>
         </div>`;
-
-    // Events link (no dropdown - just links to events calendar)
-    const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
-    const isEventsActive = currentPath.startsWith('/events');
-    const eventsLink = membershipEnabled
-      ? `<a href="${eventsUrl}" class="navbar__link ${isEventsActive ? 'active' : ''}">Events</a>`
-      : '';
 
     // Build "The Latest" dropdown
     const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
@@ -216,24 +191,34 @@
         </div>`
       : '';
 
-    // Build committees dropdown
+    // Build "Participate" dropdown (combines Events + Committees)
+    const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
+    const isEventsActive = currentPath.startsWith('/events');
     const committeesBaseUrl = isLocal ? '/committees' : 'https://agenticadvertising.org/committees';
     const meetingsUrl = isLocal ? '/meetings' : 'https://agenticadvertising.org/meetings';
     const workingGroupsUrl = `${committeesBaseUrl}?type=working_group`;
     const councilsUrl = `${committeesBaseUrl}?type=council`;
     const chaptersUrl = `${committeesBaseUrl}?type=chapter`;
     const gatheringsUrl = `${committeesBaseUrl}?type=industry_gathering`;
+    const communityHubUrl = isLocal ? '/community' : `${aaoBaseUrl}/community`;
+    const communityPeopleUrl = isLocal ? '/community/people' : `${aaoBaseUrl}/community/people`;
+    const isCommunityActive = currentPath.startsWith('/community');
     const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
-    const committeesDropdown = membershipEnabled
+    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive;
+    const participateDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
-          <button class="navbar__link navbar__dropdown-trigger ${isCommitteesActive ? 'active' : ''}">
-            Committees
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M6 9l6 6 6-6"/>
+          <button class="navbar__link navbar__dropdown-trigger ${isParticipateActive ? 'active' : ''}">
+            Participate
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="margin-left: 4px;">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
             </svg>
           </button>
           <div class="navbar__dropdown navbar__dropdown--nav">
-            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>
+            <a href="${communityHubUrl}" class="navbar__dropdown-item ${currentPath === '/community' ? 'active' : ''}">Community hub</a>
+            <a href="${communityPeopleUrl}" class="navbar__dropdown-item ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>
+            <div class="navbar__dropdown-divider"></div>
+            <a href="${eventsUrl}" class="navbar__dropdown-item ${isEventsActive ? 'active' : ''}">Events</a>
+            <a href="${committeesBaseUrl}" class="navbar__dropdown-item ${currentPath === '/committees' ? 'active' : ''}">Committees</a>
             <a href="${meetingsUrl}" class="navbar__dropdown-item ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>
             <div class="navbar__dropdown-divider"></div>
             <a href="${workingGroupsUrl}" class="navbar__dropdown-item">Working Groups</a>
@@ -261,24 +246,15 @@
             </a>
             <div class="navbar__links-desktop">
               ${projectsDropdown}
-              ${eventsLink}
               ${latestDropdown}
-              ${committeesDropdown}
+              ${participateDropdown}
               ${aboutDropdown}
             </div>
           </div>
           <div class="navbar__items navbar__items--right">
-            <div class="navbar__search" id="globalSearch" role="search">
-              <svg class="navbar__search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="search" class="navbar__search-input" id="navSearchInput"
-                     placeholder="Search registries..."
-                     autocomplete="off" aria-label="Search brands, publishers, and properties" />
-              <div class="navbar__search-results" id="navSearchResults" role="listbox" aria-label="Search results"></div>
-            </div>
             <div class="navbar__links-desktop">
               <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
               <a href="${docsUrl}" class="navbar__link">Docs</a>
-              <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
             </div>
             ${authSection}
             <button class="navbar__search-mobile-btn" id="mobileSearchBtn" aria-label="Search">
@@ -302,25 +278,27 @@
           <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
           <a href="${brandsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
-          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/perspectives" class="navbar__link navbar__link--indent ${currentPath === '/latest/perspectives' ? 'active' : ''}">Perspectives</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/learning" class="navbar__link navbar__link--indent ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
-          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Committees</span>` : ''}
-          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">All Committees</a>` : ''}
+          ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Participate</span>` : ''}
+          ${membershipEnabled ? `<a href="${communityHubUrl}" class="navbar__link navbar__link--indent ${currentPath === '/community' ? 'active' : ''}">Community hub</a>` : ''}
+          ${membershipEnabled ? `<a href="${communityPeopleUrl}" class="navbar__link navbar__link--indent ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>` : ''}
+          ${membershipEnabled ? `<a href="${eventsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/events' ? 'active' : ''}">Events</a>` : ''}
+          ${membershipEnabled ? `<a href="${committeesBaseUrl}" class="navbar__link navbar__link--indent ${currentPath === '/committees' ? 'active' : ''}">Committees</a>` : ''}
           ${membershipEnabled ? `<a href="${meetingsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/meetings' ? 'active' : ''}">Meetings</a>` : ''}
           ${membershipEnabled ? `<a href="${workingGroupsUrl}" class="navbar__link navbar__link--indent">Working Groups</a>` : ''}
           ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
           ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           ${membershipEnabled ? `<a href="${gatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
-          <a href="${aboutUrl}" class="navbar__link ${currentPath === '/about' ? 'active' : ''}">About</a>
+          <span class="navbar__link navbar__link--header">About</span>
+          <a href="${aboutUrl}" class="navbar__link navbar__link--indent ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
           <a href="${governanceUrl}" class="navbar__link navbar__link--indent ${currentPath === '/governance' ? 'active' : ''}">Governance</a>
           <a href="/chat" class="navbar__link ${currentPath === '/chat' ? 'active' : ''}">Ask Addie</a>
           <a href="${docsUrl}" class="navbar__link">Docs</a>
-          <a href="https://github.com/adcontextprotocol/adcp" target="_blank" rel="noopener noreferrer" class="navbar__link">GitHub</a>
         </div>
         <div class="navbar__search-overlay" id="searchOverlay">
           <div class="navbar__search-overlay-header">
@@ -578,6 +556,55 @@
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: #6b7280;
+      }
+
+      /* Search inside dropdown */
+      .navbar__dropdown-search {
+        padding: 0.375rem 0.75rem;
+        position: relative;
+      }
+
+      .navbar__dropdown-search-input {
+        width: 100%;
+        padding: 5px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        font-size: 0.8125rem;
+        font-family: inherit;
+        background: #f9fafb;
+        color: #000;
+        outline: none;
+        transition: border-color 0.2s;
+        box-sizing: border-box;
+      }
+
+      .navbar__dropdown-search-input::placeholder {
+        color: #9ca3af;
+      }
+
+      .navbar__dropdown-search-input:focus {
+        border-color: var(--aao-primary, #1a36b4);
+        background: #fff;
+      }
+
+      .navbar__dropdown-search-input::-webkit-search-cancel-button {
+        -webkit-appearance: none;
+      }
+
+      .navbar__dropdown-search-results {
+        display: none;
+        max-height: 280px;
+        overflow-y: auto;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 0.375rem;
+      }
+
+      .navbar__dropdown-search-results.open {
+        display: block;
+      }
+
+      .navbar__dropdown-wrapper--pinned .navbar__dropdown--nav {
+        display: block;
       }
 
       .navbar__dropdown-item--danger {
@@ -861,70 +888,7 @@
         gap: 1.5rem;
       }
 
-      /* ========== Global Search ========== */
-      .navbar__search {
-        position: relative;
-        flex: 0 1 280px;
-      }
-
-      .navbar__search-icon {
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #9ca3af;
-        pointer-events: none;
-        z-index: 1;
-      }
-
-      .navbar__search-input {
-        width: 100%;
-        padding: 6px 12px 6px 34px;
-        border: 1px solid #e5e7eb;
-        border-radius: 9999px;
-        font-size: 0.8125rem;
-        font-family: inherit;
-        background: #f9fafb;
-        color: #000;
-        transition: all 0.2s;
-        outline: none;
-      }
-
-      .navbar__search-input::placeholder {
-        color: #9ca3af;
-      }
-
-      .navbar__search-input:focus {
-        border-color: var(--aao-primary, #1a36b4);
-        background: #fff;
-        box-shadow: 0 0 0 3px rgba(26, 54, 180, 0.1);
-      }
-
-      /* Hide default search cancel button in WebKit browsers */
-      .navbar__search-input::-webkit-search-cancel-button {
-        -webkit-appearance: none;
-      }
-
-      .navbar__search-results {
-        display: none;
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 0;
-        right: 0;
-        min-width: 340px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        max-height: 400px;
-        overflow-y: auto;
-        z-index: 1001;
-      }
-
-      .navbar__search-results.open {
-        display: block;
-      }
-
+      /* ========== Search Results (shared by dropdown + mobile overlay) ========== */
       .navbar__search-group {
         padding: 4px 0;
       }
@@ -1098,9 +1062,6 @@
           display: flex;
         }
 
-        .navbar__search {
-          display: none;
-        }
 
         .navbar__search-mobile-btn {
           display: block;
@@ -1113,18 +1074,16 @@
 
       /* Dark mode for search */
       @media (prefers-color-scheme: dark) {
-        .navbar__search-input {
+        .navbar__dropdown-search-input {
           background: #374151;
           border-color: #4b5563;
           color: #fff;
         }
-        .navbar__search-input:focus {
+        .navbar__dropdown-search-input:focus {
           background: #1f2937;
           border-color: var(--color-primary-400, #60a5fa);
-          box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
         }
-        .navbar__search-results {
-          background: #1f2937;
+        .navbar__dropdown-search-results {
           border-color: #374151;
         }
         .navbar__search-item {
@@ -1153,18 +1112,16 @@
         }
       }
 
-      [data-theme="dark"] .navbar__search-input {
+      [data-theme="dark"] .navbar__dropdown-search-input {
         background: #374151;
         border-color: #4b5563;
         color: #fff;
       }
-      [data-theme="dark"] .navbar__search-input:focus {
+      [data-theme="dark"] .navbar__dropdown-search-input:focus {
         background: #1f2937;
         border-color: var(--color-primary-400, #60a5fa);
-        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
       }
-      [data-theme="dark"] .navbar__search-results {
-        background: #1f2937;
+      [data-theme="dark"] .navbar__dropdown-search-results {
         border-color: #374151;
       }
       [data-theme="dark"] .navbar__search-item {
@@ -1524,11 +1481,11 @@
       if (mobileMenu && mobileMenu.classList.contains('open')) {
         toggleMobileMenu(false);
       }
-      // Close search results if clicking outside search
-      const searchContainer = document.getElementById('globalSearch');
-      const searchResults = document.getElementById('navSearchResults');
-      if (searchResults && searchContainer && !searchContainer.contains(e.target)) {
-        searchResults.classList.remove('open');
+      // Close registry search results if clicking outside
+      const regSearchResults = document.getElementById('registrySearchResults');
+      const regSearchInput = document.getElementById('registrySearchInput');
+      if (regSearchResults && regSearchInput && !regSearchInput.contains(e.target) && !regSearchResults.contains(e.target)) {
+        regSearchResults.classList.remove('open');
       }
     });
 
@@ -1539,9 +1496,11 @@
         if (mobileMenu && mobileMenu.classList.contains('open')) {
           toggleMobileMenu(false);
         }
-        // Close search
-        const searchResults = document.getElementById('navSearchResults');
-        if (searchResults) searchResults.classList.remove('open');
+        // Close registry search and unpin dropdown
+        const regSearchEl = document.getElementById('registrySearchInput');
+        const regResults = document.getElementById('registrySearchResults');
+        if (regResults) regResults.classList.remove('open');
+        if (regSearchEl) regSearchEl.blur();
         const searchOverlay = document.getElementById('searchOverlay');
         if (searchOverlay && searchOverlay.classList.contains('open')) {
           searchOverlay.classList.remove('open');
@@ -1553,8 +1512,8 @@
 
   // Global search functionality
   function setupGlobalSearch() {
-    const searchInput = document.getElementById('navSearchInput');
-    const searchResults = document.getElementById('navSearchResults');
+    const registrySearchInput = document.getElementById('registrySearchInput');
+    const registrySearchResults = document.getElementById('registrySearchResults');
     const mobileSearchBtn = document.getElementById('mobileSearchBtn');
     const searchOverlay = document.getElementById('searchOverlay');
     const mobileSearchInput = document.getElementById('mobileSearchInput');
@@ -1701,13 +1660,44 @@
       });
     }
 
-    // Desktop search
-    if (searchInput && searchResults) {
-      searchInput.addEventListener('input', function() {
-        handleInput(searchInput, searchResults);
+    // Registry search inside Projects dropdown
+    if (registrySearchInput && registrySearchResults) {
+      // Pin the dropdown open while search input is focused or has results
+      const dropdownWrapper = registrySearchInput.closest('.navbar__dropdown-wrapper');
+
+      function pinDropdown(pin) {
+        if (dropdownWrapper) {
+          dropdownWrapper.classList.toggle('navbar__dropdown-wrapper--pinned', pin);
+        }
+      }
+
+      registrySearchInput.addEventListener('focus', function() {
+        pinDropdown(true);
       });
-      searchInput.addEventListener('keydown', function(e) {
-        handleKeydown(e, searchResults);
+
+      registrySearchInput.addEventListener('blur', function() {
+        // Delay to allow click on search results
+        setTimeout(function() {
+          if (!registrySearchInput.matches(':focus')) {
+            pinDropdown(false);
+            registrySearchResults.classList.remove('open');
+          }
+        }, 200);
+      });
+
+      // Stop click events from bubbling (prevents dropdown close)
+      registrySearchInput.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+      registrySearchResults.addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+
+      registrySearchInput.addEventListener('input', function() {
+        handleInput(registrySearchInput, registrySearchResults);
+      });
+      registrySearchInput.addEventListener('keydown', function(e) {
+        handleKeydown(e, registrySearchResults);
       });
     }
 

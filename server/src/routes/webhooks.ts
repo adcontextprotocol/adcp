@@ -27,6 +27,7 @@ import {
   type LumaWebhookPayload,
 } from '../luma/client.js';
 import { eventsDb } from '../db/events-db.js';
+import { CommunityDatabase } from '../db/community-db.js';
 import {
   upsertEmailContact,
   parseEmailAddress,
@@ -906,7 +907,7 @@ async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void
 
   // Find our registration by Luma guest ID
   const regResult = await pool.query(
-    `SELECT id, event_id FROM event_registrations WHERE luma_guest_id = $1`,
+    `SELECT id, event_id, workos_user_id FROM event_registrations WHERE luma_guest_id = $1`,
     [guest.api_id]
   );
 
@@ -932,6 +933,17 @@ async function handleLumaGuestUpdated(payload: LumaWebhookPayload): Promise<void
   if (guest.checked_in_at) {
     await eventsDb.checkInAttendee(registration.id);
     logger.info({ registrationId: registration.id, lumaGuestId: guest.api_id }, 'Attendee checked in via Luma');
+
+    // Award community points for actual attendance (fire-and-forget)
+    if (registration.workos_user_id) {
+      const communityDb = new CommunityDatabase();
+      communityDb.awardPoints(registration.workos_user_id, 'event_attended', 25, registration.event_id, 'event').catch(err => {
+        logger.error({ err, userId: registration.workos_user_id }, 'Failed to award event attendance points');
+      });
+      communityDb.checkAndAwardBadges(registration.workos_user_id, 'event').catch(err => {
+        logger.error({ err, userId: registration.workos_user_id }, 'Failed to check event badges');
+      });
+    }
   }
 }
 

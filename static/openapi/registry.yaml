@@ -592,6 +592,9 @@ paths:
                     type: string
                   domain:
                     type: string
+                  file_status:
+                    type: number
+                    description: HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)
                 required:
                   - error
                   - domain

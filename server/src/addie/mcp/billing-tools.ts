@@ -14,6 +14,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   getPriceByLookupKey,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
@@ -64,7 +65,7 @@ If the user doesn't have an account, tell them to sign up first.`,
         },
         customer_email: {
           type: 'string',
-          description: 'Customer email address (optional, will pre-fill checkout)',
+          description: 'Customer email address (optional fallback — the authenticated user email is preferred and used automatically)',
         },
       },
       required: ['lookup_key'],
@@ -229,7 +230,13 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
     }
 
-    logger.info({ lookupKey, orgId, hasEmail: !!customerEmail }, 'Addie: Creating payment link');
+    // Use actual member email from context, falling back to AI-provided email.
+    // This prevents hallucinated emails (e.g., user@example.com) from being used.
+    const effectiveEmail = memberContext?.workos_user?.email
+      || memberContext?.slack_user?.email
+      || customerEmail;
+
+    logger.info({ lookupKey, orgId, hasEmail: !!effectiveEmail }, 'Addie: Creating payment link');
 
     try {
       // First get the price ID from the lookup key
@@ -244,10 +251,25 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       // Look up org to get Stripe customer ID and discount info
       const org = await orgDb.getOrganization(orgId);
 
+      // Ensure a Stripe customer exists with org metadata before creating the
+      // checkout session so that subscription webhooks can link the payment.
+      let customerId: string | undefined;
+      if (effectiveEmail) {
+        customerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+          createStripeCustomer({
+            email: effectiveEmail,
+            name: org?.name || 'Unknown',
+            metadata: { workos_organization_id: orgId },
+          })
+        ) || undefined;
+      } else {
+        customerId = org?.stripe_customer_id || undefined;
+      }
+
       const session = await createCheckoutSession({
         priceId,
-        customerId: org?.stripe_customer_id || undefined,
-        customerEmail: org?.stripe_customer_id ? undefined : customerEmail,
+        customerId: customerId || undefined,
+        customerEmail: customerId ? undefined : effectiveEmail,
         successUrl: 'https://agenticadvertising.org/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}',
         cancelUrl: 'https://agenticadvertising.org/dashboard?checkout=cancelled',
         workosOrganizationId: orgId,

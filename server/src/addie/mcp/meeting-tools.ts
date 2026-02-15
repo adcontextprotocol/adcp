@@ -448,7 +448,7 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
   },
   {
     name: 'add_meeting_attendee',
-    description: `Add someone to a meeting. Use this when someone asks to add a specific person to a scheduled meeting.`,
+    description: `Add someone to a meeting. Use this when someone asks to add a specific person to a scheduled meeting. When add_to_series is true, adds them to all upcoming meetings in the same series.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -463,6 +463,10 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
         name: {
           type: 'string',
           description: 'Name of person to add',
+        },
+        add_to_series: {
+          type: 'boolean',
+          description: 'If true and the meeting belongs to a recurring series, add the person to all upcoming meetings in the series',
         },
       },
       required: ['meeting_id', 'email'],
@@ -1286,6 +1290,7 @@ export function createMeetingToolHandlers(
     const inputId = input.meeting_id as string;
     const email = input.email as string;
     const name = input.name as string | undefined;
+    const addToSeries = input.add_to_series === true;
 
     // Try to find by our UUID first, then by Zoom meeting ID
     let meeting = await meetingsDb.getMeetingById(inputId);
@@ -1297,14 +1302,32 @@ export function createMeetingToolHandlers(
     }
 
     try {
-      // Use meeting.id (our UUID) not the inputId (might be Zoom ID)
+      // If adding to series and meeting has a series_id, add to all upcoming meetings
+      if (addToSeries && meeting.series_id) {
+        const result = await meetingService.addAttendeeToSeries(meeting.series_id, [
+          { email, name },
+        ]);
+
+        if (result.addedToMeetings > 0) {
+          let msg = `✅ Added ${name || email} to ${result.addedToMeetings} upcoming meeting(s) in the series **${meeting.title}**.`;
+          if (result.errors.length > 0) {
+            msg += `\n\n⚠️ Some calendar updates failed: ${result.errors.join('; ')}`;
+          }
+          return msg;
+        } else {
+          return `${name || email} was already on the invite list for all upcoming meetings in this series.`;
+        }
+      }
+
+      // Single meeting add
       const result = await meetingService.addAttendeesToMeeting(meeting.id, [
         { email, name },
       ]);
 
       if (result.addedCount > 0) {
         const calendarNote = meeting.google_calendar_event_id ? ' Calendar invite sent.' : '';
-        return `✅ Added ${name || email} to **${meeting.title}**.${calendarNote}`;
+        const seriesHint = meeting.series_id ? ' (This is a recurring meeting — use add_to_series: true to add to all upcoming occurrences.)' : '';
+        return `✅ Added ${name || email} to **${meeting.title}**.${calendarNote}${seriesHint}`;
       } else {
         return `${name || email} was already on the invite list.`;
       }

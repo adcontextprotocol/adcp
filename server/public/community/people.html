@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>People - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-hover) 100%);
+      color: white;
+      padding: var(--space-12) 0;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: var(--text-4xl);
+      margin-bottom: var(--space-2);
+    }
+
+    .header .subtitle {
+      font-size: var(--text-lg);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Search section */
+    .search-section {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      padding: var(--space-6);
+      margin-bottom: var(--space-8);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .search-bar {
+      display: flex;
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .search-bar input {
+      flex: 1;
+      padding: var(--space-3) var(--space-4);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-base);
+      transition: var(--transition-colors);
+      background: var(--color-bg-card);
+      color: var(--color-text);
+    }
+
+    .search-bar input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      align-items: center;
+    }
+
+    .filter-select {
+      padding: var(--space-2.5) var(--space-3.5);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      cursor: pointer;
+      min-width: 160px;
+      transition: var(--transition-colors);
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    .filter-input {
+      padding: var(--space-2.5) var(--space-3.5);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-heading);
+      min-width: 140px;
+      transition: var(--transition-colors);
+    }
+
+    .filter-input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    .coffee-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      background: var(--color-gray-100);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      color: var(--color-text-body);
+      white-space: nowrap;
+    }
+
+    .coffee-toggle:hover {
+      border-color: var(--color-brand);
+    }
+
+    .coffee-toggle.active {
+      background: var(--color-primary-100);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .filter-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 var(--space-1.5);
+      background: var(--color-brand);
+      color: white;
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+
+    .filter-count.hidden {
+      display: none;
+    }
+
+    /* Results */
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .results-count {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .people-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-6);
+    }
+
+    .loading {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-brand);
+      border-radius: var(--radius-full);
+      animation: spin 1s linear infinite;
+      margin: 0 auto var(--space-4);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .no-results {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .no-results h3 {
+      margin-bottom: var(--space-2);
+      color: var(--color-text-heading);
+    }
+
+    @media (max-width: 1024px) {
+      .people-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .people-grid {
+        grid-template-columns: 1fr;
+      }
+      .search-bar {
+        flex-direction: column;
+      }
+      .filters-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .filter-select,
+      .filter-input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>People</h1>
+    <p class="subtitle">Connect with professionals across the advertising ecosystem</p>
+  </div>
+
+  <!-- Content -->
+  <div class="container">
+    <!-- Search section -->
+    <div class="search-section">
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search by name, role, or expertise...">
+      </div>
+      <div class="filters-row">
+        <select id="expertise-filter" class="filter-select">
+          <option value="">All expertise</option>
+        </select>
+        <input type="text" id="city-filter" class="filter-input" placeholder="City">
+        <button id="coffee-toggle" class="coffee-toggle" type="button">
+          <span>Open to coffee chats</span>
+        </button>
+        <span id="filter-count" class="filter-count hidden">0</span>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-header" class="results-header" style="display: none;">
+      <span id="results-count" class="results-count"></span>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <span>Loading people...</span>
+    </div>
+
+    <div id="no-results" class="no-results" style="display: none;">
+      <h3>No people found matching your filters</h3>
+      <p>Try adjusting your search or filter criteria</p>
+    </div>
+
+    <div id="people-grid" class="people-grid"></div>
+
+    <div id="load-more-container" style="display: none; text-align: center; padding: var(--space-8) 0;">
+      <button id="load-more-btn" class="btn btn-ghost" onclick="loadMore()">Load more</button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div id="adcp-footer"></div>
+
+  <script src="/nav.js"></script>
+  <script src="/community/person-card.js"></script>
+  <script>
+    let allPeople = [];
+    let totalCount = 0;
+    let currentOffset = 0;
+    const PAGE_SIZE = 50;
+    let currentSearch = '';
+    let currentExpertise = '';
+    let currentCity = '';
+    let currentCoffeeChat = false;
+    let searchTimeout = null;
+    let expertiseOptions = new Set();
+
+    const config = window.__APP_CONFIG__ || { user: null };
+    const currentUserId = config.user?.id || null;
+
+    // Auth check -- community directory requires login
+    if (!config.user) {
+      window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+
+    // ---------------------------------------------------------
+    // Initialise
+    // ---------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof injectPersonCardStyles === 'function') {
+        injectPersonCardStyles();
+      }
+
+      // Restore filters from URL
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('search')) {
+        currentSearch = params.get('search');
+        document.getElementById('search-input').value = currentSearch;
+      }
+      if (params.get('expertise')) {
+        currentExpertise = params.get('expertise');
+      }
+      if (params.get('city')) {
+        currentCity = params.get('city');
+        document.getElementById('city-filter').value = currentCity;
+      }
+      if (params.get('coffee_chat') === 'true') {
+        currentCoffeeChat = true;
+        document.getElementById('coffee-toggle').classList.add('active');
+      }
+
+      // Bind events
+      document.getElementById('search-input').addEventListener('input', onSearchInput);
+      document.getElementById('expertise-filter').addEventListener('change', onExpertiseChange);
+      document.getElementById('city-filter').addEventListener('input', onCityInput);
+      document.getElementById('coffee-toggle').addEventListener('click', onCoffeeToggle);
+
+      // Load expertise tags and people in parallel
+      loadExpertiseTags();
+      loadPeople();
+    });
+
+    // ---------------------------------------------------------
+    // Event handlers
+    // ---------------------------------------------------------
+    function onSearchInput() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        currentSearch = document.getElementById('search-input').value.trim();
+        syncUrlAndFetch();
+      }, 300);
+    }
+
+    function onExpertiseChange() {
+      currentExpertise = document.getElementById('expertise-filter').value;
+      syncUrlAndFetch();
+    }
+
+    function onCityInput() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        currentCity = document.getElementById('city-filter').value.trim();
+        syncUrlAndFetch();
+      }, 300);
+    }
+
+    function onCoffeeToggle() {
+      currentCoffeeChat = !currentCoffeeChat;
+      document.getElementById('coffee-toggle').classList.toggle('active', currentCoffeeChat);
+      syncUrlAndFetch();
+    }
+
+    // ---------------------------------------------------------
+    // URL sync
+    // ---------------------------------------------------------
+    function syncUrlAndFetch() {
+      const params = new URLSearchParams();
+      if (currentSearch) params.set('search', currentSearch);
+      if (currentExpertise) params.set('expertise', currentExpertise);
+      if (currentCity) params.set('city', currentCity);
+      if (currentCoffeeChat) params.set('coffee_chat', 'true');
+
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname;
+      history.replaceState({}, '', newUrl);
+
+      updateFilterCount();
+      showLoading();
+      loadPeople();
+    }
+
+    function updateFilterCount() {
+      let count = 0;
+      if (currentExpertise) count++;
+      if (currentCity) count++;
+      if (currentCoffeeChat) count++;
+      const badge = document.getElementById('filter-count');
+      if (count > 0) {
+        badge.textContent = count;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Data fetching
+    // ---------------------------------------------------------
+    async function loadExpertiseTags() {
+      try {
+        const response = await fetch('/api/community/expertise');
+        if (!response.ok) return;
+        const data = await response.json();
+        const select = document.getElementById('expertise-filter');
+        (data.tags || []).forEach(tag => {
+          const opt = document.createElement('option');
+          opt.value = tag;
+          opt.textContent = tag;
+          select.appendChild(opt);
+        });
+        if (currentExpertise) {
+          select.value = currentExpertise;
+        }
+      } catch (err) {
+        console.error('Failed to load expertise tags:', err);
+      }
+    }
+
+    async function loadPeople(append = false) {
+      try {
+        if (!append) {
+          currentOffset = 0;
+          allPeople = [];
+        }
+
+        const params = new URLSearchParams();
+        if (currentSearch) params.set('search', currentSearch);
+        if (currentExpertise) params.set('expertise', currentExpertise);
+        if (currentCity) params.set('city', currentCity);
+        if (currentCoffeeChat) params.set('coffee_chat', 'true');
+        params.set('limit', String(PAGE_SIZE));
+        params.set('offset', String(currentOffset));
+
+        const response = await fetch(`/api/community/people?${params}`);
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname + window.location.search);
+            return;
+          }
+          throw new Error('Failed to load people');
+        }
+
+        const data = await response.json();
+        const newPeople = data.people || [];
+        allPeople = append ? allPeople.concat(newPeople) : newPeople;
+        totalCount = data.total || allPeople.length;
+        currentOffset = allPeople.length;
+
+        hideLoading();
+        renderPeople();
+      } catch (error) {
+        console.error('Load people error:', error);
+        document.getElementById('loading').innerHTML = 'Failed to load people';
+      }
+    }
+
+    function loadMore() {
+      const btn = document.getElementById('load-more-btn');
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      loadPeople(true).finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Load more';
+      });
+    }
+
+    // ---------------------------------------------------------
+    // Rendering
+    // ---------------------------------------------------------
+    function showLoading() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('loading').innerHTML = '<div class="spinner"></div><span>Loading people...</span>';
+      document.getElementById('people-grid').innerHTML = '';
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('results-header').style.display = 'none';
+    }
+
+    function hideLoading() {
+      document.getElementById('loading').style.display = 'none';
+    }
+
+    function renderPeople() {
+      const grid = document.getElementById('people-grid');
+      const noResults = document.getElementById('no-results');
+      const resultsHeader = document.getElementById('results-header');
+      const resultsCount = document.getElementById('results-count');
+      const loadMoreContainer = document.getElementById('load-more-container');
+
+      if (allPeople.length === 0) {
+        grid.innerHTML = '';
+        noResults.style.display = 'block';
+        resultsHeader.style.display = 'none';
+        loadMoreContainer.style.display = 'none';
+        return;
+      }
+
+      noResults.style.display = 'none';
+      resultsHeader.style.display = 'flex';
+      resultsCount.textContent = `Showing ${allPeople.length} of ${totalCount} people`;
+
+      grid.innerHTML = allPeople.map(person =>
+        renderPersonCard(person)
+      ).join('');
+
+      loadMoreContainer.style.display = allPeople.length < totalCount ? 'block' : 'none';
+    }
+  </script>
+</body>
+</html>

@@ -29,6 +29,8 @@ import {
   createOrgDiscount,
   createCoupon,
   createPromotionCode,
+  resendInvoice,
+  updateCustomerEmail,
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
@@ -64,6 +66,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
@@ -331,6 +334,48 @@ Returns a list of organizations with open or draft invoices.`,
         },
       },
       required: ['query'],
+    },
+  },
+
+  {
+    name: 'resend_invoice',
+    description: `Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.`,
+    usage_hints: 'Pass company_name to look up and resend in one step. Use update_billing_email first if the email needs to change.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        invoice_id: {
+          type: 'string',
+          description: 'Stripe invoice ID (starts with in_) — if you already have it',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name to look up (will find their open invoices)',
+        },
+      },
+    },
+  },
+  {
+    name: 'update_billing_email',
+    description: `Update the billing email on a Stripe customer. Use this when invoices need to go to a different email address (e.g., accounts payable). Can look up by org_id or direct customer_id.`,
+    usage_hints: 'Use before resend_invoice if the email needs to change. Get org_id from get_account.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_...) — will look up Stripe customer',
+        },
+        customer_id: {
+          type: 'string',
+          description: 'Direct Stripe customer ID (cus_...) — use if org_id is not available',
+        },
+        email: {
+          type: 'string',
+          description: 'New billing email address',
+        },
+      },
+      required: ['email'],
     },
   },
 
@@ -822,6 +867,30 @@ Roles: member (default), admin (can manage team)`,
     },
   },
 
+  {
+    name: 'rename_working_group',
+    description: `Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").`,
+    usage_hints: 'Look up current slug first with list_working_groups or list_chapters.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        working_group_slug: {
+          type: 'string',
+          description: 'Current slug of the working group/chapter',
+        },
+        new_name: {
+          type: 'string',
+          description: 'New display name',
+        },
+        new_slug: {
+          type: 'string',
+          description: 'New slug (optional — auto-generated from name if not provided)',
+        },
+      },
+      required: ['working_group_slug', 'new_name'],
+    },
+  },
+
   // ============================================
   // PROSPECT OWNERSHIP & PIPELINE TOOLS
   // ============================================
@@ -1176,10 +1245,18 @@ function formatDate(date: Date): string {
   });
 }
 
-/**
- * Format pending invoice for response
- */
-function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> {
+interface FormattedInvoice {
+  id: string;
+  status: string;
+  amount: string;
+  product: string;
+  sent_to: string;
+  created: string;
+  due_date: string;
+  payment_url: string | null;
+}
+
+function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
   return {
     id: invoice.id,
     status: invoice.status,
@@ -1190,6 +1267,21 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
     due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
     payment_url: invoice.hosted_invoice_url || null,
   };
+}
+
+function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
+  if (pendingInvoices.length === 0) return '';
+  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  for (const inv of pendingInvoices.slice(0, 3)) {
+    const formatted = formatPendingInvoice(inv);
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
+    result += '\n';
+  }
+  if (pendingInvoices.length > 3) {
+    result += `  _... and ${pendingInvoices.length - 3} more (use list_pending_invoices for all)_\n`;
+  }
+  return result;
 }
 
 /**
@@ -1283,6 +1375,171 @@ export function createAdminToolHandlers(
         error: 'Failed to list pending invoices. Please try again.',
       });
     }
+  });
+
+  // Resend an open invoice — by invoice_id or company_name lookup
+  handlers.set('resend_invoice', async (input) => {
+    const invoiceId = input.invoice_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
+
+    // Direct resend by invoice ID
+    if (invoiceId) {
+      if (!invoiceId.startsWith('in_')) {
+        return '❌ Invoice ID must start with in_ (e.g., in_1234567890).';
+      }
+
+      logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+
+      const result = await resendInvoice(invoiceId);
+      if (!result.success) {
+        return `❌ Could not resend invoice: ${result.error}`;
+      }
+
+      let msg = `✅ Invoice ${invoiceId} has been resent.`;
+      if (result.hosted_invoice_url) {
+        msg += `\n\nPayment link: ${result.hosted_invoice_url}`;
+      }
+      return msg;
+    }
+
+    // Lookup by company name
+    if (companyName) {
+      const pool = getPool();
+      const escaped = companyName.replace(/[%_\\]/g, '\\$&');
+      const searchPattern = `%${escaped}%`;
+      const orgResult = await pool.query(
+        `SELECT workos_organization_id, name, stripe_customer_id
+         FROM organizations
+         WHERE is_personal = false
+           AND (LOWER(name) LIKE LOWER($1) ESCAPE '\\' OR LOWER(email_domain) LIKE LOWER($1) ESCAPE '\\')
+         LIMIT 5`,
+        [searchPattern]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return `❌ No organization found matching "${companyName}".`;
+      }
+
+      // Fetch invoices for all orgs with Stripe customers (cache to avoid duplicate API calls)
+      const invoicesByOrg = new Map<string, PendingInvoice[]>();
+      for (const org of orgResult.rows) {
+        if (!org.stripe_customer_id) continue;
+        invoicesByOrg.set(org.workos_organization_id, await getPendingInvoices(org.stripe_customer_id));
+      }
+
+      // Find orgs with open invoices
+      const orgsWithOpen: { org: typeof orgResult.rows[0]; invoices: PendingInvoice[] }[] = [];
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const openInvoices = invoices.filter(inv => inv.status === 'open');
+        if (openInvoices.length > 0) {
+          orgsWithOpen.push({ org, invoices: openInvoices });
+        }
+      }
+
+      // If exactly one org with exactly one open invoice — resend it
+      if (orgsWithOpen.length === 1 && orgsWithOpen[0].invoices.length === 1) {
+        const { org, invoices: openInvoices } = orgsWithOpen[0];
+        const inv = openInvoices[0];
+        logger.info({ invoiceId: inv.id, orgName: org.name }, 'Addie: Admin resending invoice by company lookup');
+
+        const result = await resendInvoice(inv.id);
+        if (!result.success) {
+          return `❌ Found invoice \`${inv.id}\` for ${org.name} but could not resend: ${result.error}`;
+        }
+
+        let msg = `✅ Invoice \`${inv.id}\` for **${org.name}** has been resent.`;
+        msg += `\n**Amount:** ${formatCurrency(inv.amount_due, inv.currency)}`;
+        if (inv.customer_email) msg += `\n**Sent to:** ${inv.customer_email}`;
+        if (result.hosted_invoice_url) msg += `\n**Payment link:** ${result.hosted_invoice_url}`;
+        return msg;
+      }
+
+      // Multiple matches or multiple invoices — list them for the user to choose
+      if (orgsWithOpen.length > 0) {
+        let msg = `Found open invoices for "${companyName}". Which one should I resend?\n\n`;
+        for (const { org, invoices: openInvoices } of orgsWithOpen) {
+          msg += `**${org.name}:**\n`;
+          for (const inv of openInvoices) {
+            const formatted = formatPendingInvoice(inv);
+            msg += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+            if (formatted.sent_to !== 'Unknown') msg += ` → ${formatted.sent_to}`;
+            msg += '\n';
+          }
+        }
+        msg += `\nCall resend_invoice with the specific invoice_id.`;
+        return msg;
+      }
+
+      // No open invoices found — check for drafts and explain
+      const orgNames = orgResult.rows.map((r: { name: string }) => r.name).join(', ');
+      const noStripe = orgResult.rows.filter((r: { stripe_customer_id: string | null }) => !r.stripe_customer_id);
+      let msg = `❌ No open invoices found for "${companyName}".`;
+      if (noStripe.length === orgResult.rows.length) {
+        msg += `\n\nNote: None of the matching organizations (${orgNames}) have a Stripe customer linked.`;
+      } else if (noStripe.length > 0) {
+        msg += `\n\nNote: Some of the matching organizations (${orgNames}) have no Stripe customer linked.`;
+      }
+
+      // Report any draft invoices from the cached results
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const draftInvoices = invoices.filter(inv => inv.status === 'draft');
+        if (draftInvoices.length > 0) {
+          msg += `\n\n**${org.name}** has ${draftInvoices.length} draft invoice(s) that haven't been sent yet:`;
+          for (const inv of draftInvoices) {
+            msg += `\n- \`${inv.id}\` — ${formatCurrency(inv.amount_due, inv.currency)} (draft)`;
+          }
+          msg += `\n\nDraft invoices need to be finalized in Stripe before they can be resent.`;
+        }
+      }
+
+      return msg;
+    }
+
+    return '❌ Please provide either an invoice_id (e.g., in_...) or a company_name to look up.';
+  });
+
+  // Update billing email on a Stripe customer
+  handlers.set('update_billing_email', async (input) => {
+    const orgId = input.org_id as string | undefined;
+    const directCustomerId = input.customer_id as string | undefined;
+    const email = input.email as string;
+
+    if (!email) {
+      return '❌ Email is required.';
+    }
+
+    let customerId = directCustomerId;
+
+    if (customerId && !customerId.startsWith('cus_')) {
+      return '❌ A valid Stripe customer ID (starting with cus_) is required.';
+    }
+
+    // Look up Stripe customer from org if needed
+    if (!customerId && orgId) {
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return `❌ Organization ${orgId} not found.`;
+      }
+      if (!org.stripe_customer_id) {
+        return `❌ Organization "${org.name}" has no Stripe customer linked.`;
+      }
+      customerId = org.stripe_customer_id;
+    }
+
+    if (!customerId) {
+      return '❌ Either org_id or customer_id is required.';
+    }
+
+    logger.info({ customerId, email }, 'Addie: Admin updating billing email');
+
+    const result = await updateCustomerEmail(customerId, email);
+    if (!result.success) {
+      return `❌ Could not update email: ${result.error}`;
+    }
+
+    return `✅ Billing email for customer ${customerId} updated to ${email}. Future invoices will be sent to this address.`;
   });
 
   // Shared handler for get_account and get_organization_details
@@ -1442,6 +1699,7 @@ export function createAdminToolHandlers(
       }
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
+      if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
       response += '\n';
 
       // Membership details (if member or has subscription history)
@@ -1483,12 +1741,7 @@ export function createAdminToolHandlers(
           }
         }
 
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
-          }
-        }
+        response += renderPendingInvoiceSection(pendingInvoices);
 
         // Discount info
         if (org.discount_percent || org.discount_amount_cents) {
@@ -1521,12 +1774,7 @@ export function createAdminToolHandlers(
           response += '\n';
         }
         // Show pending invoices for prospects in negotiating stage too
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
-          }
-        }
+        response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
       }
 
@@ -1976,6 +2224,7 @@ export function createAdminToolHandlers(
       prospect_contact_name?: string;
       enrichment_employee_count?: number;
       enrichment_revenue?: number;
+      stripe_customer_id?: string;
       // Discount fields
       discount_percent?: number;
       discount_amount_cents?: number;
@@ -1989,7 +2238,7 @@ export function createAdminToolHandlers(
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
-              enrichment_employee_count, enrichment_revenue,
+              enrichment_employee_count, enrichment_revenue, stripe_customer_id,
               discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
@@ -2023,7 +2272,7 @@ export function createAdminToolHandlers(
       const newOrgResult = await pool.query(
         `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
                 prospect_contact_email, prospect_contact_name,
-                enrichment_employee_count, enrichment_revenue,
+                enrichment_employee_count, enrichment_revenue, stripe_customer_id,
                 discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
          FROM organizations WHERE workos_organization_id = $1`,
         [createResult.organization.workos_organization_id]
@@ -2238,9 +2487,27 @@ export function createAdminToolHandlers(
             : `$${(org.discount_amount_cents || 0) / 100} off`;
         }
 
+        // Ensure a Stripe customer exists with org metadata before creating the
+        // checkout session. Without this, Stripe creates a new customer during
+        // checkout that has no workos_organization_id metadata, so the subscription
+        // webhook can't link the payment back to the organization.
+        let customerId: string | undefined;
+        if (emailToUse) {
+          customerId = await orgDb.getOrCreateStripeCustomer(org.workos_organization_id, () =>
+            createStripeCustomer({
+              email: emailToUse,
+              name: org.name,
+              metadata: { workos_organization_id: org.workos_organization_id },
+            })
+          ) || undefined;
+        } else {
+          customerId = org.stripe_customer_id;
+        }
+
         const session = await createCheckoutSession({
           priceId: finalProduct.price_id,
-          customerEmail: emailToUse || undefined,
+          customerId: customerId || undefined,
+          customerEmail: customerId ? undefined : (emailToUse || undefined),
           successUrl: `${baseUrl}/dashboard?payment=success`,
           cancelUrl: `${baseUrl}/membership?payment=cancelled`,
           workosOrganizationId: org.workos_organization_id,
@@ -3796,6 +4063,42 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
   // ORGANIZATION MANAGEMENT HANDLERS
   // ============================================
+
+  // Rename a working group / chapter / committee
+  handlers.set('rename_working_group', async (input) => {
+    const slug = input.working_group_slug as string;
+    const newName = input.new_name as string;
+    const newSlug = input.new_slug as string | undefined;
+
+    if (!slug || !newName) {
+      return '❌ Both working_group_slug and new_name are required.';
+    }
+
+    try {
+      const wg = await wgDb.getWorkingGroupBySlug(slug);
+      if (!wg) {
+        return `❌ Working group with slug "${slug}" not found.`;
+      }
+
+      const generatedSlug = newSlug || newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      if (!generatedSlug) {
+        return '❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.';
+      }
+
+      await wgDb.updateWorkingGroup(wg.id, {
+        name: newName,
+        slug: generatedSlug,
+      });
+
+      logger.info({ oldSlug: slug, newSlug: generatedSlug, newName }, 'Addie: Admin renamed working group');
+
+      return `✅ Renamed "${wg.name}" → "${newName}"\n\nSlug: ${slug} → ${generatedSlug}\nType: ${wg.committee_type}`;
+    } catch (error) {
+      logger.error({ error, slug, newName }, 'Addie: Error renaming working group');
+      return '❌ Failed to rename working group. Please try again.';
+    }
+  });
 
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {

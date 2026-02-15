@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My connections - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .conn-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Page header */
+    .conn-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .conn-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .conn-header-count {
+      font-size: var(--text-base);
+      color: var(--color-text-secondary);
+    }
+
+    /* Tab bar */
+    .conn-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: var(--border-2) solid var(--color-border);
+      margin-bottom: var(--space-6);
+    }
+
+    .conn-tab {
+      padding: var(--space-3) var(--space-5);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      background: none;
+      border: none;
+      border-bottom: var(--border-2) solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      transition: var(--transition-colors);
+      white-space: nowrap;
+    }
+
+    .conn-tab:hover {
+      color: var(--color-text-heading);
+    }
+
+    .conn-tab--active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+      font-weight: var(--font-semibold);
+    }
+
+    .conn-tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 var(--space-1.5);
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      border-radius: var(--radius-full);
+      margin-left: var(--space-2);
+    }
+
+    .conn-tab--active .conn-tab-count {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+
+    .conn-tab:not(.conn-tab--active) .conn-tab-count {
+      background: var(--color-gray-100);
+      color: var(--color-text-muted);
+    }
+
+    /* Tab content */
+    .conn-tab-panel {
+      display: none;
+    }
+
+    .conn-tab-panel--active {
+      display: block;
+    }
+
+    /* Connection card grid */
+    .conn-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-4);
+    }
+
+    /* Loading state */
+    .conn-loading {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .conn-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-brand);
+      border-radius: var(--radius-full);
+      animation: spin 1s linear infinite;
+      margin: 0 auto var(--space-4);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Empty states */
+    .conn-empty {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+
+    .conn-empty-icon {
+      font-size: var(--text-4xl);
+      margin-bottom: var(--space-4);
+      opacity: 0.4;
+    }
+
+    .conn-empty h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .conn-empty p {
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-6);
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    @media (max-width: 768px) {
+      .conn-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .conn-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+  <script src="/community/person-card.js"></script>
+
+  <div class="conn-container">
+    <div id="conn-loading" class="conn-loading">
+      <div class="spinner"></div>
+      <p>Loading connections...</p>
+    </div>
+
+    <div id="conn-content" style="display: none;">
+      <div class="conn-header">
+        <h1>My connections</h1>
+        <div id="conn-header-count" class="conn-header-count"></div>
+      </div>
+
+      <div class="conn-tabs" role="tablist">
+        <button class="conn-tab conn-tab--active" role="tab" aria-selected="true"
+                data-tab="connections" onclick="switchTab('connections')">
+          Connections <span class="conn-tab-count" id="tab-count-connections">0</span>
+        </button>
+        <button class="conn-tab" role="tab" aria-selected="false"
+                data-tab="pending" onclick="switchTab('pending')">
+          Pending requests <span class="conn-tab-count" id="tab-count-pending">0</span>
+        </button>
+        <button class="conn-tab" role="tab" aria-selected="false"
+                data-tab="sent" onclick="switchTab('sent')">
+          Sent requests <span class="conn-tab-count" id="tab-count-sent">0</span>
+        </button>
+      </div>
+
+      <div id="panel-connections" class="conn-tab-panel conn-tab-panel--active" role="tabpanel">
+        <div id="grid-connections" class="conn-grid"></div>
+      </div>
+
+      <div id="panel-pending" class="conn-tab-panel" role="tabpanel">
+        <div id="grid-pending" class="conn-grid"></div>
+      </div>
+
+      <div id="panel-sent" class="conn-tab-panel" role="tabpanel">
+        <div id="grid-sent" class="conn-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    // Auth check
+    const config = window.__APP_CONFIG__ || {};
+    if (!config.user) {
+      window.location.href = '/auth/login?return_to=/community/connections';
+    }
+
+    let allConnections = [];
+    let pendingConnections = [];
+    let sentConnections = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      injectPersonCardStyles();
+      loadConnections();
+
+      // Restore tab from hash
+      const hash = window.location.hash.replace('#', '');
+      if (['connections', 'pending', 'sent'].includes(hash)) {
+        switchTab(hash);
+      }
+    });
+
+    async function loadConnections() {
+      try {
+        const [connectionsRes, pendingRes, sentRes] = await Promise.all([
+          fetch('/api/me/connections'),
+          fetch('/api/me/connections/pending'),
+          fetch('/api/me/connections/sent')
+        ]);
+
+        if (connectionsRes.status === 401 || pendingRes.status === 401 || sentRes.status === 401) {
+          window.location.href = '/auth/login?return_to=/community/connections';
+          return;
+        }
+
+        if (!connectionsRes.ok || !pendingRes.ok || !sentRes.ok) {
+          throw new Error('Failed to load connections');
+        }
+
+        const connectionsData = await connectionsRes.json();
+        const pendingData = await pendingRes.json();
+        const sentData = await sentRes.json();
+
+        allConnections = connectionsData.connections || [];
+        pendingConnections = pendingData.connections || [];
+        sentConnections = sentData.connections || [];
+
+        renderAll();
+      } catch (error) {
+        console.error('Load connections error:', error);
+        document.getElementById('conn-loading').innerHTML = `
+          <p>Failed to load connections. <a href="/community/connections" class="ds-link">Try again</a></p>
+        `;
+      }
+    }
+
+    function renderAll() {
+      document.getElementById('conn-loading').style.display = 'none';
+      document.getElementById('conn-content').style.display = 'block';
+
+      // Update counts
+      document.getElementById('tab-count-connections').textContent = allConnections.length;
+      document.getElementById('tab-count-pending').textContent = pendingConnections.length;
+      document.getElementById('tab-count-sent').textContent = sentConnections.length;
+      document.getElementById('conn-header-count').textContent =
+        `${allConnections.length} connection${allConnections.length !== 1 ? 's' : ''}`;
+
+      // Render connections tab
+      const connectionsGrid = document.getElementById('grid-connections');
+      if (allConnections.length === 0) {
+        connectionsGrid.innerHTML = `
+          <div class="conn-empty" style="grid-column: 1 / -1;">
+            <div class="conn-empty-icon">&#128101;</div>
+            <h3>No connections yet</h3>
+            <p>Browse the people directory to find others in the community to connect with.</p>
+            <a href="/community/people" class="btn btn-primary">Browse people</a>
+          </div>
+        `;
+      } else {
+        connectionsGrid.innerHTML = allConnections
+          .map(c => renderConnectionCard(c, 'connections'))
+          .join('');
+      }
+
+      // Render pending tab
+      const pendingGrid = document.getElementById('grid-pending');
+      if (pendingConnections.length === 0) {
+        pendingGrid.innerHTML = `
+          <div class="conn-empty" style="grid-column: 1 / -1;">
+            <div class="conn-empty-icon">&#128232;</div>
+            <h3>No pending requests</h3>
+            <p>When someone sends you a connection request, it will appear here.</p>
+          </div>
+        `;
+      } else {
+        pendingGrid.innerHTML = pendingConnections
+          .map(c => renderConnectionCard(c, 'pending'))
+          .join('');
+      }
+
+      // Render sent tab
+      const sentGrid = document.getElementById('grid-sent');
+      if (sentConnections.length === 0) {
+        sentGrid.innerHTML = `
+          <div class="conn-empty" style="grid-column: 1 / -1;">
+            <div class="conn-empty-icon">&#128228;</div>
+            <h3>No sent requests</h3>
+            <p>When you send a connection request, it will appear here.</p>
+          </div>
+        `;
+      } else {
+        sentGrid.innerHTML = sentConnections
+          .map(c => renderConnectionCard(c, 'sent'))
+          .join('');
+      }
+    }
+
+    function switchTab(tab) {
+      // Update tab buttons
+      document.querySelectorAll('.conn-tab').forEach(btn => {
+        const isActive = btn.dataset.tab === tab;
+        btn.classList.toggle('conn-tab--active', isActive);
+        btn.setAttribute('aria-selected', String(isActive));
+      });
+
+      // Update panels
+      document.querySelectorAll('.conn-tab-panel').forEach(panel => {
+        panel.classList.remove('conn-tab-panel--active');
+      });
+      document.getElementById(`panel-${tab}`).classList.add('conn-tab-panel--active');
+
+      // Update hash
+      window.location.hash = tab;
+    }
+
+    async function handleAccept(connectionId, btn) {
+      const card = btn.closest('.pc-card');
+      btn.disabled = true;
+      btn.textContent = 'Accepting...';
+
+      try {
+        const response = await fetch(`/api/community/connections/${connectionId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'accepted' })
+        });
+
+        if (!response.ok) throw new Error('Failed to accept');
+
+        // Optimistic update: move from pending to connections
+        const idx = pendingConnections.findIndex(c => c.id === connectionId);
+        if (idx !== -1) {
+          const conn = pendingConnections.splice(idx, 1)[0];
+          conn.status = 'accepted';
+          allConnections.push(conn);
+        }
+
+        renderAll();
+      } catch (error) {
+        console.error('Accept error:', error);
+        btn.disabled = false;
+        btn.textContent = 'Accept';
+      }
+    }
+
+    async function handleDecline(connectionId, btn) {
+      const card = btn.closest('.pc-card');
+      btn.disabled = true;
+      btn.textContent = 'Declining...';
+
+      try {
+        const response = await fetch(`/api/community/connections/${connectionId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'declined' })
+        });
+
+        if (!response.ok) throw new Error('Failed to decline');
+
+        // Optimistic update: remove from pending
+        const idx = pendingConnections.findIndex(c => c.id === connectionId);
+        if (idx !== -1) {
+          pendingConnections.splice(idx, 1);
+        }
+
+        renderAll();
+      } catch (error) {
+        console.error('Decline error:', error);
+        btn.disabled = false;
+        btn.textContent = 'Decline';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

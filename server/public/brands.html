@@ -26,8 +26,8 @@
 
         /* MCP Banner */
         .mcp-banner {
-            background: linear-gradient(135deg, var(--color-purple-50) 0%, var(--color-primary-50) 100%);
-            border: 1px solid var(--color-purple-200);
+            background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+            border: 1px solid var(--color-primary-200);
             border-radius: var(--radius-lg);
             padding: var(--space-4) var(--space-6);
             margin-bottom: var(--space-8);
@@ -37,7 +37,7 @@
             flex-wrap: wrap;
         }
         .mcp-banner__badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--gradient-primary-dark);
             color: white;
             padding: var(--space-1) var(--space-3);
             border-radius: var(--radius-md);
@@ -65,7 +65,7 @@
             padding: var(--space-2) var(--space-3);
             font-family: var(--font-mono);
             font-size: var(--text-xs);
-            color: var(--color-purple-700);
+            color: var(--color-primary-700);
         }
 
         /* Stats Bar */
@@ -130,44 +130,152 @@
         .filter-btn.active { background: var(--color-primary-500); border-color: var(--color-primary-500); color: white; }
 
         /* Brand Grid */
-        .brand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-6); }
+        .brand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-6); }
         .brand-card {
             background: var(--color-bg-card);
             border-radius: var(--radius-lg);
-            padding: var(--space-6);
+            padding: var(--space-5);
             box-shadow: var(--shadow-sm);
             transition: var(--transition-all);
             text-decoration: none;
             color: inherit;
             display: block;
-            border-left: 4px solid var(--color-primary-500);
+            border: 1px solid var(--color-border);
             cursor: pointer;
+            position: relative;
         }
-        .brand-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
-        .brand-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4); }
-        .brand-name { font-size: var(--text-lg); font-weight: var(--font-semibold); color: var(--color-text-heading); }
-        .brand-domain { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
-        .status-badge {
+        .brand-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--color-primary-300); }
+
+        /* Card header: logo + name/domain + source badge */
+        .brand-card__header {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+
+        /* Logo container */
+        .brand-card__logo {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            border-radius: var(--radius-md);
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .brand-card__logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .brand-card__logo-letter {
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--text-lg);
+            font-weight: var(--font-bold);
+            color: white;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+
+        /* Identity block (name + domain) */
+        .brand-card__identity {
+            flex: 1;
+            min-width: 0;
+        }
+        .brand-card__name {
+            font-size: var(--text-base);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+            line-height: var(--leading-tight);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .brand-card__domain {
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+            margin-top: var(--space-0.5);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Source badge */
+        .brand-card__source {
             padding: var(--space-1) var(--space-3);
             border-radius: var(--radius-full);
             font-size: var(--text-xs);
             font-weight: var(--font-semibold);
-            text-transform: uppercase;
             white-space: nowrap;
+            flex-shrink: 0;
         }
-        .status-badge.valid { background: var(--color-success-100); color: var(--color-success-700); }
-        .status-badge.neutral { background: var(--color-gray-100); color: var(--color-gray-600); }
-        .brand-meta { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-4); }
-        .stat-item { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
-        .brand-tags { margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap; }
-        .brand-tag {
+        .brand-card__source--valid { background: var(--color-success-100); color: var(--color-success-700); }
+        .brand-card__source--neutral { background: var(--color-gray-100); color: var(--color-gray-600); }
+
+        /* Details row: industry, keller type, color dot */
+        .brand-card__details {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+        }
+        .brand-card__detail-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1.5);
+        }
+        .brand-card__color-dot {
+            width: 14px;
+            height: 14px;
+            min-width: 14px;
+            border-radius: var(--radius-full);
+            border: 1px solid var(--color-border-strong);
             display: inline-block;
-            padding: var(--space-1) var(--space-3);
+        }
+        .brand-card__tag {
+            display: inline-block;
+            padding: var(--space-0.5) var(--space-2);
             background: var(--color-primary-50);
             color: var(--color-primary-700);
             border-radius: var(--radius-full);
             font-size: var(--text-xs);
             font-weight: var(--font-medium);
+        }
+        .brand-card__separator {
+            color: var(--color-border-strong);
+            font-size: var(--text-xs);
+        }
+
+        /* Meta row: manifest, verified, house domain */
+        .brand-card__meta {
+            display: flex;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+            margin-top: var(--space-3);
+            padding-top: var(--space-3);
+            border-top: 1px solid var(--color-border);
+        }
+        .brand-card__meta-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1.5);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+        .brand-card__meta-icon {
+            font-size: var(--text-sm);
+            line-height: 1;
         }
 
         /* Add Brand CTA */
@@ -197,7 +305,7 @@
 
         /* Skeleton animation */
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        .skeleton-bg { background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border-light) 50%, var(--color-bg-subtle) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        .skeleton-bg { background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border) 50%, var(--color-bg-subtle) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
 
         @media (max-width: 768px) {
             .brand-grid { grid-template-columns: 1fr; }
@@ -212,7 +320,7 @@
     <script src="/nav.js"></script>
 
     <header>
-        <h1>Brand Registry</h1>
+        <h1>Brand registry</h1>
         <p class="subtitle">Discover brand identities and brand.json manifests</p>
     </header>
 
@@ -230,10 +338,10 @@
         <!-- Stats Bar -->
         <div class="stats-bar">
             <div class="stat"><span id="stat-total">0</span> <div class="stat-label">Total</div></div>
+            <div class="stat"><span id="stat-houses">0</span> <div class="stat-label">Houses</div></div>
+            <div class="stat"><span id="stat-sub-brands">0</span> <div class="stat-label">Sub-brands</div></div>
+            <div class="stat"><span id="stat-manifest">0</span> <div class="stat-label">With manifest</div></div>
             <div class="stat"><span id="stat-brand-json">0</span> <div class="stat-label">brand.json</div></div>
-            <div class="stat"><span id="stat-hosted">0</span> <div class="stat-label">Hosted</div></div>
-            <div class="stat"><span id="stat-community">0</span> <div class="stat-label">Community</div></div>
-            <div class="stat"><span id="stat-enriched">0</span> <div class="stat-label">Enriched</div></div>
         </div>
 
         <!-- Search and Filters -->
@@ -243,12 +351,11 @@
             </div>
             <div class="filter-row">
                 <div class="filter-group">
-                    <label>Source:</label>
-                    <button class="filter-btn active" data-source="all" onclick="setSourceFilter('all')">All</button>
-                    <button class="filter-btn" data-source="brand_json" onclick="setSourceFilter('brand_json')">brand.json</button>
-                    <button class="filter-btn" data-source="hosted" onclick="setSourceFilter('hosted')">Hosted</button>
-                    <button class="filter-btn" data-source="community" onclick="setSourceFilter('community')">Community Contributed</button>
-                    <button class="filter-btn" data-source="enriched" onclick="setSourceFilter('enriched')">Enriched</button>
+                    <label>Type:</label>
+                    <button class="filter-btn" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn active" data-filter="house" onclick="setFilter('house')">Houses</button>
+                    <button class="filter-btn" data-filter="sub_brand" onclick="setFilter('sub_brand')">Sub-brands</button>
+                    <button class="filter-btn" data-filter="brand_json" onclick="setFilter('brand_json')">brand.json</button>
                 </div>
             </div>
         </div>
@@ -260,7 +367,7 @@
 
         <!-- Add Brand CTA (hidden by default, shown for members) -->
         <div id="add-brand-cta" class="add-brand-cta hidden">
-            <button onclick="window.location.href='/brand/view/new?edit=true'">+ Add Brand</button>
+            <button onclick="window.location.href='/brand/view/new?edit=true'">+ Add brand</button>
         </div>
     </div>
 
@@ -269,7 +376,7 @@
 
     <script type="module">
         let brands = [];
-        let filters = { source: 'all', search: '' };
+        let filters = { type: 'house', search: '' };
 
         window.addEventListener('DOMContentLoaded', async () => {
             await loadBrands();
@@ -288,10 +395,10 @@
                 // Update stats
                 const stats = data.stats || {};
                 document.getElementById('stat-total').textContent = stats.total || brands.length;
+                document.getElementById('stat-houses').textContent = stats.houses || 0;
+                document.getElementById('stat-sub-brands').textContent = stats.sub_brands || 0;
+                document.getElementById('stat-manifest').textContent = stats.with_manifest || 0;
                 document.getElementById('stat-brand-json').textContent = stats.brand_json || 0;
-                document.getElementById('stat-hosted').textContent = stats.hosted || 0;
-                document.getElementById('stat-community').textContent = stats.community || 0;
-                document.getElementById('stat-enriched').textContent = stats.enriched || 0;
 
                 renderBrands();
             } catch (error) {
@@ -310,24 +417,33 @@
         function renderLoadingSkeleton(count = 6) {
             return Array(count).fill(0).map(() => `
                 <div class="brand-card" style="pointer-events: none; opacity: 0.6;">
-                    <div class="brand-header">
-                        <div style="flex: 1;">
-                            <div class="skeleton-bg" style="height: 20px; border-radius: var(--radius-sm); width: 60%; margin-bottom: var(--space-2);"></div>
-                            <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 40%;"></div>
+                    <div class="brand-card__header">
+                        <div class="skeleton-bg" style="width: 40px; height: 40px; border-radius: var(--radius-md); flex-shrink: 0;"></div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div class="skeleton-bg" style="height: 16px; border-radius: var(--radius-sm); width: 60%; margin-bottom: var(--space-2);"></div>
+                            <div class="skeleton-bg" style="height: 12px; border-radius: var(--radius-sm); width: 40%;"></div>
                         </div>
-                        <div class="skeleton-bg" style="height: 24px; width: 80px; border-radius: var(--radius-full);"></div>
+                        <div class="skeleton-bg" style="height: 22px; width: 70px; border-radius: var(--radius-full);"></div>
                     </div>
-                    <div class="brand-meta">
-                        <div class="skeleton-bg" style="height: 16px; border-radius: var(--radius-sm); width: 100px;"></div>
+                    <div class="brand-card__details" style="margin-top: var(--space-2);">
+                        <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 80px;"></div>
+                        <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 60px;"></div>
                     </div>
                 </div>
             `).join('');
         }
 
+        function safeHex(color) {
+            if (!color) return null;
+            return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : null;
+        }
+
         function renderBrands() {
             const grid = document.getElementById('brands-grid');
             const filtered = brands.filter(brand => {
-                if (filters.source !== 'all' && brand.source !== filters.source) return false;
+                if (filters.type === 'house' && brand.keller_type !== 'master' && brand.keller_type !== 'independent') return false;
+                if (filters.type === 'sub_brand' && brand.keller_type !== 'sub_brand' && brand.keller_type !== 'endorsed') return false;
+                if (filters.type === 'brand_json' && brand.source !== 'brand_json' && brand.source !== 'hosted') return false;
                 if (filters.search) {
                     const q = filters.search.toLowerCase();
                     if (!brand.brand_name?.toLowerCase().includes(q) &&
@@ -346,40 +462,79 @@
             grid.innerHTML = filtered.map(brand => {
                 const sourceLabel = {
                     'brand_json': 'brand.json',
-                    'hosted': 'Hosted',
-                    'community': 'Community Contributed',
-                    'enriched': 'Enriched',
+                    'hosted': 'brand.json',
+                    'community': 'Community',
+                    'enriched': 'Community',
                 }[brand.source] || brand.source;
 
-                const isCommunity = brand.source === 'community' || brand.source === 'enriched';
+                const sourceClass = (brand.source === 'brand_json' || brand.source === 'hosted') ? 'brand-card__source--valid' : 'brand-card__source--neutral';
+                const displayName = escapeHtml(brand.brand_name || brand.domain);
+                const firstLetter = (brand.brand_name || brand.domain || '?').charAt(0);
+                const validColor = safeHex(brand.primary_color);
+
+                // Logo or letter fallback
+                const logoHtml = brand.logo_url
+                    ? `<div class="brand-card__logo"><img src="${escapeHtml(brand.logo_url)}" alt="" loading="lazy"></div>`
+                    : `<div class="brand-card__logo-letter" style="background: ${validColor || 'var(--color-primary-500)'};">${escapeHtml(firstLetter)}</div>`;
+
+                // Details: industry, keller type, color dot
+                const detailParts = [];
+                if (brand.industry) {
+                    detailParts.push(`<span class="brand-card__detail-item">${escapeHtml(brand.industry)}</span>`);
+                }
+                if (brand.keller_type) {
+                    detailParts.push(`<span class="brand-card__tag">${escapeHtml(brand.keller_type)}</span>`);
+                }
+                if (validColor) {
+                    detailParts.push(`<span class="brand-card__detail-item"><span class="brand-card__color-dot" style="background: ${validColor};" title="${validColor}"></span></span>`);
+                }
+
+                const detailsHtml = detailParts.length > 0
+                    ? `<div class="brand-card__details">${detailParts.join('<span class="brand-card__separator">&middot;</span>')}</div>`
+                    : '';
+
+                // Meta row: manifest, verified, house domain, sub-brands
+                const metaParts = [];
+                if (brand.has_manifest) {
+                    metaParts.push('<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F4CB;</span> Manifest</span>');
+                }
+                if (brand.verified) {
+                    metaParts.push('<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x2713;</span> Verified</span>');
+                }
+                if (brand.sub_brand_count > 0) {
+                    metaParts.push(`<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F517;</span> ${brand.sub_brand_count} sub-brand${brand.sub_brand_count === 1 ? '' : 's'}</span>`);
+                }
+                if (brand.house_domain) {
+                    metaParts.push(`<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F3E0;</span> ${escapeHtml(brand.house_domain)}</span>`);
+                }
+
+                const metaHtml = metaParts.length > 0
+                    ? `<div class="brand-card__meta">${metaParts.join('')}</div>`
+                    : '';
 
                 return `
                     <div class="brand-card" onclick="window.location.href='/brand/view/${encodeURIComponent(brand.domain)}'">
-                        <div class="brand-header">
-                            <div>
-                                <div class="brand-name">${escapeHtml(brand.brand_name || brand.domain)}</div>
-                                <div class="brand-domain">${escapeHtml(brand.domain)}</div>
+                        <div class="brand-card__header">
+                            ${logoHtml}
+                            <div class="brand-card__identity">
+                                <div class="brand-card__name">${displayName}</div>
+                                <div class="brand-card__domain">${escapeHtml(brand.domain)}</div>
                             </div>
-                            <span class="status-badge ${brand.source === 'brand_json' ? 'valid' : 'neutral'}">
+                            <span class="brand-card__source ${sourceClass}">
                                 ${escapeHtml(sourceLabel)}
                             </span>
                         </div>
-                        <div class="brand-meta">
-                            ${brand.has_manifest ? '<div class="stat-item"><span>&#x1F4CB;</span> Manifest</div>' : ''}
-                            ${brand.verified ? '<div class="stat-item"><span>&#x2713;</span> Verified</div>' : ''}
-                            ${brand.house_domain ? `<div class="stat-item"><span>&#x1F3E0;</span> ${escapeHtml(brand.house_domain)}</div>` : ''}
-                            ${isCommunity ? '<div class="stat-item"><span>&#x270F;&#xFE0F;</span> Community Contributed</div>' : ''}
-                        </div>
-                        ${brand.keller_type ? `<div class="brand-tags"><span class="brand-tag">${escapeHtml(brand.keller_type)}</span></div>` : ''}
+                        ${detailsHtml}
+                        ${metaHtml}
                     </div>
                 `;
             }).join('');
         }
 
-        window.setSourceFilter = function(source) {
-            filters.source = source;
-            document.querySelectorAll('.filter-btn[data-source]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.source === source);
+        window.setFilter = function(type) {
+            filters.type = type;
+            document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === type);
             });
             renderBrands();
         };

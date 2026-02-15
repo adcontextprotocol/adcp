@@ -722,6 +722,7 @@ export interface CreateWorkingGroupInput {
 
 export interface UpdateWorkingGroupInput {
   name?: string;
+  slug?: string;
   description?: string;
   slack_channel_url?: string;
   slack_channel_id?: string;

@@ -24,6 +24,9 @@ import { sendCommunityReplies } from '../services/community-articles.js';
 import { processFeedsToFetch } from '../services/feed-fetcher.js';
 import { processAlerts } from '../services/industry-alerts.js';
 import { sendChannelMessage } from '../../slack/client.js';
+import { logger } from '../../logger.js';
+
+const jobLogger = logger.child({ module: 'content-curator-job' });
 
 /**
  * Composite runner for content curator that runs multiple sub-tasks sequentially.
@@ -40,20 +43,20 @@ async function runContentCuratorJob() {
 
   try {
     results.pendingResources = await processPendingResources({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: pending resources failed');
   }
 
   try {
     results.rssPerspectives = await processRssPerspectives({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: RSS perspectives failed');
   }
 
   try {
     results.communityArticles = await processCommunityArticles({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: community articles failed');
   }
 
   try {
@@ -61,8 +64,8 @@ async function runContentCuratorJob() {
       const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
       return result.ok;
     });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: community replies failed');
   }
 
   return results;

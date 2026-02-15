@@ -74,6 +74,7 @@ import { getMemberContext, formatMemberContextForPrompt, type MemberContext } fr
 import {
   sanitizeInput,
   validateOutput,
+  wrapUrlsForSlack,
   logInteraction,
 } from './security.js';
 import type { RequestTools } from './claude-client.js';
@@ -1241,15 +1242,16 @@ async function handleUserMessage({
 
       // Send response via say() with feedback buttons
       const outputValidation = validateOutput(response.text);
+      const slackText = wrapUrlsForSlack(outputValidation.sanitized);
       try {
         await say({
-          text: outputValidation.sanitized,
+          text: slackText,
           blocks: [
             {
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: outputValidation.sanitized,
+                text: slackText,
               },
             },
             buildFeedbackBlock(),
@@ -1260,14 +1262,16 @@ async function handleUserMessage({
       }
     }
   } catch (error) {
-    logger.error({ error }, 'Addie Bolt: Error processing message');
-
     // Provide user-friendly error message based on error type
     let errorMessage: string;
-    if (isRetriesExhaustedError(error)) {
-      errorMessage = `${error.reason}. Please try again in a moment.`;
+    if (error instanceof Error && error.message.includes('prompt is too long')) {
+      logger.warn({ error }, 'Addie Bolt: Conversation exceeded context limit');
+      errorMessage = "This conversation is too long for me to process. Please start a new chat and I'll be happy to help!";
     } else {
-      errorMessage = "I'm sorry, I encountered an error. Please try again.";
+      logger.error({ error }, 'Addie Bolt: Error processing message');
+      errorMessage = isRetriesExhaustedError(error)
+        ? `${error.reason}. Please try again in a moment.`
+        : "I'm sorry, I encountered an error. Please try again.";
     }
 
     response = {
@@ -1603,7 +1607,7 @@ async function handleAppMention({
   // Send response in thread (must explicitly pass thread_ts for app_mention events)
   try {
     await say({
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs,
     });
   } catch (error) {
@@ -2071,7 +2075,7 @@ async function handleDirectMessage(
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: event.ts,
     });
   } catch (error) {
@@ -2360,7 +2364,7 @@ async function handleActiveThreadReply({
   try {
     await boltApp.client.chat.postMessage({
       channel: channelId,
-      text: outputValidation.sanitized,
+      text: wrapUrlsForSlack(outputValidation.sanitized),
       thread_ts: threadTs, // Reply in the thread
     });
   } catch (error) {
@@ -3281,7 +3285,7 @@ async function handleReactionAdded({
   try {
     await client.chat.postMessage({
       channel: itemChannel,
-      text: response.text,
+      text: wrapUrlsForSlack(response.text),
       thread_ts: threadTs,
     });
   } catch (error) {

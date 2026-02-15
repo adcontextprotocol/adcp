@@ -567,6 +567,10 @@
         "wcag-level": {
           "$ref": "/schemas/enums/wcag-level.json",
           "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
+        },
+        "promoted-offerings-requirement": {
+          "$ref": "/schemas/enums/promoted-offerings-requirement.json",
+          "description": "Content requirements that a creative format can impose on promoted offerings"
         }
       }
     },

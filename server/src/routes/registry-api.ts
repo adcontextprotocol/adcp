@@ -108,7 +108,7 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Brand resolved successfully", content: { "application/json": { schema: ResolvedBrandSchema } } },
-    404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string() }) } } },
+    404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string(), file_status: z.number().optional().openapi({ description: "HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)" }) }) } } },
   },
 });
 
@@ -643,7 +643,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     try {
       const brands = await brandDb.getAllBrandsForRegistry({
         search: req.query.search as string,
-        limit: Math.min(parseInt(req.query.limit as string) || 100, 5000),
+        limit: Math.min(parseInt(req.query.limit as string) || 500, 5000),
         offset: parseInt(req.query.offset as string) || 0,
       });
 
@@ -688,7 +688,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         registryRequestsDb
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-        return res.status(404).json({ error: "Brand not found", domain });
+
+        const validation = await brandManager.validateDomain(domain);
+        return res.status(404).json({
+          error: "Brand not found",
+          domain,
+          file_status: validation.status_code,
+        });
       }
 
       registryRequestsDb

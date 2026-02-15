@@ -14,6 +14,7 @@ import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
+import { CommunityDatabase } from "../db/community-db.js";
 import {
   createCheckoutSession,
   createStripeCustomer,
@@ -1059,6 +1060,15 @@ export function createEventsRouter(): {
         { registrationId: registration.id, eventId: event.id, userId: user.id },
         "User registered for event"
       );
+
+      // Award community points + check badges (fire-and-forget)
+      const communityDb = new CommunityDatabase();
+      communityDb.awardPoints(user.id, 'event_registered', 10, event.id, 'event').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to award event registration points');
+      });
+      communityDb.checkAndAwardBadges(user.id, 'event').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to check event badges');
+      });
 
       res.status(201).json({ registration });
     } catch (error) {
