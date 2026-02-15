@@ -310,7 +310,8 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/registry.yaml"
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
                 },
                 "pages": [
                   "docs/registry/index"
@@ -769,7 +770,8 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/registry.yaml"
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
                 },
                 "pages": [
                   "docs/registry/index"

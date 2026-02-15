@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AgenticAdvertising.org Registry API
-  description: |
+  description: |-
     Public REST API for the AgenticAdvertising.org registry. Resolve brands,
     discover properties, look up agents, and validate authorization in the
     AdCP ecosystem.
@@ -16,56 +16,564 @@ info:
   contact:
     name: AgenticAdvertising.org
     url: https://agenticadvertising.org
-
 servers:
   - url: https://agenticadvertising.org
     description: Production
-
 security: []
-
-tags:
-  - name: Brand Resolution
-    description: Resolve domains to canonical brand identities
-  - name: Property Resolution
-    description: Resolve domains to property information and validate adagents.json
-  - name: Agent Discovery
-    description: List and discover registered and crawled agents
-  - name: Lookups & Authorization
-    description: Domain lookups, property identifier lookups, and authorization validation
-  - name: Validation Tools
-    description: Validate and generate adagents.json files
-  - name: Search
-    description: Global search and manifest reference lookup
-  - name: Agent Probing
-    description: Live-probe remote agents for capabilities, formats, and products
-
+components:
+  schemas:
+    ResolvedBrand:
+      type: object
+      properties:
+        canonical_id:
+          type: string
+          example: acmecorp.com
+        canonical_domain:
+          type: string
+          example: acmecorp.com
+        brand_name:
+          type: string
+          example: Acme Corp
+        names:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocalizedName"
+        keller_type:
+          type: string
+          enum:
+            - master
+            - sub_brand
+            - endorsed
+            - independent
+        parent_brand:
+          type: string
+        house_domain:
+          type: string
+        house_name:
+          type: string
+        brand_agent_url:
+          type: string
+        brand_manifest:
+          type: object
+          additionalProperties: {}
+        source:
+          type: string
+          enum:
+            - brand_json
+            - community
+            - enriched
+      required:
+        - canonical_id
+        - canonical_domain
+        - brand_name
+        - source
+    LocalizedName:
+      type: object
+      additionalProperties:
+        type: string
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    BrandRegistryItem:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: acmecorp.com
+        brand_name:
+          type: string
+          example: Acme Corp
+        source:
+          type: string
+          enum:
+            - hosted
+            - brand_json
+            - community
+            - enriched
+        has_manifest:
+          type: boolean
+        verified:
+          type: boolean
+        house_domain:
+          type: string
+        keller_type:
+          type: string
+          enum:
+            - master
+            - sub_brand
+            - endorsed
+            - independent
+      required:
+        - domain
+        - source
+        - has_manifest
+        - verified
+    ResolvedProperty:
+      type: object
+      properties:
+        publisher_domain:
+          type: string
+          example: examplepub.com
+        source:
+          type: string
+          enum:
+            - adagents_json
+            - hosted
+            - discovered
+        authorized_agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              authorized_for:
+                type: string
+            required:
+              - url
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              name:
+                type: string
+              identifiers:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropertyIdentifier"
+              tags:
+                type: array
+                items:
+                  type: string
+        contact:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+        verified:
+          type: boolean
+      required:
+        - publisher_domain
+        - source
+        - verified
+    PropertyIdentifier:
+      type: object
+      properties:
+        type:
+          type: string
+          example: domain
+        value:
+          type: string
+          example: examplepub.com
+      required:
+        - type
+        - value
+    PropertyRegistryItem:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: examplepub.com
+        source:
+          type: string
+          enum:
+            - adagents_json
+            - hosted
+            - community
+            - discovered
+            - enriched
+        property_count:
+          type: integer
+        agent_count:
+          type: integer
+        verified:
+          type: boolean
+      required:
+        - domain
+        - source
+        - property_count
+        - agent_count
+        - verified
+    ValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        domain:
+          type: string
+        url:
+          type: string
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        status_code:
+          type: integer
+        raw_data:
+          type: object
+          additionalProperties: {}
+      required:
+        - valid
+    FederatedAgentWithDetails:
+      type: object
+      properties:
+        url:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+            - creative
+            - signals
+            - sales
+            - governance
+            - si
+            - unknown
+        protocol:
+          type: string
+          enum:
+            - mcp
+            - a2a
+        description:
+          type: string
+        mcp_endpoint:
+          type: string
+        contact:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            website:
+              type: string
+          required:
+            - name
+            - email
+            - website
+        added_date:
+          type: string
+        source:
+          type: string
+          enum:
+            - registered
+            - discovered
+        member:
+          type: object
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        discovered_from:
+          type: object
+          properties:
+            publisher_domain:
+              type: string
+            authorized_for:
+              type: string
+        health:
+          $ref: "#/components/schemas/AgentHealth"
+        stats:
+          $ref: "#/components/schemas/AgentStats"
+        capabilities:
+          $ref: "#/components/schemas/AgentCapabilities"
+        publisher_domains:
+          type: array
+          items:
+            type: string
+        property_summary:
+          $ref: "#/components/schemas/PropertySummary"
+      required:
+        - url
+        - name
+        - type
+    AgentHealth:
+      type: object
+      properties:
+        online:
+          type: boolean
+        checked_at:
+          type: string
+        response_time_ms:
+          type: number
+        tools_count:
+          type: integer
+        resources_count:
+          type: integer
+        error:
+          type: string
+      required:
+        - online
+        - checked_at
+    AgentStats:
+      type: object
+      properties:
+        property_count:
+          type: integer
+        publisher_count:
+          type: integer
+        publishers:
+          type: array
+          items:
+            type: string
+        creative_formats:
+          type: integer
+    AgentCapabilities:
+      type: object
+      properties:
+        tools_count:
+          type: integer
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+            required:
+              - name
+              - description
+        standard_operations:
+          type: object
+          properties:
+            can_search_inventory:
+              type: boolean
+            can_get_availability:
+              type: boolean
+            can_reserve_inventory:
+              type: boolean
+            can_get_pricing:
+              type: boolean
+            can_create_order:
+              type: boolean
+            can_list_properties:
+              type: boolean
+          required:
+            - can_search_inventory
+            - can_get_availability
+            - can_reserve_inventory
+            - can_get_pricing
+            - can_create_order
+            - can_list_properties
+        creative_capabilities:
+          type: object
+          properties:
+            formats_supported:
+              type: array
+              items:
+                type: string
+            can_generate:
+              type: boolean
+            can_validate:
+              type: boolean
+            can_preview:
+              type: boolean
+          required:
+            - formats_supported
+            - can_generate
+            - can_validate
+            - can_preview
+      required:
+        - tools_count
+    PropertySummary:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        count_by_type:
+          type: object
+          additionalProperties:
+            type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        publisher_count:
+          type: integer
+      required:
+        - total_count
+        - count_by_type
+        - tags
+        - publisher_count
+    FederatedPublisher:
+      type: object
+      properties:
+        domain:
+          type: string
+        source:
+          type: string
+          enum:
+            - registered
+            - discovered
+        member:
+          type: object
+          properties:
+            slug:
+              type: string
+            display_name:
+              type: string
+        agent_count:
+          type: integer
+        last_validated:
+          type: string
+        discovered_from:
+          type: object
+          properties:
+            agent_url:
+              type: string
+        has_valid_adagents:
+          type: boolean
+        discovered_at:
+          type: string
+      required:
+        - domain
+    DomainLookupResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: examplepub.com
+        authorized_agents:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              authorized_for:
+                type: string
+              source:
+                type: string
+                enum:
+                  - registered
+                  - discovered
+              member:
+                type: object
+                properties:
+                  slug:
+                    type: string
+                  display_name:
+                    type: string
+            required:
+              - url
+        sales_agents_claiming:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              source:
+                type: string
+                enum:
+                  - registered
+                  - discovered
+              member:
+                type: object
+                properties:
+                  slug:
+                    type: string
+                  display_name:
+                    type: string
+            required:
+              - url
+      required:
+        - domain
+        - authorized_agents
+        - sales_agents_claiming
+    PublisherPropertySelector:
+      type: object
+      properties:
+        publisher_domain:
+          type: string
+          example: examplepub.com
+        property_types:
+          type: array
+          items:
+            type: string
+        property_ids:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
 paths:
-  # ── Brand Resolution ──────────────────────────────────────────────
-
+  /api:
+    get:
+      operationId: apiDiscovery
+      summary: API discovery
+      description: Returns links to the main API entry points and documentation.
+      tags:
+        - Search
+      responses:
+        "200":
+          description: API discovery information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  version:
+                    type: string
+                  documentation:
+                    type: string
+                  openapi:
+                    type: string
+                  endpoints:
+                    type: object
+                    additionalProperties:
+                      type: string
+                required:
+                  - name
+                  - version
+                  - documentation
+                  - openapi
+                  - endpoints
   /api/brands/resolve:
     get:
       operationId: resolveBrand
       summary: Resolve brand
-      description: |
-        Resolve a domain to its canonical brand identity. Follows brand.json
-        redirects (house redirects, authoritative locations) and returns the
-        resolved brand with its house, architecture type, and optional manifest.
-      tags: [Brand Resolution]
+      description: Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.
+      tags:
+        - Brand Resolution
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The domain to resolve (e.g. `acmecorp.com`)
-          schema:
+        - schema:
             type: string
             example: acmecorp.com
-        - name: fresh
+          required: true
+          name: domain
           in: query
-          required: false
-          description: Set to `true` to bypass cache and re-fetch brand.json
-          schema:
+        - schema:
             type: string
-            enum: ["true", "false"]
+            enum:
+              - "true"
+              - "false"
+          required: false
+          name: fresh
+          in: query
       responses:
         "200":
           description: Brand resolved successfully
@@ -82,36 +590,34 @@ paths:
                 properties:
                   error:
                     type: string
-                    example: Brand not found
                   domain:
                     type: string
-                    example: unknown-domain.com
-
+                required:
+                  - error
+                  - domain
   /api/brands/resolve/bulk:
     post:
       operationId: resolveBrandsBulk
       summary: Bulk resolve brands
-      description: |
-        Resolve up to 100 domains to their canonical brand identities in a
-        single request. Returns a map of domain to resolved brand (or `null`
-        if not found).
+      description: |-
+        Resolve up to 100 domains to their canonical brand identities in a single request.
 
         **Rate limit:** 20 requests per minute per IP address.
-      tags: [Brand Resolution]
+      tags:
+        - Brand Resolution
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [domains]
               properties:
                 domains:
                   type: array
-                  maxItems: 100
                   items:
                     type: string
-                  example: ["acmecorp.com", "novabrands.com", "unknown.com"]
+                  maxItems: 100
+              required:
+                - domains
       responses:
         "200":
           description: Bulk resolution results
@@ -123,42 +629,44 @@ paths:
                   results:
                     type: object
                     additionalProperties:
-                      oneOf:
+                      allOf:
                         - $ref: "#/components/schemas/ResolvedBrand"
-                        - type: "null"
+                        - type:
+                            - object
+                            - "null"
+                required:
+                  - results
         "429":
           description: Rate limit exceeded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
   /api/brands/brand-json:
     get:
       operationId: getBrandJson
-      summary: Fetch brand.json
-      description: |
-        Fetch the raw brand.json file for a domain. Returns the parsed content
-        along with the variant type and any validation warnings.
-      tags: [Brand Resolution]
+      summary: Get brand.json
+      description: Fetch the raw brand.json file for a domain.
+      tags:
+        - Brand Resolution
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The domain to fetch brand.json from
-          schema:
+        - schema:
             type: string
             example: acmecorp.com
-        - name: fresh
+          required: true
+          name: domain
           in: query
-          required: false
-          description: Set to `true` to bypass cache
-          schema:
+        - schema:
             type: string
-            enum: ["true", "false"]
+            enum:
+              - "true"
+              - "false"
+          required: false
+          name: fresh
+          in: query
       responses:
         "200":
-          description: Brand.json fetched successfully
+          description: Raw brand.json data
           content:
             application/json:
               schema:
@@ -168,63 +676,53 @@ paths:
                     type: string
                   url:
                     type: string
-                    description: The URL the brand.json was fetched from
                   variant:
                     type: string
-                    enum: [authoritative_location, house_redirect, brand_agent, house_portfolio]
                   data:
                     type: object
-                    description: The parsed brand.json content
+                    additionalProperties: {}
                   warnings:
                     type: array
                     items:
                       type: string
+                required:
+                  - domain
+                  - url
+                  - data
         "404":
-          description: Brand.json not found or invalid
+          description: Brand not found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  domain:
-                    type: string
-                  errors:
-                    type: array
-                    items:
-                      type: string
-
+                $ref: "#/components/schemas/Error"
   /api/brands/registry:
     get:
       operationId: listBrands
       summary: List brands
-      description: |
-        List all brands in the registry with optional search and pagination.
-        Returns brands from all sources (brand.json, hosted, community, enriched).
-      tags: [Brand Resolution]
+      description: List all brands in the registry with optional search, pagination.
+      tags:
+        - Brand Resolution
       parameters:
-        - name: search
-          in: query
-          required: false
-          description: Search by domain or brand name
-          schema:
+        - schema:
             type: string
-        - name: limit
-          in: query
           required: false
-          schema:
-            type: integer
-            default: 100
-        - name: offset
+          name: search
           in: query
+        - schema:
+            type: string
+            example: "100"
           required: false
-          schema:
-            type: integer
-            default: 0
+          name: limit
+          in: query
+        - schema:
+            type: string
+            example: "0"
+          required: false
+          name: offset
+          in: query
       responses:
         "200":
-          description: Brand listing
+          description: Brand list with stats
           content:
             application/json:
               schema:
@@ -247,23 +745,29 @@ paths:
                         type: integer
                       enriched:
                         type: integer
-
+                    required:
+                      - total
+                      - brand_json
+                      - hosted
+                      - community
+                      - enriched
+                required:
+                  - brands
+                  - stats
   /api/brands/enrich:
     get:
       operationId: enrichBrand
       summary: Enrich brand
-      description: |
-        Enrich a brand domain using Brandfetch data. Returns logos, colors,
-        descriptions, and other brand assets when available.
-      tags: [Brand Resolution]
+      description: Enrich brand data using Brandfetch. Returns logo, colors, and company information.
+      tags:
+        - Brand Resolution
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The domain to enrich
-          schema:
+        - schema:
             type: string
             example: acmecorp.com
+          required: true
+          name: domain
+          in: query
       responses:
         "200":
           description: Enrichment data from Brandfetch
@@ -271,35 +775,31 @@ paths:
             application/json:
               schema:
                 type: object
-                description: Brandfetch enrichment payload (dynamic shape)
+                properties: {}
+                additionalProperties: {}
         "503":
           description: Brandfetch not configured
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  # ── Property Resolution ────────────────────────────────────────────
-
   /api/properties/resolve:
     get:
       operationId: resolveProperty
       summary: Resolve property
-      description: |
-        Resolve a domain to its property information. Returns authorized agents,
-        declared properties with identifiers, and contact information.
-      tags: [Property Resolution]
+      description: Resolve a publisher domain to its property information. Checks hosted properties, discovered properties, then live adagents.json validation.
+      tags:
+        - Property Resolution
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The publisher domain to resolve
-          schema:
+        - schema:
             type: string
             example: examplepub.com
+          required: true
+          name: domain
+          in: query
       responses:
         "200":
-          description: Property resolved successfully
+          description: Property resolved
           content:
             application/json:
               schema:
@@ -313,35 +813,34 @@ paths:
                 properties:
                   error:
                     type: string
-                    example: Property not found
                   domain:
                     type: string
-
+                required:
+                  - error
+                  - domain
   /api/properties/resolve/bulk:
     post:
       operationId: resolvePropertiesBulk
       summary: Bulk resolve properties
-      description: |
-        Resolve up to 100 publisher domains to their property information in
-        a single request. Returns a map of domain to resolved property (or
-        `null` if not found).
+      description: |-
+        Resolve up to 100 publisher domains at once.
 
         **Rate limit:** 20 requests per minute per IP address.
-      tags: [Property Resolution]
+      tags:
+        - Property Resolution
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [domains]
               properties:
                 domains:
                   type: array
-                  maxItems: 100
                   items:
                     type: string
-                  example: ["examplepub.com", "pinnaclemedia.com"]
+                  maxItems: 100
+              required:
+                - domains
       responses:
         "200":
           description: Bulk resolution results
@@ -353,46 +852,47 @@ paths:
                   results:
                     type: object
                     additionalProperties:
-                      oneOf:
+                      allOf:
                         - $ref: "#/components/schemas/ResolvedProperty"
-                        - type: "null"
+                        - type:
+                            - object
+                            - "null"
+                required:
+                  - results
         "429":
           description: Rate limit exceeded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
   /api/properties/registry:
     get:
       operationId: listProperties
       summary: List properties
-      description: |
-        List all properties in the registry with optional search and pagination.
-      tags: [Property Resolution]
+      description: List all properties in the registry with optional search, pagination.
+      tags:
+        - Property Resolution
       parameters:
-        - name: search
-          in: query
-          required: false
-          description: Search by domain
-          schema:
+        - schema:
             type: string
-        - name: limit
-          in: query
           required: false
-          schema:
-            type: integer
-            default: 100
-            maximum: 5000
-        - name: offset
+          name: search
           in: query
+        - schema:
+            type: string
+            example: "100"
           required: false
-          schema:
-            type: integer
-            default: 0
+          name: limit
+          in: query
+        - schema:
+            type: string
+            example: "0"
+          required: false
+          name: offset
+          in: query
       responses:
         "200":
-          description: Property listing
+          description: Property list with stats
           content:
             application/json:
               schema:
@@ -404,107 +904,75 @@ paths:
                       $ref: "#/components/schemas/PropertyRegistryItem"
                   stats:
                     type: object
-                    properties:
-                      total:
-                        type: integer
-                      adagents_json:
-                        type: integer
-                      hosted:
-                        type: integer
-                      community:
-                        type: integer
-                      discovered:
-                        type: integer
-                      enriched:
-                        type: integer
-
+                    additionalProperties: {}
+                required:
+                  - properties
+                  - stats
   /api/properties/validate:
     get:
       operationId: validateProperty
       summary: Validate adagents.json
-      description: |
-        Validate the adagents.json file for a publisher domain. Fetches the
-        file from `/.well-known/adagents.json` and checks it against the
-        schema, returning errors and warnings.
-      tags: [Property Resolution]
+      description: Validate a domain's adagents.json file and return the validation result.
+      tags:
+        - Property Resolution
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The publisher domain to validate
-          schema:
+        - schema:
             type: string
             example: examplepub.com
+          required: true
+          name: domain
+          in: query
       responses:
         "200":
           description: Validation result
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      domain:
-                        type: string
-                      found:
-                        type: boolean
-                      validation:
-                        $ref: "#/components/schemas/ValidationResult"
-                      agent_cards:
-                        type: array
-                        items:
-                          type: object
-                  timestamp:
-                    type: string
-                    format: date-time
-
-  # ── Agent Discovery ────────────────────────────────────────────────
-
+                $ref: "#/components/schemas/ValidationResult"
   /api/registry/agents:
     get:
       operationId: listAgents
       summary: List agents
-      description: |
-        List all agents in the registry. Includes both member-registered agents
-        and agents discovered via adagents.json crawling. Use query parameters
-        to request additional enrichment data.
-      tags: [Agent Discovery]
+      description: List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters.
+      tags:
+        - Agent Discovery
       parameters:
-        - name: type
-          in: query
-          required: false
-          description: Filter by agent type
-          schema:
+        - schema:
             type: string
-            enum: [creative, signals, sales, governance, si, unknown]
-        - name: health
-          in: query
+            enum:
+              - creative
+              - signals
+              - sales
+              - governance
+              - si
+              - unknown
           required: false
-          description: Set to `true` to include health check data
-          schema:
-            type: string
-            enum: ["true"]
-        - name: capabilities
+          name: type
           in: query
-          required: false
-          description: Set to `true` to include capability discovery data
-          schema:
+        - schema:
             type: string
-            enum: ["true"]
-        - name: properties
+            enum:
+              - "true"
+          required: false
+          name: health
           in: query
-          required: false
-          description: Set to `true` to include property summary data
-          schema:
+        - schema:
             type: string
-            enum: ["true"]
+            enum:
+              - "true"
+          required: false
+          name: capabilities
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+          required: false
+          name: properties
+          in: query
       responses:
         "200":
-          description: Agent listing
+          description: Agent list
           content:
             application/json:
               schema:
@@ -523,17 +991,23 @@ paths:
                         type: integer
                       discovered:
                         type: integer
-
+                    required:
+                      - registered
+                      - discovered
+                required:
+                  - agents
+                  - count
+                  - sources
   /api/registry/publishers:
     get:
       operationId: listPublishers
       summary: List publishers
-      description: |
-        List all publishers in the registry (registered and discovered).
-      tags: [Agent Discovery]
+      description: List all registered and discovered publishers.
+      tags:
+        - Agent Discovery
       responses:
         "200":
-          description: Publisher listing
+          description: Publisher list
           content:
             application/json:
               schema:
@@ -552,15 +1026,20 @@ paths:
                         type: integer
                       discovered:
                         type: integer
-
+                    required:
+                      - registered
+                      - discovered
+                required:
+                  - publishers
+                  - count
+                  - sources
   /api/registry/stats:
     get:
       operationId: getRegistryStats
       summary: Registry statistics
-      description: |
-        Get aggregate statistics about the registry including agent counts,
-        publisher counts, and property counts.
-      tags: [Agent Discovery]
+      description: Get aggregate statistics about the registry.
+      tags:
+        - Agent Discovery
       responses:
         "200":
           description: Registry statistics
@@ -568,27 +1047,22 @@ paths:
             application/json:
               schema:
                 type: object
-                description: Registry statistics (counts by type, source, etc.)
-
-  # ── Lookups & Authorization ────────────────────────────────────────
-
+                properties: {}
+                additionalProperties: {}
   /api/registry/lookup/domain/{domain}:
     get:
       operationId: lookupDomain
-      summary: Lookup domain
-      description: |
-        Find all agents authorized for a given domain. Returns both verified
-        agents (from adagents.json) and sales agents that claim to sell
-        inventory on that domain.
-      tags: [Lookups & Authorization]
+      summary: Domain lookup
+      description: Find all agents authorized for a given publisher domain.
+      tags:
+        - Lookups & Authorization
       parameters:
-        - name: domain
-          in: path
-          required: true
-          description: The domain to look up
-          schema:
+        - schema:
             type: string
             example: examplepub.com
+          required: true
+          name: domain
+          in: path
       responses:
         "200":
           description: Domain lookup result
@@ -596,33 +1070,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DomainLookupResult"
-
   /api/registry/lookup/property:
     get:
       operationId: lookupProperty
-      summary: Lookup property
-      description: |
-        Find agents for a property by its identifier type and value
-        (e.g. type=`app_bundle` value=`com.example.app`).
-      tags: [Lookups & Authorization]
+      summary: Property identifier lookup
+      description: Find agents that hold a specific property identifier.
+      tags:
+        - Lookups & Authorization
       parameters:
-        - name: type
-          in: query
-          required: true
-          description: The property identifier type
-          schema:
+        - schema:
             type: string
-            example: app_bundle
-        - name: value
-          in: query
           required: true
-          description: The property identifier value
-          schema:
+          name: type
+          in: query
+        - schema:
             type: string
-            example: com.example.app
+          required: true
+          name: value
+          in: query
       responses:
         "200":
-          description: Property lookup result
+          description: Matching agents
           content:
             application/json:
               schema:
@@ -634,30 +1102,30 @@ paths:
                     type: string
                   agents:
                     type: array
-                    items:
-                      type: object
+                    items: {}
                   count:
                     type: integer
-
+                required:
+                  - type
+                  - value
+                  - agents
+                  - count
   /api/registry/lookup/agent/{agentUrl}/domains:
     get:
-      operationId: lookupAgentDomains
-      summary: Lookup agent domains
-      description: |
-        Get all domains that an agent is authorized for. The agent URL must
-        be URL-encoded in the path.
-      tags: [Lookups & Authorization]
+      operationId: getAgentDomains
+      summary: Agent domain lookup
+      description: Get all publisher domains associated with an agent.
+      tags:
+        - Lookups & Authorization
       parameters:
-        - name: agentUrl
-          in: path
-          required: true
-          description: URL-encoded agent URL
-          schema:
+        - schema:
             type: string
-            example: https%3A%2F%2Fagent.pinnaclemedia.com
+          required: true
+          name: agentUrl
+          in: path
       responses:
         "200":
-          description: Agent domain listing
+          description: Domains for the agent
           content:
             application/json:
               schema:
@@ -671,32 +1139,32 @@ paths:
                       type: string
                   count:
                     type: integer
-
+                required:
+                  - agent_url
+                  - domains
+                  - count
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
       summary: Validate product authorization
-      description: |
-        Validate that an agent is authorized to sell the specified publisher
-        properties. Checks the agent's authorization against adagents.json
-        declarations.
-      tags: [Lookups & Authorization]
+      description: Check whether an agent is authorized to sell a product based on its publisher_properties.
+      tags:
+        - Lookups & Authorization
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [agent_url, publisher_properties]
               properties:
                 agent_url:
                   type: string
-                  description: The agent URL to validate
-                  example: https://agent.pinnaclemedia.com
                 publisher_properties:
                   type: array
                   items:
                     $ref: "#/components/schemas/PublisherPropertySelector"
+              required:
+                - agent_url
+                - publisher_properties
       responses:
         "200":
           description: Authorization validation result
@@ -707,35 +1175,37 @@ paths:
                 properties:
                   agent_url:
                     type: string
+                  authorized:
+                    type: boolean
                   checked_at:
                     type: string
-                    format: date-time
-                additionalProperties: true
-
+                required:
+                  - agent_url
+                  - authorized
+                  - checked_at
+                additionalProperties: {}
   /api/registry/expand/product-identifiers:
     post:
       operationId: expandProductIdentifiers
       summary: Expand product identifiers
-      description: |
-        Expand publisher_properties selectors to concrete property identifiers.
-        Useful for pre-computing the full set of identifiers that an agent
-        is authorized to sell.
-      tags: [Lookups & Authorization]
+      description: Expand publisher_properties selectors into concrete property identifiers for caching.
+      tags:
+        - Lookups & Authorization
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [agent_url, publisher_properties]
               properties:
                 agent_url:
                   type: string
-                  example: https://agent.pinnaclemedia.com
                 publisher_properties:
                   type: array
                   items:
                     $ref: "#/components/schemas/PublisherPropertySelector"
+              required:
+                - agent_url
+                - publisher_properties
       responses:
         "200":
           description: Expanded identifiers
@@ -748,70 +1218,64 @@ paths:
                     type: string
                   properties:
                     type: array
+                    items: {}
+                  identifiers:
+                    type: array
                     items:
                       type: object
                       properties:
+                        type:
+                          type: string
+                        value:
+                          type: string
                         property_id:
                           type: string
                         publisher_domain:
                           type: string
-                        identifiers:
-                          type: array
-                          items:
-                            $ref: "#/components/schemas/PropertyIdentifier"
-                  identifiers:
-                    type: array
-                    items:
-                      allOf:
-                        - $ref: "#/components/schemas/PropertyIdentifier"
-                        - type: object
-                          properties:
-                            property_id:
-                              type: string
-                            publisher_domain:
-                              type: string
+                      required:
+                        - type
+                        - value
+                        - property_id
+                        - publisher_domain
                   property_count:
                     type: integer
                   identifier_count:
                     type: integer
                   generated_at:
                     type: string
-                    format: date-time
-
+                required:
+                  - agent_url
+                  - properties
+                  - identifiers
+                  - property_count
+                  - identifier_count
+                  - generated_at
   /api/registry/validate/property-authorization:
     get:
       operationId: validatePropertyAuthorization
-      summary: Validate property authorization
-      description: |
-        Quick check whether an agent is authorized for a specific property
-        identifier. Designed for real-time authorization validation during
-        bid requests or ad serving.
-      tags: [Lookups & Authorization]
+      summary: Property authorization check
+      description: Quick check if a property identifier is authorized for an agent. Optimized for real-time ad request validation.
+      tags:
+        - Lookups & Authorization
       parameters:
-        - name: agent_url
-          in: query
-          required: true
-          description: The agent URL to check
-          schema:
+        - schema:
             type: string
-            example: https://agent.pinnaclemedia.com
-        - name: identifier_type
-          in: query
           required: true
-          description: The property identifier type
-          schema:
-            type: string
-            example: domain
-        - name: identifier_value
+          name: agent_url
           in: query
-          required: true
-          description: The property identifier value
-          schema:
+        - schema:
             type: string
-            example: examplepub.com
+          required: true
+          name: identifier_type
+          in: query
+        - schema:
+            type: string
+          required: true
+          name: identifier_value
+          in: query
       responses:
         "200":
-          description: Authorization check result
+          description: Authorization result
           content:
             application/json:
               schema:
@@ -823,32 +1287,34 @@ paths:
                     type: string
                   identifier_value:
                     type: string
+                  authorized:
+                    type: boolean
                   checked_at:
                     type: string
-                    format: date-time
-                additionalProperties: true
-
-  # ── Validation Tools ───────────────────────────────────────────────
-
+                required:
+                  - agent_url
+                  - identifier_type
+                  - identifier_value
+                  - authorized
+                  - checked_at
+                additionalProperties: {}
   /api/adagents/validate:
     post:
-      operationId: validateAdagentsJson
+      operationId: validateAdagents
       summary: Validate adagents.json
-      description: |
-        Validate a domain's adagents.json file. Fetches the file, validates
-        against the schema, and optionally checks agent card endpoints.
-      tags: [Validation Tools]
+      description: Validate a domain's adagents.json file and optionally validate referenced agent cards.
+      tags:
+        - Validation Tools
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [domain]
               properties:
                 domain:
                   type: string
-                  example: examplepub.com
+              required:
+                - domain
       responses:
         "200":
           description: Validation result
@@ -866,54 +1332,50 @@ paths:
                         type: string
                       found:
                         type: boolean
-                      validation:
-                        $ref: "#/components/schemas/ValidationResult"
-                      agent_cards:
-                        type: array
-                        items:
-                          type: object
+                      validation: {}
+                      agent_cards: {}
+                    required:
+                      - domain
+                      - found
                   timestamp:
                     type: string
-                    format: date-time
-
+                required:
+                  - success
+                  - data
+                  - timestamp
   /api/adagents/create:
     post:
-      operationId: generateAdagentsJson
+      operationId: createAdagents
       summary: Generate adagents.json
-      description: |
-        Generate a valid adagents.json file from the provided input. Useful
-        for publishers setting up their adagents.json for the first time.
-      tags: [Validation Tools]
+      description: Generate a valid adagents.json file from a list of authorized agents.
+      tags:
+        - Validation Tools
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
-              required: [authorized_agents]
               properties:
                 authorized_agents:
                   type: array
                   items:
                     type: object
-                    required: [url]
                     properties:
                       url:
                         type: string
-                        example: https://agent.pinnaclemedia.com
                       authorized_for:
                         type: string
-                        example: "*"
+                    required:
+                      - url
                 include_schema:
                   type: boolean
-                  description: Include $schema reference in output
                 include_timestamp:
                   type: boolean
-                  description: Include last_updated timestamp
                 properties:
                   type: array
-                  items:
-                    type: object
+                  items: {}
+              required:
+                - authorized_agents
       responses:
         "200":
           description: Generated adagents.json
@@ -929,34 +1391,30 @@ paths:
                     properties:
                       success:
                         type: boolean
-                      adagents_json:
-                        type: object
-                        description: The generated adagents.json content
-                      validation:
-                        type: object
+                      adagents_json: {}
+                      validation: {}
+                    required:
+                      - success
                   timestamp:
                     type: string
-                    format: date-time
-
-  # ── Search ─────────────────────────────────────────────────────────
-
+                required:
+                  - success
+                  - data
+                  - timestamp
   /api/search:
     get:
-      operationId: globalSearch
-      summary: Search registry
-      description: |
-        Search across brands, publishers, and properties. Returns matching
-        results from all three categories.
-      tags: [Search]
+      operationId: search
+      summary: Search
+      description: Search across brands, publishers, and properties. Returns up to 5 results per category.
+      tags:
+        - Search
       parameters:
-        - name: q
-          in: query
-          required: true
-          description: Search query (minimum 2 characters)
-          schema:
+        - schema:
             type: string
             minLength: 2
-            example: acme
+          required: true
+          name: q
+          in: query
       responses:
         "200":
           description: Search results
@@ -967,58 +1425,40 @@ paths:
                 properties:
                   brands:
                     type: array
-                    items:
-                      $ref: "#/components/schemas/BrandRegistryItem"
+                    items: {}
                   publishers:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        domain:
-                          type: string
-                        member:
-                          type: object
-                          properties:
-                            display_name:
-                              type: string
+                    items: {}
                   properties:
                     type: array
-                    items:
-                      $ref: "#/components/schemas/PropertyRegistryItem"
-        "400":
-          description: Query too short
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
+                    items: {}
+                required:
+                  - brands
+                  - publishers
+                  - properties
   /api/manifest-refs/lookup:
     get:
       operationId: lookupManifestRef
-      summary: Lookup manifest reference
-      description: |
-        Find the best brand.json or adagents.json reference for a domain.
-        Returns the reference type (URL or agent) and its verification status.
-      tags: [Search]
+      summary: Manifest reference lookup
+      description: Find the best manifest reference (brand.json URL or agent) for a domain.
+      tags:
+        - Search
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The domain to look up
-          schema:
+        - schema:
             type: string
             example: acmecorp.com
-        - name: type
+          required: true
+          name: domain
           in: query
-          required: false
-          description: The manifest type to look up
-          schema:
+        - schema:
             type: string
-            enum: [brand.json, adagents.json]
-            default: brand.json
+            example: brand.json
+          required: false
+          name: type
+          in: query
       responses:
         "200":
-          description: Manifest reference lookup result
+          description: Reference lookup result
           content:
             application/json:
               schema:
@@ -1027,56 +1467,78 @@ paths:
                     properties:
                       success:
                         type: boolean
-                        const: true
+                        enum:
+                          - true
                       found:
                         type: boolean
-                        const: true
+                        enum:
+                          - true
                       reference:
                         type: object
                         properties:
                           reference_type:
                             type: string
-                            enum: [url, agent]
+                            enum:
+                              - url
+                              - agent
                           manifest_url:
-                            type: ["string", "null"]
+                            type:
+                              - string
+                              - "null"
                           agent_url:
-                            type: ["string", "null"]
+                            type:
+                              - string
+                              - "null"
                           agent_id:
-                            type: ["string", "null"]
+                            type:
+                              - string
+                              - "null"
                           verification_status:
                             type: string
-                            enum: [pending, valid, invalid, unreachable]
+                            enum:
+                              - pending
+                              - valid
+                              - invalid
+                              - unreachable
+                        required:
+                          - reference_type
+                          - manifest_url
+                          - agent_url
+                          - agent_id
+                          - verification_status
+                    required:
+                      - success
+                      - found
+                      - reference
                   - type: object
                     properties:
                       success:
                         type: boolean
-                        const: false
+                        enum:
+                          - false
                       found:
                         type: boolean
-                        const: false
-
-  # ── Agent Probing ──────────────────────────────────────────────────
-
+                        enum:
+                          - false
+                    required:
+                      - success
+                      - found
   /api/public/discover-agent:
     get:
       operationId: discoverAgent
       summary: Discover agent
-      description: |
-        Probe a remote agent URL to discover its capabilities. Connects to
-        the agent and retrieves its name, description, supported protocols,
-        type, and inventory counts.
-      tags: [Agent Probing]
+      description: Probe an agent URL to discover its name, type, supported protocols, and basic statistics.
+      tags:
+        - Agent Probing
       parameters:
-        - name: url
-          in: query
-          required: true
-          description: The agent URL to probe
-          schema:
+        - schema:
             type: string
-            example: https://agent.pinnaclemedia.com
+          required: true
+          name: url
+          in: query
       responses:
         "200":
-          description: Agent discovery result
+          description: Discovered agent info
           content:
             application/json:
               schema:
@@ -1090,10 +1552,8 @@ paths:
                     type: array
                     items:
                       type: string
-                      enum: [mcp, a2a]
                   type:
                     type: string
-                    enum: [creative, sales, signals, unknown]
                   stats:
                     type: object
                     properties:
@@ -1103,31 +1563,41 @@ paths:
                         type: integer
                       publisher_count:
                         type: integer
+                required:
+                  - name
+                  - protocols
+                  - type
+                  - stats
         "504":
           description: Connection timeout
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-formats:
     get:
       operationId: getAgentFormats
       summary: Get agent formats
-      description: |
-        Fetch creative formats from a creative agent. Connects to the agent
-        and calls list_creative_formats.
-      tags: [Agent Probing]
+      description: Fetch creative formats from a creative agent.
+      tags:
+        - Agent Probing
       parameters:
-        - name: url
-          in: query
-          required: true
-          description: The creative agent URL
-          schema:
+        - schema:
             type: string
+          required: true
+          name: url
+          in: query
       responses:
         "200":
-          description: Agent formats
+          description: Creative formats
           content:
             application/json:
               schema:
@@ -1137,46 +1607,26 @@ paths:
                     type: boolean
                   formats:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        format_id:
-                          type: string
-                        name:
-                          type: string
-                        type:
-                          type: string
-                        description:
-                          type: string
-                        preview_image:
-                          type: string
-                        renders:
-                          type: array
-                          items:
-                            type: object
-                        assets_required:
-                          type: array
-                          items:
-                            type: object
-
+                    items: {}
+                required:
+                  - success
+                  - formats
   /api/public/agent-products:
     get:
       operationId: getAgentProducts
       summary: Get agent products
-      description: |
-        Fetch products from a sales agent. Connects to the agent and calls
-        get_products.
-      tags: [Agent Probing]
+      description: Fetch products from a sales agent.
+      tags:
+        - Agent Probing
       parameters:
-        - name: url
-          in: query
-          required: true
-          description: The sales agent URL
-          schema:
+        - schema:
             type: string
+          required: true
+          name: url
+          in: query
       responses:
         "200":
-          description: Agent products
+          description: Products
           content:
             application/json:
               schema:
@@ -1186,50 +1636,24 @@ paths:
                     type: boolean
                   products:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        product_id:
-                          type: string
-                        name:
-                          type: string
-                        description:
-                          type: string
-                        property_type:
-                          type: string
-                        property_name:
-                          type: string
-                        pricing_model:
-                          type: string
-                        base_rate:
-                          type: number
-                        currency:
-                          type: string
-                        format_ids:
-                          type: array
-                          items:
-                            type: string
-                        delivery_channels:
-                          type: array
-                          items:
-                            type: string
-
+                    items: {}
+                required:
+                  - success
+                  - products
   /api/public/validate-publisher:
     get:
       operationId: validatePublisher
       summary: Validate publisher
-      description: |
-        Validate a publisher domain by checking its adagents.json and
-        returning a summary of agents, properties, and any issues found.
-      tags: [Agent Probing]
+      description: Validate a publisher domain's adagents.json and return summary statistics.
+      tags:
+        - Agent Probing
       parameters:
-        - name: domain
-          in: query
-          required: true
-          description: The publisher domain to validate
-          schema:
+        - schema:
             type: string
             example: examplepub.com
+          required: true
+          name: domain
+          in: query
       responses:
         "200":
           description: Publisher validation result
@@ -1262,418 +1686,25 @@ paths:
                     type: array
                     items:
                       type: string
-
-# ── Components ─────────────────────────────────────────────────────
-
-components:
-  schemas:
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-
-    ResolvedBrand:
-      type: object
-      required: [canonical_id, canonical_domain, brand_name, source]
-      properties:
-        canonical_id:
-          type: string
-          description: Canonical brand identifier (e.g. "acmecorp.com" or "acmecorp.com#subbrand")
-          example: acmecorp.com
-        canonical_domain:
-          type: string
-          example: acmecorp.com
-        brand_name:
-          type: string
-          example: Acme Corp
-        names:
-          type: array
-          items:
-            $ref: "#/components/schemas/LocalizedName"
-        keller_type:
-          type: string
-          enum: [master, sub_brand, endorsed, independent]
-        parent_brand:
-          type: string
-        house_domain:
-          type: string
-        house_name:
-          type: string
-        brand_agent_url:
-          type: string
-        brand_manifest:
-          type: object
-        source:
-          type: string
-          enum: [brand_json, community, enriched]
-
-    ResolvedProperty:
-      type: object
-      required: [publisher_domain, source, verified]
-      properties:
-        publisher_domain:
-          type: string
-          example: examplepub.com
-        source:
-          type: string
-          enum: [adagents_json, hosted, discovered]
-        authorized_agents:
-          type: array
-          items:
-            type: object
-            properties:
-              url:
-                type: string
-              authorized_for:
-                type: string
-        properties:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-              type:
-                type: string
-              name:
-                type: string
-              identifiers:
-                type: array
-                items:
-                  $ref: "#/components/schemas/PropertyIdentifier"
-              tags:
-                type: array
-                items:
-                  type: string
-        contact:
-          type: object
-          properties:
-            name:
-              type: string
-            email:
-              type: string
-        verified:
-          type: boolean
-
-    BrandRegistryItem:
-      type: object
-      required: [domain, source, has_manifest, verified]
-      properties:
-        domain:
-          type: string
-          example: acmecorp.com
-        brand_name:
-          type: string
-          example: Acme Corp
-        source:
-          type: string
-          enum: [hosted, brand_json, community, enriched]
-        has_manifest:
-          type: boolean
-        verified:
-          type: boolean
-        house_domain:
-          type: string
-        keller_type:
-          type: string
-          enum: [master, sub_brand, endorsed, independent]
-
-    PropertyRegistryItem:
-      type: object
-      required: [domain, source, property_count, agent_count, verified]
-      properties:
-        domain:
-          type: string
-          example: examplepub.com
-        source:
-          type: string
-          enum: [adagents_json, hosted, community, discovered, enriched]
-        property_count:
-          type: integer
-        agent_count:
-          type: integer
-        verified:
-          type: boolean
-
-    FederatedAgentWithDetails:
-      type: object
-      properties:
-        url:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-          enum: [creative, signals, sales, governance, si, unknown]
-        protocol:
-          type: string
-          enum: [mcp, a2a]
-        description:
-          type: string
-        mcp_endpoint:
-          type: string
-        contact:
-          type: object
-          properties:
-            name:
-              type: string
-            email:
-              type: string
-            website:
-              type: string
-        added_date:
-          type: string
-        source:
-          type: string
-          enum: [registered, discovered]
-        member:
-          type: object
-          properties:
-            slug:
-              type: string
-            display_name:
-              type: string
-        discovered_from:
-          type: object
-          properties:
-            publisher_domain:
-              type: string
-            authorized_for:
-              type: string
-        health:
-          $ref: "#/components/schemas/AgentHealth"
-        stats:
-          $ref: "#/components/schemas/AgentStats"
-        capabilities:
-          $ref: "#/components/schemas/AgentCapabilities"
-        publisher_domains:
-          type: array
-          items:
-            type: string
-        property_summary:
-          $ref: "#/components/schemas/PropertySummary"
-
-    FederatedPublisher:
-      type: object
-      properties:
-        domain:
-          type: string
-        source:
-          type: string
-          enum: [registered, discovered]
-        member:
-          type: object
-          properties:
-            slug:
-              type: string
-            display_name:
-              type: string
-        agent_count:
-          type: integer
-        last_validated:
-          type: string
-        discovered_from:
-          type: object
-          properties:
-            agent_url:
-              type: string
-        has_valid_adagents:
-          type: boolean
-        discovered_at:
-          type: string
-
-    DomainLookupResult:
-      type: object
-      required: [domain, authorized_agents, sales_agents_claiming]
-      properties:
-        domain:
-          type: string
-          example: examplepub.com
-        authorized_agents:
-          type: array
-          description: Agents authorized via adagents.json (verified)
-          items:
-            type: object
-            properties:
-              url:
-                type: string
-              authorized_for:
-                type: string
-              source:
-                type: string
-                enum: [registered, discovered]
-              member:
-                type: object
-                properties:
-                  slug:
-                    type: string
-                  display_name:
-                    type: string
-        sales_agents_claiming:
-          type: array
-          description: Sales agents that claim this domain (may not be verified)
-          items:
-            type: object
-            properties:
-              url:
-                type: string
-              source:
-                type: string
-                enum: [registered, discovered]
-              member:
-                type: object
-                properties:
-                  slug:
-                    type: string
-                  display_name:
-                    type: string
-
-    AgentHealth:
-      type: object
-      properties:
-        online:
-          type: boolean
-        checked_at:
-          type: string
-          format: date-time
-        response_time_ms:
-          type: number
-        tools_count:
-          type: integer
-        resources_count:
-          type: integer
-        error:
-          type: string
-
-    AgentStats:
-      type: object
-      properties:
-        property_count:
-          type: integer
-        publisher_count:
-          type: integer
-        publishers:
-          type: array
-          items:
-            type: string
-        creative_formats:
-          type: integer
-
-    AgentCapabilities:
-      type: object
-      properties:
-        tools_count:
-          type: integer
-        tools:
-          type: array
-          items:
-            type: object
-            properties:
-              name:
-                type: string
-              description:
-                type: string
-        standard_operations:
-          type: object
-          properties:
-            can_search_inventory:
-              type: boolean
-            can_get_availability:
-              type: boolean
-            can_reserve_inventory:
-              type: boolean
-            can_get_pricing:
-              type: boolean
-            can_create_order:
-              type: boolean
-            can_list_properties:
-              type: boolean
-        creative_capabilities:
-          type: object
-          properties:
-            formats_supported:
-              type: array
-              items:
-                type: string
-            can_generate:
-              type: boolean
-            can_validate:
-              type: boolean
-            can_preview:
-              type: boolean
-
-    PropertySummary:
-      type: object
-      properties:
-        total_count:
-          type: integer
-        count_by_type:
-          type: object
-          additionalProperties:
-            type: integer
-        tags:
-          type: array
-          items:
-            type: string
-        publisher_count:
-          type: integer
-
-    PropertyIdentifier:
-      type: object
-      properties:
-        type:
-          type: string
-          example: domain
-        value:
-          type: string
-          example: examplepub.com
-
-    PublisherPropertySelector:
-      type: object
-      description: Selector for filtering publisher properties
-      properties:
-        publisher_domain:
-          type: string
-          example: examplepub.com
-        property_types:
-          type: array
-          items:
-            type: string
-        property_ids:
-          type: array
-          items:
-            type: string
-        tags:
-          type: array
-          items:
-            type: string
-
-    LocalizedName:
-      type: object
-      additionalProperties:
-        type: string
-      example:
-        en: Acme Corp
-
-    ValidationResult:
-      type: object
-      properties:
-        valid:
-          type: boolean
-        domain:
-          type: string
-        url:
-          type: string
-        errors:
-          type: array
-          items:
-            type: string
-        warnings:
-          type: array
-          items:
-            type: string
-        status_code:
-          type: integer
-        raw_data:
-          type: object
+                required:
+                  - valid
+                  - domain
+                  - agent_count
+                  - property_count
+                  - property_type_counts
+                  - tag_count
+tags:
+  - name: Brand Resolution
+    description: Resolve advertiser domains to canonical brand identities.
+  - name: Property Resolution
+    description: Resolve publisher domains to their property configurations and authorized agents.
+  - name: Agent Discovery
+    description: Browse the federated agent network, publisher index, and registry statistics.
+  - name: Lookups & Authorization
+    description: Look up agents by domain or property, and validate ad-serving authorization.
+  - name: Validation Tools
+    description: Validate publisher adagents.json files and generate compliant configurations.
+  - name: Search
+    description: Cross-entity search across brands, publishers, agents, and properties.
+  - name: Agent Probing
+    description: Connect to live agents and inspect their capabilities, formats, and inventory.
