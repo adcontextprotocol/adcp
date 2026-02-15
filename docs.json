@@ -307,6 +307,16 @@
               "docs/media-buy/quick-reference",
               "docs/creative/quick-reference",
               "docs/signals/quick-reference",
+              {
+                "group": "Registry API",
+                "openapi": {
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
+                },
+                "pages": [
+                  "docs/registry/index"
+                ]
+              },
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
@@ -757,6 +767,16 @@
               "docs/media-buy/quick-reference",
               "docs/creative/quick-reference",
               "docs/signals/quick-reference",
+              {
+                "group": "Registry API",
+                "openapi": {
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
+                },
+                "pages": [
+                  "docs/registry/index"
+                ]
+              },
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",

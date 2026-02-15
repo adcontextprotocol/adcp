@@ -11,6 +11,7 @@
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
     "build": "tsc --project server/tsconfig.json && npm run build:schemas",
+    "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:schemas": "node scripts/build-schemas.cjs",
     "build:mintlify": "cd mintlify-docs && mintlify build",
     "deploy:mintlify": "mintlify deploy",
@@ -25,9 +26,10 @@
     "test:composed": "node tests/composed-schema-validation.test.cjs",
     "test:migrations": "node tests/migration-validation.test.cjs",
     "test:unit": "jest --coverage",
+    "test:openapi": "tsx scripts/generate-openapi.ts && git diff --exit-code static/openapi/registry.yaml || (echo 'OpenAPI spec is out of date. Run: npm run build:openapi' && exit 1)",
     "test:registry": "vitest run server/tests",
     "test:docker": "docker compose -f docker-compose.test.yml up --build --abort-on-container-exit",
-    "test": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:migrations && npm run test:unit && npm run typecheck",
+    "test": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:extension-schemas && npm run test:error-handling && npm run test:json-schema && npm run test:composed && npm run test:migrations && npm run test:unit && npm run test:openapi && npm run typecheck",
     "test:all": "npm run test:schemas && npm run test:examples && npm run test:extensions && npm run test:error-handling && npm run test:snippets && npm run typecheck",
     "precommit": "npm test",
     "prepare": "husky",
@@ -40,6 +42,7 @@
   "dependencies": {
     "@adcp/client": "^3.11.2",
     "@anthropic-ai/sdk": "^0.71.2",
+    "@asteasolutions/zod-to-openapi": "^8.4.0",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api-logs": "^0.208.0",
@@ -71,7 +74,9 @@
     "resend": "^6.6.0",
     "rss-parser": "^3.13.0",
     "stripe": "^20.0.0",
-    "svix": "^1.82.0"
+    "svix": "^1.82.0",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
@@ -115,6 +120,6 @@
     "js-yaml": "^4.1.1",
     "axios": "^1.13.2",
     "express": "^4.22.1",
-    "zod": "^4.1.13"
+    "zod": "$zod"
   }
 }

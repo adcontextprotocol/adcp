@@ -1,0 +1,161 @@
+---
+title: Registry API
+sidebarTitle: Overview
+description: Public REST API for brand resolution, property resolution, agent discovery, and authorization validation
+---
+
+The AgenticAdvertising.org registry provides a public REST API for resolving brands and properties, discovering agents, and validating authorization in the AdCP ecosystem.
+
+## Base URL
+
+```
+https://agenticadvertising.org
+```
+
+All endpoints listed here are **public and require no authentication**.
+
+## Quick Start
+
+Resolve a brand domain to its canonical identity:
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+);
+const brand = await res.json();
+console.log(brand.brand_name, brand.canonical_domain);
+```
+
+```python Python
+import requests
+
+brand = requests.get(
+    "https://agenticadvertising.org/api/brands/resolve",
+    params={"domain": "acmecorp.com"}
+).json()
+print(brand["brand_name"], brand["canonical_domain"])
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "canonical_id": "acmecorp.com",
+  "canonical_domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "keller_type": "master",
+  "house_domain": "acmecorp.com",
+  "source": "brand_json"
+}
+```
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| All other endpoints | No limit |
+
+Bulk endpoints return `429 Too Many Requests` when the limit is exceeded.
+
+## Endpoint Groups
+
+<CardGroup cols={2}>
+  <Card title="Brand Resolution" icon="fingerprint" href="/docs/registry/index#brand-resolution">
+    Resolve domains to canonical brand identities, fetch brand.json files, and browse the brand registry.
+  </Card>
+  <Card title="Property Resolution" icon="building" href="/docs/registry/index#property-resolution">
+    Resolve publisher domains to property information, validate adagents.json, and browse properties.
+  </Card>
+  <Card title="Agent Discovery" icon="robot" href="/docs/registry/index#agent-discovery">
+    List registered and discovered agents, publishers, and view registry statistics.
+  </Card>
+  <Card title="Lookups & Authorization" icon="shield-check" href="/docs/registry/index#lookups--authorization">
+    Look up agents by domain, validate product authorization, and check property authorization in real time.
+  </Card>
+</CardGroup>
+
+### Brand Resolution
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
+| GET | `/api/brands/registry` | List all brands (search, pagination) |
+| GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
+
+### Property Resolution
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/properties/resolve` | Resolve a domain to its property info |
+| POST | `/api/properties/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/properties/registry` | List all properties (search, pagination) |
+| GET | `/api/properties/validate` | Validate a domain's adagents.json |
+
+### Agent Discovery
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/agents` | List all agents (filter by type, with enrichment) |
+| GET | `/api/registry/publishers` | List all publishers |
+| GET | `/api/registry/stats` | Registry statistics |
+
+### Lookups & Authorization
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/lookup/domain/{domain}` | Find agents authorized for a domain |
+| GET | `/api/registry/lookup/property` | Find agents by property identifier |
+| GET | `/api/registry/lookup/agent/{agentUrl}/domains` | Get all domains for an agent |
+| POST | `/api/registry/validate/product-authorization` | Validate agent product authorization |
+| POST | `/api/registry/expand/product-identifiers` | Expand property selectors to identifiers |
+| GET | `/api/registry/validate/property-authorization` | Real-time authorization check |
+
+### Validation Tools
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/adagents/validate` | Validate adagents.json for a domain |
+| POST | `/api/adagents/create` | Generate adagents.json content |
+
+### Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/search` | Search across brands, publishers, and properties |
+| GET | `/api/manifest-refs/lookup` | Find manifest references for a domain |
+
+### Agent Probing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/public/discover-agent` | Probe an agent URL for capabilities |
+| GET | `/api/public/agent-formats` | Get creative formats from an agent |
+| GET | `/api/public/agent-products` | Get products from a sales agent |
+| GET | `/api/public/validate-publisher` | Validate a publisher domain |
+
+## Protocol vs REST API
+
+The AdCP protocol defines MCP and A2A tasks for agent-to-agent communication (e.g. `get_products`, `create_media_buy`). The registry REST API is separate — it provides HTTP endpoints for looking up entities in the AgenticAdvertising.org registry.
+
+**Use the REST API** for discovery and authorization:
+- Resolve brand or property domains before making protocol calls
+- Discover which agents exist and what they're authorized for
+- Validate authorization in real time during ad serving
+- Build integrations that browse or search the registry
+
+**Use MCP/A2A tasks** for transactional operations:
+- Fetching products from a sales agent (`get_products`)
+- Creating media buys (`create_media_buy`)
+- Building creatives (`build_creative`)
+- Getting signals (`get_signals`)
+
+A typical integration uses both: resolve a publisher domain via the registry API, then call the authorized agent's MCP endpoint to transact.
