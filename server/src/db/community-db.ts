@@ -285,7 +285,7 @@ export class CommunityDatabase {
       SELECT u.workos_user_id, u.slug, u.first_name, u.last_name, u.headline, u.bio,
              u.avatar_url, u.expertise, u.city, u.country,
              u.open_to_coffee_chat, u.open_to_intros,
-             o.name as organization_name,
+             CASE WHEN o.is_personal THEN NULL ELSE o.name END as organization_name,
              ${connectionSelect},
              COALESCE(
                (SELECT json_agg(json_build_object('id', b.id, 'name', b.name, 'icon', b.icon))
@@ -314,7 +314,7 @@ export class CommunityDatabase {
       `SELECT u.workos_user_id, u.slug, u.first_name, u.last_name, u.headline, u.bio,
               u.avatar_url, u.expertise, u.interests, u.city, u.country,
               u.open_to_coffee_chat, u.open_to_intros, u.linkedin_url, u.twitter_url,
-              u.github_username, o.name as organization_name
+              u.github_username, CASE WHEN o.is_personal THEN NULL ELSE o.name END as organization_name
        FROM users u
        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
        WHERE u.slug = $1
@@ -405,7 +405,7 @@ export class CommunityDatabase {
               u.slug as other_slug, u.headline as other_headline,
               u.avatar_url as other_avatar_url, u.city as other_city,
               u.expertise as other_expertise,
-              o.name as other_org_name
+              CASE WHEN o.is_personal THEN NULL ELSE o.name END as other_org_name
        FROM connections c
        JOIN users u ON u.workos_user_id = CASE
          WHEN c.requester_user_id = $1 THEN c.recipient_user_id
@@ -451,7 +451,7 @@ export class CommunityDatabase {
               u.slug as other_slug, u.headline as other_headline,
               u.avatar_url as other_avatar_url, u.city as other_city,
               u.expertise as other_expertise,
-              o.name as other_org_name
+              CASE WHEN o.is_personal THEN NULL ELSE o.name END as other_org_name
        FROM connections c
        JOIN users u ON u.workos_user_id = c.requester_user_id
        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
@@ -493,7 +493,7 @@ export class CommunityDatabase {
               u.slug as other_slug, u.headline as other_headline,
               u.avatar_url as other_avatar_url, u.city as other_city,
               u.expertise as other_expertise,
-              o.name as other_org_name
+              CASE WHEN o.is_personal THEN NULL ELSE o.name END as other_org_name
        FROM connections c
        JOIN users u ON u.workos_user_id = c.recipient_user_id
        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
@@ -715,7 +715,7 @@ export class CommunityDatabase {
       `SELECT u.workos_user_id, u.slug, u.first_name, u.last_name, u.headline,
               u.avatar_url, u.expertise, u.city, u.country,
               u.open_to_coffee_chat, u.open_to_intros,
-              o.name as organization_name
+              CASE WHEN o.is_personal THEN NULL ELSE o.name END as organization_name
        FROM users u
        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
        WHERE u.is_public = true AND u.slug IS NOT NULL
@@ -730,9 +730,9 @@ export class CommunityDatabase {
   // SUGGESTED CONNECTIONS
   // =====================================================
 
-  async getSuggestedConnections(userId: string, limit: number = 4): Promise<PersonListItem[]> {
+  async getSuggestedConnections(userId: string, limit: number = 4): Promise<(PersonListItem & { suggestion_context: string | null })[]> {
     // Score people by shared attributes, exclude existing connections
-    const result = await query<PersonListItem & { score: number }>(
+    const result = await query<PersonListItem & { score: number; suggestion_context: string | null }>(
       `WITH user_data AS (
         SELECT city, expertise, workos_user_id
         FROM users WHERE workos_user_id = $1
@@ -755,7 +755,7 @@ export class CommunityDatabase {
       SELECT u.workos_user_id, u.slug, u.first_name, u.last_name, u.headline, u.bio,
              u.avatar_url, u.expertise, u.city, u.country,
              u.open_to_coffee_chat, u.open_to_intros,
-             o.name as organization_name,
+             CASE WHEN o.is_personal THEN NULL ELSE o.name END as organization_name,
              (
                CASE WHEN u.city IS NOT NULL AND u.city = ud.city THEN 3 ELSE 0 END +
                CASE WHEN u.expertise && ud.expertise THEN 1 ELSE 0 END +
@@ -765,7 +765,20 @@ export class CommunityDatabase {
                (SELECT COUNT(*) FROM user_events ue
                 JOIN event_registrations er ON er.event_id = ue.event_id
                 WHERE er.workos_user_id = u.workos_user_id) * 2
-             ) as score
+             ) as score,
+             CASE
+               WHEN u.city IS NOT NULL AND u.city = ud.city THEN 'Same city'
+               WHEN (SELECT COUNT(*) FROM user_wgs uw
+                     JOIN working_group_memberships wgm ON wgm.working_group_id = uw.working_group_id
+                     WHERE wgm.workos_user_id = u.workos_user_id AND wgm.status = 'active') > 0
+                 THEN 'Shared working group'
+               WHEN (SELECT COUNT(*) FROM user_events ue
+                     JOIN event_registrations er ON er.event_id = ue.event_id
+                     WHERE er.workos_user_id = u.workos_user_id) > 0
+                 THEN 'Co-attended event'
+               WHEN u.expertise && ud.expertise THEN 'Shared expertise'
+               ELSE NULL
+             END as suggestion_context
       FROM users u
       CROSS JOIN user_data ud
       LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
