@@ -1,4 +1,4 @@
--- Migration: 213_community_indexes.sql
+-- Migration: 214_community_indexes.sql
 -- Adds indexes and constraints for community platform data integrity.
 
 -- Prevent duplicate connections between the same pair of users (regardless of direction)

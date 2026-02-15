@@ -1,4 +1,4 @@
--- Migration: 212_community_outreach_goals.sql
+-- Migration: 213_community_outreach_goals.sql
 -- Outreach goals for community platform onboarding.
 -- Addie uses these to proactively nudge users to set up community profiles.
 -- Goals are inserted as DISABLED. Enable them via admin once the community feature is announced.

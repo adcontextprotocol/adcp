@@ -1,4 +1,4 @@
--- Migration: 209_community_tables.sql
+-- Migration: 210_community_tables.sql
 -- Community platform: extend users with profile fields, add connections,
 -- points, badges tables. Backfill individual member profiles into users.
 
