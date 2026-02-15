@@ -6,7 +6,6 @@ scripts/
 skills/
 v2.6-rc/
 dist/schemas/
-static/openapi/
 *.test.*
 *.spec.*
 CHANGELOG.md

@@ -1786,6 +1786,23 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'working-groups/manage.html');
     });
 
+    // ========== API Discovery ==========
+
+    this.app.get("/api", (_req, res) => {
+      res.json({
+        name: "AgenticAdvertising.org Registry API",
+        version: "1.0.0",
+        documentation: "https://docs.adcontextprotocol.org/docs/registry/index",
+        openapi: "https://agenticadvertising.org/openapi/registry.yaml",
+        endpoints: {
+          brands: "/api/brands/registry",
+          properties: "/api/properties/registry",
+          agents: "/api/registry/agents",
+          search: "/api/search",
+        },
+      });
+    });
+
     // AdAgents API Routes
     // Validate domain's adagents.json
     this.app.post("/api/adagents/validate", async (req, res) => {
