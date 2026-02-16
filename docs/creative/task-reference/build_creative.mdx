@@ -16,8 +16,8 @@ For information about format IDs and how to reference formats, see [Creative For
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. |
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
-| `brand_manifest` | object \| string | No | Brand identity and guidelines. Inline [Brand Manifest](/schemas/v2/core/brand-manifest.json) object or URL to a hosted manifest. Provides brand-level context (colors, logos, tone). |
-| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
+| `brand_manifest` | object \| string | No | Brand identity and guidelines. Inline [Brand Manifest](https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json) object or URL to a hosted manifest. Provides brand-level context (colors, logos, tone). |
+| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
 
 **Important**: Required inputs like `promoted_offerings` should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.
 
