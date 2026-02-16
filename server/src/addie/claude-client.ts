@@ -140,6 +140,8 @@ export interface ProcessMessageOptions {
   maxIterations?: number;
   /** Override the default model for this request (e.g., for billing queries requiring precision) */
   modelOverride?: string;
+  /** Per-request context (member info, channel, goals) appended to system prompt */
+  requestContext?: string;
 }
 
 /**
@@ -361,6 +363,11 @@ export class AddieClaudeClient {
       rulesSnapshot = promptResult.rulesSnapshot;
     }
     systemPromptMs = Date.now() - promptStart;
+
+    // Append per-request context (member info, channel, goals) to system prompt
+    if (options?.requestContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+    }
 
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
@@ -852,8 +859,13 @@ export class AddieClaudeClient {
 
     // Get system prompt from database rules (or fallback)
     const promptStart = Date.now();
-    const { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
+    let { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
+
+    // Append per-request context (member info, channel, goals) to system prompt
+    if (options?.requestContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+    }
 
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);

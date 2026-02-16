@@ -155,6 +155,7 @@ function hashIp(ip: string | undefined): string {
 
 interface PreparedRequest {
   messageToProcess: string;
+  requestContext: string;
   memberContext: MemberContext | null;
   requestTools: RequestTools;
   siRetrievalTimeMs: number | null;
@@ -209,7 +210,7 @@ async function prepareRequestWithMemberTools(
   userId: string | undefined,
   threadExternalId: string
 ): Promise<PreparedRequest> {
-  let messageToProcess = sanitizedInput;
+  const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
   let siRetrievalTimeMs: number | null = null;
 
@@ -234,29 +235,31 @@ async function prepareRequestWithMemberTools(
   memberContext = memberContextResult;
   siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
 
-  // Build message with member context
+  // Build per-request context for system prompt (member info, SI agents)
+  const contextSections: string[] = [];
+
   if (memberContext) {
     const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
     if (memberContextText) {
-      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
+      contextSections.push(memberContextText);
       logger.debug(
         { userId, hasContext: true, orgName: memberContext.organization?.name },
-        "Addie Chat: Added member context to message"
+        "Addie Chat: Added member context"
       );
     }
   } else {
     const anonymousContext = { is_mapped: false, is_member: false, slack_linked: false };
     const memberContextText = formatMemberContextForPrompt(anonymousContext, 'web');
     if (memberContextText) {
-      messageToProcess = `${memberContextText}\n---\n\n${sanitizedInput}`;
-      logger.debug("Addie Chat: Added anonymous web context to message");
+      contextSections.push(memberContextText);
+      logger.debug("Addie Chat: Added anonymous web context");
     }
   }
 
-  // Inject SI agent context if relevant agents were found
+  // Include SI agent context if relevant agents were found
   if (siRetrievalResult.agents.length > 0) {
     const siContext = siRetriever.formatContext(siRetrievalResult.agents);
-    messageToProcess = `${messageToProcess}\n\n${siContext}`;
+    contextSections.push(siContext);
     logger.debug(
       {
         agentCount: siRetrievalResult.agents.length,
@@ -266,6 +269,8 @@ async function prepareRequestWithMemberTools(
       "Addie Chat: Injected SI agent context"
     );
   }
+
+  const requestContext = contextSections.join('\n\n');
 
   // Create per-request member tools
   const memberHandlers = createMemberToolHandlers(memberContext);
@@ -285,6 +290,7 @@ async function prepareRequestWithMemberTools(
 
   return {
     messageToProcess,
+    requestContext,
     memberContext,
     requestTools,
     siRetrievalTimeMs,
@@ -439,7 +445,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }));
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestTools } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId
@@ -448,7 +454,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       // Process with Claude
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools);
+        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, { requestContext });
       } catch (error) {
         // Provide user-friendly error message based on error type
         let errorMessage: string;
@@ -664,7 +670,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }));
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestTools, siAgents } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools, siAgents } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId
@@ -675,7 +681,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       let response;
       const toolsUsed: string[] = [];
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools)) {
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, { requestContext })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
           logger.info("Addie Chat Stream: Breaking loop due to client disconnect");
