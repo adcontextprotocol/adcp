@@ -3,8 +3,10 @@
  *
  * Uses WorkOS server-side API for organization API key CRUD.
  * Requires authenticated session (cookie-based auth).
+ * Verifies org membership before allowing any operation.
  */
 
+import type { Request, Response } from "express";
 import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { createLogger } from "../logger.js";
@@ -25,6 +27,47 @@ const workos = AUTH_ENABLED
     })
   : null;
 
+/**
+ * Verify the authenticated user is a member of the specified organization.
+ * Returns true if verified, false if not (and sends the appropriate error response).
+ */
+async function verifyOrgMembership(
+  req: Request,
+  res: Response,
+  organizationId: string,
+): Promise<boolean> {
+  const memberships =
+    await workos!.userManagement.listOrganizationMemberships({
+      userId: req.user!.id,
+      organizationId,
+    });
+
+  if (memberships.data.length === 0) {
+    res.status(403).json({
+      error: "Access denied",
+      message: "You are not a member of this organization",
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Send an appropriate error response for a WorkOS API error.
+ * Forwards the HTTP status code if present on the error; defaults to 500.
+ */
+function sendWorkOSError(
+  res: Response,
+  error: unknown,
+  fallbackMessage: string,
+) {
+  const status =
+    error instanceof Error && "status" in error && typeof (error as { status: unknown }).status === "number"
+      ? (error as { status: number }).status
+      : 500;
+  res.status(status).json({ error: fallbackMessage });
+}
+
 export function createApiKeysRouter(): Router {
   const router = Router();
 
@@ -37,8 +80,12 @@ export function createApiKeysRouter(): Router {
 
       const organizationId = req.query.org as string;
       if (!organizationId) {
-        return res.status(400).json({ error: "org query parameter is required" });
+        return res
+          .status(400)
+          .json({ error: "org query parameter is required" });
       }
+
+      if (!(await verifyOrgMembership(req, res, organizationId))) return;
 
       const params: Record<string, string> = {};
       if (req.query.after) params.after = req.query.after as string;
@@ -53,10 +100,7 @@ export function createApiKeysRouter(): Router {
       res.json(data);
     } catch (error) {
       logger.error({ err: error }, "Error listing API keys");
-      res.status(500).json({
-        error: "Failed to list API keys",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
+      sendWorkOSError(res, error, "Failed to list API keys");
     }
   });
 
@@ -67,10 +111,15 @@ export function createApiKeysRouter(): Router {
         return res.status(500).json({ error: "Authentication not configured" });
       }
 
-      const organizationId = req.query.org as string || req.body.organizationId;
+      const organizationId =
+        (req.query.org as string) || req.body.organizationId;
       if (!organizationId) {
-        return res.status(400).json({ error: "org query parameter or organizationId in body is required" });
+        return res.status(400).json({
+          error: "org query parameter or organizationId in body is required",
+        });
       }
+
+      if (!(await verifyOrgMembership(req, res, organizationId))) return;
 
       const { name, permissions } = req.body;
       if (!name) {
@@ -95,10 +144,7 @@ export function createApiKeysRouter(): Router {
       res.status(201).json(data);
     } catch (error) {
       logger.error({ err: error }, "Error creating API key");
-      res.status(500).json({
-        error: "Failed to create API key",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
+      sendWorkOSError(res, error, "Failed to create API key");
     }
   });
 
@@ -111,8 +157,12 @@ export function createApiKeysRouter(): Router {
 
       const organizationId = req.query.org as string;
       if (!organizationId) {
-        return res.status(400).json({ error: "org query parameter is required" });
+        return res
+          .status(400)
+          .json({ error: "org query parameter is required" });
       }
+
+      if (!(await verifyOrgMembership(req, res, organizationId))) return;
 
       const apiKeyId = req.params.id;
       await workos.delete(`/api_keys/${apiKeyId}`);
@@ -125,10 +175,7 @@ export function createApiKeysRouter(): Router {
       res.status(204).end();
     } catch (error) {
       logger.error({ err: error }, "Error revoking API key");
-      res.status(500).json({
-        error: "Failed to revoke API key",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
+      sendWorkOSError(res, error, "Failed to revoke API key");
     }
   });
 
