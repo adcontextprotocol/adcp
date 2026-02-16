@@ -886,8 +886,8 @@ export class OrganizationDatabase {
       }
 
       if (localOrg.stripe_customer_id && localOrg.stripe_customer_id !== stripeCustomerId) {
-        // Different customer ID - log warning but don't overwrite
-        logger.warn(
+        // Different customer ID - don't overwrite (counts captured in sync summary)
+        logger.debug(
           { orgId: workosOrgId, existingCustomerId: localOrg.stripe_customer_id, newCustomerId: stripeCustomerId },
           'Organization has different Stripe customer ID - not overwriting'
         );
@@ -902,7 +902,7 @@ export class OrganizationDatabase {
         logger.debug({ orgId: workosOrgId, stripeCustomerId }, 'Synced Stripe customer ID to organization');
       } catch (error) {
         if (error instanceof StripeCustomerConflictError) {
-          logger.warn(
+          logger.debug(
             { stripeCustomerId, targetOrgId: workosOrgId, existingOrgId: error.existingOrgId, existingOrgName: error.existingOrgName },
             'Stripe customer ID already assigned to different organization - skipping'
           );

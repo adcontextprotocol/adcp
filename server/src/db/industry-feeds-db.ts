@@ -425,6 +425,7 @@ export async function recordPerspectiveAlert(
 export interface FeedStats {
   total_feeds: number;
   active_feeds: number;
+  feeds_with_errors: number;
   total_rss_perspectives: number;
   rss_perspectives_today: number;
   pending_processing: number;
@@ -438,6 +439,7 @@ export async function getFeedStats(): Promise<FeedStats> {
     `SELECT
        (SELECT COUNT(*) FROM industry_feeds) as total_feeds,
        (SELECT COUNT(*) FROM industry_feeds WHERE is_active) as active_feeds,
+       (SELECT COUNT(*) FROM industry_feeds WHERE is_active AND error_count > 0) as feeds_with_errors,
        (SELECT COUNT(*) FROM perspectives WHERE source_type = 'rss') as total_rss_perspectives,
        (SELECT COUNT(*) FROM perspectives WHERE source_type = 'rss' AND created_at > NOW() - INTERVAL '24 hours') as rss_perspectives_today,
        (SELECT COUNT(*) FROM perspectives p
