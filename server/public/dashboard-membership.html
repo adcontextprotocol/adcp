@@ -1077,12 +1077,6 @@
     let selectedCompanyType = null;
     let selectedRevenueTier = null;
 
-    // Get org ID from URL or localStorage
-    function getOrgId() {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('org') || localStorage.getItem('selectedOrgId');
-    }
-
     // Show toast
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
@@ -1115,13 +1109,20 @@
         }
 
         const data = await response.json();
-        const orgId = getOrgId();
-        currentOrg = data.organizations?.find(o => o.id === orgId) || data.organizations?.[0];
+        const { org, needsSelection } = DashboardNav.resolveOrg(data.organizations);
 
-        if (!currentOrg) {
+        if (needsSelection) {
+          DashboardNav.init({ currentOrgName: 'Select organization' });
+          DashboardNav.renderOrgPicker(data.organizations, document.getElementById('loading'));
+          return;
+        }
+
+        if (!org) {
           document.getElementById('loading').innerHTML = 'No organization found';
           return;
         }
+
+        currentOrg = org;
 
         // Fetch billing info to get company_type, revenue_tier, and subscription status
         try {
@@ -1145,7 +1146,8 @@
         DashboardNav.init({
           showOrgSwitcher: data.organizations?.length > 1,
           currentOrgName: currentOrg.name,
-          showAdmin: data.isAdmin
+          showAdmin: data.isAdmin,
+          orgId: currentOrg.id
         });
 
         if (data.organizations?.length > 1) {

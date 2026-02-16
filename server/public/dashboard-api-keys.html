@@ -379,11 +379,6 @@
     let currentOrg = null;
     let revokeKeyId = null;
 
-    function getOrgId() {
-      const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get('org') || localStorage.getItem('selectedOrgId');
-    }
-
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
       toast.textContent = message;
@@ -567,19 +562,27 @@
         }
 
         const data = await response.json();
-        const orgId = getOrgId();
-        currentOrg = data.organizations?.find(o => o.id === orgId) || data.organizations?.[0];
+        const { org, needsSelection } = DashboardNav.resolveOrg(data.organizations);
 
-        if (!currentOrg) {
+        if (needsSelection) {
+          DashboardNav.init({ currentOrgName: 'Select organization' });
+          DashboardNav.renderOrgPicker(data.organizations, document.getElementById('loading'));
+          return;
+        }
+
+        if (!org) {
           document.getElementById('loading').innerHTML = 'No organization found. <a href="/dashboard">Go to dashboard</a>';
           return;
         }
+
+        currentOrg = org;
 
         // Initialize sidebar
         DashboardNav.init({
           showOrgSwitcher: data.organizations?.length > 1,
           currentOrgName: currentOrg.name,
           showAdmin: data.user?.isAdmin,
+          orgId: currentOrg.id,
         });
 
         if (data.organizations?.length > 1) {
