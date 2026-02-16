@@ -70,6 +70,7 @@ RUN git clone --depth=1 --branch main https://github.com/IABTechLab/adscert.git 
 # Prebid Ecosystem
 RUN git clone --depth=1 --branch master https://github.com/prebid/Prebid.js.git prebid-js || true
 RUN git clone --depth=1 --branch master https://github.com/prebid/prebid-server.git prebid-server || true
+RUN git clone --depth=1 --branch master https://github.com/prebid/prebid.github.io.git prebid-docs || true
 
 # Agent Frameworks
 RUN git clone --depth=1 --branch main https://github.com/langchain-ai/langgraph.git langgraph || true
