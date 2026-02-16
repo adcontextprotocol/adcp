@@ -511,7 +511,11 @@ When reusing the same brief across multiple creatives, reference it by URL:
 | **Contains** | Colors, logos, fonts, tone | Audience, territory, messaging, reference assets |
 | **Source** | Brand registry / `/.well-known/brand.json` | Agency or brand team |
 
-Both are optional. `brand_manifest` provides stable brand identity (colors, logos, tone). `creative_brief` provides campaign-specific direction (audience, messaging, visual references). The `message` field provides per-request natural language instructions. Creative agents that support briefs declare `supports_brief: true` in their `get_adcp_capabilities` response.
+Both are optional. `brand_manifest` provides stable brand identity (colors, logos, tone). `creative_brief` provides campaign-specific direction (audience, messaging, tone, visual references). The `message` field provides per-request natural language instructions. Creative agents that support briefs declare `supports_brief: true` in their `get_adcp_capabilities` response.
+
+**Precedence**: When `brand_manifest` appears both at the top level and inside `creative_manifest.assets.promoted_offerings`, the top-level `brand_manifest` is the authoritative source for creative rendering context. The one inside `promoted_offerings` identifies the brand for the offering.
+
+**Layering**: `creative_brief` provides structured direction; `message` provides per-request natural language overrides. When both provide conflicting direction, `message` takes precedence as the most specific instruction.
 
 ### Transformation Model
 

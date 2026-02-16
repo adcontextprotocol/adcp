@@ -20,15 +20,7 @@
         "logo",
         "strategy_doc"
       ],
-      "enumDescriptions": {
-        "style_reference": "Match the visual style of this asset",
-        "product_shot": "Include this product in the creative",
-        "mood_board": "Overall look and feel reference",
-        "example_creative": "Example of a similar creative execution",
-        "logo": "Logo to use in the creative",
-        "strategy_doc": "Strategy or planning document for context"
-      },
-      "description": "How the creative agent should use this asset"
+      "description": "How the creative agent should use this asset. style_reference: match the visual style; product_shot: include this product; mood_board: overall look and feel; example_creative: example of a similar execution; logo: logo to use; strategy_doc: strategy or planning document for context"
     },
     "description": {
       "type": "string",
