@@ -92,7 +92,10 @@ export function configureMCPRoutes(router: Router): void {
 
   if (MCP_AUTH_ENABLED) {
     // Bearer token validation via SDK
-    mcpMiddleware.push(requireBearerAuth({ verifier: provider }) as (
+    mcpMiddleware.push(requireBearerAuth({
+      verifier: provider,
+      resourceMetadataUrl: `${MCP_SERVER_URL}/.well-known/oauth-protected-resource/mcp`,
+    }) as (
       req: MCPAuthenticatedRequest,
       res: Response,
       next: NextFunction,
