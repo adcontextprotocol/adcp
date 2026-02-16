@@ -706,11 +706,15 @@
       statsGrid.innerHTML = `
         <div class="stat-card">
           <div class="stat-value">${stats.active_feeds || 0}</div>
-          <div class="stat-label">Active Feeds</div>
+          <div class="stat-label">Active feeds</div>
+        </div>
+        <div class="stat-card" ${(stats.feeds_with_errors || 0) > 0 ? 'style="border-color: var(--color-error-500);"' : ''}>
+          <div class="stat-value" ${(stats.feeds_with_errors || 0) > 0 ? 'style="color: var(--color-error-500);"' : ''}>${stats.feeds_with_errors || 0}</div>
+          <div class="stat-label">Failing feeds</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${stats.total_rss_perspectives || 0}</div>
-          <div class="stat-label">Total Articles</div>
+          <div class="stat-label">Total articles</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${stats.rss_perspectives_today || 0}</div>
@@ -724,13 +728,13 @@
           <div class="stat-value">${stats.processed_success || 0}</div>
           <div class="stat-label">Processed</div>
         </div>
-        <div class="stat-card" ${(stats.processed_failed || 0) > 0 ? 'style="border-color: var(--color-error);"' : ''}>
-          <div class="stat-value" ${(stats.processed_failed || 0) > 0 ? 'style="color: var(--color-error);"' : ''}>${stats.processed_failed || 0}</div>
+        <div class="stat-card" ${(stats.processed_failed || 0) > 0 ? 'style="border-color: var(--color-error-500);"' : ''}>
+          <div class="stat-value" ${(stats.processed_failed || 0) > 0 ? 'style="color: var(--color-error-500);"' : ''}>${stats.processed_failed || 0}</div>
           <div class="stat-label">Failed</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">${stats.alerts_sent_today || 0}</div>
-          <div class="stat-label">Alerts Today</div>
+          <div class="stat-label">Alerts today</div>
         </div>
       `;
     }

@@ -260,7 +260,7 @@ export async function processResource(resource: {
   fetch_url: string;
   title: string;
 }): Promise<boolean> {
-  logger.info({ id: resource.id, url: resource.fetch_url }, 'Processing resource');
+  logger.debug({ id: resource.id, url: resource.fetch_url }, 'Processing resource');
 
   try {
     // Fetch content
@@ -290,7 +290,7 @@ export async function processResource(resource: {
       fetch_status: 'success',
     });
 
-    logger.info(
+    logger.debug(
       {
         id: resource.id,
         quality: analysis.quality_score,
@@ -300,7 +300,7 @@ export async function processResource(resource: {
     );
     return true;
   } catch (error) {
-    logger.error({ error, id: resource.id }, 'Failed to process resource');
+    logger.debug({ error, id: resource.id }, 'Failed to process resource');
     await addieDb.updateFetchedResource(resource.id, {
       content: '',
       fetch_status: 'failed',
@@ -328,7 +328,7 @@ export async function processPendingResources(options: {
     return { processed: 0, succeeded: 0, failed: 0 };
   }
 
-  logger.info({ count: resources.length }, 'Processing pending resources');
+  logger.debug({ count: resources.length }, 'Processing pending resources');
 
   let succeeded = 0;
   let failed = 0;
@@ -458,7 +458,7 @@ async function processRssPerspective(
     );
     return true;
   } catch (error) {
-    logger.error({ error, id: perspective.id }, 'Failed to process RSS perspective');
+    logger.debug({ error, id: perspective.id }, 'Failed to process RSS perspective');
     await createOrUpdateRssKnowledge(perspective, {
       content: '',
       fetch_status: 'failed',
@@ -732,7 +732,7 @@ export async function processCommunityArticles(options: {
       );
       succeeded++;
     } catch (error) {
-      logger.error({ error, id: article.id }, 'Failed to process community article');
+      logger.debug({ error, id: article.id }, 'Failed to process community article');
       await query(
         `UPDATE addie_knowledge SET fetch_status = 'failed', updated_at = NOW() WHERE id = $1`,
         [article.id]
