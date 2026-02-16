@@ -6,8 +6,9 @@
  * - OAuth endpoints via SDK's mcpAuthRouter (authorize, token, register, metadata)
  * - OPTIONS /mcp - CORS preflight
  *
- * OAuth 2.1 is proxied to WorkOS AuthKit via ProxyOAuthServerProvider.
- * The SDK's mcpAuthRouter handles all discovery and proxy endpoints:
+ * OAuth 2.1 is brokered via MCPOAuthProvider: registration and PKCE
+ * are handled locally, user authentication delegates to AuthKit.
+ * The SDK's mcpAuthRouter handles all discovery and OAuth endpoints:
  * - /.well-known/oauth-authorization-server
  * - /.well-known/oauth-protected-resource/mcp
  * - /authorize, /token, /register
