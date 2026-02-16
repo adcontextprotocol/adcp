@@ -873,6 +873,7 @@ export class HTTPServer {
       crawler: this.crawler,
       capabilityDiscovery: this.capabilityDiscovery,
       registryRequestsDb,
+      requireAuth,
     });
     this.app.use('/api', registryApiRouter);
 

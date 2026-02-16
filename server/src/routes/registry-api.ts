@@ -6,13 +6,14 @@
  */
 
 import { Router } from "express";
+import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter } from "../middleware/rate-limit.js";
 import { createLogger } from "../logger.js";
 import {
   registry,
@@ -53,6 +54,7 @@ export interface RegistryApiConfig {
     trackRequest(type: string, domain: string): Promise<void>;
     markResolved(type: string, domain: string, resolved: string): Promise<boolean>;
   };
+  requireAuth?: RequestHandler;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -145,6 +147,49 @@ registry.registerPath({
   responses: {
     200: { description: "Raw brand.json data", content: { "application/json": { schema: z.object({ domain: z.string(), url: z.string(), variant: z.string().optional(), data: z.record(z.string(), z.unknown()), warnings: z.array(z.string()).optional() }) } } },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/brands/save",
+  operationId: "saveBrand",
+  summary: "Save brand",
+  description:
+    "Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
+  tags: ["Brand Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "acmecorp.com" }),
+            brand_name: z.string().openapi({ example: "Acme Corp" }),
+            brand_manifest: z.record(z.string(), z.unknown()).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Brand saved or updated",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            message: z.string(),
+            domain: z.string(),
+            id: z.string(),
+            revision_number: z.number().int().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Missing required fields or invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Cannot edit authoritative brand", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -259,6 +304,49 @@ registry.registerPath({
   request: { query: z.object({ domain: z.string().openapi({ example: "examplepub.com" }) }) },
   responses: {
     200: { description: "Validation result", content: { "application/json": { schema: ValidationResultSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/properties/save",
+  operationId: "saveProperty",
+  summary: "Save property",
+  description:
+    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
+  tags: ["Property Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            publisher_domain: z.string().openapi({ example: "examplepub.com" }),
+            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).openapi({ example: [{ url: "https://agent.example.com" }] }),
+            properties: z.array(z.object({ type: z.string(), name: z.string() })).optional().openapi({ example: [{ type: "website", name: "Example Publisher" }] }),
+            contact: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Property saved or updated",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            message: z.string(),
+            id: z.string(),
+            revision_number: z.number().int().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Missing required fields or invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Cannot edit authoritative property", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -618,6 +706,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     crawler,
     capabilityDiscovery,
     registryRequestsDb,
+    requireAuth: authMiddleware,
   } = config;
 
   // ── API Discovery ─────────────────────────────────────────────
@@ -821,6 +910,79 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  const saveMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
+
+  router.post("/brands/save", ...saveMiddleware, async (req, res) => {
+    try {
+      const { brand_name, brand_manifest } = req.body;
+      const rawDomain = req.body.domain as string;
+
+      if (!rawDomain || typeof rawDomain !== "string") {
+        return res.status(400).json({ error: "domain is required" });
+      }
+      if (!brand_name || typeof brand_name !== "string") {
+        return res.status(400).json({ error: "brand_name is required" });
+      }
+
+      const domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+      if (!domainPattern.test(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+      if (existing) {
+        if (existing.source_type === "brand_json") {
+          return res.status(409).json({
+            error: "Cannot edit authoritative brand (managed via brand.json)",
+            domain,
+          });
+        }
+
+        const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
+          brand_name,
+          edit_summary: "API: updated brand data",
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
+        };
+        if (brand_manifest !== undefined) {
+          editInput.brand_manifest = brand_manifest;
+          editInput.has_brand_manifest = !!brand_manifest;
+        }
+
+        const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, editInput);
+
+        return res.json({
+          success: true,
+          message: `Brand "${brand_name}" updated in registry (revision ${revision_number})`,
+          domain: brand.domain,
+          id: brand.id,
+          revision_number,
+        });
+      }
+
+      const saved = await brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_name,
+        brand_manifest,
+        has_brand_manifest: brand_manifest !== undefined ? !!brand_manifest : undefined,
+        source_type: "community",
+      });
+
+      return res.json({
+        success: true,
+        message: `Brand "${brand_name}" saved to registry`,
+        domain: saved.domain,
+        id: saved.id,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to save brand");
+      return res.status(500).json({ error: "Failed to save brand" });
+    }
+  });
+
   // ── Property Resolution ───────────────────────────────────────
 
   router.get("/properties/registry", async (req, res) => {
@@ -992,6 +1154,77 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to bulk resolve properties");
       return res.status(500).json({ error: "Failed to bulk resolve properties" });
+    }
+  });
+
+  router.post("/properties/save", ...saveMiddleware, async (req, res) => {
+    try {
+      const { authorized_agents, properties, contact } = req.body;
+      const rawDomain = req.body.publisher_domain as string;
+
+      if (!rawDomain || typeof rawDomain !== "string") {
+        return res.status(400).json({ error: "publisher_domain is required" });
+      }
+      if (!Array.isArray(authorized_agents)) {
+        return res.status(400).json({ error: "authorized_agents array is required" });
+      }
+
+      const publisher_domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+      if (!domainPattern.test(publisher_domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      const adagentsJson: Record<string, unknown> = {
+        $schema: "https://adcontextprotocol.org/schemas/v1/adagents.json",
+        authorized_agents,
+        properties: properties || [],
+      };
+      if (contact) {
+        adagentsJson.contact = contact;
+      }
+
+      const existing = await propertyDb.getHostedPropertyByDomain(publisher_domain);
+
+      if (existing) {
+        const discovered = await propertyDb.getDiscoveredPropertiesByDomain(publisher_domain);
+        if (discovered.length > 0) {
+          return res.status(409).json({
+            error: "Cannot edit authoritative property (managed via adagents.json)",
+            domain: publisher_domain,
+          });
+        }
+
+        const { property, revision_number } = await propertyDb.editCommunityProperty(publisher_domain, {
+          adagents_json: adagentsJson,
+          edit_summary: "API: updated property data",
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
+        });
+
+        return res.json({
+          success: true,
+          message: `Property "${publisher_domain}" updated in registry (revision ${revision_number})`,
+          id: property.id,
+          revision_number,
+        });
+      }
+
+      const saved = await propertyDb.createHostedProperty({
+        publisher_domain,
+        adagents_json: adagentsJson,
+        source_type: "community",
+      });
+
+      return res.json({
+        success: true,
+        message: `Hosted property created for ${publisher_domain}`,
+        id: saved.id,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to save property");
+      return res.status(500).json({ error: "Failed to save property" });
     }
   });
 
