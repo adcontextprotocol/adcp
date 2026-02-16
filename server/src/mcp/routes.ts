@@ -4,12 +4,16 @@
  * Configures Express routes for the unified MCP server:
  * - POST /mcp - MCP JSON-RPC endpoint (auth required, rate limited)
  * - GET /.well-known/oauth-protected-resource - OAuth resource metadata (RFC 9728)
- * - GET /.well-known/oauth-authorization-server - Proxied WorkOS AS metadata (RFC 8414)
+ * - GET /.well-known/oauth-authorization-server - Proxied AS metadata (RFC 8414)
  * - OPTIONS /mcp - CORS preflight
  *
  * Authentication via OAuth 2.1 (WorkOS AuthKit).
  * WorkOS handles dynamic client registration (RFC 7591), authorization,
  * and token issuance. This server validates bearer tokens via JWKS.
+ *
+ * OAuth discovery is served both via PRM (RFC 9728) and by proxying AuthKit's
+ * AS metadata (RFC 8414). Some clients (e.g. ChatGPT) fetch AS metadata
+ * directly from the MCP server rather than following the PRM flow.
  */
 
 import type { Router, Request, Response } from 'express';
@@ -68,12 +72,12 @@ export function configureMCPRoutes(router: Router): void {
   router.get('/.well-known/oauth-protected-resource/mcp', servePRM);
 
   // OAuth Authorization Server Metadata proxy (RFC 8414)
-  // Proxies WorkOS AuthKit metadata for clients that check the resource server's
-  // domain rather than following the authorization_servers URL directly.
+  // Some MCP clients (ChatGPT) fetch AS metadata from the resource server
+  // rather than following PRM's authorization_servers URL.
   let asMetadataCache: { data: unknown; expiresAt: number } | null = null;
   const AS_METADATA_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-  router.get('/.well-known/oauth-authorization-server', async (req: Request, res: Response) => {
+  const serveASMetadata = async (req: Request, res: Response) => {
     try {
       const now = Date.now();
       if (asMetadataCache && now < asMetadataCache.expiresAt) {
@@ -99,7 +103,11 @@ export function configureMCPRoutes(router: Router): void {
       logger.error({ error }, 'MCP: Error proxying AS metadata');
       res.status(502).json({ error: 'Failed to fetch authorization server metadata' });
     }
-  });
+  };
+
+  router.get('/.well-known/oauth-authorization-server', serveASMetadata);
+  // Path-specific AS metadata per RFC 8414 (ChatGPT requests this variant)
+  router.get('/.well-known/oauth-authorization-server/mcp', serveASMetadata);
 
   // CORS preflight for MCP endpoint
   router.options('/mcp', (req: Request, res: Response) => {
