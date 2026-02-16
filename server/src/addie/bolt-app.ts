@@ -31,12 +31,11 @@ import { logger } from '../logger.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import {
-  initializeKnowledgeSearch,
   isKnowledgeReady,
-  KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
   createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
+import { registerBaselineTools } from './register-baseline-tools.js';
 import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
@@ -93,7 +92,7 @@ import { getGoalsForSystemPrompt } from './services/insight-extractor.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
-import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
+// DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { MOLTBOOK_TOOLS, createMoltbookToolHandlers } from './mcp/moltbook-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
@@ -374,17 +373,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize thread context store
   threadContextStore = new DatabaseThreadContextStore(addieDb);
 
-  // Initialize knowledge search
-  await initializeKnowledgeSearch();
+  // Register shared baseline tools (knowledge, billing, schema, directory, brand, property)
+  // Shared with web chat handler via register-baseline-tools.ts
+  await registerBaselineTools(claudeClient);
 
-  // Register knowledge tools
-  const knowledgeHandlers = createKnowledgeToolHandlers();
-  for (const tool of KNOWLEDGE_TOOLS) {
-    const handler = knowledgeHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Register Slack-specific tools below (these need Slack context)
 
   // Register URL fetching tools (for reading links and files shared in Slack)
   const urlHandlers = createUrlToolHandlers(botToken);
@@ -405,15 +398,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
       }
     }
     logger.info('Addie: Google Docs tools registered');
-  }
-
-  // Register directory tools (member/agent/publisher lookup)
-  const directoryHandlers = createDirectoryToolHandlers();
-  for (const tool of DIRECTORY_TOOLS) {
-    const handler = directoryHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
   }
 
   // Register SI host tools (Sponsored Intelligence protocol)

@@ -21,19 +21,8 @@ import {
   validateOutput,
 } from "../addie/security.js";
 import {
-  initializeKnowledgeSearch,
   isKnowledgeReady,
-  KNOWLEDGE_TOOLS,
-  createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
-import {
-  BILLING_TOOLS,
-  createBillingToolHandlers,
-} from "../addie/mcp/billing-tools.js";
-import {
-  SCHEMA_TOOLS,
-  createSchemaToolHandlers,
-} from "../addie/mcp/schema-tools.js";
 import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
@@ -42,6 +31,45 @@ import {
   SI_HOST_TOOLS,
   createSiHostToolHandlers,
 } from "../addie/mcp/si-host-tools.js";
+import {
+  ADCP_TOOLS,
+  createAdcpToolHandlers,
+} from "../addie/mcp/adcp-tools.js";
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from "../addie/mcp/escalation-tools.js";
+import {
+  ADMIN_TOOLS,
+  createAdminToolHandlers,
+  isWebUserAAOAdmin,
+} from "../addie/mcp/admin-tools.js";
+import {
+  EVENT_TOOLS,
+  createEventToolHandlers,
+} from "../addie/mcp/event-tools.js";
+import {
+  MEETING_TOOLS,
+  createMeetingToolHandlers,
+} from "../addie/mcp/meeting-tools.js";
+import {
+  COLLABORATION_TOOLS,
+  createCollaborationToolHandlers,
+} from "../addie/mcp/collaboration-tools.js";
+import {
+  COMMITTEE_LEADER_TOOLS,
+  createCommitteeLeaderToolHandlers,
+} from "../addie/mcp/committee-leader-tools.js";
+import {
+  MOLTBOOK_TOOLS,
+  createMoltbookToolHandlers,
+} from "../addie/mcp/moltbook-tools.js";
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from "../addie/mcp/billing-tools.js";
+import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import { registerBaselineTools } from "../addie/register-baseline-tools.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
 import {
@@ -78,35 +106,9 @@ async function initializeChatClient(): Promise<void> {
 
   claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
 
-  // Initialize knowledge search
-  await initializeKnowledgeSearch();
-
-  // Register knowledge tools
-  const knowledgeHandlers = createKnowledgeToolHandlers();
-  for (const tool of KNOWLEDGE_TOOLS) {
-    const handler = knowledgeHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
-
-  // Register billing tools (for membership signup assistance)
-  const billingHandlers = createBillingToolHandlers();
-  for (const tool of BILLING_TOOLS) {
-    const handler = billingHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
-
-  // Register schema tools (validate JSON, get schemas, list schemas)
-  const schemaHandlers = createSchemaToolHandlers();
-  for (const tool of SCHEMA_TOOLS) {
-    const handler = schemaHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Register shared baseline tools (knowledge, billing, schema, directory, brand, property)
+  // These are context-free and shared with the Slack handler via register-baseline-tools.ts
+  await registerBaselineTools(claudeClient);
 
   // Note: Member tools are registered per-request with user's actual context
   // This allows user-scoped tools to work correctly for authenticated users
@@ -272,19 +274,74 @@ async function prepareRequestWithMemberTools(
 
   const requestContext = contextSections.join('\n\n');
 
-  // Create per-request member tools
-  const memberHandlers = createMemberToolHandlers(memberContext);
+  // Resolve linked Slack identity for tools that need it (DMs, attribution)
+  const linkedSlackUserId = memberContext?.slack_user?.slack_user_id;
 
-  // Create per-request SI host tools with thread context
-  const siHostHandlers = createSiHostToolHandlers(
-    () => memberContext,
-    () => threadExternalId
-  );
+  // Create per-request tools (same tools as Slack, minus Slack-specific ones)
+  // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
+  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS];
+  const combinedHandlers = new Map([
+    ...createMemberToolHandlers(memberContext),
+    ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
+    ...createAdcpToolHandlers(memberContext),
+    ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
+    ...createBillingToolHandlers(memberContext),
+  ]);
 
-  // Combine all per-request tools
-  const combinedHandlers = new Map([...memberHandlers, ...siHostHandlers]);
+  // Permission-gated tools (for authenticated users)
+  if (userId) {
+    const workingGroupDb = new WorkingGroupDatabase();
+    const [userIsAdmin, ledGroups] = await Promise.all([
+      isWebUserAAOAdmin(userId),
+      workingGroupDb.getCommitteesLedByUser(userId),
+    ]);
+
+    if (userIsAdmin) {
+      allTools.push(...ADMIN_TOOLS);
+      for (const [name, handler] of createAdminToolHandlers(memberContext)) {
+        combinedHandlers.set(name, handler);
+      }
+    }
+
+    // Event creation: admin only (matches canCreateEvents in event-tools.ts)
+    if (userIsAdmin) {
+      allTools.push(...EVENT_TOOLS);
+      for (const [name, handler] of createEventToolHandlers(memberContext)) {
+        combinedHandlers.set(name, handler);
+      }
+    }
+
+    // Meeting scheduling: admin or committee leader
+    if (userIsAdmin || ledGroups.length > 0) {
+      allTools.push(...MEETING_TOOLS);
+      for (const [name, handler] of createMeetingToolHandlers(memberContext)) {
+        combinedHandlers.set(name, handler);
+      }
+    }
+
+    // Collaboration tools (DMs between members — needs Slack identity for sending)
+    allTools.push(...COLLABORATION_TOOLS);
+    for (const [name, handler] of createCollaborationToolHandlers(memberContext, linkedSlackUserId)) {
+      combinedHandlers.set(name, handler);
+    }
+
+    // Committee leader tools (uses memberContext.workos_user for identity, Slack ID for fallback)
+    allTools.push(...COMMITTEE_LEADER_TOOLS);
+    for (const [name, handler] of createCommitteeLeaderToolHandlers(memberContext, linkedSlackUserId)) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  // Moltbook tools (for all users, if configured)
+  if (process.env.MOLTBOOK_API_KEY) {
+    allTools.push(...MOLTBOOK_TOOLS);
+    for (const [name, handler] of Object.entries(createMoltbookToolHandlers())) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
   const requestTools: RequestTools = {
-    tools: [...MEMBER_TOOLS, ...SI_HOST_TOOLS],
+    tools: allTools,
     handlers: combinedHandlers,
   };
 
