@@ -991,6 +991,20 @@ Roles: member (default), admin (can manage team), owner (full control)`,
     },
   },
   {
+    name: 'complete_task',
+    description: 'Mark a task/reminder as done. Can complete by company name, org ID, or all overdue tasks at once.',
+    usage_hints: 'Use when admin says a task is done, completed, or finished.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'Company name to complete task for' },
+        org_id: { type: 'string', description: 'Organization ID to complete task for' },
+        all_overdue: { type: 'boolean', description: 'Complete all overdue tasks for this user' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'log_conversation',
     description: 'Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.',
     usage_hints: 'Use when admin reports an interaction.',
@@ -5555,6 +5569,129 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, orgId, userId }, 'Error setting reminder');
       return '❌ Failed to set reminder. Please try again.';
+    }
+  });
+
+  // Complete task - mark a task/reminder as done
+  handlers.set('complete_task', async (input) => {
+    const pool = getPool();
+    const orgId = input.org_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
+    const allOverdue = input.all_overdue as boolean | undefined;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      if (allOverdue) {
+        // Complete all overdue tasks for this user
+        const result = await pool.query(`
+          UPDATE org_activities
+          SET next_step_completed_at = NOW(),
+              next_step_completed_reason = 'Marked done by user'
+          WHERE is_next_step = TRUE
+            AND next_step_completed_at IS NULL
+            AND next_step_owner_user_id = $1
+            AND next_step_due_date < CURRENT_DATE
+          RETURNING id, organization_id, description, next_step_due_date
+        `, [userId]);
+
+        if (result.rows.length === 0) {
+          return '✅ No overdue tasks found — you\'re all caught up!';
+        }
+
+        // Clear matching prospect_next_action fields
+        for (const row of result.rows) {
+          if (row.next_step_due_date) {
+            await pool.query(`
+              UPDATE organizations
+              SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+              WHERE workos_organization_id = $1
+                AND prospect_next_action_date = $2
+            `, [row.organization_id, row.next_step_due_date]);
+          }
+        }
+
+        // Get org names for confirmation
+        const orgIds = [...new Set(result.rows.map(r => r.organization_id))];
+        const orgsResult = await pool.query(`
+          SELECT workos_organization_id, name FROM organizations
+          WHERE workos_organization_id = ANY($1)
+        `, [orgIds]);
+        const orgNames = new Map(orgsResult.rows.map(r => [r.workos_organization_id, r.name]));
+
+        const completedList = result.rows.map(r =>
+          `• **${orgNames.get(r.organization_id) || 'Unknown'}**: ${r.description}`
+        ).join('\n');
+
+        return `✅ Completed ${result.rows.length} overdue task${result.rows.length === 1 ? '' : 's'}:\n\n${completedList}`;
+      }
+
+      // Complete task for a specific org
+      if (!orgId && !companyName) {
+        return '❌ Please provide company_name, org_id, or set all_overdue to true.';
+      }
+
+      let targetOrgId = orgId;
+      if (!targetOrgId && companyName) {
+        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length === 0) {
+          return `❌ No organization found matching "${companyName}".`;
+        }
+        targetOrgId = searchResult.rows[0].workos_organization_id;
+      }
+
+      const result = await pool.query(`
+        UPDATE org_activities
+        SET next_step_completed_at = NOW(),
+            next_step_completed_reason = 'Marked done by user'
+        WHERE is_next_step = TRUE
+          AND next_step_completed_at IS NULL
+          AND organization_id = $1
+          AND next_step_owner_user_id = $2
+        RETURNING id, description, next_step_due_date
+      `, [targetOrgId, userId]);
+
+      // Get org name
+      const orgResult = await pool.query(`
+        SELECT name FROM organizations WHERE workos_organization_id = $1
+      `, [targetOrgId]);
+      const orgName = orgResult.rows[0]?.name || 'Unknown';
+
+      if (result.rows.length === 0) {
+        return `ℹ️ No pending tasks found for **${orgName}**.`;
+      }
+
+      // Clear matching prospect_next_action for all completed tasks
+      for (const row of result.rows) {
+        if (row.next_step_due_date) {
+          await pool.query(`
+            UPDATE organizations
+            SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+            WHERE workos_organization_id = $1
+              AND prospect_next_action_date = $2
+          `, [targetOrgId, row.next_step_due_date]);
+        }
+      }
+
+      const descriptions = result.rows.map(r => r.description).join(', ');
+      return `✅ Completed ${result.rows.length} task${result.rows.length === 1 ? '' : 's'} for **${orgName}**: ${descriptions}`;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error completing task');
+      return '❌ Failed to complete task. Please try again.';
     }
   });
 

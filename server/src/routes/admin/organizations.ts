@@ -419,7 +419,18 @@ export function setupOrganizationRoutes(
           return res.status(404).json({ error: "Activity not found" });
         }
 
-        res.json(result.rows[0]);
+        // When completing a task, clear the org's prospect_next_action if it matches
+        const completed = result.rows[0];
+        if (next_step_completed_at && completed.is_next_step && completed.next_step_due_date) {
+          await pool.query(`
+            UPDATE organizations
+            SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+            WHERE workos_organization_id = $1
+              AND prospect_next_action_date = $2
+          `, [orgId, completed.next_step_due_date]);
+        }
+
+        res.json(completed);
       } catch (error) {
         logger.error({ err: error }, "Error updating activity");
         res.status(500).json({
