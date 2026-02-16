@@ -504,6 +504,17 @@
         "capabilities"
       ]
     },
+    "creative": {
+      "type": "object",
+      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
+      "properties": {
+        "supports_brief": {
+          "type": "boolean",
+          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
+        }
+      },
+      "additionalProperties": true
+    },
     "extensions_supported": {
       "type": "array",
       "description": "Extension namespaces this agent supports. Buyers can expect meaningful data in ext.{namespace} fields on responses from this agent. Extension schemas are published in the AdCP extension registry.",
