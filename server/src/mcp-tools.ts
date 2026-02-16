@@ -18,7 +18,7 @@ import { BrandManager } from "./brand-manager.js";
 import { brandDb } from "./db/brand-db.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
-import { fetchBrandData, isBrandfetchConfigured } from "./services/brandfetch.js";
+import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { registryBansDb } from "./db/registry-bans-db.js";
 import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/registry.js";
@@ -1208,8 +1208,8 @@ export class MCPToolHandler {
       }
 
       case "enrich_brand": {
-        const domain = args?.domain as string;
-        if (!domain) {
+        const rawEnrichDomain = args?.domain as string;
+        if (!rawEnrichDomain) {
           return {
             content: [
               {
@@ -1221,13 +1221,43 @@ export class MCPToolHandler {
           };
         }
 
+        // Normalize domain for consistent DB lookups (strip protocol, paths, query strings)
+        const enrichDomain = rawEnrichDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+        // Check DB for recently enriched data (avoids redundant Brandfetch API calls)
+        const existingBrand = await brandDb.getDiscoveredBrandByDomain(enrichDomain);
+        if (existingBrand?.has_brand_manifest && existingBrand.brand_manifest && existingBrand.last_validated) {
+          const ageMs = Date.now() - new Date(existingBrand.last_validated).getTime();
+          if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+            return {
+              content: [
+                {
+                  type: "resource",
+                  resource: {
+                    uri: `brand://enrichment/${encodeURIComponent(enrichDomain)}`,
+                    mimeType: "application/json",
+                    text: JSON.stringify({
+                      success: true,
+                      domain: existingBrand.domain,
+                      cached: true,
+                      manifest: existingBrand.brand_manifest,
+                      source: "enriched",
+                      enrichment_provider: "brandfetch",
+                    }, null, 2),
+                  },
+                },
+              ],
+            };
+          }
+        }
+
         if (!isBrandfetchConfigured()) {
           return {
             content: [
               {
                 type: "resource",
                 resource: {
-                  uri: `brand://enrichment/${encodeURIComponent(domain)}`,
+                  uri: `brand://enrichment/${encodeURIComponent(enrichDomain)}`,
                   mimeType: "application/json",
                   text: JSON.stringify({
                     error: "Brandfetch not configured",
@@ -1240,13 +1270,35 @@ export class MCPToolHandler {
           };
         }
 
-        const enrichment = await fetchBrandData(domain);
+        const enrichment = await fetchBrandData(enrichDomain);
+
+        // Save enrichment to DB for future cache hits
+        if (enrichment.success && enrichment.manifest) {
+          brandDb.upsertDiscoveredBrand({
+            domain: enrichment.domain,
+            brand_name: enrichment.manifest.name,
+            brand_manifest: {
+              name: enrichment.manifest.name,
+              url: enrichment.manifest.url,
+              description: enrichment.manifest.description,
+              logos: enrichment.manifest.logos,
+              colors: enrichment.manifest.colors,
+              fonts: enrichment.manifest.fonts,
+              ...(enrichment.company ? { company: enrichment.company } : {}),
+            },
+            has_brand_manifest: true,
+            source_type: 'enriched',
+          }).catch((err) => {
+            logger.warn({ err, domain: enrichDomain }, 'Failed to cache enrichment result');
+          });
+        }
+
         return {
           content: [
             {
               type: "resource",
               resource: {
-                uri: `brand://enrichment/${encodeURIComponent(domain)}`,
+                uri: `brand://enrichment/${encodeURIComponent(enrichDomain)}`,
                 mimeType: "application/json",
                 text: JSON.stringify({
                   ...enrichment,

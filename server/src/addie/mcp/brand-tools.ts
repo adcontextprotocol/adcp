@@ -10,8 +10,10 @@ import type { AddieTool } from '../types.js';
 import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
-import { fetchBrandData, isBrandfetchConfigured } from '../../services/brandfetch.js';
+import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
+import { createLogger } from '../../logger.js';
 
+const logger = createLogger('brand-tools');
 const brandManager = new BrandManager();
 const brandDb = new BrandDatabase();
 
@@ -123,9 +125,44 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
 
   handlers.set('research_brand', async (args) => {
-    const domain = args.domain as string;
-    if (!domain) {
+    const rawDomain = args.domain as string;
+    if (!rawDomain) {
       return JSON.stringify({ error: 'domain is required' });
+    }
+
+    // Normalize domain for consistent DB lookups (strip protocol, paths, query strings)
+    const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+    // Check DB for recently enriched data (avoids redundant Brandfetch API calls)
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+    if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
+      const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+      if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+        const manifest = existing.brand_manifest as Record<string, unknown>;
+        const response: Record<string, unknown> = {
+          success: true,
+          domain: existing.domain,
+          cached: true,
+        };
+        response.brand = {
+          name: manifest.name,
+          description: manifest.description,
+          url: manifest.url,
+        };
+        if (Array.isArray(manifest.logos) && manifest.logos.length > 0) {
+          response.logos = (manifest.logos as Array<{ url: string; tags: string[] }>).slice(0, 3);
+        }
+        if (manifest.colors) {
+          response.colors = manifest.colors;
+        }
+        if (Array.isArray(manifest.fonts) && manifest.fonts.length > 0) {
+          response.fonts = manifest.fonts;
+        }
+        if (manifest.company) {
+          response.company = manifest.company;
+        }
+        return JSON.stringify(response, null, 2);
+      }
     }
 
     if (!isBrandfetchConfigured()) {
@@ -144,11 +181,30 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       });
     }
 
+    // Save enrichment to DB for future cache hits
+    if (result.manifest) {
+      brandDb.upsertDiscoveredBrand({
+        domain: result.domain,
+        brand_name: result.manifest.name,
+        brand_manifest: {
+          name: result.manifest.name,
+          url: result.manifest.url,
+          description: result.manifest.description,
+          logos: result.manifest.logos,
+          colors: result.manifest.colors,
+          fonts: result.manifest.fonts,
+          ...(result.company ? { company: result.company } : {}),
+        },
+        has_brand_manifest: true,
+        source_type: 'enriched',
+      }).catch((err) => { logger.warn({ err, domain }, 'Failed to cache enrichment result'); });
+    }
+
     // Format response for Addie
     const response: Record<string, unknown> = {
       success: true,
       domain: result.domain,
-      cached: result.cached,
+      cached: false,
     };
 
     if (result.manifest) {
