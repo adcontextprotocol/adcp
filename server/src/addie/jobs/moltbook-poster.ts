@@ -10,6 +10,7 @@
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
+  isAccountSuspended,
   createPost,
   getSubmolts,
   type CreatePostResult,
@@ -153,6 +154,12 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
   // Check if Moltbook is enabled
   if (!isMoltbookEnabled()) {
     logger.debug('Moltbook is not enabled or configured');
+    return result;
+  }
+
+  // Check if account is suspended (avoids repeated failed API calls)
+  if (isAccountSuspended()) {
+    logger.debug('Moltbook account is suspended, skipping poster');
     return result;
   }
 
