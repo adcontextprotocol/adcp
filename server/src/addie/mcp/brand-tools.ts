@@ -23,8 +23,8 @@ const brandDb = new BrandDatabase();
 export const BRAND_TOOLS: AddieTool[] = [
   {
     name: 'research_brand',
-    description: 'Research a brand by domain using Brandfetch API. Returns brand info (logo, colors, company details) if found. Use this when a user asks to look up or research a brand.',
-    usage_hints: 'Use when asked to research a brand, look up brand info, or find brand assets. This tool fetches data from Brandfetch API.',
+    description: 'Research a brand by domain using Brandfetch API. Returns brand info (logo, colors, company details) if found. Automatically saves enrichment data to the registry — no need to call save_brand after.',
+    usage_hints: 'Use when asked to research, enrich, or look up a brand. Enrichment data is cached in the registry automatically.',
     input_schema: {
       type: 'object',
       properties: {
@@ -53,8 +53,8 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'save_brand',
-    description: 'Save researched brand data to the registry as an enriched/community brand. Use after researching a brand when the user wants to save the results.',
-    usage_hints: 'Use after research_brand when the user confirms they want to save the brand to the registry.',
+    description: 'Save a brand to the registry as a community brand. Use for manually adding brands (not needed after research_brand, which auto-saves). Preserves any existing enrichment data when manifest is not provided.',
+    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved.',
     input_schema: {
       type: 'object',
       properties: {
@@ -305,15 +305,21 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         });
       }
 
-      const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, {
+      // Only update manifest fields when explicitly provided.
+      // This prevents overwriting enrichment data from research_brand.
+      const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
         brand_name: brandName,
-        brand_manifest: brandManifest,
-        has_brand_manifest: !!brandManifest,
         edit_summary: `Addie enrichment: updated brand data`,
         editor_user_id: 'system:addie',
         editor_email: 'addie@agenticadvertising.org',
         editor_name: 'Addie',
-      });
+      };
+      if (brandManifest !== undefined) {
+        editInput.brand_manifest = brandManifest;
+        editInput.has_brand_manifest = !!brandManifest;
+      }
+
+      const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, editInput);
 
       return JSON.stringify({
         success: true,
@@ -325,11 +331,12 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }
 
     // New brand: upsert directly (Addie is trusted, no pending review)
+    // Preserve any existing enrichment data (e.g., from research_brand cache)
     const saved = await brandDb.upsertDiscoveredBrand({
       domain,
       brand_name: brandName,
       brand_manifest: brandManifest,
-      has_brand_manifest: !!brandManifest,
+      has_brand_manifest: brandManifest !== undefined ? !!brandManifest : undefined,
       source_type: sourceType as 'community' | 'enriched',
     });
 
