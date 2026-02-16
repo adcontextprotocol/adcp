@@ -106,6 +106,18 @@
           "$ref": "/schemas/core/brand-manifest-ref.json",
           "description": "Brand manifest reference (inline object or URL)"
         },
+        "creative-brief": {
+          "$ref": "/schemas/core/creative-brief.json",
+          "description": "Campaign-level creative context for AI-powered creative generation"
+        },
+        "creative-brief-ref": {
+          "$ref": "/schemas/core/creative-brief-ref.json",
+          "description": "Creative brief reference (inline object or URL)"
+        },
+        "reference-asset": {
+          "$ref": "/schemas/core/reference-asset.json",
+          "description": "A reference asset with semantic role for creative context"
+        },
         "promoted-products": {
           "$ref": "/schemas/core/promoted-products.json",
           "description": "Product or offering selection for campaigns with multiple selection methods"
