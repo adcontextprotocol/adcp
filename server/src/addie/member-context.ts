@@ -582,12 +582,6 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
 }
 
 /**
- * Format member context for inclusion in Claude messages
- *
- * Returns a string that can be prepended to the user message
- * to give Claude context about who's asking.
- */
-/**
  * Look up member context from a WorkOS user ID (for web chat)
  *
  * Similar to getMemberContext() but starts from WorkOS user ID instead of Slack user ID.
