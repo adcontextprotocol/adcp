@@ -1402,7 +1402,7 @@
         }
 
         const data = await response.json();
-        renderMemberDetail(data.member);
+        renderMemberDetail(data.member, data.perspectives, data.registry_contributions, data.github_username);
       } catch (error) {
         console.error('Load member error:', error);
         document.getElementById('detail-content').innerHTML = `
@@ -1414,7 +1414,7 @@
       }
     }
 
-    function renderMemberDetail(member) {
+    function renderMemberDetail(member, perspectives, registryContributions, githubUsername) {
       const content = document.getElementById('detail-content');
 
       const foundingBadgeHtml = member.is_founding_member
@@ -1536,6 +1536,96 @@
               ` : ''}
             </div>
           </div>
+
+          ${perspectives && perspectives.length > 0 ? `
+            <div class="detail-section">
+              <h2>Published content</h2>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${perspectives.map(p => {
+                  const isArticle = p.content_type === 'article';
+                  const href = isArticle ? '/perspectives/' + encodeURIComponent(p.slug) : escapeHtml(p.external_url || '#');
+                  const target = isArticle ? '' : ' target="_blank" rel="noopener noreferrer"';
+                  const date = new Date(p.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const meta = [p.category, !isArticle && p.external_site_name].filter(Boolean).join(' · ');
+                  return `
+                    <a href="${href}" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; background: var(--color-gray-50); border-radius: 8px; text-decoration: none; color: inherit; transition: background 0.15s;"${target}
+                       onmouseover="this.style.background='var(--color-gray-100)'" onmouseout="this.style.background='var(--color-gray-50)'">
+                      <div style="width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: ${isArticle ? 'var(--color-primary-100)' : 'var(--color-success-100)'}; color: ${isArticle ? 'var(--color-brand)' : 'var(--color-success-700)'};">
+                        ${isArticle
+                          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>'
+                          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>'
+                        }
+                      </div>
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 500; color: var(--color-text-heading); line-height: 1.4;">${escapeHtml(p.title)}</div>
+                        <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">${escapeHtml(date)}${meta ? ' · ' + escapeHtml(meta) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          ${registryContributions && registryContributions.length > 0 ? `
+            <div class="detail-section">
+              <h2>Registry contributions</h2>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${registryContributions.map(c => {
+                  const date = new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const isBrand = c.contribution_type.startsWith('brand');
+                  const isCreate = c.contribution_type.endsWith('create');
+                  const href = isBrand ? '/brands/' + encodeURIComponent(c.domain) : '/properties/' + encodeURIComponent(c.domain);
+                  const typeLabel = isBrand ? 'Brand' : 'Property';
+                  return `
+                    <a href="${href}" style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; background: var(--color-gray-50); border-radius: 8px; text-decoration: none; color: inherit; transition: background 0.15s;"
+                       onmouseover="this.style.background='var(--color-gray-100)'" onmouseout="this.style.background='var(--color-gray-50)'">
+                      <div style="width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: ${isBrand ? 'var(--color-primary-100)' : 'var(--color-success-100)'}; color: ${isBrand ? 'var(--color-brand)' : 'var(--color-success-700)'};">
+                        ${isBrand
+                          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>'
+                          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>'
+                        }
+                      </div>
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 500; color: var(--color-text-heading); line-height: 1.4;">${escapeHtml(c.domain)}</div>
+                        <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">${escapeHtml(date)} · ${typeLabel} ${isCreate ? 'created' : 'edited'}${!isCreate && c.summary ? ' · ' + escapeHtml(c.summary) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          ${githubUsername ? `
+            <div class="detail-section">
+              <h2>GitHub activity</h2>
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <a href="https://github.com/adcontextprotocol/adcp/issues?q=author:${escapeHtml(githubUsername)}" target="_blank" rel="noopener noreferrer"
+                   style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; background: var(--color-gray-50); border-radius: 8px; text-decoration: none; color: inherit; transition: background 0.15s;"
+                   onmouseover="this.style.background='var(--color-gray-100)'" onmouseout="this.style.background='var(--color-gray-50)'">
+                  <div style="width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--color-primary-100); color: var(--color-brand);">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  </div>
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 14px; font-weight: 500; color: var(--color-text-heading); line-height: 1.4;">Issues</div>
+                    <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
+                <a href="https://github.com/adcontextprotocol/adcp/pulls?q=author:${escapeHtml(githubUsername)}" target="_blank" rel="noopener noreferrer"
+                   style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; background: var(--color-gray-50); border-radius: 8px; text-decoration: none; color: inherit; transition: background 0.15s;"
+                   onmouseover="this.style.background='var(--color-gray-100)'" onmouseout="this.style.background='var(--color-gray-50)'">
+                  <div style="width: 36px; height: 36px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--color-success-100); color: var(--color-success-700);">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+                  </div>
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="font-size: 14px; font-weight: 500; color: var(--color-text-heading); line-height: 1.4;">Pull requests</div>
+                    <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          ` : ''}
 
           ${member.tags && member.tags.length > 0 ? `
             <div class="detail-section">

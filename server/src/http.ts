@@ -893,7 +893,7 @@ export class HTTPServer {
     // Mount community routes
     const communityDb = new CommunityDatabase();
     const communitySlackDb = new SlackDatabase();
-    const { publicRouter: communityPublicRouter, userRouter: communityUserRouter } = createCommunityRouters({ communityDb, slackDb: communitySlackDb });
+    const { publicRouter: communityPublicRouter, userRouter: communityUserRouter } = createCommunityRouters({ communityDb, slackDb: communitySlackDb, memberDb, orgDb, invalidateMemberContextCache });
     this.app.use('/api/community', communityPublicRouter);
     this.app.use('/api/me', communityUserRouter);
 
@@ -6263,7 +6263,36 @@ Disallow: /api/admin/
           }
         }
 
-        res.json({ member: profile });
+        // For personal orgs, include the user's published content and contributions
+        let perspectives: { id: string; slug: string; title: string; content_type: string; category: string | null; excerpt: string | null; external_url: string | null; external_site_name: string | null; published_at: string }[] = [];
+        let registry_contributions: { contribution_type: string; domain: string; summary: string; created_at: string; revision_number: number | null }[] = [];
+        let github_username: string | null = null;
+        try {
+          const pool = getPool();
+          const orgResult = await pool.query<{ is_personal: boolean }>(
+            'SELECT is_personal FROM organizations WHERE workos_organization_id = $1',
+            [profile.workos_organization_id]
+          );
+          if (orgResult.rows[0]?.is_personal) {
+            const userResult = await pool.query<{ workos_user_id: string; github_username: string | null }>(
+              'SELECT workos_user_id, github_username FROM users WHERE primary_organization_id = $1 LIMIT 1',
+              [profile.workos_organization_id]
+            );
+            const userId = userResult.rows[0]?.workos_user_id;
+            github_username = userResult.rows[0]?.github_username || null;
+            if (userId) {
+              const communityDb = new CommunityDatabase();
+              [perspectives, registry_contributions] = await Promise.all([
+                communityDb.getUserPublishedContent(userId),
+                communityDb.getUserRegistryContributions(userId),
+              ]);
+            }
+          }
+        } catch (err) {
+          logger.debug({ err }, 'Failed to load content for member profile');
+        }
+
+        res.json({ member: profile, perspectives, registry_contributions, github_username });
       } catch (error) {
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({

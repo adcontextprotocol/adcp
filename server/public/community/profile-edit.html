@@ -451,13 +451,13 @@
       <h1 class="edit-title">Edit profile</h1>
 
       <form id="profile-form" novalidate>
-        <!-- Profile visibility -->
+        <!-- Community visibility -->
         <div class="edit-section">
-          <h2 class="edit-section-title">Profile visibility</h2>
+          <h2 class="edit-section-title">Community visibility</h2>
           <div class="toggle-row">
             <div class="toggle-content">
               <div class="toggle-label">Public profile</div>
-              <div class="toggle-description">Make your profile visible in the community directory. Only logged-in members can see it.</div>
+              <div class="toggle-description">Make your profile visible in the <a href="/community/people" style="color: var(--color-brand);">community directory</a>. Only logged-in members can see it.</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="field-is-public" aria-label="Public profile">
@@ -559,6 +559,43 @@
           </div>
         </div>
 
+        <!-- Member directory (individual accounts only) -->
+        <div class="edit-section" id="member-directory-section" style="display: none;">
+          <h2 class="edit-section-title">Member directory</h2>
+          <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-4);">
+            Get listed in the <a href="/members" style="color: var(--color-brand);">member directory</a> so companies and peers can discover your expertise in agentic advertising.
+          </p>
+
+          <div id="member-directory-status" style="display: none; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-size: var(--text-sm);"></div>
+
+          <div class="form-group">
+            <label class="form-label">What do you do?</label>
+            <div class="checkbox-row">
+              <input type="checkbox" id="offering-consulting" class="checkbox-input" value="consulting">
+              <label class="checkbox-label" for="offering-consulting">Consulting</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="offering-other" class="checkbox-input" value="other">
+              <label class="checkbox-label" for="offering-other">Other</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="field-contact-email">Contact email</label>
+            <input type="email" id="field-contact-email" class="form-input" placeholder="you@example.com">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="field-contact-phone">Contact phone</label>
+            <input type="tel" id="field-contact-phone" class="form-input" placeholder="+1 (555) 123-4567">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="field-contact-website">Website</label>
+            <input type="url" id="field-contact-website" class="form-input" placeholder="https://example.com">
+          </div>
+        </div>
+
         <!-- Save -->
         <div class="save-bar">
           <a href="/community" class="btn btn-ghost">Cancel</a>
@@ -582,6 +619,9 @@
 
     // State
     let profileData = null;
+    let memberProfileData = null;
+    let memberBillingData = null;
+    let isPersonalAccount = false;
     let expertiseTags = [];
     let interestsTags = [];
 
@@ -597,18 +637,48 @@
     // Data fetching
     async function loadProfile() {
       try {
-        const response = await fetch('/api/me/community/hub');
-        if (!response.ok) {
-          if (response.status === 401) {
+        const [hubResponse, memberResponse] = await Promise.all([
+          fetch('/api/me/community/hub'),
+          fetch('/api/me/member-profile').catch(() => null),
+        ]);
+
+        if (!hubResponse.ok) {
+          if (hubResponse.status === 401) {
             window.location.href = '/auth/login?return_to=/community/profile/edit';
             return;
           }
           throw new Error('Failed to load profile');
         }
 
-        const data = await response.json();
+        const data = await hubResponse.json();
         profileData = data.profile || {};
+
+        // Detect individual account and load member profile data
+        if (memberResponse && memberResponse.ok) {
+          const memberData = await memberResponse.json();
+          memberProfileData = memberData.profile || null;
+
+          // Check if org is personal via billing endpoint
+          if (memberData.organization_id) {
+            try {
+              const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
+              if (billingResp.ok) {
+                memberBillingData = await billingResp.json();
+                isPersonalAccount = memberBillingData.is_personal || false;
+              }
+            } catch (e) {
+              console.warn('Could not load billing info:', e);
+            }
+          }
+        }
+
         populateForm(profileData);
+
+        // Show member directory section for individual accounts
+        if (isPersonalAccount) {
+          document.getElementById('member-directory-section').style.display = 'block';
+          populateMemberFields(memberProfileData, memberBillingData);
+        }
 
         document.getElementById('edit-loading').style.display = 'none';
         document.getElementById('edit-content').style.display = 'block';
@@ -616,6 +686,41 @@
         console.error('Load profile error:', error);
         document.getElementById('edit-loading').innerHTML =
           '<p>Failed to load profile. <a href="/community/profile/edit">Try again</a></p>';
+      }
+    }
+
+    function populateMemberFields(memberProfile, billingData) {
+      if (!memberProfile) {
+        // No member profile yet — show informational status
+        const statusEl = document.getElementById('member-directory-status');
+        statusEl.style.display = 'block';
+        statusEl.style.background = 'var(--color-gray-50)';
+        statusEl.style.color = 'var(--color-text-secondary)';
+        statusEl.style.border = 'var(--border-1) solid var(--color-gray-200)';
+        statusEl.innerHTML = 'You don\'t have a member directory listing yet. <a href="/dashboard/settings" style="color: var(--color-brand); font-weight: var(--font-medium);">Subscribe</a> to create one and appear in the directory.';
+        return;
+      }
+      const offerings = memberProfile.offerings || [];
+      document.getElementById('offering-consulting').checked = offerings.includes('consulting');
+      document.getElementById('offering-other').checked = offerings.includes('other');
+      document.getElementById('field-contact-email').value = memberProfile.contact_email || '';
+      document.getElementById('field-contact-phone').value = memberProfile.contact_phone || '';
+      document.getElementById('field-contact-website').value = memberProfile.contact_website || '';
+
+      // Show visibility status
+      const statusEl = document.getElementById('member-directory-status');
+      statusEl.style.display = 'block';
+      const isSubscribed = billingData?.subscription?.status === 'active';
+      if (memberProfile.is_public && isSubscribed) {
+        statusEl.style.background = 'var(--color-success-50)';
+        statusEl.style.color = 'var(--color-success-700)';
+        statusEl.style.border = 'var(--border-1) solid var(--color-success-200)';
+        statusEl.innerHTML = 'Your listing is live at <a href="/members/' + encodeURIComponent(memberProfile.slug) + '" style="color: var(--color-success-700); font-weight: var(--font-medium);">/members/' + escapeHtml(memberProfile.slug) + '</a>';
+      } else {
+        statusEl.style.background = 'var(--color-warning-50)';
+        statusEl.style.color = 'var(--color-warning-700)';
+        statusEl.style.border = 'var(--border-1) solid var(--color-warning-200)';
+        statusEl.innerHTML = 'Your listing is not yet visible in the member directory. <a href="/dashboard/settings" style="color: var(--color-warning-700); font-weight: var(--font-medium);">Manage subscription</a>';
       }
     }
 
@@ -752,6 +857,17 @@
         open_to_coffee_chat: document.getElementById('field-coffee-chat').checked,
         open_to_intros: document.getElementById('field-intros').checked,
       };
+
+      // Include member directory fields for individual accounts
+      if (isPersonalAccount) {
+        const offerings = [];
+        if (document.getElementById('offering-consulting').checked) offerings.push('consulting');
+        if (document.getElementById('offering-other').checked) offerings.push('other');
+        payload.offerings = offerings;
+        payload.contact_email = document.getElementById('field-contact-email').value.trim() || undefined;
+        payload.contact_phone = document.getElementById('field-contact-phone').value.trim() || undefined;
+        payload.contact_website = document.getElementById('field-contact-website').value.trim() || undefined;
+      }
 
       try {
         const response = await fetch('/api/me/community-profile', {

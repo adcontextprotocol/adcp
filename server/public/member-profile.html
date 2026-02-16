@@ -1225,6 +1225,12 @@
           console.warn('Could not load billing info for sidebar:', e);
         }
 
+        // Individual accounts use the community profile as their single profile
+        if (isPersonal) {
+          window.location.href = '/community/profile/edit';
+          return;
+        }
+
         // Initialize dashboard sidebar
         if (typeof DashboardNav !== 'undefined') {
           DashboardNav.init({
@@ -1239,9 +1245,7 @@
         document.getElementById('loading').style.display = 'none';
 
         // Update page title/subtitle based on account type
-        if (isPersonal) {
-          document.querySelector('.subtitle').textContent = 'Customize how you appear in the AdCP member directory';
-        } else if (currentOrgName) {
+        if (currentOrgName) {
           document.querySelector('.subtitle').textContent = `Customize how ${currentOrgName} appears in the AdCP member directory`;
         }
 

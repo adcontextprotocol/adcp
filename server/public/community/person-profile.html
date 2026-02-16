@@ -336,6 +336,66 @@
       color: var(--color-text-heading);
     }
 
+    .perspective-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .perspective-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-colors);
+    }
+
+    .perspective-item:hover {
+      background: var(--color-gray-100);
+    }
+
+    .perspective-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .perspective-icon.article {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+
+    .perspective-icon.link {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .perspective-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .perspective-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+      line-height: 1.4;
+    }
+
+    .perspective-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
     /* =========================================================================
        Sidebar
        ========================================================================= */
@@ -993,6 +1053,104 @@
                     <span class="wg-item-name">${escapeHtml(wg.name)}</span>
                   </a>
                 `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Published content
+      if (data.perspectives && data.perspectives.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Published content</h2>
+              <div class="perspective-list">
+                ${data.perspectives.map(p => {
+                  const isArticle = p.content_type === 'article';
+                  const href = isArticle
+                    ? '/perspectives/' + encodeURIComponent(p.slug)
+                    : escapeHtml(p.external_url || '#');
+                  const target = isArticle ? '' : ' target="_blank" rel="noopener noreferrer"';
+                  const date = new Date(p.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const meta = [p.category, !isArticle && p.external_site_name].filter(Boolean).join(' · ');
+                  const icon = isArticle
+                    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>'
+                    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+                  return `
+                    <a href="${href}" class="perspective-item"${target}>
+                      <div class="perspective-icon ${isArticle ? 'article' : 'link'}">${icon}</div>
+                      <div class="perspective-info">
+                        <div class="perspective-title">${escapeHtml(p.title)}</div>
+                        <div class="perspective-meta">${escapeHtml(date)}${meta ? ' · ' + escapeHtml(meta) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Registry contributions
+      if (data.registry_contributions && data.registry_contributions.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Registry contributions</h2>
+              <div class="perspective-list">
+                ${data.registry_contributions.map(c => {
+                  const date = new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const isBrand = c.contribution_type.startsWith('brand');
+                  const isCreate = c.contribution_type.endsWith('create');
+                  const href = isBrand ? '/brands/' + encodeURIComponent(c.domain) : '/properties/' + encodeURIComponent(c.domain);
+                  const icon = isBrand
+                    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>'
+                    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>';
+                  const typeLabel = isBrand ? 'Brand' : 'Property';
+                  return `
+                    <a href="${href}" class="perspective-item">
+                      <div class="perspective-icon ${isBrand ? 'article' : 'link'}">${icon}</div>
+                      <div class="perspective-info">
+                        <div class="perspective-title">${escapeHtml(c.domain)}</div>
+                        <div class="perspective-meta">${escapeHtml(date)} · ${typeLabel} ${isCreate ? 'created' : 'edited'}${!isCreate && c.summary ? ' · ' + escapeHtml(c.summary) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // GitHub activity
+      if (data.github_username) {
+        const ghUser = escapeHtml(data.github_username);
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">GitHub activity</h2>
+              <div class="perspective-list">
+                <a href="https://github.com/adcontextprotocol/adcp/issues?q=author:${ghUser}" target="_blank" rel="noopener noreferrer" class="perspective-item">
+                  <div class="perspective-icon article">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  </div>
+                  <div class="perspective-info">
+                    <div class="perspective-title">Issues</div>
+                    <div class="perspective-meta">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
+                <a href="https://github.com/adcontextprotocol/adcp/pulls?q=author:${ghUser}" target="_blank" rel="noopener noreferrer" class="perspective-item">
+                  <div class="perspective-icon link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+                  </div>
+                  <div class="perspective-info">
+                    <div class="perspective-title">Pull requests</div>
+                    <div class="perspective-meta">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
               </div>
             </div>
           </div>
