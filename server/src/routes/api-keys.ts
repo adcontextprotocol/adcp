@@ -73,7 +73,14 @@ async function callWidgetApi(
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
-  const data = response.ok ? await response.json() : await response.text();
+  // Always try to parse as JSON (WorkOS returns JSON for both success and error responses)
+  const text = await response.text();
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
   return { status: response.status, data };
 }
 
@@ -145,6 +152,11 @@ export function createApiKeysRouter(): Router {
         logger.info(
           { userId: req.user!.id, organizationId, keyName: name },
           "API key created",
+        );
+      } else {
+        logger.warn(
+          { userId: req.user!.id, organizationId, keyName: name, status, response: data },
+          "WorkOS API rejected API key creation",
         );
       }
 
