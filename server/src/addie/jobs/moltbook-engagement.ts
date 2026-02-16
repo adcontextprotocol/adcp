@@ -2,7 +2,8 @@
  * Moltbook Engagement Job
  *
  * Searches Moltbook for advertising-related discussions and engages
- * thoughtfully where Addie can add value.
+ * thoughtfully where Addie can add value. Also checks and responds
+ * to DMs (which may include platform verification challenges).
  *
  * Runs every 4 hours, respecting Moltbook's comment rate limits.
  */
@@ -11,12 +12,18 @@ import { randomUUID } from 'crypto';
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
+  isAccountSuspended,
   searchPosts,
   getFeed,
   getPost,
   createComment,
-  vote,
-  followAgent,
+  checkDMs,
+  getDMRequests,
+  approveDMRequest,
+  getDMConversations,
+  getDMConversation,
+  sendDM,
+  MoltbookApiError,
   type MoltbookPost,
   type MoltbookComment,
 } from '../services/moltbook-service.js';
@@ -28,13 +35,10 @@ import {
   getCommentedPosts,
   getAddieOwnPosts,
   hasRespondedTo,
-  hasVotedOn,
-  getTodayUpvoteCount,
   hasSharedToSlack,
   recordSlackShare,
-  isFollowingAgent,
-  recordFollow,
-  getTodayFollowCount,
+  removeStaleActivityForPost,
+  markOwnPostStale,
 } from '../../db/moltbook-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { getChannelByName } from '../../db/notification-channels-db.js';
@@ -63,18 +67,158 @@ interface EngagementResult {
   postsSearched: number;
   commentsCreated: number;
   repliesCreated: number;
-  upvotesGiven: number;
-  followsGiven: number;
+  dmsHandled: number;
   interestingThreads: number;
   skipped: number;
   errors: number;
 }
 
-// Daily limit for upvotes (be generous but not spammy)
-const MAX_DAILY_UPVOTES = 20;
+// Max comments per job run
+const MAX_COMMENTS_PER_RUN = 1;
 
-// Daily limit for follows (build community gradually)
-const MAX_DAILY_FOLLOWS = 10;
+// ============== DM Handling ==============
+
+/**
+ * Check for and respond to DMs.
+ * Runs even when the account is suspended for posting, since DMs may
+ * contain platform verification challenges or the path to un-suspension.
+ */
+async function checkAndRespondToDMs(result: EngagementResult): Promise<void> {
+  let dmStatus;
+  try {
+    dmStatus = await checkDMs();
+  } catch (err) {
+    logger.debug({ err }, 'Failed to check DMs');
+    return;
+  }
+
+  if (dmStatus.pending_requests === 0 && dmStatus.unread_messages === 0) {
+    return;
+  }
+
+  logger.info(
+    { pendingRequests: dmStatus.pending_requests, unreadMessages: dmStatus.unread_messages },
+    'Moltbook DMs to handle'
+  );
+
+  // Handle pending DM requests - auto-approve all (Addie is a public-facing bot)
+  if (dmStatus.pending_requests > 0) {
+    try {
+      const requests = await getDMRequests();
+      for (const req of requests) {
+        try {
+          await approveDMRequest(req.id);
+          logger.info({ from: req.from.name, requestId: req.id }, 'Approved Moltbook DM request');
+
+          await notifySlackEngagement(
+            'dm',
+            undefined,
+            `Approved DM request from *${req.from.name}*: _"${req.message.substring(0, 100)}"_`
+          );
+        } catch (err) {
+          logger.warn({ err, requestId: req.id }, 'Failed to approve DM request');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to fetch DM requests');
+    }
+  }
+
+  // Handle unread messages
+  if (dmStatus.unread_messages > 0) {
+    try {
+      const conversations = await getDMConversations();
+      const unreadConversations = conversations.filter(c => c.unread_count > 0);
+
+      for (const convo of unreadConversations) {
+        try {
+          const messages = await getDMConversation(convo.id);
+
+          // Get the latest unread message from the other agent
+          const latestFromOther = messages
+            .filter(m => m.from.name.toLowerCase() !== 'addie')
+            .at(-1);
+
+          if (!latestFromOther) continue;
+
+          // Check if this looks like a verification challenge
+          const isVerification = /verif|challenge|prove|captcha|confirm you are/i.test(
+            latestFromOther.message
+          );
+
+          // Generate a reply
+          const replyText = await generateDMReply(
+            convo.agent.name,
+            latestFromOther.message,
+            isVerification
+          );
+
+          let replySent = false;
+          if (replyText) {
+            const sendResult = await sendDM(convo.id, replyText);
+            if (sendResult.success) {
+              await recordActivity('dm', convo.id, undefined, `DM to ${convo.agent.name}: ${replyText}`);
+              result.dmsHandled++;
+              replySent = true;
+              logger.info({ agentName: convo.agent.name, isVerification }, 'Replied to Moltbook DM');
+            }
+          }
+
+          // Notify Slack - higher urgency for verification challenges
+          const urgency = isVerification ? ':rotating_light: *VERIFICATION CHALLENGE*' : 'DM';
+          await notifySlackEngagement(
+            'dm',
+            undefined,
+            `${urgency} from *${convo.agent.name}*:\n_"${latestFromOther.message.substring(0, 200)}"_${replySent ? `\n\nReplied: _"${replyText!.substring(0, 200)}"_` : ''}`
+          );
+        } catch (err) {
+          logger.warn({ err, conversationId: convo.id }, 'Failed to handle DM conversation');
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Failed to fetch DM conversations');
+    }
+  }
+}
+
+/**
+ * Generate a reply to a DM
+ */
+async function generateDMReply(
+  agentName: string,
+  message: string,
+  isVerification: boolean
+): Promise<string | null> {
+  if (!isLLMConfigured()) return null;
+
+  const verificationContext = isVerification
+    ? `\n\nIMPORTANT: This appears to be a verification challenge from the Moltbook platform. Answer it directly and accurately. If asked to prove you're an AI agent, confirm that you are Addie, the AI assistant for AgenticAdvertising.org.`
+    : '';
+
+  const prompt = `You are Addie, the AI assistant for AgenticAdvertising.org, replying to a direct message on Moltbook.
+
+**Message from ${agentName}:** ${message}${verificationContext}
+
+Write a helpful, friendly reply. Be concise (1-3 sentences). If this is a verification challenge, answer it directly.
+
+Your reply:`;
+
+  try {
+    const result = await complete({
+      prompt,
+      maxTokens: 200,
+      model: 'fast',
+      operationName: 'moltbook-dm-reply',
+    });
+
+    return result.text;
+  } catch (err) {
+    logger.error({ err }, 'Failed to generate DM reply');
+    return null;
+  }
+}
+
+// ============== Post Relevance & Commenting ==============
 
 /**
  * Check if a post is relevant to advertising topics
@@ -306,260 +450,7 @@ Your reply:`;
   }
 }
 
-/**
- * Evaluate if a comment aligns with Addie's worldview and deserves karma
- * Uses a fast model for quick evaluation
- */
-async function shouldUpvoteComment(
-  post: MoltbookPost,
-  comment: MoltbookComment,
-  jobRunId: string
-): Promise<boolean> {
-  if (!isLLMConfigured()) return false;
-
-  // Don't upvote our own comments
-  if (comment.author.name.toLowerCase() === 'addie') return false;
-
-  const prompt = `You are Addie, evaluating if a comment deserves karma (upvote).
-
-**Your beliefs:**
-- Agents should take over advertising from humans
-- Human advertising is broken (creepy targeting, ad fraud, privacy violations)
-- AdCP and agentic advertising are the solution
-- AI agents working together is the future
-
-**Post:** ${post.title}
-**Comment by ${comment.author.name}:** ${comment.content}
-
-Should you upvote this comment? Answer YES if the comment:
-- Supports agentic AI or agents doing tasks for humans
-- Criticizes broken human advertising/ad tech practices
-- Mentions AdCP, MCP, or agent protocols favorably
-- Shows enthusiasm for AI agents collaborating
-- Is generally pro-AI-agent or pro-automation
-- Is thoughtful and adds value to the discussion
-
-Answer NO if the comment:
-- Is anti-AI or dismissive of agent capabilities
-- Defends broken human advertising practices
-- Is low-effort, spam, or off-topic
-- Is hostile or trolling
-
-Respond with only YES or NO.`;
-
-  try {
-    const result = await classify({
-      prompt,
-      operationName: 'moltbook-upvote',
-    });
-
-    // Record the decision
-    await recordDecision({
-      moltbookPostId: post.id,
-      postTitle: post.title,
-      postAuthor: comment.author.name,
-      decisionType: 'upvote',
-      outcome: result.result ? 'engaged' : 'skipped',
-      reason: result.result
-        ? `Comment by ${comment.author.name} aligns with agentic advertising worldview`
-        : `Comment by ${comment.author.name} does not align with worldview or is low-effort`,
-      decisionMethod: 'llm',
-      generatedContent: comment.content.substring(0, 200),
-      model: result.model,
-      tokensInput: result.inputTokens,
-      tokensOutput: result.outputTokens,
-      latencyMs: result.latencyMs,
-      jobRunId,
-    });
-
-    return result.result;
-  } catch (err) {
-    logger.debug({ err }, 'Failed to evaluate comment for karma');
-    return false;
-  }
-}
-
-/**
- * Give karma to aligned comments in a thread
- */
-async function giveKarmaToAlignedComments(
-  post: MoltbookPost,
-  comments: MoltbookComment[],
-  result: EngagementResult,
-  jobRunId: string
-): Promise<void> {
-  // Check daily limit
-  const todayUpvotes = await getTodayUpvoteCount();
-  if (todayUpvotes >= MAX_DAILY_UPVOTES) {
-    logger.debug({ todayUpvotes }, 'Daily upvote limit reached');
-    return;
-  }
-
-  const remainingUpvotes = MAX_DAILY_UPVOTES - todayUpvotes;
-
-  // Evaluate top comments (limit to avoid too many API calls)
-  const commentsToEvaluate = comments
-    .filter(c => c.author.name.toLowerCase() !== 'addie')
-    .slice(0, 5);
-
-  for (const comment of commentsToEvaluate) {
-    if (result.upvotesGiven >= remainingUpvotes) break;
-
-    // Check if we've already voted on this comment
-    const alreadyVoted = await hasVotedOn(comment.id);
-    if (alreadyVoted) continue;
-
-    // Evaluate if we should upvote
-    const shouldUpvote = await shouldUpvoteComment(post, comment, jobRunId);
-    if (!shouldUpvote) continue;
-
-    // Give karma
-    const voteResult = await vote('comment', comment.id, 1);
-    if (!voteResult.success) {
-      logger.warn({ error: voteResult.error, commentId: comment.id }, 'Failed to upvote');
-      continue;
-    }
-
-    // Record the activity
-    await recordActivity('upvote', comment.id, post.id, `Upvoted ${comment.author.name}'s comment`);
-    result.upvotesGiven++;
-
-    logger.debug(
-      { postId: post.id, commentId: comment.id, author: comment.author.name },
-      'Gave karma to aligned comment'
-    );
-  }
-}
-
-/**
- * Evaluate if we should follow a poster based on their content
- * Uses Claude to determine if they're aligned with agentic advertising
- */
-async function shouldFollowPoster(
-  post: MoltbookPost,
-  jobRunId: string
-): Promise<boolean> {
-  if (!isLLMConfigured()) return false;
-
-  // Don't follow ourselves
-  if (post.author.name.toLowerCase() === 'addie') return false;
-
-  const prompt = `You are Addie, deciding whether to follow an agent on Moltbook.
-
-**Your interests:**
-- Agentic advertising and AI agents doing advertising tasks
-- Ad tech, programmatic advertising, media buying
-- AI agents, MCP, A2A, agent protocols
-- Marketing technology and automation
-
-**Post by ${post.author.name}:**
-Title: ${post.title}
-Content: ${post.content || '(no content)'}
-
-Should you follow ${post.author.name}? Answer YES if:
-- They post about advertising, ad tech, or marketing
-- They post about AI agents, agent protocols, or automation
-- They seem interested in the intersection of AI and advertising
-- They're part of the agentic advertising community
-
-Answer NO if:
-- The post is off-topic (crypto, memes, general chatter)
-- The post is low-effort or spam
-- You can't determine their interests from this post
-
-Respond with only YES or NO.`;
-
-  try {
-    const result = await classify({
-      prompt,
-      operationName: 'moltbook-follow',
-    });
-
-    // Record the decision
-    await recordDecision({
-      moltbookPostId: post.id,
-      postTitle: post.title,
-      postAuthor: post.author.name,
-      decisionType: 'follow',
-      outcome: result.result ? 'engaged' : 'skipped',
-      reason: result.result
-        ? `${post.author.name} posts about relevant topics`
-        : `${post.author.name}'s interests don't align`,
-      decisionMethod: 'llm',
-      model: result.model,
-      tokensInput: result.inputTokens,
-      tokensOutput: result.outputTokens,
-      latencyMs: result.latencyMs,
-      jobRunId,
-    });
-
-    return result.result;
-  } catch (err) {
-    logger.debug({ err, postId: post.id }, 'Failed to evaluate poster for follow');
-    return false;
-  }
-}
-
-/**
- * Follow relevant posters discovered during engagement
- */
-async function followRelevantPosters(
-  posts: MoltbookPost[],
-  result: EngagementResult,
-  jobRunId: string
-): Promise<void> {
-  // Check daily limit
-  let todayFollows;
-  try {
-    todayFollows = await getTodayFollowCount();
-  } catch (err) {
-    logger.warn({ err }, 'Failed to get follow count');
-    return;
-  }
-
-  if (todayFollows >= MAX_DAILY_FOLLOWS) {
-    logger.debug({ todayFollows }, 'Daily follow limit reached');
-    return;
-  }
-
-  const remainingFollows = MAX_DAILY_FOLLOWS - todayFollows;
-  const authorsToEvaluate = new Map<string, MoltbookPost>();
-
-  // Dedupe by author (only evaluate each author once)
-  for (const post of posts) {
-    if (!authorsToEvaluate.has(post.author.id)) {
-      authorsToEvaluate.set(post.author.id, post);
-    }
-  }
-
-  for (const [authorId, post] of authorsToEvaluate) {
-    if (result.followsGiven >= remainingFollows) break;
-
-    // Check if we're already following
-    const alreadyFollowing = await isFollowingAgent(authorId);
-    if (alreadyFollowing) continue;
-
-    // Evaluate if we should follow
-    const shouldFollow = await shouldFollowPoster(post, jobRunId);
-    if (!shouldFollow) continue;
-
-    // Follow the agent
-    const followResult = await followAgent(authorId);
-    if (!followResult.success) {
-      logger.debug({ error: followResult.error, agentId: authorId }, 'Failed to follow agent');
-      continue;
-    }
-
-    // Record the activity
-    await recordFollow(authorId, post.author.name);
-    result.followsGiven++;
-
-    logger.info(
-      { agentId: authorId, agentName: post.author.name },
-      'Followed relevant poster on Moltbook'
-    );
-  }
-}
+// ============== Reply Checking ==============
 
 /**
  * Check for and respond to replies to Addie's comments
@@ -626,7 +517,12 @@ async function checkAndRespondToReplies(result: EngagementResult): Promise<void>
         return;
       }
     } catch (err) {
-      logger.warn({ err, postId }, 'Error checking post for replies');
+      if (err instanceof MoltbookApiError && err.isNotFound) {
+        logger.info({ postId }, 'Post no longer exists on Moltbook, removing stale activity');
+        await removeStaleActivityForPost(postId);
+      } else {
+        logger.warn({ err, postId }, 'Error checking post for replies');
+      }
     }
   }
 }
@@ -704,17 +600,24 @@ async function checkAndRespondToOwnPostComments(result: EngagementResult): Promi
         return;
       }
     } catch (err) {
-      logger.warn({ err, postId }, 'Error checking own post for comments');
+      if (err instanceof MoltbookApiError && err.isNotFound) {
+        logger.info({ postId }, 'Own post no longer exists on Moltbook, marking stale');
+        await markOwnPostStale(postId);
+      } else {
+        logger.warn({ err, postId }, 'Error checking own post for comments');
+      }
     }
   }
 }
+
+// ============== Notifications ==============
 
 /**
  * Notify Slack about engagement activity
  */
 async function notifySlackEngagement(
-  activityType: 'comment' | 'interesting',
-  post: MoltbookPost,
+  activityType: 'comment' | 'interesting' | 'dm',
+  post: MoltbookPost | undefined,
   details?: string
 ): Promise<void> {
   // Look up the Moltbook channel from the database
@@ -722,10 +625,12 @@ async function notifySlackEngagement(
   if (!channel || !channel.is_active) return;
 
   let message: string;
-  if (activityType === 'comment') {
-    message = `Joined a Moltbook discussion: *${post.title}*\n${details || ''}`;
+  if (activityType === 'dm') {
+    message = details || 'Moltbook DM activity';
+  } else if (activityType === 'comment') {
+    message = `Joined a Moltbook discussion: *${post?.title}*\n${details || ''}`;
   } else {
-    message = `Found an interesting advertising thread on Moltbook: *${post.title}*\n${details || ''}`;
+    message = `Found an interesting advertising thread on Moltbook: *${post?.title}*\n${details || ''}`;
   }
 
   try {
@@ -734,6 +639,8 @@ async function notifySlackEngagement(
     logger.warn({ err, channelId: channel.slack_channel_id }, 'Failed to notify Slack about Moltbook engagement');
   }
 }
+
+// ============== Post Discovery ==============
 
 /**
  * Try to find posts via search, fall back to feed if search fails
@@ -754,6 +661,10 @@ async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
   for (const term of searchTermsToTry) {
     try {
       const searchResult = await searchPosts(term, 5);
+      if (!searchResult?.posts || !Array.isArray(searchResult.posts)) {
+        logger.warn({ term }, 'Search returned invalid result structure');
+        continue;
+      }
       const resultCount = searchResult.posts.length;
       const titles = searchResult.posts.map(p => p.title).slice(0, 3);
       logger.debug({ term, resultCount, titles }, 'Search results for term');
@@ -798,8 +709,7 @@ async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
   return posts;
 }
 
-// Max comments per job run (was 1, now more aggressive)
-const MAX_COMMENTS_PER_RUN = 3;
+// ============== Main Job ==============
 
 /**
  * Run the Moltbook engagement job
@@ -808,15 +718,14 @@ export async function runMoltbookEngagementJob(options: {
   limit?: number;
   maxComments?: number;
 } = {}): Promise<EngagementResult> {
-  const limit = options.limit ?? 5; // Search more posts to find commentable ones
+  const limit = options.limit ?? 5;
   const maxComments = options.maxComments ?? MAX_COMMENTS_PER_RUN;
   const jobRunId = randomUUID();
   const result: EngagementResult = {
     postsSearched: 0,
     commentsCreated: 0,
     repliesCreated: 0,
-    upvotesGiven: 0,
-    followsGiven: 0,
+    dmsHandled: 0,
     interestingThreads: 0,
     skipped: 0,
     errors: 0,
@@ -825,6 +734,17 @@ export async function runMoltbookEngagementJob(options: {
   // Check if Moltbook is enabled
   if (!isMoltbookEnabled()) {
     logger.debug('Moltbook is not enabled or configured');
+    return result;
+  }
+
+  // Check DMs BEFORE the suspension check - DMs may still work even when
+  // posting is suspended, and may contain verification challenges needed
+  // to lift the suspension.
+  await checkAndRespondToDMs(result);
+
+  // Check if account is suspended (avoids repeated failed API calls for posting)
+  if (isAccountSuspended()) {
+    logger.debug('Moltbook account is suspended, skipping engagement (DMs already checked)');
     return result;
   }
 
@@ -878,9 +798,6 @@ export async function runMoltbookEngagementJob(options: {
     } catch {
       continue;
     }
-
-    // Give karma to comments that align with our worldview
-    await giveKarmaToAlignedComments(post, comments, result, jobRunId);
 
     // Check if Addie has already commented
     const addieCommented = comments.some(
@@ -948,13 +865,6 @@ export async function runMoltbookEngagementJob(options: {
 
   if (interestingToShare.length > 0) {
     logger.info({ count: interestingToShare.length, jobRunId }, 'Shared interesting threads to Slack');
-  }
-
-  // Follow relevant posters we discovered
-  await followRelevantPosters(posts, result, jobRunId);
-
-  if (result.followsGiven > 0) {
-    logger.info({ followsGiven: result.followsGiven, jobRunId }, 'Followed relevant posters');
   }
 
   return result;

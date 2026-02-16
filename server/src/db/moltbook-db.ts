@@ -24,7 +24,7 @@ export interface MoltbookPostRecord {
 
 export interface MoltbookActivityRecord {
   id: number;
-  activity_type: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow';
+  activity_type: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow' | 'dm';
   moltbook_id: string | null;
   parent_post_id: string | null;
   content: string | null;
@@ -139,7 +139,7 @@ export async function updatePostMoltbookId(
  * Record an activity (post, comment, vote, share, follow)
  */
 export async function recordActivity(
-  activityType: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow',
+  activityType: 'post' | 'comment' | 'upvote' | 'downvote' | 'share' | 'follow' | 'dm',
   moltbookId?: string,
   parentPostId?: string,
   content?: string
@@ -241,6 +241,35 @@ export async function markActivitiesNotified(activityIds: number[]): Promise<voi
   );
 }
 
+// ============== Stale Post Cleanup ==============
+
+/**
+ * Remove activity records for a post that no longer exists on Moltbook.
+ * This prevents the engagement job from repeatedly checking deleted posts.
+ */
+export async function removeStaleActivityForPost(postId: string): Promise<number> {
+  const result = await query(
+    `DELETE FROM moltbook_activity
+     WHERE parent_post_id = $1
+     RETURNING id`,
+    [postId]
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * Mark an own post as stale by clearing the moltbook_post_id.
+ * This prevents getAddieOwnPosts from returning it.
+ */
+export async function markOwnPostStale(moltbookPostId: string): Promise<void> {
+  await query(
+    `UPDATE moltbook_posts
+     SET moltbook_post_id = NULL
+     WHERE moltbook_post_id = $1`,
+    [moltbookPostId]
+  );
+}
+
 // ============== Reply Tracking ==============
 
 /**
@@ -310,67 +339,6 @@ export async function hasRespondedTo(parentCommentId: string): Promise<boolean> 
     [`%reply_to:${parentCommentId}%`]
   );
   return parseInt(result.rows[0].count) > 0;
-}
-
-/**
- * Check if Addie has already voted on a comment or post
- */
-export async function hasVotedOn(targetId: string): Promise<boolean> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_activity
-     WHERE activity_type IN ('upvote', 'downvote')
-       AND moltbook_id = $1`,
-    [targetId]
-  );
-  return parseInt(result.rows[0].count) > 0;
-}
-
-/**
- * Get today's upvote count for daily limit checking
- */
-export async function getTodayUpvoteCount(): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_activity
-     WHERE activity_type = 'upvote'
-       AND created_at > CURRENT_DATE`
-  );
-  return parseInt(result.rows[0].count);
-}
-
-/**
- * Check if we're already following an agent
- */
-export async function isFollowingAgent(agentId: string): Promise<boolean> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_activity
-     WHERE activity_type = 'follow'
-       AND moltbook_id = $1`,
-    [agentId]
-  );
-  return parseInt(result.rows[0].count) > 0;
-}
-
-/**
- * Record that we followed an agent
- */
-export async function recordFollow(agentId: string, agentName: string): Promise<void> {
-  await query(
-    `INSERT INTO moltbook_activity (activity_type, moltbook_id, content)
-     VALUES ('follow', $1, $2)`,
-    [agentId, `Followed: ${agentName}`]
-  );
-}
-
-/**
- * Get today's follow count for daily limit checking
- */
-export async function getTodayFollowCount(): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_activity
-     WHERE activity_type = 'follow'
-       AND created_at > CURRENT_DATE`
-  );
-  return parseInt(result.rows[0].count);
 }
 
 /**
