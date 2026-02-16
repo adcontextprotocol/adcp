@@ -4,6 +4,12 @@
 (function() {
   'use strict';
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   // Check if legacy org needs profile info - runs on all dashboard pages
   // If profile info is missing, redirect to main dashboard which shows the modal
   async function checkProfileInfoRequired() {
@@ -23,10 +29,9 @@
       const orgs = meData.organizations || [];
       if (orgs.length === 0) return; // No orgs - let page handle redirect to onboarding
 
-      // Get selected org from URL or localStorage
-      const urlParams = new URLSearchParams(window.location.search);
-      const selectedOrgId = urlParams.get('org') || localStorage.getItem('selectedOrgId') || orgs[0].id;
-      const selectedOrg = orgs.find(o => o.id === selectedOrgId) || orgs[0];
+      const resolved = resolveOrg(orgs);
+      if (!resolved.org) return; // No org selected yet, let the page handle it
+      const selectedOrg = resolved.org;
 
       // Fetch billing info for this org
       const billingResponse = await fetch(`/api/organizations/${selectedOrg.id}/billing`, { credentials: 'include' });
@@ -408,13 +413,123 @@
     }
   `;
 
+  // Org picker styles (for inline picker shown to multi-org users)
+  const ORG_PICKER_STYLES = `
+    .org-picker {
+      max-width: 480px;
+      margin: 60px auto;
+      text-align: center;
+    }
+
+    .org-picker h2 {
+      color: var(--color-text-heading);
+      margin: 0 0 8px 0;
+      font-size: 22px;
+    }
+
+    .org-picker p {
+      color: var(--color-text-secondary);
+      margin: 0 0 24px 0;
+      font-size: 14px;
+    }
+
+    .org-picker-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .org-picker-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+      transition: all 0.15s;
+    }
+
+    .org-picker-option:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+
+    .org-picker-icon {
+      font-size: 20px;
+    }
+  `;
+
+  // Resolve which org to use for multi-org users.
+  // Returns { org, needsSelection }. If needsSelection is true,
+  // the caller should show the org picker instead of loading page content.
+  function resolveOrg(organizations) {
+    if (!organizations || organizations.length === 0) {
+      return { org: null, needsSelection: false };
+    }
+
+    if (organizations.length === 1) {
+      return { org: organizations[0], needsSelection: false };
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlOrgId = urlParams.get('org');
+    if (urlOrgId) {
+      const org = organizations.find(o => o.id === urlOrgId);
+      if (org) return { org, needsSelection: false };
+    }
+
+    const storedId = localStorage.getItem('selectedOrgId');
+    if (storedId) {
+      const org = organizations.find(o => o.id === storedId);
+      if (org) return { org, needsSelection: false };
+    }
+
+    return { org: null, needsSelection: true };
+  }
+
+  // Render an inline org picker into the given container element.
+  // Used when a multi-org user has no explicit org selection.
+  function renderOrgPicker(organizations, containerEl) {
+    containerEl.innerHTML = `
+      <div class="org-picker">
+        <h2>Select an organization</h2>
+        <p>You belong to multiple organizations. Choose which one to manage.</p>
+        <div class="org-picker-list">
+          ${organizations.map(org => `
+            <button type="button" class="org-picker-option" data-org-id="${escapeHtml(org.id)}">
+              <span class="org-picker-icon">🏢</span>
+              <span>${escapeHtml(org.name)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    containerEl.querySelectorAll('.org-picker-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const orgId = btn.dataset.orgId;
+        localStorage.setItem('selectedOrgId', orgId);
+        const url = new URL(window.location);
+        url.searchParams.set('org', orgId);
+        window.location.href = url.toString();
+      });
+    });
+  }
+
   // Inject styles
   function injectStyles() {
     if (document.getElementById('dashboard-nav-styles')) return;
 
     const styleEl = document.createElement('style');
     styleEl.id = 'dashboard-nav-styles';
-    styleEl.textContent = SIDEBAR_STYLES;
+    styleEl.textContent = SIDEBAR_STYLES + ORG_PICKER_STYLES;
     document.head.appendChild(styleEl);
   }
 
@@ -426,7 +541,8 @@
       showOrgSwitcher = false,
       currentOrgName = 'Organization',
       isPersonal = false,
-      isSubscribed = false
+      isSubscribed = false,
+      orgId = null
     } = options;
 
     const currentHash = window.location.hash;
@@ -452,8 +568,21 @@
         const activeClass = isActive ? 'active' : '';
         const hiddenStyle = item.hidden ? ' style="display: none;"' : '';
         const idAttr = item.id ? ` id="${item.id}"` : '';
+
+        // Build href with org param for cross-page links
+        let href = item.href;
+        if (orgId) {
+          if (item.anchor && !isDashboardPage) {
+            // e.g., /dashboard#profile -> /dashboard?org=xyz#profile
+            href = `/dashboard?org=${orgId}#${item.anchor}`;
+          } else if (!item.anchor) {
+            // e.g., /dashboard/settings -> /dashboard/settings?org=xyz
+            href = `${item.href}?org=${orgId}`;
+          }
+        }
+
         return `
-          <a href="${item.href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${item.anchor ? `data-anchor="${item.anchor}"` : ''}${hiddenStyle}>
+          <a href="${href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${item.anchor ? `data-anchor="${item.anchor}"` : ''}${hiddenStyle}>
             <span class="dashboard-nav-icon">${item.icon}</span>
             <span>${item.label}</span>
           </a>
@@ -472,7 +601,7 @@
     const orgSwitcherHTML = showOrgSwitcher ? `
       <div class="dashboard-org-switcher">
         <button class="dashboard-org-btn" onclick="DashboardNav.toggleOrgDropdown()">
-          <span class="dashboard-org-name" id="dashboardOrgName">${currentOrgName}</span>
+          <span class="dashboard-org-name" id="dashboardOrgName">${escapeHtml(currentOrgName)}</span>
           <span>▼</span>
         </button>
         <div class="dashboard-org-dropdown" id="dashboardOrgDropdown"></div>
@@ -496,7 +625,7 @@
       <aside class="dashboard-sidebar" id="dashboardSidebar">
         <div class="dashboard-sidebar-header">
           <div class="dashboard-sidebar-org">
-            <span class="dashboard-sidebar-org-name" id="sidebarOrgName">${currentOrgName}</span>
+            <span class="dashboard-sidebar-org-name" id="sidebarOrgName">${escapeHtml(currentOrgName)}</span>
           </div>
           <div class="dashboard-sidebar-badges" id="sidebarOrgBadges">
             ${subscribedBadge}
@@ -621,10 +750,16 @@
 
     dropdown.innerHTML = orgs.map(org => `
       <button class="dashboard-org-option ${org.id === selectedId ? 'selected' : ''}"
-              onclick="DashboardNav.selectOrg('${org.id}')">
-        ${org.name}
+              data-org-id="${escapeHtml(org.id)}">
+        ${escapeHtml(org.name)}
       </button>
     `).join('');
+
+    dropdown.querySelectorAll('.dashboard-org-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        DashboardNav.selectOrg(btn.dataset.orgId);
+      });
+    });
 
     // Store callback
     window._dashboardOrgSelectCallback = onSelect;
@@ -726,6 +861,8 @@
     setOrgOptions,
     selectOrg,
     showAdminLink,
-    showLeadershipNav
+    showLeadershipNav,
+    resolveOrg,
+    renderOrgPicker
   };
 })();

@@ -1084,14 +1084,6 @@
       }
     }
 
-    // Get org ID from URL param or localStorage
-    function getInitialOrgId() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlOrgId = urlParams.get('org');
-      if (urlOrgId) return urlOrgId;
-      return localStorage.getItem('selectedOrgId');
-    }
-
     // Select an organization
     function selectOrg(orgId) {
       selectedOrgId = orgId;
@@ -2906,6 +2898,14 @@
         const hasMultipleOrgs = data.organizations && data.organizations.length > 1;
 
         if (data.organizations && data.organizations.length > 0) {
+          // Check if multi-org user needs to pick an org before we fetch billing
+          const { needsSelection } = DashboardNav.resolveOrg(data.organizations);
+          if (needsSelection) {
+            DashboardNav.init({ currentOrgName: 'Select organization' });
+            DashboardNav.renderOrgPicker(data.organizations, document.getElementById('loading'));
+            return;
+          }
+
           // Load billing info for each organization
           const orgsWithBilling = await Promise.all(
             data.organizations.map(async (org) => {
@@ -2958,14 +2958,9 @@
           const hasActiveSubscription = orgsWithBilling.some(org => org.billing?.status === 'active');
           window.hasActiveSubscription = hasActiveSubscription;
 
-          // Determine which org to show
-          const initialOrgId = getInitialOrgId();
-          if (initialOrgId && orgsWithBilling.some(o => o.id === initialOrgId)) {
-            selectedOrgId = initialOrgId;
-          } else {
-            // Default to first org
-            selectedOrgId = orgsWithBilling[0].id;
-          }
+          // Determine which org to show (resolveOrg already validated selection exists)
+          const { org: resolvedOrg } = DashboardNav.resolveOrg(orgsWithBilling);
+          selectedOrgId = resolvedOrg ? resolvedOrg.id : orgsWithBilling[0].id;
 
           // Update URL with selected org if not already there
           const url = new URL(window.location);
@@ -2981,7 +2976,8 @@
             currentOrgName: selectedOrg?.name || 'Organization',
             isPersonal: selectedOrg?.billing?.is_personal || false,
             isSubscribed: selectedOrg?.billing?.status === 'active',
-            showAdmin: isAdmin
+            showAdmin: isAdmin,
+            orgId: selectedOrgId
           });
 
           // Set up org switcher in sidebar if multiple orgs
