@@ -146,6 +146,9 @@ export interface BrandfetchEnrichmentResult {
 const cache = new Map<string, { data: BrandfetchEnrichmentResult; expiresAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (rate-limit protection)
 
+// DB-level cache: callers should check discovered_brands.last_validated before hitting the API
+export const ENRICHMENT_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 /**
  * Check if Brandfetch is configured
  */

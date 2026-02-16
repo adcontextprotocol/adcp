@@ -847,21 +847,21 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'update_org_member_role',
-    description: `Update a user's role within their organization. Use this to change a member's permissions (e.g., promoting to admin so they can manage their team).
+    description: `Update a user's role within their organization. Use this to change a member's permissions.
 
 Common scenarios:
 - User paid for membership but can't manage team → promote to admin
 - Need to grant someone ability to invite team members → promote to admin
-- User should have full control of their org → promote to admin
+- User should have full control of their org → promote to owner
 
-Roles: member (default), admin (can manage team)`,
+Roles: member (default), admin (can manage team), owner (full control)`,
     usage_hints: 'Get user_id from get_account tool or escalation context. Use when members need elevated permissions.',
     input_schema: {
       type: 'object' as const,
       properties: {
         org_id: { type: 'string', description: 'WorkOS organization ID (org_...)' },
         user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
-        role: { type: 'string', enum: ['member', 'admin'], description: 'New role' },
+        role: { type: 'string', enum: ['member', 'admin', 'owner'], description: 'New role' },
       },
       required: ['org_id', 'user_id', 'role'],
     },
@@ -4732,8 +4732,8 @@ Use add_committee_leader to assign a leader.`;
     if (!userId) {
       return '❌ user_id is required. This is the WorkOS user ID (starts with user_).';
     }
-    if (!role || !['member', 'admin'].includes(role)) {
-      return '❌ role must be "member" or "admin".';
+    if (!role || !['member', 'admin', 'owner'].includes(role)) {
+      return '❌ role must be "member", "admin", or "owner".';
     }
 
     if (!workos) {
@@ -4796,7 +4796,9 @@ Use add_committee_leader to assign a leader.`;
       logger.info({ orgId, userId, oldRole: currentRole, newRole: role }, 'Addie: Updated org member role');
 
       let response = `✅ Updated ${userName}'s role from **${currentRole}** to **${role}** in ${orgName}.\n\n`;
-      if (role === 'admin') {
+      if (role === 'owner') {
+        response += `They now have full ownership of the organization, including:\n- Invite and manage team members\n- View and manage organization billing\n- Update organization profile`;
+      } else if (role === 'admin') {
         response += `They can now:\n- Invite and manage team members\n- View organization billing\n- Update organization profile`;
       }
       return response;

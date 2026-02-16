@@ -11,6 +11,7 @@ server/node_modules
 !/dist/docs
 /dist/schemas/latest
 /dist/schemas/v*
+/dist/schemas/registry.*
 
 # Generated files
 .docusaurus

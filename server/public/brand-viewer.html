@@ -1795,12 +1795,24 @@
             // Render community brand details with structured layout
             const details = document.getElementById('community-brand-details');
             const manifest = brandInfo.brand_manifest || {};
-            const hasRichContent = manifest.description || manifest.colors || manifest.industry || manifest.tone || brandInfo.house_domain || brandInfo.keller_type;
+            const hasRichContent = manifest.description || manifest.colors || manifest.industry || manifest.tone || manifest.logos?.length || brandInfo.house_domain || brandInfo.keller_type;
+
+            details.innerHTML = '';
+
+            // Logo
+            if (manifest.logos && manifest.logos.length > 0) {
+              const logo = manifest.logos.find(l => l.variant === 'primary') || manifest.logos[0];
+              if (logo.url && isSafeUrl(logo.url)) {
+                details.innerHTML += `
+                  <div style="margin-bottom: var(--space-4);">
+                    <img src="${escapeAttr(logo.url)}" alt="${escapeHtml(brandInfo.brand_name || domain)} logo"
+                         style="max-height: 48px; max-width: 200px; object-fit: contain;" loading="lazy">
+                  </div>`;
+              }
+            }
 
             if (manifest.description) {
-              details.innerHTML = `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-4);">${escapeHtml(manifest.description)}</p>`;
-            } else {
-              details.innerHTML = '';
+              details.innerHTML += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-4);">${escapeHtml(manifest.description)}</p>`;
             }
 
             // Build info grid items
@@ -1845,15 +1857,11 @@
                 </div>`;
             }
 
-            if (manifest.tone) {
-              gridHtml += `
-                <div class="community-info-item">
-                  <div class="community-info-label">Tone</div>
-                  <div class="community-info-value">${escapeHtml(manifest.tone)}</div>
-                </div>`;
-            }
-
             details.innerHTML += `<div class="community-info-grid">${gridHtml}</div>`;
+
+            if (manifest.tone) {
+              details.innerHTML += renderTone(manifest.tone);
+            }
 
             // Colors section
             if (manifest.colors && typeof manifest.colors === 'object' && Object.keys(manifest.colors).length > 0) {
