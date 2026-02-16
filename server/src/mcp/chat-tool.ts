@@ -37,7 +37,7 @@ const logger = createLogger('mcp-chat');
  * Directory tools are also available to anonymous users (public data)
  * but are registered separately below.
  */
-const ANONYMOUS_SAFE_KNOWLEDGE_TOOLS = new Set([
+export const ANONYMOUS_SAFE_KNOWLEDGE_TOOLS = new Set([
   'search_docs',
   'get_doc',
   'search_repos',

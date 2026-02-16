@@ -44,4 +44,10 @@ export const AddieModelConfig = {
    * Override: ADDIE_ANTHROPIC_MODEL (falls back to primary)
    */
   chat: process.env.ADDIE_ANTHROPIC_MODEL || ModelConfig.primary,
+
+  /**
+   * Model for anonymous web chat (cost-controlled)
+   * Override: ADDIE_ANONYMOUS_MODEL (falls back to fast/Haiku)
+   */
+  anonymousChat: process.env.ADDIE_ANONYMOUS_MODEL || ModelConfig.fast,
 } as const;
