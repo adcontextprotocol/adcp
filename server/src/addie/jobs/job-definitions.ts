@@ -130,15 +130,15 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.postsCreated > 0,
   });
 
-  // Moltbook engagement - engages with Moltbook discussions
+  // Moltbook engagement - engages with Moltbook discussions and checks DMs
   jobScheduler.register({
     name: 'moltbook-engagement',
     description: 'Moltbook engagement',
-    interval: { value: 1, unit: 'hours' },
+    interval: { value: 4, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
     runner: runMoltbookEngagementJob,
-    options: { limit: 3 },
-    shouldLogResult: (r) => r.commentsCreated > 0 || r.interestingThreads > 0,
+    options: { limit: 5 },
+    shouldLogResult: (r) => r.commentsCreated > 0 || r.interestingThreads > 0 || r.dmsHandled > 0,
   });
 
   // Content curator - processes external content for knowledge base

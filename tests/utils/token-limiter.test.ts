@@ -197,10 +197,10 @@ describe('getConversationTokenLimit', () => {
     const toolCount = 50;
     const limit = getConversationTokenLimit('claude-sonnet-4-20250514', toolCount);
 
-    // Expected: model limit - (system prompt + tool tokens + response buffer + safety margin)
+    // Expected: model limit - (system prompt + tool tokens + prepended context + response buffer + safety margin)
     const expectedToolTokens = estimateToolTokens(toolCount);
     const expectedReserved = TOKEN_BUFFERS.systemPrompt + expectedToolTokens +
-      TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
+      TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
     const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-4-20250514'] - expectedReserved;
 
     expect(limit).toBe(expectedLimit);
@@ -241,8 +241,8 @@ describe('checkContextLimit', () => {
   it('should calculate correct totals', () => {
     const result = checkContextLimit(10000, 20000, 5000);
 
-    // Total should include response buffer
-    expect(result.estimatedTotal).toBe(10000 + 20000 + 5000 + 5000);
+    // Total should include prepended context buffer and response buffer
+    expect(result.estimatedTotal).toBe(10000 + 20000 + 5000 + TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer);
     expect(result.modelLimit).toBe(MODEL_CONTEXT_LIMITS.default);
   });
 });
