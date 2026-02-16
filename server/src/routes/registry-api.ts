@@ -149,6 +149,48 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "post",
+  path: "/api/brands/save",
+  operationId: "saveBrand",
+  summary: "Save brand",
+  description:
+    "Save or update a brand in the registry. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
+  tags: ["Brand Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string().openapi({ example: "acmecorp.com" }),
+            brand_name: z.string().openapi({ example: "Acme Corp" }),
+            brand_manifest: z.record(z.string(), z.unknown()).optional(),
+            source_type: z.enum(["community", "enriched"]).optional().openapi({ description: "Defaults to 'enriched'" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Brand saved or updated",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            message: z.string(),
+            domain: z.string(),
+            id: z.string(),
+            revision_number: z.number().int().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Missing required fields", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Cannot edit authoritative brand", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
   method: "get",
   path: "/api/brands/registry",
   operationId: "listBrands",
@@ -818,6 +860,70 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to bulk resolve brands");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
+    }
+  });
+
+  router.post("/brands/save", async (req, res) => {
+    try {
+      const { domain, brand_name, brand_manifest, source_type } = req.body;
+
+      if (!domain || typeof domain !== "string") {
+        return res.status(400).json({ error: "domain is required" });
+      }
+      if (!brand_name || typeof brand_name !== "string") {
+        return res.status(400).json({ error: "brand_name is required" });
+      }
+
+      const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+      if (existing) {
+        if (existing.source_type === "brand_json") {
+          return res.status(409).json({
+            error: "Cannot edit authoritative brand (managed via brand.json)",
+            domain,
+          });
+        }
+
+        const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
+          brand_name,
+          edit_summary: "API: updated brand data",
+          editor_user_id: "system:api",
+          editor_email: "api@agenticadvertising.org",
+          editor_name: "Registry API",
+        };
+        if (brand_manifest !== undefined) {
+          editInput.brand_manifest = brand_manifest;
+          editInput.has_brand_manifest = !!brand_manifest;
+        }
+
+        const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, editInput);
+
+        return res.json({
+          success: true,
+          message: `Brand "${brand_name}" updated in registry (revision ${revision_number})`,
+          domain: brand.domain,
+          id: brand.id,
+          revision_number,
+        });
+      }
+
+      const saved = await brandDb.upsertDiscoveredBrand({
+        domain,
+        brand_name,
+        brand_manifest,
+        has_brand_manifest: brand_manifest !== undefined ? !!brand_manifest : undefined,
+        source_type: (source_type as "community" | "enriched") || "enriched",
+      });
+
+      return res.json({
+        success: true,
+        message: `Brand "${brand_name}" saved to registry`,
+        domain: saved.domain,
+        id: saved.id,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to save brand");
+      return res.status(500).json({ error: "Failed to save brand" });
     }
   });
 

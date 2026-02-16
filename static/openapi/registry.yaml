@@ -698,6 +698,74 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/brands/save:
+    post:
+      operationId: saveBrand
+      summary: Save brand
+      description: Save or update a brand in the registry. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.
+      tags:
+        - Brand Resolution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domain:
+                  type: string
+                  example: acmecorp.com
+                brand_name:
+                  type: string
+                  example: Acme Corp
+                brand_manifest:
+                  type: object
+                  additionalProperties: {}
+                source_type:
+                  type: string
+                  enum:
+                    - community
+                    - enriched
+                  description: Defaults to 'enriched'
+              required:
+                - domain
+                - brand_name
+      responses:
+        "200":
+          description: Brand saved or updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    enum:
+                      - true
+                  message:
+                    type: string
+                  domain:
+                    type: string
+                  id:
+                    type: string
+                  revision_number:
+                    type: integer
+                required:
+                  - success
+                  - message
+                  - domain
+                  - id
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Cannot edit authoritative brand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/brands/registry:
     get:
       operationId: listBrands
