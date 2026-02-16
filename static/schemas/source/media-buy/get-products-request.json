@@ -7,11 +7,7 @@
   "properties": {
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. When refining a proposal, can include instructions like 'focus more on German speakers' or 'increase mobile allocation'."
-    },
-    "proposal_id": {
-      "type": "string",
-      "description": "Optional proposal ID to refine. When provided with a brief, the publisher will use the brief as refinement instructions for the specified proposal and return an updated version."
+      "description": "Natural language description of campaign requirements."
     },
     "brand_manifest": {
       "$ref": "/schemas/core/brand-manifest-ref.json",
