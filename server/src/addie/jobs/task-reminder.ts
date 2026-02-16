@@ -10,6 +10,7 @@
 
 import { logger } from '../../logger.js';
 import { query } from '../../db/client.js';
+import { getThreadService } from '../thread-service.js';
 
 /** Engagement score threshold for "hot" prospects (🔥 indicator) */
 const HOT_ENGAGEMENT_THRESHOLD = 30;
@@ -85,12 +86,11 @@ async function getTasksNeedingReminders(): Promise<ReminderBatch[]> {
       AND o.prospect_next_action_date IS NOT NULL
       AND o.prospect_next_action_date <= CURRENT_DATE + 1  -- Due today, tomorrow, or overdue
       AND o.is_personal IS NOT TRUE
-      -- Don't include if there's already an activity-based task for this org
+      -- Don't include if there's an activity-based task tracking this org's next action
       AND NOT EXISTS (
         SELECT 1 FROM org_activities oa
         WHERE oa.organization_id = o.workos_organization_id
           AND oa.is_next_step = TRUE
-          AND oa.next_step_completed_at IS NULL
           AND oa.next_step_due_date = o.prospect_next_action_date
       )
     ORDER BY o.prospect_next_action_date ASC`
@@ -207,10 +207,32 @@ async function sendReminderDm(slackUserId: string, message: string): Promise<boo
       }),
     });
 
-    const sendData = (await sendResponse.json()) as { ok: boolean; error?: string };
+    const sendData = (await sendResponse.json()) as { ok: boolean; ts?: string; error?: string };
     if (!sendData.ok) {
       logger.warn({ error: sendData.error, slackUserId }, 'Failed to send reminder message');
       return false;
+    }
+
+    // Save to thread service so the reminder appears in conversation history
+    // when the user replies. The external_id format matches how bolt-app.ts builds it.
+    if (sendData.ts) {
+      try {
+        const threadService = getThreadService();
+        const externalId = `${openData.channel.id}:${sendData.ts}`;
+        const thread = await threadService.getOrCreateThread({
+          channel: 'slack',
+          external_id: externalId,
+          user_type: 'slack',
+          user_id: slackUserId,
+        });
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: 'assistant',
+          content: message,
+        });
+      } catch (err) {
+        logger.warn({ err, slackUserId }, 'Failed to save reminder to thread service');
+      }
     }
 
     return true;
