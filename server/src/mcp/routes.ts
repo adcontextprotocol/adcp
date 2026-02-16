@@ -1,32 +1,45 @@
 /**
  * MCP Route Handlers
  *
- * Configures Express routes for the unified MCP server:
+ * Configures Express routes for the MCP server:
  * - POST /mcp - MCP JSON-RPC endpoint (auth required, rate limited)
- * - GET /.well-known/oauth-protected-resource - OAuth resource metadata (RFC 9728)
+ * - OAuth endpoints via SDK's mcpAuthRouter (authorize, token, register, metadata)
  * - OPTIONS /mcp - CORS preflight
  *
- * Authentication via OAuth 2.1 (WorkOS AuthKit).
- * WorkOS handles dynamic client registration (RFC 7591), authorization,
- * and token issuance. This server validates bearer tokens via JWKS.
- *
- * Clients discover the authorization server via the Protected Resource Metadata
- * endpoint (RFC 9728), which points them to AuthKit directly.
+ * OAuth 2.1 is proxied to WorkOS AuthKit via ProxyOAuthServerProvider.
+ * The SDK's mcpAuthRouter handles all discovery and proxy endpoints:
+ * - /.well-known/oauth-authorization-server
+ * - /.well-known/oauth-protected-resource/mcp
+ * - /authorize, /token, /register
  */
 
-import type { Router, Request, Response } from 'express';
+import type { Router, Request, Response, NextFunction } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { createUnifiedMCPServer } from './server.js';
+import { createOAuthProvider, MCP_AUTH_ENABLED } from './oauth-provider.js';
 import {
-  mcpAuthMiddleware,
-  getOAuthProtectedResourceMetadata,
-  MCP_AUTH_ENABLED,
+  authInfoToMCPAuthContext,
+  anonymousAuthContext,
   type MCPAuthenticatedRequest,
 } from './auth.js';
 
 const logger = createLogger('mcp-routes');
+
+/**
+ * Externally-reachable URL of this server.
+ * Used as the OAuth issuer URL and for resource metadata.
+ *
+ * In production, BASE_URL defaults to https://agenticadvertising.org.
+ * In development, defaults to http://localhost:{PORT}.
+ */
+const MCP_SERVER_URL = (
+  process.env.BASE_URL ||
+  `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`
+).replace(/\/$/, '');
 
 /**
  * Rate limiter for MCP endpoint
@@ -40,7 +53,7 @@ const mcpRateLimiter = rateLimit({
   keyGenerator: (req: MCPAuthenticatedRequest) => {
     return `user:${req.mcpAuth?.sub || 'anonymous'}`;
   },
-  handler: (req, res) => {
+  handler: (_req, res) => {
     res.status(429).json({
       jsonrpc: '2.0',
       id: null,
@@ -56,46 +69,70 @@ const mcpRateLimiter = rateLimit({
  * Configure MCP routes on an Express router
  */
 export function configureMCPRoutes(router: Router): void {
-  // OAuth Protected Resource Metadata (RFC 9728)
-  // MCP clients use this to discover where to authenticate
-  const servePRM = (req: Request, res: Response) => {
-    const metadata = getOAuthProtectedResourceMetadata(req);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.json(metadata);
-  };
+  const provider = createOAuthProvider();
 
-  router.get('/.well-known/oauth-protected-resource', servePRM);
-  // Path-specific PRM per RFC 9728 (for /mcp resource path)
-  router.get('/.well-known/oauth-protected-resource/mcp', servePRM);
+  // Mount SDK's OAuth router (handles metadata, authorize, token, register)
+  router.use(
+    mcpAuthRouter({
+      provider,
+      issuerUrl: new URL(MCP_SERVER_URL),
+      resourceServerUrl: new URL(`${MCP_SERVER_URL}/mcp`),
+      scopesSupported: ['openid', 'profile', 'email'],
+    })
+  );
 
   // CORS preflight for MCP endpoint
-  router.options('/mcp', (req: Request, res: Response) => {
+  router.options('/mcp', (_req: Request, res: Response) => {
     setCORSHeaders(res);
     res.status(204).end();
   });
 
-  // MCP POST handler - main endpoint
-  // Auth required: returns 401 with OAuth discovery metadata for unauthenticated requests
-  // Rate limited: 10/min per user
+  // Build the MCP POST middleware chain
+  const mcpMiddleware: Array<(req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => void> = [];
+
+  if (MCP_AUTH_ENABLED) {
+    // Bearer token validation via SDK
+    mcpMiddleware.push(requireBearerAuth({ verifier: provider }) as (
+      req: MCPAuthenticatedRequest,
+      res: Response,
+      next: NextFunction,
+    ) => void);
+
+    // Bridge: convert SDK's req.auth (AuthInfo) → req.mcpAuth (MCPAuthContext)
+    mcpMiddleware.push((req: MCPAuthenticatedRequest, _res: Response, next: NextFunction) => {
+      if (req.auth) {
+        req.mcpAuth = authInfoToMCPAuthContext(req.auth);
+      } else {
+        logger.warn('MCP: requireBearerAuth passed but req.auth is missing');
+        req.mcpAuth = anonymousAuthContext();
+      }
+      next();
+    });
+  } else {
+    // Dev mode: attach anonymous auth context
+    mcpMiddleware.push((req: MCPAuthenticatedRequest, _res: Response, next: NextFunction) => {
+      req.mcpAuth = anonymousAuthContext();
+      next();
+    });
+  }
+
+  // MCP POST handler
   router.post(
     '/mcp',
-    mcpAuthMiddleware,
+    ...mcpMiddleware,
     mcpRateLimiter,
     async (req: MCPAuthenticatedRequest, res: Response) => {
       setCORSHeaders(res);
 
       let server: ReturnType<typeof createUnifiedMCPServer> | null = null;
       try {
-        // Create a new MCP server and transport for each request (stateless mode)
         server = createUnifiedMCPServer(req.mcpAuth);
         const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined, // Stateless mode - no sessions
+          sessionIdGenerator: undefined, // Stateless mode
         });
 
-        // Connect server to transport
         await server.connect(transport);
 
-        // Log request with auth context
         const isAuthenticated = req.mcpAuth?.sub && req.mcpAuth.sub !== 'anonymous';
         logger.debug({
           authenticated: isAuthenticated,
@@ -104,7 +141,6 @@ export function configureMCPRoutes(router: Router): void {
           ip: req.ip,
         }, 'MCP: Handling request');
 
-        // Handle the request
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
         logger.error({ error }, 'MCP: Request handling error');
@@ -120,14 +156,13 @@ export function configureMCPRoutes(router: Router): void {
           });
         }
       } finally {
-        // Clean up per-request server to avoid event listener leaks
         await server?.close().catch(() => {});
       }
     }
   );
 
   // MCP GET handler - not supported in stateless mode
-  router.get('/mcp', (req: Request, res: Response) => {
+  router.get('/mcp', (_req: Request, res: Response) => {
     setCORSHeaders(res);
     res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({
@@ -141,7 +176,7 @@ export function configureMCPRoutes(router: Router): void {
   });
 
   // MCP DELETE handler - not needed in stateless mode
-  router.delete('/mcp', (req: Request, res: Response) => {
+  router.delete('/mcp', (_req: Request, res: Response) => {
     setCORSHeaders(res);
     res.setHeader('Allow', 'POST, OPTIONS');
     res.status(405).json({
@@ -154,7 +189,7 @@ export function configureMCPRoutes(router: Router): void {
     });
   });
 
-  logger.info({ authEnabled: MCP_AUTH_ENABLED }, 'MCP: Routes configured');
+  logger.info({ authEnabled: MCP_AUTH_ENABLED, serverUrl: MCP_SERVER_URL }, 'MCP: Routes configured');
 }
 
 /**

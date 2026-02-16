@@ -6,17 +6,16 @@
  * - Directory lookup (members, agents, publishers)
  * - Billing operations (membership products, payment links)
  *
- * Authentication required via OAuth 2.1 (WorkOS AuthKit).
- * Unauthenticated requests receive 401 with OAuth discovery metadata.
+ * Authentication via OAuth 2.1 (WorkOS AuthKit), proxied through
+ * the MCP SDK's ProxyOAuthServerProvider.
  */
 
 export { createUnifiedMCPServer, initializeMCPServer, isMCPServerReady, getAllTools } from './server.js';
 export { configureMCPRoutes } from './routes.js';
+export { createOAuthProvider, AUTHKIT_ISSUER, MCP_AUTH_ENABLED } from './oauth-provider.js';
 export {
-  mcpAuthMiddleware,
-  getOAuthProtectedResourceMetadata,
-  MCP_AUTH_ENABLED,
-  AUTHKIT_ISSUER,
+  authInfoToMCPAuthContext,
+  anonymousAuthContext,
   type MCPAuthContext,
   type MCPAuthenticatedRequest,
 } from './auth.js';

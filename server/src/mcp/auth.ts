@@ -1,68 +1,19 @@
 /**
- * MCP Authentication Middleware
+ * MCP Authentication Types and Helpers
  *
- * Authentication required via OAuth 2.1 (WorkOS AuthKit).
- * Unauthenticated requests receive 401 with OAuth discovery metadata.
+ * Defines the MCPAuthContext interface used by tool handlers, and
+ * provides a bridge from the SDK's AuthInfo to MCPAuthContext.
  *
- * Flow:
- * - User adds Addie to Claude Desktop or ChatGPT
- * - Client discovers auth server via /.well-known/oauth-protected-resource
- * - Client registers via WorkOS dynamic client registration (RFC 7591)
- * - User redirected to WorkOS login, gets access token
- * - Client retries with bearer token
- *
- * JWT validation via WorkOS JWKS:
- * - Token signature verification
- * - Issuer matches AuthKit
- * - Expiry (exp) and not-before (nbf) claims
- *
- * Can be disabled via MCP_AUTH_DISABLED=true for local development.
+ * JWT validation and OAuth proxy logic live in oauth-provider.ts.
  */
 
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
-import type { Request, Response, NextFunction } from 'express';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('mcp-auth');
+import type { JWTPayload } from 'jose';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { Request } from 'express';
 
 /**
- * WorkOS AuthKit configuration
- *
- * AUTHKIT_ISSUER: The AuthKit issuer URL
- *                 Defaults to AgenticAdvertising.org's AuthKit domain
- *
- * WORKOS_CLIENT_ID: The WorkOS application client ID, used as the expected audience
- *                   for JWT validation. WorkOS tokens set aud to the app's client_id.
- */
-export const AUTHKIT_ISSUER = process.env.AUTHKIT_ISSUER || 'https://clean-gradient-46.authkit.app';
-const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
-
-/**
- * Whether MCP auth is enabled
- * Can be disabled via MCP_AUTH_DISABLED=true for local development
- */
-export const MCP_AUTH_ENABLED = process.env.MCP_AUTH_DISABLED !== 'true';
-
-/**
- * JWKS (JSON Web Key Set) for token verification
- * Cached and refreshed automatically by jose library
- */
-let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-function getJWKS() {
-  if (!jwks && MCP_AUTH_ENABLED) {
-    if (!WORKOS_CLIENT_ID) {
-      logger.warn('MCP Auth: WORKOS_CLIENT_ID not set — audience validation disabled');
-    }
-    const jwksUrl = new URL(`${AUTHKIT_ISSUER}/oauth2/jwks`);
-    jwks = createRemoteJWKSet(jwksUrl);
-    logger.info({ jwksUrl: jwksUrl.toString(), audienceValidation: !!WORKOS_CLIENT_ID }, 'MCP Auth: JWKS configured');
-  }
-  return jwks;
-}
-
-/**
- * Claims extracted from validated JWT
+ * Claims extracted from a validated JWT, used by tool handlers
+ * for access control, rate limiting, and audit trails.
  */
 export interface MCPAuthContext {
   /** Subject - user ID (OAuth) or client ID (M2M) */
@@ -78,187 +29,36 @@ export interface MCPAuthContext {
 }
 
 /**
- * Express request with MCP auth context
+ * Express request with MCP auth context attached by middleware.
  */
 export interface MCPAuthenticatedRequest extends Request {
   mcpAuth?: MCPAuthContext;
 }
 
 /**
- * Extract bearer token from Authorization header
- */
-function extractBearerToken(req: Request): string | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1] : null;
-}
-
-/**
- * Validate JWT and extract claims
+ * Convert the SDK's AuthInfo (from requireBearerAuth) to MCPAuthContext.
  *
- * Per MCP auth spec:
- * - Verify signature via JWKS
- * - Check issuer matches AuthKit
- * - Validate exp/nbf claims (handled by jose library)
- * - Optionally check audience matches resource identifier
+ * The verifyAccessToken function in oauth-provider.ts stashes
+ * user claims in AuthInfo.extra for this bridge to extract.
  */
-async function validateToken(token: string): Promise<MCPAuthContext> {
-  const jwksInstance = getJWKS();
-  if (!jwksInstance) {
-    throw new Error('JWKS not configured');
-  }
-
-  // Build verification options
-  // WorkOS tokens set aud to the app's WORKOS_CLIENT_ID
-  const verifyOptions: { issuer: string; audience?: string } = {
-    issuer: AUTHKIT_ISSUER,
-  };
-
-  if (WORKOS_CLIENT_ID) {
-    verifyOptions.audience = WORKOS_CLIENT_ID;
-  }
-
-  const { payload } = await jwtVerify(token, jwksInstance, verifyOptions);
-
-  // Determine if this is M2M based on grant type or subject format
-  // M2M tokens typically have grant_type: client_credentials
-  // or the subject starts with 'client_'
-  const isM2M = payload.grant_type === 'client_credentials' ||
-    (typeof payload.sub === 'string' && payload.sub.startsWith('client_'));
-
+export function authInfoToMCPAuthContext(authInfo: AuthInfo): MCPAuthContext {
+  const extra = (authInfo.extra || {}) as Record<string, unknown>;
   return {
-    sub: payload.sub as string,
-    orgId: payload.org_id as string | undefined,
-    isM2M,
-    email: payload.email as string | undefined,
-    payload,
+    sub: (extra.sub as string) || 'unknown',
+    orgId: extra.orgId as string | undefined,
+    isM2M: (extra.isM2M as boolean) || false,
+    email: extra.email as string | undefined,
+    payload: (extra.payload as JWTPayload) || {},
   };
 }
 
 /**
- * MCP authentication middleware
- *
- * Validates bearer token and attaches auth context to request.
- * Returns 401 if token is missing or invalid.
- *
- * Usage:
- * ```typescript
- * app.post('/mcp', mcpAuthMiddleware, handleMCPRequest);
- * ```
+ * Auth context for development mode (MCP_AUTH_DISABLED=true).
  */
-export async function mcpAuthMiddleware(
-  req: MCPAuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  // Skip auth if not enabled (development mode)
-  if (!MCP_AUTH_ENABLED) {
-    logger.debug('MCP Auth: Disabled, skipping authentication');
-    req.mcpAuth = {
-      sub: 'anonymous',
-      isM2M: false,
-      payload: {},
-    };
-    next();
-    return;
-  }
-
-  const token = extractBearerToken(req);
-
-  if (!token) {
-    logger.debug('MCP Auth: No bearer token provided');
-
-    // Return WWW-Authenticate header per RFC 6750 / MCP spec
-    // Omit error code when token is simply missing (per RFC 6750 Section 3.1)
-    const metadataUrl = getResourceMetadataUrl(req);
-    res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${metadataUrl}"`);
-    res.status(401).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: {
-        code: -32001,
-        message: 'Authentication required. Provide a bearer token.',
-      },
-    });
-    return;
-  }
-
-  try {
-    const authContext = await validateToken(token);
-    req.mcpAuth = authContext;
-
-    logger.debug({
-      sub: authContext.sub,
-      orgId: authContext.orgId,
-      isM2M: authContext.isM2M,
-    }, 'MCP Auth: Token validated');
-
-    next();
-  } catch (error) {
-    // Classify the error using jose error codes for reliable detection
-    const errorCode = (error as { code?: string })?.code;
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    let reason = 'Token validation failed';
-
-    if (errorCode === 'ERR_JWT_EXPIRED') {
-      reason = 'Token expired';
-    } else if (errorCode === 'ERR_JWT_CLAIM_VALIDATION_FAILED' && errorMessage.includes('aud')) {
-      reason = 'Audience mismatch';
-    } else if (errorCode === 'ERR_JWT_CLAIM_VALIDATION_FAILED' && errorMessage.includes('iss')) {
-      reason = 'Issuer mismatch';
-    } else if (errorCode === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED') {
-      reason = 'Token signature verification failed';
-    } else if (errorCode === 'ERR_JWKS_MULTIPLE_MATCHING_KEYS' || errorCode === 'ERR_JWKS_NO_MATCHING_KEY') {
-      reason = 'JWKS key resolution failed';
-    }
-
-    // Log full details server-side (including config values) for debugging
-    logger.warn({ error, reason, errorCode, audienceConfigured: !!WORKOS_CLIENT_ID }, 'MCP Auth: Token validation failed');
-
-    // Return only the classification to the client (no internal config values)
-    const metadataUrl = getResourceMetadataUrl(req);
-    const safeReason = reason.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    res.setHeader('WWW-Authenticate',
-      `Bearer error="invalid_token", error_description="${safeReason}", resource_metadata="${metadataUrl}"`
-    );
-    res.status(401).json({
-      jsonrpc: '2.0',
-      id: null,
-      error: {
-        code: -32001,
-        message: reason,
-      },
-    });
-  }
-}
-
-/**
- * Get the resource metadata URL for this server
- */
-function getResourceMetadataUrl(req: Request): string {
-  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-  const host = req.headers.host || 'localhost';
-  return `${protocol}://${host}/.well-known/oauth-protected-resource`;
-}
-
-/**
- * OAuth Protected Resource Metadata
- *
- * Per RFC 8707 and MCP spec, this endpoint tells clients where to authenticate.
- * MCP clients use this to discover the authorization server.
- */
-export function getOAuthProtectedResourceMetadata(req: Request) {
-  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-  const host = req.headers.host || 'localhost';
-  const baseUrl = `${protocol}://${host}`;
-
+export function anonymousAuthContext(): MCPAuthContext {
   return {
-    resource: `${baseUrl}/mcp`,
-    authorization_servers: [AUTHKIT_ISSUER],
-    bearer_methods_supported: ['header'],
-    scopes_supported: ['openid', 'profile', 'email'],
+    sub: 'anonymous',
+    isM2M: false,
+    payload: {},
   };
 }
-
