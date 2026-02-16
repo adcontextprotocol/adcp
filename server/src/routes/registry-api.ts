@@ -6,13 +6,14 @@
  */
 
 import { Router } from "express";
+import type { RequestHandler } from "express";
 import { z } from "zod";
 import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
-import { bulkResolveRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter } from "../middleware/rate-limit.js";
 import { createLogger } from "../logger.js";
 import {
   registry,
@@ -53,6 +54,7 @@ export interface RegistryApiConfig {
     trackRequest(type: string, domain: string): Promise<void>;
     markResolved(type: string, domain: string, resolved: string): Promise<boolean>;
   };
+  requireAuth?: RequestHandler;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -154,7 +156,7 @@ registry.registerPath({
   operationId: "saveBrand",
   summary: "Save brand",
   description:
-    "Save or update a brand in the registry. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
+    "Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.",
   tags: ["Brand Resolution"],
   request: {
     body: {
@@ -164,7 +166,6 @@ registry.registerPath({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string().openapi({ example: "Acme Corp" }),
             brand_manifest: z.record(z.string(), z.unknown()).optional(),
-            source_type: z.enum(["community", "enriched"]).optional().openapi({ description: "Defaults to 'enriched'" }),
           }),
         },
       },
@@ -185,8 +186,10 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Missing required fields", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Missing required fields or invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Cannot edit authoritative brand", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -310,7 +313,7 @@ registry.registerPath({
   operationId: "saveProperty",
   summary: "Save property",
   description:
-    "Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
+    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
   tags: ["Property Resolution"],
   request: {
     body: {
@@ -321,7 +324,6 @@ registry.registerPath({
             authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).openapi({ example: [{ url: "https://agent.example.com" }] }),
             properties: z.array(z.object({ type: z.string(), name: z.string() })).optional().openapi({ example: [{ type: "website", name: "Example Publisher" }] }),
             contact: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
-            source_type: z.enum(["community", "enriched"]).optional().openapi({ description: "Defaults to 'community'" }),
           }),
         },
       },
@@ -341,8 +343,10 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Missing required fields", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Missing required fields or invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Cannot edit authoritative property", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -702,6 +706,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     crawler,
     capabilityDiscovery,
     registryRequestsDb,
+    requireAuth: authMiddleware,
   } = config;
 
   // ── API Discovery ─────────────────────────────────────────────
@@ -905,15 +910,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.post("/brands/save", async (req, res) => {
-    try {
-      const { domain, brand_name, brand_manifest, source_type } = req.body;
+  const saveMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
 
-      if (!domain || typeof domain !== "string") {
+  router.post("/brands/save", ...saveMiddleware, async (req, res) => {
+    try {
+      const { brand_name, brand_manifest } = req.body;
+      const rawDomain = req.body.domain as string;
+
+      if (!rawDomain || typeof rawDomain !== "string") {
         return res.status(400).json({ error: "domain is required" });
       }
       if (!brand_name || typeof brand_name !== "string") {
         return res.status(400).json({ error: "brand_name is required" });
+      }
+
+      const domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+      if (!domainPattern.test(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
@@ -929,9 +943,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
           brand_name,
           edit_summary: "API: updated brand data",
-          editor_user_id: "system:api",
-          editor_email: "api@agenticadvertising.org",
-          editor_name: "Registry API",
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
         };
         if (brand_manifest !== undefined) {
           editInput.brand_manifest = brand_manifest;
@@ -954,7 +968,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         brand_name,
         brand_manifest,
         has_brand_manifest: brand_manifest !== undefined ? !!brand_manifest : undefined,
-        source_type: (source_type as "community" | "enriched") || "enriched",
+        source_type: "community",
       });
 
       return res.json({
@@ -1143,15 +1157,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.post("/properties/save", async (req, res) => {
+  router.post("/properties/save", ...saveMiddleware, async (req, res) => {
     try {
-      const { publisher_domain, authorized_agents, properties, contact, source_type } = req.body;
+      const { authorized_agents, properties, contact } = req.body;
+      const rawDomain = req.body.publisher_domain as string;
 
-      if (!publisher_domain || typeof publisher_domain !== "string") {
+      if (!rawDomain || typeof rawDomain !== "string") {
         return res.status(400).json({ error: "publisher_domain is required" });
       }
       if (!Array.isArray(authorized_agents)) {
         return res.status(400).json({ error: "authorized_agents array is required" });
+      }
+
+      const publisher_domain = rawDomain.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+      if (!domainPattern.test(publisher_domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
       const adagentsJson: Record<string, unknown> = {
@@ -1177,9 +1198,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         const { property, revision_number } = await propertyDb.editCommunityProperty(publisher_domain, {
           adagents_json: adagentsJson,
           edit_summary: "API: updated property data",
-          editor_user_id: "system:api",
-          editor_email: "api@agenticadvertising.org",
-          editor_name: "Registry API",
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
         });
 
         return res.json({
@@ -1193,7 +1214,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const saved = await propertyDb.createHostedProperty({
         publisher_domain,
         adagents_json: adagentsJson,
-        source_type: (source_type as "community" | "enriched") || "community",
+        source_type: "community",
       });
 
       return res.json({

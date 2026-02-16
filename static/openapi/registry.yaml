@@ -702,7 +702,7 @@ paths:
     post:
       operationId: saveBrand
       summary: Save brand
-      description: Save or update a brand in the registry. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.
+      description: Save or update a brand in the registry. Requires authentication. For existing brands, creates a revision-tracked edit. For new brands, creates the brand directly. Cannot edit authoritative brands managed via brand.json.
       tags:
         - Brand Resolution
       requestBody:
@@ -720,12 +720,6 @@ paths:
                 brand_manifest:
                   type: object
                   additionalProperties: {}
-                source_type:
-                  type: string
-                  enum:
-                    - community
-                    - enriched
-                  description: Defaults to 'enriched'
               required:
                 - domain
                 - brand_name
@@ -755,13 +749,25 @@ paths:
                   - domain
                   - id
         "400":
-          description: Missing required fields
+          description: Missing required fields or invalid domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
           description: Cannot edit authoritative brand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:
@@ -1004,7 +1010,7 @@ paths:
     post:
       operationId: saveProperty
       summary: Save property
-      description: Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
+      description: Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.
       tags:
         - Property Resolution
       requestBody:
@@ -1051,12 +1057,6 @@ paths:
                       type: string
                     email:
                       type: string
-                source_type:
-                  type: string
-                  enum:
-                    - community
-                    - enriched
-                  description: Defaults to 'community'
               required:
                 - publisher_domain
                 - authorized_agents
@@ -1083,13 +1083,25 @@ paths:
                   - message
                   - id
         "400":
-          description: Missing required fields
+          description: Missing required fields or invalid domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
           description: Cannot edit authoritative property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
           content:
             application/json:
               schema:
