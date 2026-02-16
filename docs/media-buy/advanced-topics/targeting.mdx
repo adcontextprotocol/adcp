@@ -367,7 +367,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 ### geo_postal_areas
 - **Description**: Restrict delivery to specific postal areas
 - **Format**: Array of objects, each with a `system` and `values`
-- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`
+- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`
 - **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
 - **Use cases**: Hyper-local campaigns, postal-level restrictions
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`

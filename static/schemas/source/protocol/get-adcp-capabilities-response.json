@@ -196,6 +196,14 @@
                     "au_postcode": {
                       "type": "boolean",
                       "description": "Australian postcode, 4 digits (e.g., '2000')"
+                    },
+                    "ch_plz": {
+                      "type": "boolean",
+                      "description": "Swiss Postleitzahl, 4 digits (e.g., '8000')"
+                    },
+                    "at_plz": {
+                      "type": "boolean",
+                      "description": "Austrian Postleitzahl, 4 digits (e.g., '1010')"
                     }
                   }
                 },
