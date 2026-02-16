@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Member Directory - AgenticAdvertising.org</title>
+  <title>Partner Directory - AgenticAdvertising.org</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -1106,16 +1106,16 @@
   <!-- List View -->
   <div id="list-view">
     <div class="header">
-      <h1>Member Directory</h1>
-      <p class="subtitle">Organizations building the future of agentic advertising</p>
+      <h1>Partner directory</h1>
+      <p class="subtitle">Find companies who can help you implement AdCP</p>
     </div>
 
     <div class="container">
       <!-- Join CTA Card -->
       <div class="join-cta">
-        <h3>Ready to Join?</h3>
-        <p>Become a founding member today and help shape the future of agentic advertising. Join before March 31, 2026 to participate in the initial board selection process.</p>
-        <a href="/membership#pricing" class="join-cta-btn">View Membership Options</a>
+        <h3>Looking for implementation help?</h3>
+        <p>Browse partners below, or ask Addie to help you find the right match and make an introduction.</p>
+        <a href="/chat?prompt=Help%20me%20find%20a%20partner%20who%20can%20help%20me%20implement%20AdCP" class="join-cta-btn">Ask Addie to help</a>
       </div>
 
       <div class="search-section">
@@ -1148,6 +1148,11 @@
         <p>Try adjusting your search or filter criteria</p>
       </div>
       <div id="members-grid" class="members-grid"></div>
+      <div class="join-cta" id="general-inquiry" style="display: none;">
+        <h3>Not finding the right fit?</h3>
+        <p>Tell Addie what you're looking for and get matched with the right partner.</p>
+        <a href="/chat?prompt=I%27m%20looking%20for%20a%20partner%20who%20can%20help%20me%20with%20AdCP%20implementation" class="join-cta-btn">Ask Addie</a>
+      </div>
     </div>
   </div>
 
@@ -1158,6 +1163,12 @@
         <button class="back-btn" onclick="showListView()" style="margin-bottom: 0;">
           <span>&larr;</span> Back to Directory
         </button>
+        <a class="share-btn" id="intro-btn" href="#" style="background: var(--color-brand); color: white; text-decoration: none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          Request introduction
+        </a>
         <div style="position: relative;">
           <button class="share-btn" id="share-btn" onclick="toggleShareDropdown(event)">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1313,14 +1324,17 @@
     function renderMembers(members) {
       const grid = document.getElementById('members-grid');
       const noResults = document.getElementById('no-results');
+      const generalInquiry = document.getElementById('general-inquiry');
 
       if (members.length === 0) {
         grid.innerHTML = '';
         noResults.style.display = 'block';
+        generalInquiry.style.display = 'none';
         return;
       }
 
       noResults.style.display = 'none';
+      generalInquiry.style.display = 'block';
 
       // renderMemberCard is now in member-card.js
       grid.innerHTML = members.map(member => renderMemberCard(member)).join('');
@@ -1639,7 +1653,7 @@
       `;
 
       // Update page title
-      document.title = `${member.display_name} - AgenticAdvertising.org Member Directory`;
+      document.title = `${member.display_name} - AgenticAdvertising.org Partner Directory`;
 
       // Update share links with member info
       updateShareLinks(member);
@@ -1866,6 +1880,10 @@
       currentMemberForShare = member;
       const profileUrl = window.location.href;
       const shareText = `Check out ${member.display_name} on AgenticAdvertising.org`;
+
+      // Introduction request link
+      const introPrompt = `I'd like an introduction to ${member.display_name}`;
+      document.getElementById('intro-btn').href = `/chat?prompt=${encodeURIComponent(introPrompt)}`;
 
       // LinkedIn share
       const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(profileUrl)}`;
