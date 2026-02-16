@@ -5665,16 +5665,6 @@ Use add_committee_leader to assign a leader.`;
         RETURNING id, description, next_step_due_date
       `, [targetOrgId, userId]);
 
-      // Clear matching prospect_next_action
-      if (result.rows.length > 0 && result.rows[0].next_step_due_date) {
-        await pool.query(`
-          UPDATE organizations
-          SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
-          WHERE workos_organization_id = $1
-            AND prospect_next_action_date = $2
-        `, [targetOrgId, result.rows[0].next_step_due_date]);
-      }
-
       // Get org name
       const orgResult = await pool.query(`
         SELECT name FROM organizations WHERE workos_organization_id = $1
@@ -5685,7 +5675,20 @@ Use add_committee_leader to assign a leader.`;
         return `ℹ️ No pending tasks found for **${orgName}**.`;
       }
 
-      return `✅ Completed task for **${orgName}**: ${result.rows[0].description}`;
+      // Clear matching prospect_next_action for all completed tasks
+      for (const row of result.rows) {
+        if (row.next_step_due_date) {
+          await pool.query(`
+            UPDATE organizations
+            SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+            WHERE workos_organization_id = $1
+              AND prospect_next_action_date = $2
+          `, [targetOrgId, row.next_step_due_date]);
+        }
+      }
+
+      const descriptions = result.rows.map(r => r.description).join(', ');
+      return `✅ Completed ${result.rows.length} task${result.rows.length === 1 ? '' : 's'} for **${orgName}**: ${descriptions}`;
     } catch (error) {
       logger.error({ error, orgId, userId }, 'Error completing task');
       return '❌ Failed to complete task. Please try again.';

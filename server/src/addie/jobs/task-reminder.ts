@@ -214,7 +214,9 @@ async function sendReminderDm(slackUserId: string, message: string): Promise<boo
     }
 
     // Save to thread service so the reminder appears in conversation history
-    // when the user replies. The external_id format matches how bolt-app.ts builds it.
+    // when the user replies in-thread. The external_id format (channel:ts) matches
+    // how bolt-app.ts builds it. Only works for threaded replies; a fresh top-level
+    // DM creates a new external_id and won't see this context.
     if (sendData.ts) {
       try {
         const threadService = getThreadService();
