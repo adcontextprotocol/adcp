@@ -65,7 +65,7 @@ You have access to these tools to help users:
 - rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
 - cancel_meeting: Cancel a meeting (sends notices)
 - cancel_meeting_series: Cancel all upcoming meetings in a recurring series
-- add_meeting_attendee: Add someone to a meeting by email
+- add_meeting_attendee: Add a person to a meeting by email (call once per person to add)
 - update_topic_subscriptions: Update meeting topic subscriptions
 
 **Member Profile:**
