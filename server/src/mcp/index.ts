@@ -6,13 +6,13 @@
  * - Directory lookup (members, agents, publishers)
  * - Billing operations (membership products, payment links)
  *
- * Authentication via OAuth 2.1 (WorkOS AuthKit), proxied through
- * the MCP SDK's ProxyOAuthServerProvider.
+ * Authentication via OAuth 2.1 (WorkOS AuthKit), brokered through
+ * MCPOAuthProvider which handles registration and PKCE locally.
  */
 
 export { createUnifiedMCPServer, initializeMCPServer, isMCPServerReady, getAllTools } from './server.js';
 export { configureMCPRoutes } from './routes.js';
-export { createOAuthProvider, AUTHKIT_ISSUER, MCP_AUTH_ENABLED } from './oauth-provider.js';
+export { createOAuthProvider, handleMCPOAuthCallback, AUTHKIT_ISSUER, MCP_AUTH_ENABLED } from './oauth-provider.js';
 export {
   authInfoToMCPAuthContext,
   anonymousAuthContext,

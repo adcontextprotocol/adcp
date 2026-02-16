@@ -1,14 +1,19 @@
 /**
  * MCP OAuth Provider
  *
- * Configures ProxyOAuthServerProvider to proxy OAuth 2.1 to WorkOS AuthKit.
- * All OAuth endpoints (authorize, token, register) are proxied to AuthKit.
- * JWT validation uses AuthKit's JWKS endpoint.
+ * Implements OAuthServerProvider as an OAuth broker:
+ * - Handles client registration and PKCE locally (in-memory)
+ * - Delegates user authentication to WorkOS AuthKit via /auth/callback
+ * - Issues its own authorization codes to MCP clients
+ * - Validates AuthKit JWTs for bearer auth
  */
 
-import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
+import crypto from 'node:crypto';
+import type { Response, Request } from 'express';
+import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprotocol/sdk/server/auth/provider.js';
+import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type { OAuthClientInformationFull } from '@modelcontextprotocol/sdk/shared/auth.js';
+import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createLogger } from '../logger.js';
 
@@ -28,9 +33,86 @@ const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
  */
 export const MCP_AUTH_ENABLED = process.env.MCP_AUTH_DISABLED !== 'true';
 
-/**
- * JWKS for token verification (cached and auto-refreshed by jose)
- */
+// ---------------------------------------------------------------------------
+// TTL Map — generic in-memory store with per-entry expiry
+// ---------------------------------------------------------------------------
+
+class TTLMap<V> {
+  private store = new Map<string, { value: V; expiresAt: number }>();
+  private cleanupInterval: NodeJS.Timeout;
+
+  constructor(
+    private defaultTTLMs: number,
+    cleanupIntervalMs = 60_000,
+  ) {
+    this.cleanupInterval = setInterval(() => this.evict(), cleanupIntervalMs);
+    this.cleanupInterval.unref();
+  }
+
+  set(key: string, value: V, ttlMs?: number): void {
+    this.store.set(key, {
+      value,
+      expiresAt: Date.now() + (ttlMs ?? this.defaultTTLMs),
+    });
+  }
+
+  get(key: string): V | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  delete(key: string): boolean {
+    return this.store.delete(key);
+  }
+
+  private evict(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.store) {
+      if (now > entry.expiresAt) {
+        this.store.delete(key);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stores
+// ---------------------------------------------------------------------------
+
+interface PendingAuth {
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  state?: string;
+  scopes: string[];
+  resource?: URL;
+}
+
+interface AuthCodeData {
+  clientId: string;
+  codeChallenge: string;
+  accessToken: string;
+  refreshToken: string;
+}
+
+/** Registered MCP clients — 30 day TTL */
+const clients = new TTLMap<OAuthClientInformationFull>(30 * 24 * 60 * 60 * 1000);
+
+/** Pending authorizations — 10 minute TTL */
+const pendingAuths = new TTLMap<PendingAuth>(10 * 60 * 1000);
+
+/** Authorization codes — 5 minute TTL */
+const authCodes = new TTLMap<AuthCodeData>(5 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// JWT verification (unchanged from previous implementation)
+// ---------------------------------------------------------------------------
+
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJWKS() {
@@ -48,13 +130,7 @@ function getJWKS() {
   return jwks;
 }
 
-/**
- * Validate a JWT access token and return AuthInfo for the MCP SDK.
- *
- * Checks signature via JWKS, issuer, audience (if configured), and expiry.
- * Stashes user claims in `extra` for the MCPAuthContext bridge.
- */
-async function verifyAccessToken(token: string): Promise<AuthInfo> {
+async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
   const jwksInstance = getJWKS();
 
   const verifyOptions: { issuer: string; audience?: string } = {
@@ -70,20 +146,16 @@ async function verifyAccessToken(token: string): Promise<AuthInfo> {
     payload.grant_type === 'client_credentials' ||
     (typeof payload.sub === 'string' && payload.sub.startsWith('client_'));
 
-  // Derive clientId from azp (authorized party) or audience
   const clientId =
     (payload.azp as string) ||
     (typeof payload.aud === 'string' ? payload.aud : payload.aud?.[0]) ||
     'unknown';
 
-  // Parse scopes from space-delimited scope claim
   const scopes =
     typeof payload.scope === 'string'
       ? payload.scope.split(' ').filter(Boolean)
       : [];
 
-  // WorkOS AuthKit JWTs always include exp. jose's jwtVerify rejects
-  // tokens without exp by default, so payload.exp is guaranteed here.
   return {
     token,
     clientId,
@@ -99,39 +171,199 @@ async function verifyAccessToken(token: string): Promise<AuthInfo> {
   };
 }
 
-/**
- * Return a permissive client record for any clientId.
- *
- * The SDK's /authorize handler validates redirect_uri against
- * client.redirect_uris locally before proxying to AuthKit. Since AuthKit
- * is the source of truth and validates redirect_uris itself, we skip the
- * local check by overriding includes() to always pass.
- */
-async function getClient(
-  clientId: string
-): Promise<OAuthClientInformationFull | undefined> {
-  const redirect_uris = Object.assign([] as string[], { includes: () => true as boolean });
-  return { client_id: clientId, redirect_uris } as OAuthClientInformationFull;
+// ---------------------------------------------------------------------------
+// MCPOAuthProvider
+// ---------------------------------------------------------------------------
+
+class MCPOAuthProvider implements OAuthServerProvider {
+  /**
+   * SDK validates PKCE locally via challengeForAuthorizationCode,
+   * then calls exchangeAuthorizationCode WITHOUT code_verifier.
+   */
+  skipLocalPkceValidation = false;
+
+  get clientsStore(): OAuthRegisteredClientsStore {
+    return {
+      getClient: async (
+        clientId: string,
+      ): Promise<OAuthClientInformationFull | undefined> => {
+        // Only return registered clients.
+        // Unregistered clients must register via /register first.
+        // This prevents open-redirect attacks via unvalidated redirect_uris.
+        return clients.get(clientId);
+      },
+
+      registerClient: async (
+        clientInfo: OAuthClientInformationFull,
+      ): Promise<OAuthClientInformationFull> => {
+        clients.set(clientInfo.client_id, clientInfo);
+        logger.info({ clientId: clientInfo.client_id }, 'MCP OAuth: Client registered');
+        return clientInfo;
+      },
+    };
+  }
+
+  async authorize(
+    client: OAuthClientInformationFull,
+    params: AuthorizationParams,
+    res: Response,
+  ): Promise<void> {
+    const pendingId = crypto.randomUUID();
+
+    pendingAuths.set(pendingId, {
+      clientId: client.client_id,
+      redirectUri: params.redirectUri,
+      codeChallenge: params.codeChallenge,
+      state: params.state,
+      scopes: params.scopes || [],
+      resource: params.resource,
+    });
+
+    // Redirect to AuthKit via WorkOS SDK (reuses existing WORKOS_REDIRECT_URI)
+    const { getAuthorizationUrl } = await import('../auth/workos-client.js');
+    const workosState = JSON.stringify({ mcp_pending_id: pendingId });
+    const authUrl = getAuthorizationUrl(workosState);
+
+    logger.info(
+      { clientId: client.client_id, pendingId },
+      'MCP OAuth: Redirecting to AuthKit for login',
+    );
+    res.redirect(authUrl);
+  }
+
+  async challengeForAuthorizationCode(
+    client: OAuthClientInformationFull,
+    authorizationCode: string,
+  ): Promise<string> {
+    const data = authCodes.get(authorizationCode);
+    if (!data) {
+      throw new Error('Invalid or expired authorization code');
+    }
+    if (data.clientId !== client.client_id) {
+      throw new Error('Authorization code was not issued to this client');
+    }
+    return data.codeChallenge;
+  }
+
+  async exchangeAuthorizationCode(
+    client: OAuthClientInformationFull,
+    authorizationCode: string,
+    _codeVerifier?: string,
+    _redirectUri?: string,
+    _resource?: URL,
+  ): Promise<OAuthTokens> {
+    const data = authCodes.get(authorizationCode);
+    if (!data) {
+      throw new Error('Invalid or expired authorization code');
+    }
+    if (data.clientId !== client.client_id) {
+      throw new Error('Authorization code was not issued to this client');
+    }
+
+    // Consume the code (single-use)
+    authCodes.delete(authorizationCode);
+
+    return {
+      access_token: data.accessToken,
+      token_type: 'bearer',
+      refresh_token: data.refreshToken,
+    };
+  }
+
+  async exchangeRefreshToken(
+    _client: OAuthClientInformationFull,
+    refreshTokenValue: string,
+    _scopes?: string[],
+    _resource?: URL,
+  ): Promise<OAuthTokens> {
+    const { refreshTokenRaw } = await import('../auth/workos-client.js');
+    const result = await refreshTokenRaw(refreshTokenValue);
+    return {
+      access_token: result.accessToken,
+      token_type: 'bearer',
+      refresh_token: result.refreshToken,
+    };
+  }
+
+  async verifyAccessToken(token: string): Promise<AuthInfo> {
+    return verifyAccessTokenJWT(token);
+  }
 }
 
-/**
- * Create the OAuth provider that proxies all OAuth requests to AuthKit.
- */
-export function createOAuthProvider(): ProxyOAuthServerProvider {
-  const provider = new ProxyOAuthServerProvider({
-    endpoints: {
-      authorizationUrl: `${AUTHKIT_ISSUER}/oauth2/authorize`,
-      tokenUrl: `${AUTHKIT_ISSUER}/oauth2/token`,
-      registrationUrl: `${AUTHKIT_ISSUER}/oauth2/register`,
-    },
-    verifyAccessToken,
-    getClient,
-  });
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+export function createOAuthProvider(): MCPOAuthProvider {
+  const provider = new MCPOAuthProvider();
 
   logger.info(
     { issuer: AUTHKIT_ISSUER, authEnabled: MCP_AUTH_ENABLED },
-    'MCP OAuth: Provider configured'
+    'MCP OAuth: Provider configured',
   );
 
   return provider;
+}
+
+// ---------------------------------------------------------------------------
+// MCP OAuth callback handler
+// Called from /auth/callback when state contains mcp_pending_id
+// ---------------------------------------------------------------------------
+
+export async function handleMCPOAuthCallback(
+  _req: Request,
+  res: Response,
+  workosCode: string,
+  mcpPendingId: string,
+): Promise<void> {
+  const pending = pendingAuths.get(mcpPendingId);
+  if (!pending) {
+    logger.warn({ mcpPendingId }, 'MCP OAuth: Pending auth not found or expired');
+    res.status(400).json({
+      error: 'invalid_request',
+      error_description: 'MCP authorization request expired or not found',
+    });
+    return;
+  }
+
+  // Consume pending auth (single-use)
+  pendingAuths.delete(mcpPendingId);
+
+  // Exchange WorkOS code for tokens
+  let authResult: { accessToken: string; refreshToken: string };
+  try {
+    const { authenticateWithCodeForTokens } = await import('../auth/workos-client.js');
+    authResult = await authenticateWithCodeForTokens(workosCode);
+  } catch (err) {
+    logger.error({ err, mcpPendingId }, 'MCP OAuth: Failed to exchange WorkOS code');
+    const errorUrl = new URL(pending.redirectUri);
+    errorUrl.searchParams.set('error', 'server_error');
+    errorUrl.searchParams.set('error_description', 'Failed to complete authentication');
+    if (pending.state) errorUrl.searchParams.set('state', pending.state);
+    res.redirect(errorUrl.toString());
+    return;
+  }
+
+  // Generate local authorization code
+  const localCode = crypto.randomBytes(32).toString('hex');
+
+  authCodes.set(localCode, {
+    clientId: pending.clientId,
+    codeChallenge: pending.codeChallenge,
+    accessToken: authResult.accessToken,
+    refreshToken: authResult.refreshToken,
+  });
+
+  // Redirect to MCP client's callback URL
+  const redirectUrl = new URL(pending.redirectUri);
+  redirectUrl.searchParams.set('code', localCode);
+  if (pending.state) {
+    redirectUrl.searchParams.set('state', pending.state);
+  }
+
+  logger.info(
+    { clientId: pending.clientId },
+    'MCP OAuth: Redirecting to MCP client with authorization code',
+  );
+  res.redirect(redirectUrl.toString());
 }

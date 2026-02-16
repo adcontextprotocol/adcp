@@ -4873,6 +4873,17 @@ Disallow: /api/admin/
         });
       }
 
+      // MCP OAuth flow: detect mcp_pending_id in state and delegate
+      if (state) {
+        let parsedState: Record<string, unknown> | undefined;
+        try { parsedState = JSON.parse(state); } catch { /* not JSON */ }
+
+        if (typeof parsedState?.mcp_pending_id === 'string') {
+          const { handleMCPOAuthCallback } = await import('./mcp/oauth-provider.js');
+          return handleMCPOAuthCallback(req, res, code, parsedState.mcp_pending_id);
+        }
+      }
+
       try {
         // Exchange code for sealed session and user info
         const { user, sealedSession } = await workos!.userManagement.authenticateWithCode({

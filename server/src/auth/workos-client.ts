@@ -150,3 +150,45 @@ export async function refreshToken(refreshToken: string): Promise<{
     refreshToken: response.refreshToken,
   };
 }
+
+/**
+ * Exchange authorization code for tokens without sealed session.
+ * Used by MCP OAuth flow where we need raw tokens, not cookies.
+ */
+export async function authenticateWithCodeForTokens(code: string): Promise<{
+  accessToken: string;
+  refreshToken: string;
+}> {
+  logger.debug('Authenticating with code for tokens (MCP flow)');
+
+  const result = await workos.userManagement.authenticateWithCode({
+    clientId,
+    code,
+  });
+
+  logger.info({ userId: result.user.id }, 'MCP: User authenticated for tokens');
+
+  return {
+    accessToken: result.accessToken,
+    refreshToken: result.refreshToken,
+  };
+}
+
+/**
+ * Refresh tokens without sealed session.
+ * Used by MCP OAuth flow.
+ */
+export async function refreshTokenRaw(refreshTokenValue: string): Promise<{
+  accessToken: string;
+  refreshToken: string;
+}> {
+  const response = await workos.userManagement.authenticateWithRefreshToken({
+    clientId,
+    refreshToken: refreshTokenValue,
+  });
+
+  return {
+    accessToken: response.accessToken,
+    refreshToken: response.refreshToken,
+  };
+}
