@@ -59,10 +59,9 @@
       },
       "minItems": 1
     },
-    "estimated_exposures": {
-      "type": "integer",
-      "description": "Estimated exposures/impressions for guaranteed products",
-      "minimum": 0
+    "forecast": {
+      "$ref": "/schemas/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
     "measurement": {
       "$ref": "/schemas/core/measurement.json"
