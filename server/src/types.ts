@@ -465,16 +465,17 @@ export interface RegistryRevision {
 }
 
 /**
- * Registry edit ban record
+ * Ban record (platform-wide or registry-scoped)
  */
-export interface RegistryEditBan {
+export interface Ban {
   id: string;
-  entity_type: 'brand' | 'property';
-  banned_user_id: string;
-  banned_email?: string;
-  entity_domain?: string;
+  ban_type: 'user' | 'organization' | 'api_key';
+  entity_id: string;
+  scope: 'platform' | 'registry_brand' | 'registry_property';
+  scope_target?: string;
   banned_by_user_id: string;
   banned_by_email?: string;
+  banned_email?: string;
   reason: string;
   expires_at?: Date;
   created_at: Date;

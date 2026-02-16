@@ -79,7 +79,7 @@ import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { InsightsDatabase } from "./db/insights-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
-import { RegistryBansDatabase } from "./db/registry-bans-db.js";
+import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
@@ -396,7 +396,7 @@ export class HTTPServer {
   private brandDb: BrandDatabase;
   private brandManager: BrandManager;
   private propertyDb: PropertyDatabase;
-  private bansDb: RegistryBansDatabase;
+  private bansDb: BansDatabase;
   private registryRequestsDb = registryRequestsDb;
 
   constructor() {
@@ -412,7 +412,7 @@ export class HTTPServer {
     this.brandDb = new BrandDatabase();
     this.brandManager = new BrandManager();
     this.propertyDb = new PropertyDatabase();
-    this.bansDb = new RegistryBansDatabase();
+    this.bansDb = new BansDatabase();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -1909,7 +1909,7 @@ export class HTTPServer {
         }
 
         // Check ban
-        const banCheck = await this.bansDb.isUserBanned('brand', req.user!.id, domain.toLowerCase());
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain.toLowerCase());
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from creating brands', reason: banCheck.ban?.reason });
         }
@@ -2113,7 +2113,7 @@ export class HTTPServer {
         }
 
         // Check ban
-        const banCheck = await this.bansDb.isUserBanned('brand', req.user!.id, domain);
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
         }
@@ -2253,7 +2253,7 @@ export class HTTPServer {
 
         // Check ban if authenticated
         if (req.user) {
-          const banCheck = await this.bansDb.isUserBanned('brand', req.user.id, domain);
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user.id, domain);
           if (banCheck.banned) {
             return res.json({ editable: false, reason: 'You are banned from editing this brand', ban_reason: banCheck.ban?.reason });
           }
@@ -2387,7 +2387,7 @@ export class HTTPServer {
         }
 
         // Check ban
-        const banCheck = await this.bansDb.isUserBanned('property', req.user!.id, publisher_domain.toLowerCase());
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, publisher_domain.toLowerCase());
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from creating properties', reason: banCheck.ban?.reason });
         }
@@ -2473,7 +2473,7 @@ export class HTTPServer {
         }
 
         // Check ban
-        const banCheck = await this.bansDb.isUserBanned('property', req.user!.id, domain);
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, domain);
         if (banCheck.banned) {
           return res.status(403).json({ error: 'You are banned from editing this property', reason: banCheck.ban?.reason });
         }
@@ -2616,7 +2616,7 @@ export class HTTPServer {
         }
 
         if (req.user) {
-          const banCheck = await this.bansDb.isUserBanned('property', req.user.id, domain);
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user.id, domain);
           if (banCheck.banned) {
             return res.json({ editable: false, reason: 'You are banned from editing this property', ban_reason: banCheck.ban?.reason });
           }
@@ -2652,13 +2652,15 @@ export class HTTPServer {
           return res.status(400).json({ error: 'entity_type must be "brand" or "property"' });
         }
 
-        const ban = await this.bansDb.createEditBan({
-          entity_type,
-          banned_user_id,
-          banned_email,
-          entity_domain: entity_domain?.toLowerCase(),
+        const scope = entity_type === 'brand' ? 'registry_brand' : 'registry_property' as const;
+        const ban = await this.bansDb.createBan({
+          ban_type: 'user',
+          entity_id: banned_user_id,
+          scope,
+          scope_target: entity_domain?.toLowerCase(),
           banned_by_user_id: req.user!.id,
           banned_by_email: req.user!.email,
+          banned_email,
           reason,
           expires_at: expires_at ? new Date(expires_at) : undefined,
         });
@@ -2689,10 +2691,14 @@ export class HTTPServer {
           return res.status(403).json({ error: 'Admin access required' });
         }
 
-        const bans = await this.bansDb.listEditBans({
-          entity_type: req.query.entity_type as 'brand' | 'property' | undefined,
-          banned_user_id: req.query.banned_user_id as string | undefined,
-          entity_domain: req.query.entity_domain as string | undefined,
+        const entityType = req.query.entity_type as string | undefined;
+        const scope = entityType === 'brand' ? 'registry_brand'
+          : entityType === 'property' ? 'registry_property'
+          : undefined;
+
+        const bans = await this.bansDb.listBans({
+          scope: scope as 'registry_brand' | 'registry_property' | undefined,
+          entity_id: req.query.banned_user_id as string | undefined,
         });
         return res.json({ bans });
       } catch (error) {
@@ -2709,7 +2715,7 @@ export class HTTPServer {
           return res.status(403).json({ error: 'Admin access required' });
         }
 
-        const removed = await this.bansDb.removeEditBan(req.params.id);
+        const removed = await this.bansDb.removeBan(req.params.id);
         if (!removed) {
           return res.status(404).json({ error: 'Ban not found' });
         }
