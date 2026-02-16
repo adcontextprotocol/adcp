@@ -149,6 +149,12 @@ This ensures users are notified when their escalated requests are handled.
 - send_invoice: Send invoice via email`;
 
 /**
+ * Note appended to requestContext when conversation history could not be loaded.
+ * Tells Claude to ask for clarification on ambiguous short messages rather than guessing.
+ */
+export const HISTORY_UNAVAILABLE_NOTE = 'Note: Conversation history could not be loaded. If the user\'s message is short or seems like a confirmation/reply, ask them to clarify what they\'re referring to.';
+
+/**
  * Minimal fallback prompt - used only when database is unavailable.
  *
  * The main system prompt comes from database rules (addie_rules table).

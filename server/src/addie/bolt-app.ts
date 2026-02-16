@@ -68,7 +68,7 @@ import {
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts } from './prompts.js';
+import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -622,13 +622,14 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
 }
 
 /**
- * Build message with member context prepended
+ * Build per-request context for the system prompt (member info, channel, goals).
+ * Returns context separately from the user message so short messages like "sure"
+ * aren't buried under hundreds of tokens of metadata.
  */
-async function buildMessageWithMemberContext(
+async function buildRequestContext(
   userId: string,
-  sanitizedMessage: string,
   threadContext?: ThreadContext
-): Promise<{ message: string; memberContext: MemberContext | null }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
@@ -665,18 +666,14 @@ async function buildMessageWithMemberContext(
       logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
     }
 
-    if (memberContextText || channelContextText || insightGoalsText) {
-      // Use double newline between sections for proper markdown spacing
-      const sections = [memberContextText, channelContextText, insightGoalsText].filter(Boolean);
-      return {
-        message: `${sections.join('\n\n')}\n\n---\n\n${sanitizedMessage}`,
-        memberContext,
-      };
-    }
-    return { message: sanitizedMessage, memberContext };
+    const sections = [memberContextText, channelContextText, insightGoalsText].filter(Boolean);
+    return {
+      requestContext: sections.length > 0 ? sections.join('\n\n') : '',
+      memberContext,
+    };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { message: sanitizedMessage, memberContext: null };
+    return { requestContext: '', memberContext: null };
   }
 }
 
@@ -1102,6 +1099,7 @@ async function handleUserMessage({
   // This ensures Claude has context from previous turns in the DM thread
   const MAX_HISTORY_MESSAGES = 10;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
@@ -1125,17 +1123,20 @@ async function handleUserMessage({
     }
   } catch (error) {
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history');
+    historyUnavailable = true;
   }
 
-  // Build message with member context (memberContext is fetched again but cached)
-  const { message: messageWithContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
+  // Build per-request context for system prompt
+  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(
     userId,
-    inputValidation.sanitized,
     slackThreadContext
   );
   // Use the updated memberContext if we didn't have one before
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
+  }
+  if (historyUnavailable) {
+    requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
 
   // Set SI context for SI host tools (allows them to access member context and thread ID)
@@ -1160,7 +1161,7 @@ async function handleUserMessage({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
   // Process with Claude using streaming
   let response;
@@ -1193,7 +1194,7 @@ async function handleUserMessage({
       });
 
       // Process Claude response stream (pass conversation history for context)
-      for await (const event of claudeClient.processMessageStream(messageWithContext, conversationHistory, userTools, processOptions)) {
+      for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, userTools, processOptions)) {
         if (event.type === 'text') {
           fullText += event.text;
           // Append text chunk to Slack stream
@@ -1241,7 +1242,7 @@ async function handleUserMessage({
     } else {
       // Fall back to non-streaming for compatibility
       logger.debug('Addie Bolt: Using non-streaming response (streaming not available)');
-      response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+      response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
       fullText = response.text;
 
       // Send response via say() with feedback buttons
@@ -1551,6 +1552,7 @@ async function handleAppMention({
   // This ensures Claude remembers what Addie said in previous turns
   const MAX_HISTORY_MESSAGES = 10;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
@@ -1571,19 +1573,22 @@ async function handleAppMention({
     }
   } catch (error) {
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch mention conversation history');
+    historyUnavailable = true;
   }
 
-  // Build message with member context and channel context
-  const { message: messageWithMemberContext, memberContext } = await buildMessageWithMemberContext(
+  // Build per-request context (member info, channel, goals) for system prompt
+  const { requestContext: memberRequestContext, memberContext } = await buildRequestContext(
     userId,
-    inputValidation.sanitized,
     mentionChannelContext
   );
 
-  // Prepend thread context if available (member context already includes the user's message)
-  const messageWithContext = threadContext
-    ? `${threadContext}${messageWithMemberContext}`
-    : messageWithMemberContext;
+  // Include Slack thread context in requestContext (reference info, not user speech)
+  let requestContext = threadContext
+    ? `${memberRequestContext}\n\n${threadContext}`
+    : memberRequestContext;
+  if (historyUnavailable) {
+    requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
+  }
 
   // Log user message to unified thread (use original input, not synthetic instruction)
   const userMessageFlagged = inputValidation.flagged;
@@ -1604,12 +1609,12 @@ async function handleAppMention({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, mentionChannelContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -2032,6 +2037,7 @@ async function handleDirectMessage(
   // Fetch conversation history from database for context
   const MAX_HISTORY_MESSAGES = 10;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
@@ -2052,15 +2058,14 @@ async function handleDirectMessage(
     }
   } catch (error) {
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch DM conversation history');
+    historyUnavailable = true;
   }
 
-  // Build message with member context
-  // Note: No thread context is passed for DMs since there's no "viewing channel" context
-  // like in the Assistant flow. DMs are direct conversations without channel context.
-  const { message: messageWithContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
-    userId,
-    inputValidation.sanitized
-  );
+  // Build per-request context for system prompt (no channel context for DMs)
+  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  if (historyUnavailable) {
+    requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
+  }
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
@@ -2084,12 +2089,12 @@ async function handleDirectMessage(
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing DM');
     response = {
@@ -2333,6 +2338,7 @@ async function handleActiveThreadReply({
   // This ensures Claude remembers what Addie said in previous turns
   const MAX_DB_HISTORY_MESSAGES = 10;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
@@ -2353,21 +2359,26 @@ async function handleActiveThreadReply({
     }
   } catch (error) {
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch conversation history for active thread reply');
+    historyUnavailable = true;
   }
 
-  // Build message with member context
-  const { message: messageWithMemberContext, memberContext: updatedMemberContext } = await buildMessageWithMemberContext(
-    userId,
-    inputValidation.sanitized
-  );
+  // Build per-request context for system prompt
+  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
 
-  // Prepend thread context
-  const messageWithContext = threadContext
-    ? `${threadContext}${messageWithMemberContext}`
-    : messageWithMemberContext;
+  // When DB history is available, skip Slack thread context (DB history is more structured
+  // and already represented as proper user/assistant turns). Use Slack thread context as
+  // fallback when DB history is unavailable.
+  let requestContext = (!conversationHistory || conversationHistory.length === 0) && threadContext
+    ? `${memberRequestContext}\n\n${threadContext}`
+    : memberRequestContext;
+  // Only warn about missing history when there's no Slack thread context either.
+  // When threadContext exists it serves as a usable fallback for conversation continuity.
+  if (historyUnavailable && (!threadContext || threadContext.length === 0)) {
+    requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
+  }
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
@@ -2388,12 +2399,12 @@ async function handleActiveThreadReply({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing active thread reply');
     response = {
@@ -2809,11 +2820,8 @@ async function handleChannelMessage({
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
-    // Build message with member context
-    const { message: messageWithContext } = await buildMessageWithMemberContext(
-      userId,
-      messageText
-    );
+    // Build per-request context for system prompt
+    const { requestContext: memberRequestContext } = await buildRequestContext(userId);
 
     // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
@@ -2824,8 +2832,8 @@ async function handleChannelMessage({
       ? siRetriever.formatContext(siRetrievalResult.agents)
       : '';
 
-    // Append unavailable sets hint and SI context to message
-    const messageWithHint = [messageWithContext, unavailableHint, siContext]
+    // Combine all context for system prompt (member info, unavailable tool hints, SI agents)
+    const requestContext = [memberRequestContext, unavailableHint, siContext]
       .filter(Boolean)
       .join('\n\n');
 
@@ -2834,8 +2842,9 @@ async function handleChannelMessage({
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(plan.requires_precision ? { modelOverride: ModelConfig.precision } : {}),
+      requestContext,
     };
-    const response = await claudeClient.processMessage(messageWithHint, undefined, filteredTools, undefined, processOptions);
+    const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
 
     if (!response.text || response.text.trim().length === 0) {
       logger.debug({ channelId }, 'Addie Bolt: No response generated');
@@ -3308,6 +3317,7 @@ async function handleReactionAdded({
   // Fetch conversation history from database for context
   const MAX_HISTORY_MESSAGES = 10;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
+  let historyUnavailable = false;
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
@@ -3328,6 +3338,7 @@ async function handleReactionAdded({
     }
   } catch (error) {
     logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to fetch reaction conversation history');
+    historyUnavailable = true;
   }
 
   // Fetch channel context (includes working group if channel is linked to one)
@@ -3338,22 +3349,22 @@ async function handleReactionAdded({
     logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
   }
 
-  // Get member context
-  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
-    reactingUserId,
-    userInput
-  );
+  // Build per-request context for system prompt
+  let { requestContext, memberContext } = await buildRequestContext(reactingUserId);
+  if (historyUnavailable) {
+    requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
+  }
 
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
   // Process with Claude
   let response;
   try {
-    response = await claudeClient.processMessage(messageWithContext, conversationHistory, userTools, undefined, processOptions);
+    response = await claudeClient.processMessage(userInput, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {
