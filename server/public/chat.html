@@ -589,6 +589,31 @@
       color: var(--color-warning-700);
     }
 
+    /* Anonymous tier banner */
+    .anonymous-banner {
+      background: var(--color-bg-subtle);
+      border-bottom: 1px solid var(--color-border);
+      padding: 8px 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      display: none;
+    }
+
+    .anonymous-banner.active {
+      display: block;
+    }
+
+    .anonymous-banner a {
+      color: var(--color-brand);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .anonymous-banner a:hover {
+      text-decoration: underline;
+    }
+
     /* Status indicator */
     .status-indicator {
       display: flex;
@@ -608,6 +633,21 @@
 
     .status-dot--offline {
       background: var(--color-error-500);
+    }
+
+    .message-limit {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-left: auto;
+    }
+
+    .message-limit a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .message-limit a:hover {
+      text-decoration: underline;
     }
 
     /* Feedback controls */
@@ -2142,6 +2182,7 @@
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
+  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/api/auth/login">sign in</a> to search Slack discussions, validate schemas, and get full-quality answers.</div>
   <div id="adcp-nav"></div>
 
   <!-- SI (Sponsored Intelligence) Chat Modal -->
@@ -2295,6 +2336,7 @@
         <div class="status-indicator" id="statusIndicator">
           <span class="status-dot" id="statusDot"></span>
           <span id="statusText">Connecting...</span>
+          <span class="message-limit" id="messageLimit" style="display: none;"></span>
         </div>
       </div>
     </div>
@@ -2422,7 +2464,11 @@
       async function checkImpersonation() {
         try {
           const response = await authFetch('/api/me');
-          if (!response.ok) return; // Not authenticated
+          if (!response.ok) {
+            // Not authenticated — show anonymous banner
+            document.getElementById('anonymous-banner').classList.add('active');
+            return;
+          }
 
           const data = await response.json();
           isAuthenticated = true;
@@ -2450,7 +2496,8 @@
           loadActiveTabs(); // Restore from localStorage
           loadThreads();
         } catch (error) {
-          // Silently ignore - user may not be authenticated
+          // Network error — don't assume anonymous, just skip the banner
+          console.warn('Failed to check auth status:', error);
         }
       }
 
@@ -3781,7 +3828,24 @@
           });
 
           if (!response.ok) {
-            throw new Error('Failed to send message');
+            // Surface server error messages (e.g., rate limit "daily limit reached")
+            let errorMsg = 'Failed to send message';
+            try {
+              const errorData = await response.json();
+              if (errorData.message) errorMsg = errorData.message;
+            } catch (e) { /* ignore parse errors */ }
+            throw new Error(errorMsg);
+          }
+
+          // Show remaining message count for anonymous users (when running low)
+          if (!isAuthenticated) {
+            const remaining = parseInt(response.headers.get('RateLimit-Remaining'));
+            const limit = parseInt(response.headers.get('RateLimit-Limit'));
+            const limitEl = document.getElementById('messageLimit');
+            if (!isNaN(remaining) && !isNaN(limit) && remaining <= 15) {
+              limitEl.innerHTML = `${limit - remaining} of ${limit} free messages used \u00b7 <a href="/api/auth/login">sign in</a> for unlimited`;
+              limitEl.style.display = '';
+            }
           }
 
           // Read the SSE stream
