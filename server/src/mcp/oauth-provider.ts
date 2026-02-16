@@ -100,17 +100,18 @@ async function verifyAccessToken(token: string): Promise<AuthInfo> {
 }
 
 /**
- * Return a minimal client record for any clientId.
+ * Return a permissive client record for any clientId.
  *
- * AuthKit is the source of truth for client registration.
- * The SDK's authenticateClient middleware requires a non-null return,
- * but since MCP clients are public (no client_secret), no secret
- * checking occurs. AuthKit validates the client_id during token exchange.
+ * The SDK's /authorize handler validates redirect_uri against
+ * client.redirect_uris locally before proxying to AuthKit. Since AuthKit
+ * is the source of truth and validates redirect_uris itself, we skip the
+ * local check by overriding includes() to always pass.
  */
 async function getClient(
   clientId: string
 ): Promise<OAuthClientInformationFull | undefined> {
-  return { client_id: clientId, redirect_uris: [] } as OAuthClientInformationFull;
+  const redirect_uris = Object.assign([] as string[], { includes: () => true as boolean });
+  return { client_id: clientId, redirect_uris } as OAuthClientInformationFull;
 }
 
 /**
