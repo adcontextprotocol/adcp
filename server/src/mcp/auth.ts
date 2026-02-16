@@ -197,18 +197,38 @@ export async function mcpAuthMiddleware(
 
     next();
   } catch (error) {
-    logger.warn({ error }, 'MCP Auth: Token validation failed');
+    // Classify the error using jose error codes for reliable detection
+    const errorCode = (error as { code?: string })?.code;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    let reason = 'Token validation failed';
 
+    if (errorCode === 'ERR_JWT_EXPIRED') {
+      reason = 'Token expired';
+    } else if (errorCode === 'ERR_JWT_CLAIM_VALIDATION_FAILED' && errorMessage.includes('aud')) {
+      reason = 'Audience mismatch';
+    } else if (errorCode === 'ERR_JWT_CLAIM_VALIDATION_FAILED' && errorMessage.includes('iss')) {
+      reason = 'Issuer mismatch';
+    } else if (errorCode === 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED') {
+      reason = 'Token signature verification failed';
+    } else if (errorCode === 'ERR_JWKS_MULTIPLE_MATCHING_KEYS' || errorCode === 'ERR_JWKS_NO_MATCHING_KEY') {
+      reason = 'JWKS key resolution failed';
+    }
+
+    // Log full details server-side (including config values) for debugging
+    logger.warn({ error, reason, errorCode, audienceConfigured: !!WORKOS_CLIENT_ID }, 'MCP Auth: Token validation failed');
+
+    // Return only the classification to the client (no internal config values)
     const metadataUrl = getResourceMetadataUrl(req);
+    const safeReason = reason.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     res.setHeader('WWW-Authenticate',
-      `Bearer error="invalid_token", error_description="Invalid or expired token", resource_metadata="${metadataUrl}"`
+      `Bearer error="invalid_token", error_description="${safeReason}", resource_metadata="${metadataUrl}"`
     );
     res.status(401).json({
       jsonrpc: '2.0',
       id: null,
       error: {
         code: -32001,
-        message: 'Invalid or expired token.',
+        message: reason,
       },
     });
   }
