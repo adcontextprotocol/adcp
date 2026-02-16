@@ -416,8 +416,8 @@
             <div class="key-info">
               <h3>${escapeHtml(key.name)}</h3>
               <p>
-                Created ${formatDate(key.createdAt)}
-                ${key.lastUsedAt ? ` · Last used ${formatDate(key.lastUsedAt)}` : ''}
+                Created ${formatDate(key.created_at)}
+                ${key.last_used_at ? ` · Last used ${formatDate(key.last_used_at)}` : ''}
               </p>
             </div>
             <button class="btn btn-danger btn-sm" data-key-id="${escapeHtml(key.id)}" data-key-name="${escapeHtml(key.name)}">Revoke</button>
