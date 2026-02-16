@@ -15,6 +15,7 @@ import { getPool } from '../db/client.js';
 import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
 import { notifyPublishedPost } from '../notifications/slack.js';
+import { computeJourneyStage } from '../addie/services/journey-computation.js';
 
 const logger = createLogger('content-routes');
 
@@ -269,6 +270,16 @@ export async function proposeContentForUser(
   );
 
   const perspective = result.rows[0];
+
+  // Fire-and-forget journey recomputation (content contribution is a milestone)
+  const userOrgResult = await pool.query(
+    `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+    [user.id]
+  );
+  if (userOrgResult.rows[0]) {
+    computeJourneyStage(userOrgResult.rows[0].workos_organization_id, 'content_contribution', `perspective:${perspective.id}`)
+      .catch(() => {});
+  }
 
   // Create content_authors records
   const authorsToCreate = authors && authors.length > 0

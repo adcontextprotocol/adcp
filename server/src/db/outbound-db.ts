@@ -31,7 +31,7 @@ export async function listGoals(options?: {
   let sql = `
     SELECT
       id, name, category, description, success_insight_type,
-      requires_mapped, requires_company_type, requires_min_engagement,
+      requires_mapped, requires_company_type, requires_persona, requires_min_engagement,
       requires_insights, excludes_insights, base_priority,
       message_template, follow_up_on_question, is_enabled,
       created_by, created_at, updated_at
@@ -73,10 +73,10 @@ export async function createGoal(input: CreateGoalInput): Promise<OutreachGoal> 
   const result = await query(
     `INSERT INTO outreach_goals (
       name, category, description, success_insight_type,
-      requires_mapped, requires_company_type, requires_min_engagement,
+      requires_mapped, requires_company_type, requires_persona, requires_min_engagement,
       requires_insights, excludes_insights, base_priority,
       message_template, follow_up_on_question, is_enabled, created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *`,
     [
       input.name,
@@ -85,6 +85,7 @@ export async function createGoal(input: CreateGoalInput): Promise<OutreachGoal> 
       input.success_insight_type ?? null,
       input.requires_mapped ?? false,
       input.requires_company_type ?? [],
+      input.requires_persona ?? [],
       input.requires_min_engagement ?? 0,
       JSON.stringify(input.requires_insights ?? {}),
       JSON.stringify(input.excludes_insights ?? {}),
@@ -116,6 +117,7 @@ export async function updateGoal(
     success_insight_type: 'success_insight_type',
     requires_mapped: 'requires_mapped',
     requires_company_type: 'requires_company_type',
+    requires_persona: 'requires_persona',
     requires_min_engagement: 'requires_min_engagement',
     requires_insights: 'requires_insights',
     excludes_insights: 'excludes_insights',
@@ -585,6 +587,7 @@ function rowToGoal(row: Record<string, unknown>): OutreachGoal {
     success_insight_type: row.success_insight_type as string | null,
     requires_mapped: row.requires_mapped as boolean,
     requires_company_type: row.requires_company_type as string[],
+    requires_persona: (row.requires_persona as string[]) ?? [],
     requires_min_engagement: row.requires_min_engagement as number,
     requires_insights: (row.requires_insights ?? {}) as Record<string, string>,
     excludes_insights: (row.excludes_insights ?? {}) as Record<string, string>,

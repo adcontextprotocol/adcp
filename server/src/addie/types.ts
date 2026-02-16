@@ -189,6 +189,7 @@ export interface OutreachGoal {
   // Eligibility criteria
   requires_mapped: boolean;
   requires_company_type: string[];
+  requires_persona: string[];
   requires_min_engagement: number;
   requires_insights: Record<string, string>;  // {insight_type: "any" | pattern}
   excludes_insights: Record<string, string>;
@@ -384,6 +385,7 @@ export interface PlannerContext {
     offerings?: string[];
     /** Whether this is a real company org vs an auto-generated personal workspace */
     is_personal_workspace?: boolean;
+    persona?: string;
   };
   /** What capabilities has/hasn't this member unlocked? */
   capabilities?: MemberCapabilities;
@@ -416,6 +418,7 @@ export interface CreateGoalInput {
   success_insight_type?: string;
   requires_mapped?: boolean;
   requires_company_type?: string[];
+  requires_persona?: string[];
   requires_min_engagement?: number;
   requires_insights?: Record<string, string>;
   excludes_insights?: Record<string, string>;

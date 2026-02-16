@@ -71,7 +71,7 @@ export type Persona = 'molecule_builder' | 'data_decoder' | 'pureblood_protector
 
 export type JourneyStage = 'aware' | 'evaluating' | 'joined' | 'onboarding' | 'participating' | 'contributing' | 'leading' | 'advocating';
 
-export type JourneyTriggerType = 'milestone_achieved' | 'milestone_lost' | 'admin_override' | 'recomputation' | 'initial';
+export type JourneyTriggerType = 'milestone_achieved' | 'milestone_lost' | 'admin_override' | 'recomputation' | 'initial' | 'membership_change' | 'leadership_change' | 'content_contribution';
 
 export interface JourneyStageTransition {
   id: number;

@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import type {
   WorkingGroup,
   WorkingGroupLeader,
@@ -462,6 +463,16 @@ export class WorkingGroupDatabase {
       ]
     );
 
+    // Fire-and-forget journey recomputation
+    const orgId = input.workos_organization_id || (await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [canonicalUserId]
+    )).rows[0]?.workos_organization_id;
+    if (orgId) {
+      computeJourneyStage(orgId, 'membership_change', `working_group:${input.working_group_id}`)
+        .catch(() => {});
+    }
+
     return result.rows[0];
   }
 
@@ -476,6 +487,17 @@ export class WorkingGroupDatabase {
        WHERE working_group_id = $1 AND workos_user_id = $2`,
       [workingGroupId, canonicalUserId]
     );
+
+    // Fire-and-forget journey recomputation
+    const orgResult = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [canonicalUserId]
+    );
+    if (orgResult.rows[0]) {
+      computeJourneyStage(orgResult.rows[0].workos_organization_id, 'membership_change', `working_group:${workingGroupId}`)
+        .catch(() => {});
+    }
+
     return (result.rowCount || 0) > 0;
   }
 
@@ -489,6 +511,17 @@ export class WorkingGroupDatabase {
        WHERE working_group_id = $1 AND workos_user_id = $2`,
       [workingGroupId, canonicalUserId]
     );
+
+    // Fire-and-forget journey recomputation
+    const orgResult = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [canonicalUserId]
+    );
+    if (orgResult.rows[0]) {
+      computeJourneyStage(orgResult.rows[0].workos_organization_id, 'membership_change', `working_group:${workingGroupId}`)
+        .catch(() => {});
+    }
+
     return (result.rowCount || 0) > 0;
   }
 
@@ -743,6 +776,13 @@ export class WorkingGroupDatabase {
     // Dedupe in case multiple Slack IDs resolve to the same WorkOS ID
     const uniqueUserIds = [...new Set(canonicalUserIds)];
 
+    // Get old leaders before replacing (for journey recomputation)
+    const oldLeadersResult = await query<{ user_id: string }>(
+      'SELECT user_id FROM working_group_leaders WHERE working_group_id = $1',
+      [workingGroupId]
+    );
+    const oldLeaderIds = oldLeadersResult.rows.map(r => r.user_id);
+
     // Remove existing leaders
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1',
@@ -762,6 +802,19 @@ export class WorkingGroupDatabase {
 
     // Ensure leaders are members
     await this.ensureLeadersAreMembers(workingGroupId);
+
+    // Fire-and-forget journey recomputation for affected orgs
+    const allAffectedUserIds = [...new Set([...oldLeaderIds, ...uniqueUserIds])];
+    if (allAffectedUserIds.length > 0) {
+      const orgResults = await query<{ workos_organization_id: string }>(
+        `SELECT DISTINCT workos_organization_id FROM organization_memberships WHERE workos_user_id = ANY($1)`,
+        [allAffectedUserIds]
+      );
+      for (const row of orgResults.rows) {
+        computeJourneyStage(row.workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
+          .catch(() => {});
+      }
+    }
   }
 
   /**
@@ -780,6 +833,16 @@ export class WorkingGroupDatabase {
 
     // Ensure leader is a member
     await this.ensureLeadersAreMembers(workingGroupId);
+
+    // Fire-and-forget journey recomputation
+    const orgResult = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [canonicalUserId]
+    );
+    if (orgResult.rows[0]) {
+      computeJourneyStage(orgResult.rows[0].workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
+        .catch(() => {});
+    }
   }
 
   /**
@@ -791,6 +854,16 @@ export class WorkingGroupDatabase {
       'DELETE FROM working_group_leaders WHERE working_group_id = $1 AND user_id = $2',
       [workingGroupId, canonicalUserId]
     );
+
+    // Fire-and-forget journey recomputation
+    const orgResult = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [canonicalUserId]
+    );
+    if (orgResult.rows[0]) {
+      computeJourneyStage(orgResult.rows[0].workos_organization_id, 'leadership_change', `working_group:${workingGroupId}`)
+        .catch(() => {});
+    }
   }
 
   /**

@@ -194,8 +194,9 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
       name: string;
       company_types: string[] | null;
       subscription_status: string | null;
+      persona: string | null;
     }>(
-      `SELECT o.name, o.company_types, o.subscription_status
+      `SELECT o.name, o.company_types, o.subscription_status, o.persona
        FROM organization_memberships om
        JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
        WHERE om.workos_user_id = $1
@@ -210,6 +211,7 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
         name: isPersonalWorkspace ? 'your account' : org.name,
         type: org.company_types?.[0] ?? 'unknown',
         is_personal_workspace: isPersonalWorkspace,
+        persona: org.persona ?? undefined,
       };
       isMember = org.subscription_status === 'active';
     }
