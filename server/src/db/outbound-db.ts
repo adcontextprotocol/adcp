@@ -687,6 +687,8 @@ export async function getMemberCapabilities(
       council_count: 0,
       events_registered: 0,
       events_attended: 0,
+      community_profile_public: false,
+      community_profile_completeness: 0,
       last_active_days_ago: null,
       slack_message_count_30d: 0,
       is_committee_leader: false,
@@ -702,6 +704,7 @@ export async function getMemberCapabilities(
     activityResult,
     emailPrefsResult,
     leaderResult,
+    communityResult,
   ] = await Promise.all([
     // Profile completeness
     query<{
@@ -801,6 +804,25 @@ export async function getMemberCapabilities(
       `SELECT EXISTS(SELECT 1 FROM working_group_leaders WHERE user_id = $1) as is_leader`,
       [workosUserId]
     ),
+
+    // Community profile
+    query<{ is_public: boolean; completeness_fields: number }>(
+      `SELECT
+        COALESCE(u.is_public, false) as is_public,
+        (CASE WHEN u.headline IS NOT NULL AND u.headline != '' THEN 1 ELSE 0 END
+         + CASE WHEN u.bio IS NOT NULL AND u.bio != '' THEN 1 ELSE 0 END
+         + CASE WHEN u.avatar_url IS NOT NULL THEN 1 ELSE 0 END
+         + CASE WHEN u.expertise IS NOT NULL AND array_length(u.expertise, 1) > 0 THEN 1 ELSE 0 END
+         + CASE WHEN u.interests IS NOT NULL AND array_length(u.interests, 1) > 0 THEN 1 ELSE 0 END
+         + CASE WHEN u.city IS NOT NULL AND u.city != '' THEN 1 ELSE 0 END
+         + CASE WHEN u.linkedin_url IS NOT NULL THEN 1 ELSE 0 END
+         + CASE WHEN u.github_username IS NOT NULL THEN 1 ELSE 0 END
+         + CASE WHEN u.open_to_coffee_chat = true THEN 1 ELSE 0 END
+         + CASE WHEN u.open_to_intros = true THEN 1 ELSE 0 END
+        ) as completeness_fields
+       FROM users u WHERE u.workos_user_id = $1`,
+      [workosUserId]
+    ),
   ]);
 
   const profile = profileResult.rows[0] ?? { has_profile: false, offerings_count: 0 };
@@ -810,6 +832,7 @@ export async function getMemberCapabilities(
   const activity = activityResult.rows[0] ?? { last_active_days: null, slack_messages_30d: 0 };
   const emailPrefs = emailPrefsResult.rows[0] ?? { configured: false };
   const leader = leaderResult.rows[0] ?? { is_leader: false };
+  const community = communityResult.rows[0] ?? { is_public: false, completeness_fields: 0 };
 
   return {
     account_linked: true,
@@ -822,6 +845,8 @@ export async function getMemberCapabilities(
     council_count: Number(wg.council_count),
     events_registered: Number(events.registered),
     events_attended: Number(events.attended),
+    community_profile_public: community.is_public,
+    community_profile_completeness: Math.round((Number(community.completeness_fields) / 10) * 100),
     last_active_days_ago: activity.last_active_days != null ? Number(activity.last_active_days) : null,
     slack_message_count_30d: Number(activity.slack_messages_30d),
     is_committee_leader: leader.is_leader,

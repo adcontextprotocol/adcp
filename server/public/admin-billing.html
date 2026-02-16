@@ -478,6 +478,12 @@
       });
     };
 
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
     function showError(message) {
       const el = document.getElementById('error-message');
       el.textContent = message;
@@ -548,7 +554,7 @@
             <td>${hasPayments ? formatCurrency(customer.total_paid) : '-'}</td>
             <td>
               ${isLinked
-                ? `<span class="badge badge-success">${customer.linked_org.name}</span>`
+                ? `<span class="badge badge-success">${escapeHtml(customer.linked_org.name)}</span>`
                 : '<span class="badge badge-warning">Not linked</span>'
               }
             </td>
@@ -601,10 +607,10 @@
             resultsEl.innerHTML = '<div class="search-result-item" style="color: var(--color-text-muted);">No results</div>';
           } else {
             resultsEl.innerHTML = data.organizations.map(org => `
-              <div class="search-result-item" onclick="selectOrg('${customerId}', '${org.workos_organization_id}', '${org.name.replace(/'/g, "\\'")}')">
-                <div class="search-result-name">${org.name}</div>
+              <div class="search-result-item" onclick="selectOrg('${customerId}', '${org.workos_organization_id}', '${org.name.replace(/'/g, "\\'")}', '${org.stripe_customer_id || ''}')">
+                <div class="search-result-name">${escapeHtml(org.name)}${org.is_personal ? ' <span style="color: var(--color-text-muted); font-size: 0.85em;">(personal)</span>' : ''}</div>
                 ${org.email_domain ? `<div class="search-result-domain">${org.email_domain}</div>` : ''}
-                ${org.stripe_customer_id ? `<div class="search-result-linked">Already linked to another customer</div>` : ''}
+                ${org.stripe_customer_id ? `<div class="search-result-linked">Linked to ${org.stripe_customer_id} (will replace)</div>` : ''}
               </div>
             `).join('');
           }
@@ -615,18 +621,24 @@
       }, 300);
     }
 
-    function selectOrg(customerId, orgId, orgName) {
-      selectedOrgs[customerId] = { id: orgId, name: orgName };
+    function selectOrg(customerId, orgId, orgName, existingCustomerId) {
+      selectedOrgs[customerId] = { id: orgId, name: orgName, existingCustomerId: existingCustomerId || null };
       document.getElementById(`search-${customerId}`).value = orgName;
       document.getElementById(`results-${customerId}`).classList.remove('show');
       document.getElementById(`link-btn-${customerId}`).disabled = false;
     }
 
-    async function linkCustomer(customerId) {
+    async function linkCustomer(customerId, force) {
       const selectedOrg = selectedOrgs[customerId];
       if (!selectedOrg) {
         showError('Please select an organization first');
         return;
+      }
+
+      if (selectedOrg.existingCustomerId && !force) {
+        if (!confirm(`"${selectedOrg.name}" is already linked to ${selectedOrg.existingCustomerId}. Replace with ${customerId}?`)) {
+          return;
+        }
       }
 
       const btn = document.getElementById(`link-btn-${customerId}`);
@@ -637,16 +649,28 @@
         const response = await fetch(`/api/admin/stripe-customers/${customerId}/link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ org_id: selectedOrg.id }),
+          body: JSON.stringify({ org_id: selectedOrg.id, force: force || !!selectedOrg.existingCustomerId }),
         });
 
         const data = await response.json();
+
+        if (data.requires_force && !force) {
+          // Server says force is needed (org got linked between search and submit)
+          if (confirm(`${data.message} Replace anyway?`)) {
+            return linkCustomer(customerId, true);
+          }
+          btn.disabled = false;
+          btn.textContent = 'Link';
+          return;
+        }
 
         if (!response.ok) {
           throw new Error(data.message || data.error || 'Failed to link customer');
         }
 
-        showSuccess(`Linked to "${selectedOrg.name}"`);
+        showSuccess(data.previous_customer_id
+          ? `Replaced link for "${selectedOrg.name}" (was ${data.previous_customer_id})`
+          : `Linked to "${selectedOrg.name}"`);
         delete selectedOrgs[customerId];
 
         // Update local data and re-render
@@ -1047,6 +1071,7 @@
             org_id: mismatch.org_id,
             action: action,
             delete_inactive: deleteInactive,
+            stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
           }),
         });
 
@@ -1092,13 +1117,14 @@
               org_id: mismatch.org_id,
               action: mismatch.suggested_action,
               delete_inactive: true,
+              stripe_metadata_customer_id: mismatch.stripe_metadata_customer_id,
             }),
           });
 
           if (response.ok) {
             resolved++;
             // Remove from array
-            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id);
+            const idx = allMismatches.findIndex(m => m.org_id === mismatch.org_id && m.stripe_metadata_customer_id === mismatch.stripe_metadata_customer_id);
             if (idx !== -1) allMismatches.splice(idx, 1);
           } else {
             console.error('Auto-resolve failed for', mismatch.org_name, await response.text());

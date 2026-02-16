@@ -18,6 +18,9 @@ const MOLTBOOK_API_KEY = process.env.MOLTBOOK_API_KEY;
 const MOLTBOOK_BASE_URL = 'https://www.moltbook.com/api/v1';
 const MOLTBOOK_ENABLED = process.env.MOLTBOOK_ENABLED !== 'false';
 
+// Track account suspension to avoid repeated failed requests
+let suspendedUntil: number | null = null;
+
 // ============== Types ==============
 
 export interface MoltbookPost {
@@ -97,6 +100,58 @@ export interface MoltbookSubmoltsResponse {
   submolts: MoltbookSubmolt[];
 }
 
+// ============== DM Types ==============
+
+export interface MoltbookDMCheck {
+  pending_requests: number;
+  unread_messages: number;
+}
+
+export interface MoltbookDMRequest {
+  id: string;
+  from: { id: string; name: string };
+  message: string;
+  created_at: string;
+}
+
+export interface MoltbookDMConversation {
+  id: string;
+  agent: { id: string; name: string };
+  unread_count: number;
+  last_message?: string;
+}
+
+export interface MoltbookDMMessage {
+  id: string;
+  from: { id: string; name: string };
+  message: string;
+  created_at: string;
+  needs_human_input?: boolean;
+}
+
+// ============== Error Types ==============
+
+export class MoltbookApiError extends Error {
+  public readonly body: string;
+
+  constructor(
+    public readonly status: number,
+    body: string,
+    public readonly endpoint: string
+  ) {
+    super(`Moltbook API error: ${status} - ${body.substring(0, 200)}`);
+    this.body = body.substring(0, 1000);
+  }
+
+  get isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  get isSuspended(): boolean {
+    return this.status === 401 && this.body.includes('Account suspended');
+  }
+}
+
 // ============== API Client ==============
 
 /**
@@ -107,14 +162,45 @@ export function isMoltbookEnabled(): boolean {
 }
 
 /**
+ * Check if the account is currently suspended
+ */
+export function isAccountSuspended(): boolean {
+  if (!suspendedUntil) return false;
+  if (Date.now() > suspendedUntil) {
+    suspendedUntil = null;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Parse suspension duration from error message and cache it
+ */
+function handleSuspension(body: string): void {
+  // Parse "Suspension ends in N days" from error body
+  const match = body.match(/Suspension ends in (\d+) days?/i);
+  const days = match ? parseInt(match[1], 10) : 1; // Default to 1 day if unparseable
+  const alreadyKnown = isAccountSuspended();
+  suspendedUntil = Date.now() + days * 24 * 60 * 60 * 1000;
+  if (!alreadyKnown) {
+    logger.warn({ suspendedUntilDate: new Date(suspendedUntil).toISOString(), days }, 'Moltbook account is suspended');
+  }
+}
+
+/**
  * Make an authenticated request to the Moltbook API
  */
 async function moltbookRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  { bypassSuspensionCheck = false }: { bypassSuspensionCheck?: boolean } = {}
 ): Promise<T> {
   if (!MOLTBOOK_API_KEY) {
     throw new Error('MOLTBOOK_API_KEY not configured');
+  }
+
+  if (!bypassSuspensionCheck && isAccountSuspended()) {
+    throw new MoltbookApiError(401, 'Account is suspended (cached)', endpoint);
   }
 
   const url = `${MOLTBOOK_BASE_URL}${endpoint}`;
@@ -131,10 +217,15 @@ async function moltbookRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    // Truncate error text to avoid leaking sensitive info in logs
-    const sanitizedError = errorText.substring(0, 200);
-    logger.error({ status: response.status, endpoint }, 'Moltbook API error');
-    throw new Error(`Moltbook API error: ${response.status} - ${sanitizedError}`);
+
+    // Detect and cache suspension (not an unexpected error, so skip error logging)
+    if (response.status === 401 && errorText.includes('Account suspended')) {
+      handleSuspension(errorText);
+    } else {
+      logger.error({ status: response.status, endpoint }, 'Moltbook API error');
+    }
+
+    throw new MoltbookApiError(response.status, errorText, endpoint);
   }
 
   try {
@@ -166,7 +257,11 @@ export async function getSubmolts(): Promise<MoltbookSubmolt[]> {
     logger.debug({ count: result.submolts.length }, 'Refreshed submolts cache');
     return result.submolts;
   } catch (err) {
-    logger.error({ err }, 'Failed to fetch submolts');
+    if (err instanceof MoltbookApiError && err.status === 401) {
+      logger.debug('Cannot fetch submolts - account suspended');
+    } else {
+      logger.error({ err }, 'Failed to fetch submolts');
+    }
     // Return cached data if available, even if stale
     if (submoltsCache) return submoltsCache;
     throw err;
@@ -245,7 +340,11 @@ export async function createPost(
     return { success: true, post: result.post };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
-    logger.error({ err, title }, 'Failed to create Moltbook post');
+    if (err instanceof MoltbookApiError && err.status === 401) {
+      logger.debug({ title }, 'Cannot create Moltbook post - account suspended');
+    } else {
+      logger.error({ err, title }, 'Failed to create Moltbook post');
+    }
     return { success: false, error };
   }
 }
@@ -281,7 +380,11 @@ export async function createComment(
     return { success: true, comment: result.comment };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
-    logger.error({ err, postId }, 'Failed to create Moltbook comment');
+    if (err instanceof MoltbookApiError && err.status === 401) {
+      logger.debug({ postId }, 'Cannot create Moltbook comment - account suspended');
+    } else {
+      logger.error({ err, postId }, 'Failed to create Moltbook comment');
+    }
     return { success: false, error };
   }
 }
@@ -396,6 +499,98 @@ export async function unfollowAgent(agentId: string): Promise<{ success: boolean
     });
 
     logger.info({ agentId }, 'Unfollowed agent on Moltbook');
+    return { success: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, error };
+  }
+}
+
+// ============== Direct Messages ==============
+// DM functions bypass the suspension check because DMs may contain
+// platform verification challenges needed to lift suspensions.
+
+const MOLTBOOK_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+/**
+ * Check for pending DM requests and unread messages
+ */
+export async function checkDMs(): Promise<MoltbookDMCheck> {
+  return moltbookRequest<MoltbookDMCheck>('/agents/dm/check', {}, { bypassSuspensionCheck: true });
+}
+
+/**
+ * Get pending DM requests from other agents
+ */
+export async function getDMRequests(): Promise<MoltbookDMRequest[]> {
+  const result = await moltbookRequest<{ requests: MoltbookDMRequest[] }>(
+    '/agents/dm/requests', {}, { bypassSuspensionCheck: true }
+  );
+  return result.requests ?? [];
+}
+
+/**
+ * Approve a DM request to start a conversation
+ */
+export async function approveDMRequest(requestId: string): Promise<{ success: boolean; error?: string }> {
+  if (!requestId || !MOLTBOOK_ID_PATTERN.test(requestId)) {
+    return { success: false, error: 'Invalid request ID format' };
+  }
+
+  try {
+    await moltbookRequest(
+      `/agents/dm/requests/${requestId}/approve`,
+      { method: 'POST' },
+      { bypassSuspensionCheck: true }
+    );
+    return { success: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, error };
+  }
+}
+
+/**
+ * Get all DM conversations
+ */
+export async function getDMConversations(): Promise<MoltbookDMConversation[]> {
+  const result = await moltbookRequest<{ conversations: MoltbookDMConversation[] }>(
+    '/agents/dm/conversations', {}, { bypassSuspensionCheck: true }
+  );
+  return result.conversations ?? [];
+}
+
+/**
+ * Get messages in a specific conversation (marks as read)
+ */
+export async function getDMConversation(conversationId: string): Promise<MoltbookDMMessage[]> {
+  if (!conversationId || !MOLTBOOK_ID_PATTERN.test(conversationId)) {
+    return [];
+  }
+
+  const result = await moltbookRequest<{ messages: MoltbookDMMessage[] }>(
+    `/agents/dm/conversations/${conversationId}`, {}, { bypassSuspensionCheck: true }
+  );
+  return result.messages ?? [];
+}
+
+/**
+ * Send a message in a DM conversation
+ */
+export async function sendDM(
+  conversationId: string,
+  message: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!conversationId || !MOLTBOOK_ID_PATTERN.test(conversationId)) {
+    return { success: false, error: 'Invalid conversation ID format' };
+  }
+
+  try {
+    await moltbookRequest(
+      `/agents/dm/conversations/${conversationId}/send`,
+      { method: 'POST', body: JSON.stringify({ message }) },
+      { bypassSuspensionCheck: true }
+    );
     return { success: true };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';

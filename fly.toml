@@ -15,6 +15,7 @@ primary_region = 'iad'
 
 [env]
   PORT = "8080"
+  BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
 

@@ -49,15 +49,21 @@
       "required": ["url"],
       "additionalProperties": true
     },
+    "color_value": {
+      "oneOf": [
+        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+      ]
+    },
     "colors": {
       "type": "object",
-      "description": "Brand color palette",
+      "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role.",
       "properties": {
-        "primary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "secondary": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "accent": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        "text": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        "primary": { "$ref": "#/definitions/color_value" },
+        "secondary": { "$ref": "#/definitions/color_value" },
+        "accent": { "$ref": "#/definitions/color_value" },
+        "background": { "$ref": "#/definitions/color_value" },
+        "text": { "$ref": "#/definitions/color_value" }
       },
       "additionalProperties": true
     },
@@ -201,8 +207,35 @@
         "colors": { "$ref": "#/definitions/colors" },
         "fonts": { "$ref": "#/definitions/fonts" },
         "tone": {
-          "type": "string",
-          "description": "Brand voice and messaging tone"
+          "description": "Brand voice and messaging tone guidelines",
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Simple tone descriptors for backwards compatibility"
+            },
+            {
+              "type": "object",
+              "description": "Structured brand voice guidelines",
+              "properties": {
+                "voice": { "type": "string", "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')" },
+                "attributes": {
+                  "type": "array",
+                  "description": "Personality traits that characterize the brand voice",
+                  "items": { "type": "string" }
+                },
+                "dos": {
+                  "type": "array",
+                  "description": "Guidance for copy generation - what TO do",
+                  "items": { "type": "string" }
+                },
+                "donts": {
+                  "type": "array",
+                  "description": "Guardrails to avoid brand violations - what NOT to do",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          ]
         },
         "tagline": {
           "type": "string",
@@ -311,6 +344,35 @@
       "required": ["url", "id"],
       "additionalProperties": true
     },
+    "authorized_operator": {
+      "type": "object",
+      "description": "An entity authorized to represent brands from this house. Verified by resolving the operator's domain.",
+      "properties": {
+        "domain": {
+          "$ref": "#/definitions/domain",
+          "description": "Domain of the authorized operator (e.g., 'groupm.com')"
+        },
+        "brands": {
+          "type": "array",
+          "description": "Brand IDs this operator is authorized for. Use ['*'] for all brands in the portfolio.",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9_]+|\\*)$"
+          },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "ISO 3166-1 alpha-2 country codes where this authorization applies. Omit for global authorization.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        }
+      },
+      "required": ["domain", "brands"],
+      "additionalProperties": true
+    },
     "contact": {
       "type": "object",
       "description": "Contact information",
@@ -391,6 +453,11 @@
           "minItems": 1
         },
         "contact": { "$ref": "#/definitions/contact" },
+        "authorized_operators": {
+          "type": "array",
+          "description": "Entities authorized to represent brands from this house. Third parties (sellers, platforms) can verify an operator's authorization by checking this list. Operators are identified by domain.",
+          "items": { "$ref": "#/definitions/authorized_operator" }
+        },
         "trademarks": {
           "type": "array",
           "items": {
@@ -447,7 +514,12 @@
             {"url": "https://cdn.pg.com/tide/logo-square.png", "tags": ["square", "primary"]}
           ],
           "colors": {"primary": "#FF6600", "secondary": "#0066CC"},
-          "tone": "clean, fresh, trustworthy",
+          "tone": {
+            "voice": "clean, fresh, trustworthy",
+            "attributes": ["reliable", "family-friendly", "confident"],
+            "dos": ["Use simple, direct language", "Emphasize cleaning power"],
+            "donts": ["Avoid technical jargon", "Don't be overly serious"]
+          },
           "tagline": "Tide's In, Dirt's Out",
           "properties": [
             {"type": "website", "identifier": "tide.com", "primary": true},
@@ -528,6 +600,22 @@
           "properties": [
             {"type": "website", "identifier": "converse.com", "primary": true}
           ]
+        }
+      ],
+      "authorized_operators": [
+        {
+          "domain": "wpp.com",
+          "brands": ["nike", "air_jordan"],
+          "countries": ["US", "GB", "DE", "FR"]
+        },
+        {
+          "domain": "dentsu.co.jp",
+          "brands": ["nike"],
+          "countries": ["JP"]
+        },
+        {
+          "domain": "nike.com",
+          "brands": ["*"]
         }
       ],
       "last_updated": "2026-01-15T10:00:00Z"

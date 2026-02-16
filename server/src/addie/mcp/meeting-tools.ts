@@ -15,7 +15,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { RecurrenceRule, CreateMeetingSeriesInput } from '../../types.js';
-import { isSlackUserAdmin } from './admin-tools.js';
+import { isSlackUserAAOAdmin, isWebUserAAOAdmin } from './admin-tools.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import * as meetingService from '../../services/meeting-service.js';
@@ -33,7 +33,7 @@ const workingGroupDb = new WorkingGroupDatabase();
  */
 export async function canScheduleMeetings(slackUserId: string): Promise<boolean> {
   // Admins can always schedule
-  const isAdmin = await isSlackUserAdmin(slackUserId);
+  const isAdmin = await isSlackUserAAOAdmin(slackUserId);
   if (isAdmin) return true;
 
   // Check if user is a leader of any working group
@@ -209,7 +209,9 @@ export const MEETING_TOOLS: AddieTool[] = [
   {
     name: 'schedule_meeting',
     description: `Schedule a new working group meeting. Use this when someone asks to schedule a meeting, call, or discussion.
-The meeting will be created with a Zoom link and calendar invites will be sent to working group members.
+The meeting will be created with a Zoom link. For one-time meetings, calendar invites are sent to working group members by default.
+
+For recurring meetings, calendar invites are sent to working group members by default (same as one-time meetings).
 
 If the user is in a channel associated with a working group, you can omit working_group_slug and it will be inferred from the channel context.
 
@@ -264,7 +266,7 @@ Example prompts this handles:
         invite_mode: {
           type: 'string',
           enum: ['all_members', 'topic_subscribers', 'slack_channel', 'none'],
-          description: 'Who to invite: all_members (default - invite everyone in the working group), topic_subscribers (only those subscribed to the topics), slack_channel (invite members of a specific Slack channel - requires invite_slack_channel_id), or none (opt-in - create meeting but let people join themselves)',
+          description: 'Who to invite: all_members (default - invite ALL members of the working group, which may be hundreds of people), topic_subscribers (only those subscribed to the topics), slack_channel (invite members of a specific Slack channel - requires invite_slack_channel_id), or none (opt-in - create meeting but let people join themselves)',
         },
         invite_slack_channel_id: {
           type: 'string',
@@ -301,7 +303,7 @@ Example prompts this handles:
   },
   {
     name: 'list_upcoming_meetings',
-    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Use my_committees_only to filter to committees the user is a member of.`,
+    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -389,6 +391,20 @@ Example prompts this handles:
     },
   },
   {
+    name: 'cancel_meeting_series',
+    description: `Cancel a recurring meeting series. Cancels all upcoming meetings in the series (Zoom + calendar) and archives the series record. Use this when someone wants to stop a recurring series entirely.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        series_id: {
+          type: 'string',
+          description: 'Series ID to cancel. Find this from list_upcoming_meetings or get_meeting_details.',
+        },
+      },
+      required: ['series_id'],
+    },
+  },
+  {
     name: 'update_meeting',
     description: `Update an existing meeting's details. Use this when someone wants to change the time, title, description, or agenda of a scheduled meeting.
 
@@ -432,7 +448,15 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
   },
   {
     name: 'add_meeting_attendee',
-    description: `Add someone to a meeting. Use this when someone asks to add a specific person to a scheduled meeting.`,
+    description: `Add a person to an existing meeting by email. Call this once per person. Use list_upcoming_meetings first to get the meeting_id.
+
+Example: "add Karen, Brian, and Jonathan to the call" requires:
+1. list_upcoming_meetings to find the meeting_id
+2. add_meeting_attendee for Karen
+3. add_meeting_attendee for Brian
+4. add_meeting_attendee for Jonathan
+
+When add_to_series is true, adds them to all upcoming meetings in the same series.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -447,6 +471,10 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
         name: {
           type: 'string',
           description: 'Name of person to add',
+        },
+        add_to_series: {
+          type: 'boolean',
+          description: 'If true and the meeting belongs to a recurring series, add the person to all upcoming meetings in the series',
         },
       },
       required: ['meeting_id', 'email'],
@@ -574,15 +602,15 @@ export function createMeetingToolHandlers(
     // This check runs for both Slack and web channels
     const userId = getUserId();
     if (userId) {
-      // Determine admin status from either Slack or web context
-      let isAdmin = false;
+      // Determine AAO admin status from either Slack or web context
+      let isAAOAdmin = false;
       if (slackUserId) {
-        isAdmin = await isSlackUserAdmin(slackUserId);
-      } else if (memberContext?.org_membership?.role === 'admin') {
-        isAdmin = true;
+        isAAOAdmin = await isSlackUserAAOAdmin(slackUserId);
+      } else if (memberContext?.workos_user?.workos_user_id) {
+        isAAOAdmin = await isWebUserAAOAdmin(memberContext.workos_user.workos_user_id);
       }
 
-      if (!isAdmin) {
+      if (!isAAOAdmin) {
         const isGroupLeader = await workingGroupDb.isLeader(workingGroup.id, userId);
         if (!isGroupLeader) {
           return `⚠️ You can only schedule meetings for committees you lead. You're not a leader of "${workingGroup.name}".`;
@@ -600,11 +628,19 @@ export function createMeetingToolHandlers(
 
     // Check if meeting is in the future (comparing in the specified timezone)
     if (!isFutureTimeInTimezone(startTimeStr, timezone)) {
-      const nowInTz = getNowInTimezone(timezone);
       return `❌ Meeting time must be in the future. Current time in ${timezone}: ${formatTime(new Date(), timezone)}`;
     }
 
     const durationMinutes = (input.duration_minutes as number) || 60;
+
+    // Extract invite settings (used by both one-time and recurring paths)
+    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none' | undefined;
+    const inviteSlackChannelId = input.invite_slack_channel_id as string | undefined;
+
+    // Validate slack_channel mode has a channel ID
+    if (inviteMode === 'slack_channel' && !inviteSlackChannelId) {
+      return `❌ When using invite_mode='slack_channel', you must also provide invite_slack_channel_id.`;
+    }
 
     // Handle recurring vs one-time meetings
     if (recurrenceInput) {
@@ -639,8 +675,23 @@ export function createMeetingToolHandlers(
           count: recurrenceInput.count,
         };
 
-        // Extract time from start_time for default_start_time
-        const defaultStartTime = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}:00`;
+        // Extract time-of-day from the original string (already in user's timezone)
+        const timePart = startTimeStr.split('T')[1] || '14:00:00';
+        const defaultStartTime = timePart.substring(0, 8).padEnd(8, ':00');
+
+        // Check for existing active series on this working group with same title
+        const existingSeries = await meetingsDb.listSeriesForGroup(workingGroup.id, { status: 'active' });
+        const duplicate = existingSeries.find(s => s.title === title);
+        if (duplicate) {
+          const seriesMeetings = await meetingsDb.listMeetings({ series_id: duplicate.id, upcoming_only: true });
+          if (seriesMeetings.length === 0) {
+            // All meetings cancelled — auto-archive the stale series
+            await meetingsDb.updateSeries(duplicate.id, { status: 'archived' });
+            logger.info({ seriesId: duplicate.id }, 'Auto-archived stale series with no upcoming meetings');
+          } else {
+            return `❌ A recurring series "${title}" already exists for ${workingGroup.name} with ${seriesMeetings.length} upcoming meeting(s) (series_id: ${duplicate.id}). To start fresh, cancel the existing series first using cancel_meeting_series with series_id "${duplicate.id}".`;
+          }
+        }
 
         // Create the meeting series
         const seriesInput: CreateMeetingSeriesInput = {
@@ -653,14 +704,18 @@ export function createMeetingToolHandlers(
           duration_minutes: durationMinutes,
           timezone,
           created_by_user_id: getUserId(),
+          invite_mode: inviteMode === 'none' ? 'manual' : (inviteMode || 'all_members'),
+          invite_slack_channel_id: inviteSlackChannelId,
         };
 
         const series = await meetingsDb.createSeries(seriesInput);
         logger.info({ seriesId: series.id, workingGroupSlug, recurrence: recurrenceRule }, 'Meeting series created');
 
-        // Generate the first batch of meetings
+        // Generate the first batch of meetings, anchored to the user's requested start date
+        const MAX_MEETINGS_PER_BATCH = 12;
         const meetingsToGenerate = recurrenceInput.count || 4;
-        const meetings = await meetingService.generateMeetingsFromSeries(series.id, Math.min(meetingsToGenerate, 8));
+        const actualCount = Math.min(meetingsToGenerate, MAX_MEETINGS_PER_BATCH);
+        const seriesResult = await meetingService.generateMeetingsFromSeries(series.id, actualCount, startTime);
 
         // Build response
         let response = `✅ Created recurring meeting series: **${title}**\n\n`;
@@ -668,26 +723,46 @@ export function createMeetingToolHandlers(
         response += `**Recurrence:** ${formatRecurrence(recurrenceRule)}\n`;
         response += `**Duration:** ${durationMinutes} minutes\n\n`;
 
-        if (meetings.length > 0) {
-          response += `**Scheduled ${meetings.length} meeting${meetings.length > 1 ? 's' : ''}:**\n`;
-          for (const meeting of meetings.slice(0, 5)) {
+        if (seriesResult.meetings.length > 0) {
+          response += `**Scheduled ${seriesResult.meetings.length} meeting${seriesResult.meetings.length > 1 ? 's' : ''}:**\n`;
+          for (const meeting of seriesResult.meetings.slice(0, 5)) {
             response += `• ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, timezone)}`;
             if (meeting.zoom_join_url) {
               response += ` - [Zoom](${meeting.zoom_join_url})`;
             }
             response += '\n';
           }
-          if (meetings.length > 5) {
-            response += `• _...and ${meetings.length - 5} more_\n`;
+          if (seriesResult.meetings.length > 5) {
+            response += `• _...and ${seriesResult.meetings.length - 5} more_\n`;
           }
         }
 
-        response += `\n📧 Calendar invites have been sent to working group members.`;
+        if (seriesResult.errors.length > 0) {
+          response += `\n⚠️ Some integrations had issues:\n`;
+          response += seriesResult.errors.map(e => `• ${e}`).join('\n');
+        }
+
+        if (meetingsToGenerate > MAX_MEETINGS_PER_BATCH) {
+          response += `\n\n⚠️ Created ${actualCount} of ${meetingsToGenerate} requested meetings. Additional meetings can be generated later.`;
+        }
+
+        if (seriesResult.errors.length === 0) {
+          const seriesInviteMode = series.invite_mode || 'all_members';
+          if (seriesInviteMode === 'manual') {
+            response += `\n📋 Meetings created as **opt-in** - no invites sent. Members can join using the Zoom links.`;
+          } else if (seriesInviteMode === 'slack_channel') {
+            response += `\n📧 Calendar invites sent to Slack channel members for each meeting.`;
+          } else if (seriesInviteMode === 'topic_subscribers') {
+            response += `\n📧 Calendar invites sent to topic subscribers for each meeting.`;
+          } else {
+            response += `\n📧 Calendar invites sent to working group members for each meeting.`;
+          }
+        }
 
         logger.info({
           seriesId: series.id,
           workingGroupSlug,
-          meetingsCreated: meetings.length,
+          meetingsCreated: seriesResult.meetings.length,
           scheduledBy: getUserId(),
         }, 'Recurring meeting series scheduled via Addie');
 
@@ -700,14 +775,6 @@ export function createMeetingToolHandlers(
     }
 
     // One-time meeting
-    const inviteMode = input.invite_mode as 'all_members' | 'topic_subscribers' | 'slack_channel' | 'none' | undefined;
-    const inviteSlackChannelId = input.invite_slack_channel_id as string | undefined;
-
-    // Validate slack_channel mode has a channel ID
-    if (inviteMode === 'slack_channel' && !inviteSlackChannelId) {
-      return `❌ When using invite_mode='slack_channel', you must also provide invite_slack_channel_id.`;
-    }
-
     try {
       const result = await meetingService.scheduleMeeting({
         workingGroupId: workingGroup.id,
@@ -1020,6 +1087,50 @@ export function createMeetingToolHandlers(
     }
   });
 
+  // Cancel meeting series
+  handlers.set('cancel_meeting_series', async (input) => {
+    const permCheck = await checkSchedulePermission();
+    if (permCheck) return permCheck;
+
+    let seriesId = input.series_id as string;
+
+    let series = await meetingsDb.getSeriesById(seriesId);
+    if (!series) {
+      // Maybe they passed a meeting ID — look up the parent series
+      const meeting = await meetingsDb.getMeetingById(seriesId);
+      if (meeting?.series_id) {
+        seriesId = meeting.series_id;
+        series = await meetingsDb.getSeriesById(seriesId);
+      }
+      if (!series) {
+        return `❌ Meeting series not found: "${input.series_id}". Use list_upcoming_meetings to find meetings, then check series_id from get_meeting_details.`;
+      }
+    }
+
+    if (series.status === 'archived') {
+      return `Series "${series.title}" is already archived.`;
+    }
+
+    try {
+      const result = await meetingService.cancelSeries(seriesId);
+
+      let response = `✅ Cancelled series: **${series.title}**\n`;
+      response += `${result.cancelledCount} upcoming meeting(s) cancelled.`;
+
+      if (result.errors.length > 0) {
+        response += `\n\n⚠️ Some cleanup had issues:\n`;
+        response += result.errors.map(e => `• ${e}`).join('\n');
+      }
+
+      logger.info({ seriesId, cancelledBy: getUserId() }, 'Meeting series cancelled via Addie');
+
+      return response;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      return `❌ Failed to cancel series: ${msg}`;
+    }
+  });
+
   // Update meeting
   handlers.set('update_meeting', async (input) => {
     const permCheck = await checkSchedulePermission();
@@ -1187,6 +1298,7 @@ export function createMeetingToolHandlers(
     const inputId = input.meeting_id as string;
     const email = input.email as string;
     const name = input.name as string | undefined;
+    const addToSeries = input.add_to_series === true;
 
     // Try to find by our UUID first, then by Zoom meeting ID
     let meeting = await meetingsDb.getMeetingById(inputId);
@@ -1198,13 +1310,32 @@ export function createMeetingToolHandlers(
     }
 
     try {
-      // Use meeting.id (our UUID) not the inputId (might be Zoom ID)
+      // If adding to series and meeting has a series_id, add to all upcoming meetings
+      if (addToSeries && meeting.series_id) {
+        const result = await meetingService.addAttendeeToSeries(meeting.series_id, [
+          { email, name },
+        ]);
+
+        if (result.addedToMeetings > 0) {
+          let msg = `✅ Added ${name || email} to ${result.addedToMeetings} upcoming meeting(s) in the series **${meeting.title}**.`;
+          if (result.errors.length > 0) {
+            msg += `\n\n⚠️ Some calendar updates failed: ${result.errors.join('; ')}`;
+          }
+          return msg;
+        } else {
+          return `${name || email} was already on the invite list for all upcoming meetings in this series.`;
+        }
+      }
+
+      // Single meeting add
       const result = await meetingService.addAttendeesToMeeting(meeting.id, [
         { email, name },
       ]);
 
       if (result.addedCount > 0) {
-        return `✅ Added ${name || email} to **${meeting.title}**. Calendar invite sent.`;
+        const calendarNote = meeting.google_calendar_event_id ? ' Calendar invite sent.' : '';
+        const seriesHint = meeting.series_id ? ' (This is a recurring meeting — use add_to_series: true to add to all upcoming occurrences.)' : '';
+        return `✅ Added ${name || email} to **${meeting.title}**.${calendarNote}${seriesHint}`;
       } else {
         return `${name || email} was already on the invite list.`;
       }

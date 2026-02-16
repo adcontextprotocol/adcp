@@ -332,6 +332,15 @@
                 "description": "Maximum number of repetitions allowed",
                 "minimum": 1
               },
+              "selection_mode": {
+                "type": "string",
+                "description": "How the platform uses repetitions of this group. 'sequential' means all items display in order (carousels, playlists). 'optimize' means the platform selects the best-performing combination from alternatives (asset group optimization like Meta Advantage+ or Google Pmax).",
+                "enum": [
+                  "sequential",
+                  "optimize"
+                ],
+                "default": "sequential"
+              },
               "assets": {
                 "type": "array",
                 "description": "Assets within each repetition of this group",
@@ -457,9 +466,12 @@
     },
     "supported_macros": {
       "type": "array",
-      "description": "List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling.",
+      "description": "List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling. See docs/creative/universal-macros.mdx for full documentation.",
       "items": {
-        "type": "string"
+        "oneOf": [
+          { "$ref": "/schemas/enums/universal-macro.json" },
+          { "type": "string", "description": "Custom or publisher-specific macro name" }
+        ]
       }
     },
     "output_format_ids": {
@@ -489,6 +501,21 @@
       ],
       "additionalProperties": true
     },
+    "accessibility": {
+      "type": "object",
+      "description": "Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by this format will meet.",
+      "properties": {
+        "wcag_level": {
+          "$ref": "/schemas/enums/wcag-level.json",
+          "description": "WCAG conformance level that this format achieves. For format-rendered creatives, the format guarantees this level. For opaque creatives, the format requires assets that self-certify to this level."
+        },
+        "requires_accessible_assets": {
+          "type": "boolean",
+          "description": "When true, all assets with x-accessibility fields must include those fields. For inspectable assets (image, video, audio), this means providing accessibility metadata like alt_text or captions. For opaque assets (HTML, JavaScript), this means providing self-declared accessibility properties."
+        }
+      },
+      "required": ["wcag_level"]
+    },
     "format_card_detailed": {
       "type": "object",
       "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",
@@ -508,6 +535,15 @@
         "manifest"
       ],
       "additionalProperties": true
+    },
+    "reported_metrics": {
+      "type": "array",
+      "description": "Metrics this format can produce in delivery reporting. Buyers receive the intersection of format reported_metrics and product available_metrics. If omitted, the format defers entirely to product-level metric declarations.",
+      "items": {
+        "$ref": "/schemas/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     }
   },
   "required": [

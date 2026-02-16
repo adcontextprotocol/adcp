@@ -294,14 +294,20 @@
         }
 
         const userData = await meResponse.json();
-        const orgId = localStorage.getItem('selectedOrgId');
-        const currentOrg = userData.organizations?.find(o => o.id === orgId) || userData.organizations?.[0];
+        const { org: currentOrg, needsSelection } = DashboardNav.resolveOrg(userData.organizations);
+
+        if (needsSelection) {
+          DashboardNav.init({ currentOrgName: 'Select organization' });
+          DashboardNav.renderOrgPicker(userData.organizations, document.getElementById('loading'));
+          return;
+        }
 
         // Initialize sidebar
         DashboardNav.init({
           showOrgSwitcher: userData.organizations?.length > 1,
           currentOrgName: currentOrg?.name || 'Dashboard',
-          showAdmin: userData.isAdmin
+          showAdmin: userData.isAdmin,
+          orgId: currentOrg?.id
         });
 
         if (userData.organizations?.length > 1) {

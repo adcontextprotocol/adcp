@@ -80,12 +80,13 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'propose_content',
       'get_my_content',
       'bookmark_resource',
+      'set_outreach_preference',
     ],
   },
 
   directory: {
     name: 'directory',
-    description: 'Find member organizations, request introductions, search for vendors/partners, and explore the member directory',
+    description: 'Find member organizations, request introductions, search for vendors/partners, explore the member directory, research or manage brands, look up brand assets (logos, colors), and find registry gaps',
     tools: [
       'search_members',
       'request_introduction',
@@ -96,18 +97,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_agent',
       'list_publishers',
       'lookup_domain',
+      'research_brand',
+      'resolve_brand',
+      'save_brand',
+      'list_brands',
+      'list_missing_brands',
     ],
   },
 
   agent_testing: {
     name: 'agent_testing',
-    description: 'Validate and test AdCP agent implementations - check adagents.json, probe endpoints, verify publisher authorization, run compliance tests',
+    description: 'Validate and test AdCP agent implementations - check adagents.json, probe endpoints, verify publisher authorization, run compliance tests, resolve and manage properties',
     tools: [
       'validate_adagents',
       'probe_adcp_agent',
       'check_publisher_authorization',
       'test_adcp_agent',
       'validate_agent',
+      'resolve_property',
+      'save_property',
+      'list_properties',
+      'list_missing_properties',
     ],
   },
 
@@ -179,7 +189,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   billing: {
     name: 'billing',
-    description: 'Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions',
+    description: 'Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions, look up pending invoices',
     tools: [
       'find_membership_products',
       'create_payment_link',
@@ -189,16 +199,29 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'remove_discount',
       'list_discounts',
       'create_promotion_code',
+      'resend_invoice',
+      'update_billing_email',
+      'list_pending_invoices',
+      'get_account',
     ],
     requiresPrecision: true,
   },
 
   meetings: {
     name: 'meetings',
-    description: 'Schedule meetings and manage calendar - check availability, create calendar events',
+    description: 'Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links',
     tools: [
       'schedule_meeting',
-      'check_availability',
+      'list_upcoming_meetings',
+      'get_my_meetings',
+      'get_meeting_details',
+      'rsvp_to_meeting',
+      'cancel_meeting',
+      'cancel_meeting_series',
+      'update_meeting',
+      'add_meeting_attendee',
+      'update_topic_subscriptions',
+      'manage_committee_topics',
     ],
   },
 
@@ -271,12 +294,25 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_member_search_analytics',
       'list_organizations_by_users',
       'list_slack_users_by_org',
+      'list_paying_members',
       'tag_insight',
       'list_pending_insights',
       'run_synthesis',
-      'send_member_dm',
+      'resend_invoice',
+      'update_billing_email',
+      'rename_working_group',
+      'list_missing_brands',
+      'list_missing_properties',
     ],
     adminOnly: true,
+  },
+
+  collaboration: {
+    name: 'collaboration',
+    description: 'Send direct messages to other AgenticAdvertising.org members, forward conversation context, and collaborate across the community',
+    tools: [
+      'send_member_dm',
+    ],
   },
 };
 
@@ -291,14 +327,14 @@ export function getToolsInSet(setName: string): string[] {
 /**
  * Get all tool names for multiple sets, including always-available tools
  */
-export function getToolsForSets(setNames: string[], isAdmin: boolean = false): string[] {
+export function getToolsForSets(setNames: string[], isAAOAdmin: boolean = false): string[] {
   const tools = new Set<string>(ALWAYS_AVAILABLE_TOOLS);
 
   for (const setName of setNames) {
     const toolSet = TOOL_SETS[setName];
     if (toolSet) {
       // Skip admin-only sets if user is not admin
-      if (toolSet.adminOnly && !isAdmin) {
+      if (toolSet.adminOnly && !isAAOAdmin) {
         continue;
       }
       for (const tool of toolSet.tools) {
@@ -313,10 +349,10 @@ export function getToolsForSets(setNames: string[], isAdmin: boolean = false): s
 /**
  * Get tool set names that were NOT selected (for hinting to Sonnet)
  */
-export function getUnavailableSets(selectedSets: string[], isAdmin: boolean = false): string[] {
+export function getUnavailableSets(selectedSets: string[], isAAOAdmin: boolean = false): string[] {
   return Object.keys(TOOL_SETS).filter(setName => {
     // Don't mention admin set to non-admins
-    if (TOOL_SETS[setName].adminOnly && !isAdmin) {
+    if (TOOL_SETS[setName].adminOnly && !isAAOAdmin) {
       return false;
     }
     return !selectedSets.includes(setName);
@@ -327,8 +363,8 @@ export function getUnavailableSets(selectedSets: string[], isAdmin: boolean = fa
  * Build a hint message about unavailable tool sets
  * This helps Sonnet know it can redirect the user if needed
  */
-export function buildUnavailableSetsHint(selectedSets: string[], isAdmin: boolean = false): string {
-  const unavailable = getUnavailableSets(selectedSets, isAdmin);
+export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boolean = false): string {
+  const unavailable = getUnavailableSets(selectedSets, isAAOAdmin);
 
   if (unavailable.length === 0) {
     return '';
@@ -361,9 +397,9 @@ export function requiresPrecision(selectedSets: string[]): boolean {
 /**
  * Get tool set descriptions for the router prompt
  */
-export function getToolSetDescriptionsForRouter(isAdmin: boolean = false): string {
+export function getToolSetDescriptionsForRouter(isAAOAdmin: boolean = false): string {
   return Object.entries(TOOL_SETS)
-    .filter(([_, set]) => !set.adminOnly || isAdmin)
+    .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
     .map(([name, set]) => `- **${name}**: ${set.description}`)
     .join('\n');
 }

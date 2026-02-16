@@ -1,5 +1,269 @@
 # Changelog
 
+## 3.0.0-beta.3
+
+### Major Changes
+
+- e81235c: Add structured tone guidelines and structured logo fields to Brand Manifest schema.
+
+  **BREAKING: Tone field changes:**
+
+  - Tone is now an object type only (string format removed)
+  - Structured tone includes `voice`, `attributes`, `dos`, and `donts` fields
+  - Existing string values should migrate to `{ "voice": "<previous-string>" }`
+  - Enables creative agents to generate brand-compliant copy programmatically
+
+  **Logo object changes:**
+
+  - Added `orientation` enum field: `square`, `horizontal`, `vertical`, `stacked`
+  - Added `background` enum field: `dark-bg`, `light-bg`, `transparent-bg`
+  - Added `variant` enum field: `primary`, `secondary`, `icon`, `wordmark`, `full-lockup`
+  - Added `usage` field for human-readable descriptions
+  - Kept `tags` array for additional custom categorization
+
+  These structured fields enable creative agents to reliably filter and select appropriate logo variants.
+
+  Closes #945
+
+- 96a90ec: Standardize cursor-based pagination across all list operations.
+
+  ### Breaking Changes
+
+  - **`list_creatives`**: Replace offset-based `limit`/`offset` with cursor-based `pagination` object
+  - **`tasks_list`**: Replace offset-based `limit`/`offset` with cursor-based `pagination` object
+  - **`list_property_lists`**: Move top-level `max_results`/`cursor` into nested `pagination` object
+  - **`get_property_list`**: Move top-level `max_results`/`cursor` into nested `pagination` object
+  - **`get_media_buy_artifacts`**: Move top-level `limit`/`cursor` into nested `pagination` object
+
+  ### Non-Breaking Changes
+
+  - Add shared `pagination-request.json` and `pagination-response.json` schemas to `core/`
+  - Add optional `pagination` support to `list_accounts`, `get_products`, `list_creative_formats`, `list_content_standards`, and `get_signals`
+  - Update documentation for all affected operations
+
+  All list operations now use a consistent pattern: `pagination.max_results` + `pagination.cursor` in requests, `pagination.has_more` + `pagination.cursor` + optional `pagination.total_count` in responses.
+
+### Minor Changes
+
+- d7e7550: Add optional account_id parameter to get_media_buy_delivery and get_media_buy_artifacts requests, allowing buyers to scope queries to a specific account.
+- b708168: Add sync_accounts task, authorized_operators, and account capabilities to AdCP.
+
+  `account_id` is optional on `create_media_buy`. Single-account agents can omit it; multi-account agents must provide it.
+
+  - `sync_accounts` task: Agent declares brand portfolio to seller with upsert semantics
+  - `authorized_operators` in brand.json: Brand declares which operators can represent them
+  - Account capabilities in `get_adcp_capabilities`: require_operator_auth, supported_billing, required_for_products
+  - Three-party billing model: brand, operator, agent
+  - Account status lifecycle: active, pending_approval, payment_required, suspended, closed
+
+- 0da0b36: Add channel fields to property and product schemas. Properties can now declare `supported_channels` and products can declare `channels` to indicate which advertising channels they align with. Both fields reference the Media Channel Taxonomy enum and are optional.
+- ac4a81f: Add CPA (Cost Per Acquisition) pricing model for outcome-based campaigns.
+
+  CPA enables advertisers to pay per conversion event (purchase, lead, signup, etc.) rather than per impression or click. The pricing option declares which `event_type` triggers billing, independent of any optimization goal.
+
+  This single model covers use cases previously described as CPO (Cost Per Order), CPL (Cost Per Lead), and CPI (Cost Per Install) — differentiated by event type rather than separate pricing models.
+
+  New schema:
+
+  - `cpa-option.json`: CPA pricing option (fixed price per conversion event)
+
+  Updated schemas:
+
+  - `pricing-model.json`: Added `cpa` enum value
+  - `pricing-option.json`: Added cpa-option to discriminated union
+  - `index.json`: Added cpa-option to registry
+
+- 34ece9f: Add conversion tracking with log_event and sync_event_sources tasks
+- 098fce2: Add TIME pricing model for sponsorship-based advertising where price scales with campaign duration. Supports hour, day, week, and month time units with optional min/max duration constraints.
+- a854090: Add attribution window metadata to delivery response. The response root now includes an optional `attribution_window` object describing `click_window_days`, `view_window_days`, and attribution `model` (last_touch, first_touch, linear, time_decay, data_driven). Placed at response level since all media buys from a single seller share the same attribution methodology. Enables cross-platform comparison of conversion metrics.
+- 8a8e4e7: Add Brand Protocol for brand discovery and identity resolution
+
+  Schema:
+
+  - Add brand.json schema with 4 mutually exclusive variants:
+    - Authoritative location redirect
+    - House redirect (string domain)
+    - Brand agent (MCP-based)
+    - House portfolio (full brand hierarchy)
+  - Support House/Brand/Property hierarchy parallel to Publisher/Property/Inventory
+  - Add keller_type for brand architecture (master, sub-brand, endorsed, independent)
+  - Add flat names array for localized brand names and aliases
+  - Add parent_brand for sub-brand relationships
+  - Add properties array on brands for digital property ownership
+
+  Builder Tools:
+
+  - Add brand.html builder tool for creating brand.json files
+  - Supports all 4 variants: portfolio, house redirect, agent, authoritative location
+  - Live JSON preview with copy/download functionality
+  - Domain validation against existing brand.json files
+
+  Manifest Reference Registry:
+
+  - Add manifest_references table for member-contributed references (not content)
+  - References point to URLs or MCP agents where members host their own manifests
+  - Support both brand.json and adagents.json references
+  - Verification status tracking (pending, valid, invalid, unreachable)
+  - Completeness scoring for ranking when multiple refs exist for same domain
+
+  Infrastructure:
+
+  - Add BrandManager service for validation and resolution from well-known URLs
+  - Add MCP tools: resolve_brand, validate_brand_json, validate_brand_agent
+  - Add manifest reference API routes: list, lookup, create, verify, delete
+  - Add TypeScript types: BrandConfig, BrandDefinition, HouseDefinition, ResolvedBrand
+
+  Admin UI:
+
+  - Add /admin/manifest-refs page for unified manifest registry management
+  - Show all member-contributed references with verification status
+  - Add/verify/delete references to brand.json and adagents.json
+
+  Documentation:
+
+  - Add Brand Protocol section as standalone (not under Governance)
+  - Complete brand.json specification with all 4 variants documented
+
+- 8079271: Add commerce attribution metrics to delivery response schema. Adds `new_to_brand_rate` as a first-class field in DeliveryMetrics. Adds `roas` and `new_to_brand_rate` to `aggregated_totals` and `daily_breakdown` in the delivery response. Updates documentation to reflect commerce metric availability.
+- 37dbd0d: Add creative delivery reporting to the AdCP specification.
+
+  - Add optional `by_creative` metrics breakdown within `by_package` in delivery responses
+  - Add `get_creative_delivery` task on creative agents for variant-level delivery data with manifests
+  - Add `creative-variant` core object supporting three tiers: standard (1:1), asset group optimization, and generative creative. Variants include full creative manifests showing what was rendered.
+  - Extend `preview_creative` with `request_type: "variant"` for post-flight variant previews
+  - Add `selection_mode` to repeatable asset groups to distinguish sequential (carousel) from optimize (asset pool) behavior
+  - Add `supports_creative_breakdown` to reporting capabilities
+  - Add `delivery` creative agent capability
+
+- 37f46ec: Add delivery forecasting to the Media Buy protocol
+
+  - Add `DeliveryForecast` core type with budget curve, forecast method, currency, and measurement context
+  - Add `ForecastRange` core type (low/mid/high) for metric forecasts
+  - Add `ForecastPoint` core type — pairs a budget level with metric ranges; single point is a standard forecast, multiple points form a budget curve
+  - Add `forecast-method` enum (estimate, modeled, guaranteed)
+  - Add `forecastable-metric` enum defining standard metric vocabulary (audience_size, reach, impressions, clicks, spend, etc.)
+  - Add `demographic-system` enum (nielsen, barb, agf, oztam, mediametrie, custom) for GRP demographic notation
+  - Add `reach-unit` enum (individuals, households, devices, accounts, cookies, custom) for cross-channel reach comparison
+  - Add `demographic_system` to CPP pricing option parameters
+  - Add optional `forecast` field to `ProductAllocation`
+  - Add optional `forecast` field to `Proposal`
+  - Add `daypart-target` core type for explicit day+hour targeting windows (follows Google Ads / DV360 pattern)
+  - Add `day-of-week` enum (monday through sunday)
+  - Add `forecast-range-unit` enum (spend, reach_freq, weekly, daily, clicks, conversions) for interpreting forecast curves
+  - Add `daypart_targets` to `Targeting` for hard daypart constraints
+  - Add `daypart_targets` to `ProductAllocation` for publisher-recommended time windows in spot plans
+  - Add `forecast_range_unit` to `DeliveryForecast` for curve type identification
+  - Document forecast scenarios: budget curves, CTV with GRP demographics, retail media with outcomes, allocation-level forecasts
+
+- f37a00c: Deprecate FormatCategory enum and make `type` field optional in Format objects
+
+  The `type` field (FormatCategory) is now optional on Format objects. The `assets` array is the authoritative source for understanding creative requirements.
+
+  **Rationale:**
+
+  - Categories like "video", "display", "native" are lossy abstractions that don't scale to emerging formats
+  - Performance Max spans video, display, search, and native simultaneously
+  - Search ads (RSA) are text-only with high intent context - neither "display" nor "native" fits
+  - The `assets` array already provides precise information about what asset types are needed
+
+  **Migration:**
+
+  - Existing formats with `type` field continue to work
+  - New formats may omit `type` entirely
+  - Buyers should inspect the `assets` array to understand creative requirements
+
+- 37dbd0d: Add reported_metrics to creative formats and expand available-metric enum
+- a859fd1: Add geographic exclusion targeting fields to targeting overlay schema.
+
+  New fields: `geo_countries_exclude`, `geo_regions_exclude`, `geo_metros_exclude`, `geo_postal_areas_exclude`. These enable RCT holdout groups and regulatory compliance exclusions without requiring exhaustive inclusion lists.
+
+- 8836151: Make top-level format_id optional in preview_creative request. The field was redundant with creative_manifest.format_id (which is always required). Callers who omit it fall back to creative_manifest.format_id. Existing callers who send both still work.
+- 96d6fa0: Add product_selectors to get_products for commerce product discovery. Add manifest_gtins to promoted-products schema for cross-retailer GTIN matching.
+- c8cdbca: Add Signal Catalog feature for data providers
+
+  Data providers (Polk, Experian, Acxiom, etc.) can now publish signal catalogs via `adagents.json`, enabling AI agents to discover, verify authorization, and activate their signals—without custom integrations.
+
+  **Why this matters:**
+
+  - **Discovery**: AI agents can find signals via natural language or structured lookup
+  - **Authorization verification**: Buyers can verify a signals agent is authorized by checking the data provider's domain directly
+  - **Typed targeting**: Signal definitions include value types (binary, categorical, numeric) so agents construct correct targeting expressions
+  - **Scalable partnerships**: Authorize agents once; as you add signals, authorized agents automatically have access
+
+  **New schemas:**
+
+  - `signal-id.json` - Universal signal identifier with `source` discriminator: `catalog` (data_provider_domain + id, verifiable) or `agent` (agent_url + id, trust-based)
+  - `signal-definition.json` - Signal spec in data provider's catalog
+  - `signal-targeting.json` - Discriminated union for targeting by value_type
+  - `signal-category.json` / `signal-value-type.json` / `signal-source.json` - Enums
+
+  **Modified schemas:**
+
+  - `adagents.json` - Added `signals` array, `signal_tags`, and signal authorization types
+  - `get-signals-request.json` / `get-signals-response.json` - Added `signal_ids` lookup and structured responses
+  - `product.json` - Added `signal_targeting_allowed` flag
+
+  **Server updates:**
+
+  - `AdAgentsManager` - Full signals validation, creation, and authorization verification
+  - AAO Registry - Data providers as first-class member type with federated discovery
+
+  See [Data Provider Guide](/docs/signals/data-providers) for implementation details.
+
+- e84aafd: Add functional restriction overlays: age_restriction (with verification methods for compliance), device_platform (technical compatibility using Sec-CH-UA-Platform values), and language (localization). These are compliance/technical restrictions, not audience targeting - demographic preferences should be expressed in briefs.
+- f543f44: Add typed asset requirements schemas for creative formats
+
+  Introduces explicit requirement schemas for every asset type with proper discriminated unions. In `format.json`, assets use `oneOf` with `asset_type` as the discriminator - each variant pairs a specific `asset_type` const with its typed requirements schema. This produces clean discriminated union types for code generation.
+
+  - **image-asset-requirements**: `min_width`, `max_width`, `min_height`, `max_height`, `formats`, `max_file_size_kb`, `animation_allowed`, etc.
+  - **video-asset-requirements**: dimensions, duration, `containers`, `codecs`, `max_bitrate_kbps`, etc.
+  - **audio-asset-requirements**: `min_duration_ms`, `max_duration_ms`, `formats`, `sample_rates`, `channels`, bitrate constraints
+  - **text-asset-requirements**: `min_length`, `max_length`, `min_lines`, `max_lines`, `character_pattern`, `prohibited_terms`
+  - **markdown-asset-requirements**: `max_length`
+  - **html-asset-requirements**: `sandbox` (none/iframe/safeframe/fencedframe), `external_resources_allowed`, `allowed_external_domains`, `max_file_size_kb`
+  - **css-asset-requirements**: `max_file_size_kb`
+  - **javascript-asset-requirements**: `module_type`, `external_resources_allowed`, `max_file_size_kb`
+  - **vast-asset-requirements**: `vast_version`
+  - **daast-asset-requirements**: `daast_version`
+  - **promoted-offerings-asset-requirements**: (extensible)
+  - **url-asset-requirements**: `protocols`, `allowed_domains`, `macro_support`, `role`
+  - **webhook-asset-requirements**: `methods`
+
+  This allows sales agents to declare execution environment constraints for HTML creatives (e.g., "must work in SafeFrame with no external JS") as part of the format definition.
+
+- efa8e6a: Add universal macro enum schema and improve macro documentation
+
+  Schema:
+
+  - Add universal-macro.json enum defining all 54 standard macros with descriptions
+  - Update format.json supported_macros to reference enum (backward compatible via oneOf)
+  - Update webhook-asset.json supported_macros and required_macros to reference enum
+  - Register universal-macro enum in schema index
+
+  New Macros:
+
+  - GPP_SID: Global Privacy Platform Section ID(s) for privacy framework identification
+  - IP_ADDRESS: User IP address with privacy warnings (often masked/restricted)
+  - STATION_ID: Radio station or podcast identifier
+  - SHOW_NAME: Program or show name
+  - EPISODE_ID: Podcast episode identifier
+  - AUDIO_DURATION: Audio content duration in seconds
+
+  Documentation:
+
+  - Add GPP_SID to Privacy & Compliance Macros section
+  - Add IP_ADDRESS with privacy warning callout
+  - Add Audio Content Macros section for audio-specific macros
+  - Add TIMESTAMP to availability table
+  - Add GPP_STRING and GPP_SID to availability table
+  - Add IP_ADDRESS to availability table with privacy restriction notation (✅‡)
+  - Add Audio Content macros to availability table
+  - Update legend with ✅‡ notation for privacy-restricted macros
+
+### Patch Changes
+
+- 330676f: Replace Coke/Publicis examples with fictional brands (Acme Corp, Pinnacle Media, Nova Brands) and add CLAUDE.md rule against using real brand names in examples.
+
 ## 3.0.0-beta.2
 
 ### Minor Changes

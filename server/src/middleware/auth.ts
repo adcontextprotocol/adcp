@@ -1,9 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
-import type { WorkOSUser, Company, CompanyUser } from '../types.js';
+import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
-import { isWebUserAdmin } from '../addie/mcp/admin-tools.js';
+import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
+import { bansDb } from '../db/bans-db.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -42,6 +43,59 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// Platform ban cache - avoids DB hit on every request
+interface CachedBanCheck {
+  banned: boolean;
+  ban?: Ban;
+  expiresAt: number;
+}
+const banCache = new Map<string, CachedBanCheck>();
+const BAN_CACHE_TTL_MS = 60 * 1000;
+
+// Clean up expired ban cache entries alongside session cache
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of banCache.entries()) {
+    if (value.expiresAt < now) {
+      banCache.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+/**
+ * Check platform ban with caching. Returns the ban if active, or null if not banned.
+ */
+async function checkPlatformBan(cacheKey: string, checker: () => Promise<{ banned: boolean; ban?: Ban }>): Promise<Ban | null> {
+  const now = Date.now();
+  const cached = banCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.banned ? (cached.ban ?? null) : null;
+  }
+
+  const result = await checker();
+  if (banCache.size > 10_000) banCache.clear();
+  banCache.set(cacheKey, {
+    banned: result.banned,
+    ban: result.ban,
+    expiresAt: now + BAN_CACHE_TTL_MS,
+  });
+  return result.banned ? (result.ban ?? null) : null;
+}
+
+/**
+ * Send a 403 ban response.
+ */
+function sendBanResponse(res: Response, ban: Ban): void {
+  const body: Record<string, unknown> = {
+    error: 'Account suspended',
+    reason: ban.reason,
+  };
+  if (ban.expires_at) {
+    body.expires_at = ban.expires_at;
+  }
+  res.status(403).json(body);
+}
+
 // Simple hash function for cache key (we don't need crypto-strength, just uniqueness)
 function hashSessionCookie(cookie: string): string {
   let hash = 0;
@@ -60,6 +114,13 @@ export function invalidateSessionCache(sessionCookie: string): void {
   const cacheKey = hashSessionCookie(sessionCookie);
   sessionCache.delete(cacheKey);
   logger.debug({ cacheKey }, 'Session cache invalidated');
+}
+
+/**
+ * Invalidate ban cache for a specific entity (e.g., after creating or removing a ban).
+ */
+export function invalidateBanCache(entityType: 'user' | 'apikey', entityId: string): void {
+  banCache.delete(`${entityType}:${entityId}`);
 }
 
 // Extend Express Request type to include our auth properties
@@ -332,6 +393,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.accessToken = 'workos-api-key';
     // Store API key info for permission checks
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+    // API keys are org-scoped, so the caller is a member by definition
+    (req.user as unknown as Record<string, unknown>).isMember = true;
+
+    // Check platform ban for API key
+    const apiKeyBan = await checkPlatformBan(
+      `apikey:${apiKey.id}`,
+      () => bansDb.checkPlatformBanForApiKey(apiKey.id, apiKey.organizationId)
+    );
+    if (apiKeyBan) {
+      logger.info({ apiKeyId: apiKey.id, banId: apiKeyBan.id }, 'API key request blocked by platform ban');
+      return sendBanResponse(res, apiKeyBan);
+    }
+
     return next();
   }
 
@@ -341,6 +415,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     if (devUser) {
       req.user = devUser;
       req.accessToken = 'dev-mode-token';
+      // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
+      const devConfig = getDevUser(req);
+      if (devConfig) {
+        (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
+      }
       return next();
     }
     // No dev session - redirect to dev login page
@@ -386,6 +465,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       // If session was refreshed, update the cookie
       if (cached.newSealedSession) {
         setSessionCookie(res, cached.newSealedSession);
+      }
+
+      // Check platform ban for cached session user
+      const cachedUserBan = await checkPlatformBan(
+        `user:${cached.user.id}`,
+        () => bansDb.checkPlatformBan(cached.user.id)
+      );
+      if (cachedUserBan) {
+        logger.info({ userId: cached.user.id, banId: cachedUserBan.id }, 'User request blocked by platform ban');
+        return sendBanResponse(res, cachedUserBan);
       }
 
       return next();
@@ -480,6 +569,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     req.user = user;
     req.accessToken = result.accessToken;
+
+    // Check platform ban for cookie-authenticated user
+    const userBan = await checkPlatformBan(
+      `user:${user.id}`,
+      () => bansDb.checkPlatformBan(user.id)
+    );
+    if (userBan) {
+      logger.info({ userId: user.id, banId: userBan.id }, 'User request blocked by platform ban');
+      return sendBanResponse(res, userBan);
+    }
+
     next();
   } catch (error) {
     logger.error({ err: error }, 'Authentication middleware error');
@@ -759,7 +859,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   // or ADMIN_EMAILS env var (fallback for emergency access)
   const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
   const isAdminByEmail = adminEmails.includes(req.user.email.toLowerCase());
-  const isAdminByWorkingGroup = await isWebUserAdmin(req.user.id);
+  const isAdminByWorkingGroup = await isWebUserAAOAdmin(req.user.id);
   const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
 
   if (!isAdmin) {
@@ -905,6 +1005,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     if (devUser) {
       req.user = devUser;
       req.accessToken = 'dev-mode-token';
+      // Carry over dev config flags (isMember, isAdmin) so enrichUserWithMembership skips DB lookup
+      const devConfig = getDevUser(req);
+      if (devConfig) {
+        (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
+      }
     }
     // No dev session = not logged in (which is fine for optional auth)
     return next();

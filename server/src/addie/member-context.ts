@@ -16,7 +16,7 @@ import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
-import { getPool } from '../db/client.js';
+import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 
 const slackDb = new SlackDatabase();
@@ -34,7 +34,7 @@ const orgKnowledgeDb = new OrgKnowledgeDatabase();
  */
 async function getPendingContentForUser(
   workosUserId: string,
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): Promise<{ total: number; by_committee: Record<string, number> }> {
   const pool = getPool();
 
@@ -50,7 +50,7 @@ async function getPendingContentForUser(
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
 
-  if (!isAdmin && ledCommitteeIds.length === 0) {
+  if (!isAAOAdmin && ledCommitteeIds.length === 0) {
     return { total: 0, by_committee: {} };
   }
 
@@ -63,7 +63,7 @@ async function getPendingContentForUser(
   `;
   const params: (string | string[])[] = [];
 
-  if (!isAdmin) {
+  if (!isAAOAdmin) {
     // Non-admins only see pending for committees they lead
     params.push(ledCommitteeIds);
     query += ` AND p.working_group_id = ANY($${params.length})`;
@@ -84,6 +84,42 @@ async function getPendingContentForUser(
   }
 
   return { total, by_committee: byCommittee };
+}
+
+/**
+ * Fetch community profile data for a user.
+ * Shared between getMemberContext (Slack) and getWebMemberContext (web chat).
+ */
+async function fetchCommunityProfile(
+  workosUserId: string
+): Promise<MemberContext['community_profile'] | undefined> {
+  const result = await query<{ is_public: boolean; slug: string | null; completeness: number; github_username: string | null }>(
+    `SELECT
+      COALESCE(is_public, false) as is_public,
+      slug,
+      github_username,
+      (CASE WHEN headline IS NOT NULL AND headline != '' THEN 1 ELSE 0 END
+       + CASE WHEN bio IS NOT NULL AND bio != '' THEN 1 ELSE 0 END
+       + CASE WHEN avatar_url IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN expertise IS NOT NULL AND array_length(expertise, 1) > 0 THEN 1 ELSE 0 END
+       + CASE WHEN interests IS NOT NULL AND array_length(interests, 1) > 0 THEN 1 ELSE 0 END
+       + CASE WHEN city IS NOT NULL AND city != '' THEN 1 ELSE 0 END
+       + CASE WHEN linkedin_url IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN github_username IS NOT NULL THEN 1 ELSE 0 END
+       + CASE WHEN open_to_coffee_chat = true THEN 1 ELSE 0 END
+       + CASE WHEN open_to_intros = true THEN 1 ELSE 0 END
+      ) * 10 as completeness
+     FROM users WHERE workos_user_id = $1`,
+    [workosUserId]
+  );
+  const row = result.rows[0];
+  if (!row) return undefined;
+  return {
+    is_public: row.is_public,
+    slug: row.slug,
+    completeness: Number(row.completeness),
+    github_username: row.github_username,
+  };
 }
 
 // Cache for member context to avoid repeated lookups for the same user
@@ -226,6 +262,14 @@ export interface MemberContext {
     global_unsubscribed: boolean;
     subscribed_categories: string[];
     unsubscribed_categories: string[];
+  };
+
+  /** Community profile status */
+  community_profile?: {
+    is_public: boolean;
+    slug: string | null;
+    completeness: number;  // 0-100
+    github_username: string | null;
   };
 
   /** Whether the Slack user is linked to their AgenticAdvertising.org account */
@@ -513,15 +557,25 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
-    // Get pending content for committee leads and admins
+    // Community profile
+    try {
+      context.community_profile = await fetchCommunityProfile(workosUserId);
+    } catch (err) {
+      // Non-critical - community profile columns may not exist yet
+    }
+
+    // Get pending content for committee leads and AAO admins
     const ledCommitteeIds = context.working_groups
       ?.filter(wg => wg.is_leader)
       .map(wg => wg.name) || [];
-    const userIsAdmin = context.org_membership?.role === 'admin';
 
-    if (ledCommitteeIds.length > 0 || userIsAdmin) {
+    // Check AAO admin status (aao-admin working group membership)
+    const adminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
+    const isAAOAdmin = adminGroup ? await workingGroupDb.isMember(adminGroup.id, workosUserId) : false;
+
+    if (ledCommitteeIds.length > 0 || isAAOAdmin) {
       try {
-        const pendingContent = await getPendingContentForUser(workosUserId, userIsAdmin);
+        const pendingContent = await getPendingContentForUser(workosUserId, isAAOAdmin);
         if (pendingContent.total > 0) {
           context.pending_content = pendingContent;
         }
@@ -530,8 +584,9 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       }
     }
 
-    // Get pending join requests count for org admins
-    if (userIsAdmin && organizationId) {
+    // Get pending join requests count for org admins (WorkOS org role - admin within their company)
+    const isOrgAdmin = context.org_membership?.role === 'admin';
+    if (isOrgAdmin && organizationId) {
       try {
         const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
         if (pendingJoinRequestsCount > 0) {
@@ -565,12 +620,6 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
   }
 }
 
-/**
- * Format member context for inclusion in Claude messages
- *
- * Returns a string that can be prepended to the user message
- * to give Claude context about who's asking.
- */
 /**
  * Look up member context from a WorkOS user ID (for web chat)
  *
@@ -781,6 +830,13 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
+    // Community profile
+    try {
+      context.community_profile = await fetchCommunityProfile(workosUserId);
+    } catch (error) {
+      logger.warn({ error, workosUserId }, 'Addie Web: Failed to get community profile');
+    }
+
     // Step 11: Get combined conversation activity (Slack + web chat) from addie_threads
     try {
       const threadService = getThreadService();
@@ -819,13 +875,16 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
-    // Step 13: Get pending content for committee leads and admins
+    // Step 13: Get pending content for committee leads and AAO admins
     const leadsCommittees = context.working_groups?.filter(wg => wg.is_leader) || [];
-    const webUserIsAdmin = context.org_membership?.role === 'admin';
 
-    if (leadsCommittees.length > 0 || webUserIsAdmin) {
+    // Check AAO admin status (aao-admin working group membership)
+    const webAdminGroup = await workingGroupDb.getWorkingGroupBySlug('aao-admin');
+    const webIsAAOAdmin = webAdminGroup ? await workingGroupDb.isMember(webAdminGroup.id, workosUserId) : false;
+
+    if (leadsCommittees.length > 0 || webIsAAOAdmin) {
       try {
-        const pendingContent = await getPendingContentForUser(workosUserId, webUserIsAdmin);
+        const pendingContent = await getPendingContentForUser(workosUserId, webIsAAOAdmin);
         if (pendingContent.total > 0) {
           context.pending_content = pendingContent;
         }
@@ -834,8 +893,9 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       }
     }
 
-    // Step 14: Get pending join requests count for org admins
-    if (webUserIsAdmin && organizationId) {
+    // Step 14: Get pending join requests count for org admins (WorkOS org role - admin within their company)
+    const webIsOrgAdmin = context.org_membership?.role === 'admin';
+    if (webIsOrgAdmin && organizationId) {
       try {
         const pendingJoinRequestsCount = await joinRequestDb.getPendingRequestCount(organizationId);
         if (pendingJoinRequestsCount > 0) {
@@ -1045,6 +1105,22 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       if (context.email_status.unsubscribed_categories.length > 0) {
         lines.push(`Unsubscribed from: ${context.email_status.unsubscribed_categories.join(', ')}`);
       }
+    }
+  }
+
+  // Community profile status
+  if (context.community_profile) {
+    if (context.community_profile.is_public) {
+      lines.push('');
+      lines.push(`Community profile: Public (${context.community_profile.completeness}% complete) — https://agenticadvertising.org/community/people/${context.community_profile.slug}`);
+    } else {
+      lines.push('');
+      lines.push('Community profile: Not yet public. Encourage them to visit https://agenticadvertising.org/community to set up their profile and join the people directory.');
+    }
+    if (context.community_profile.github_username) {
+      lines.push(`GitHub: ${context.community_profile.github_username}`);
+    } else {
+      lines.push('GitHub: Not linked. If they mention GitHub repos or issues, suggest linking their GitHub username at https://agenticadvertising.org/community/profile/edit to make it visible on their community profile.');
     }
   }
 

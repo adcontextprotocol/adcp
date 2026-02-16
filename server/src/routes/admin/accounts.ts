@@ -2050,5 +2050,49 @@ export function setupAccountRoutes(
       }
     }
   );
+
+  // GET /api/admin/accounts/:orgId/registry-activity - Registry edits by org members
+  apiRouter.get(
+    "/accounts/:orgId/registry-activity",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const pool = getPool();
+
+        const result = await pool.query(
+          `SELECT * FROM (
+            SELECT 'brand' as entity_type, brand_domain as domain,
+              revision_number, editor_user_id, editor_email, editor_name,
+              edit_summary, is_rollback, created_at
+            FROM brand_revisions
+            WHERE editor_user_id IN (
+              SELECT workos_user_id FROM organization_memberships
+              WHERE workos_organization_id = $1
+            )
+            UNION ALL
+            SELECT 'property' as entity_type, publisher_domain as domain,
+              revision_number, editor_user_id, editor_email, editor_name,
+              edit_summary, is_rollback, created_at
+            FROM property_revisions
+            WHERE editor_user_id IN (
+              SELECT workos_user_id FROM organization_memberships
+              WHERE workos_organization_id = $1
+            )
+          ) combined
+          ORDER BY created_at DESC
+          LIMIT $2`,
+          [orgId, limit]
+        );
+
+        res.json({ edits: result.rows });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching registry activity");
+        res.status(500).json({ error: "Failed to fetch registry activity" });
+      }
+    }
+  );
 }
 

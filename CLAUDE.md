@@ -16,6 +16,12 @@ This project uses **Mintlify** for documentation:
 - ✅ **AdCP** - the protocol specification
 - ❌ Never "Alliance for Agentic Advertising", "AAO", or "ADCP"
 
+### Examples: No Real Brands or Agencies
+- ❌ Never use real company names (brands, agencies, holding companies) in new examples
+- ✅ Use fictional names: Acme Corp, Pinnacle Media, Nova Brands, etc.
+- The brand seed data in migrations may list real domains for discovery purposes
+- Enum values that reference industry standards (e.g., `"groupm"` viewability standard) are protocol terms, not examples
+
 ### Schema Compliance
 All documentation and examples MUST match JSON schemas in `static/schemas/v1/`:
 - Verify fields exist in schema before documenting
@@ -39,6 +45,11 @@ All HTML files in `server/public/` MUST use CSS variables from `/server/public/d
 /* ✅ */ color: var(--color-brand);
 /* ❌ */ color: #667eea;
 ```
+
+### UI Text Casing
+Use **sentence case** for all UI labels, headings, and section headers:
+- ✅ "Brand identity", "Creative assets", "Contact information"
+- ❌ "Brand Identity", "Creative Assets", "Contact Information"
 
 ## JSON Schema Guidelines
 

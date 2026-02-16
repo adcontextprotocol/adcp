@@ -56,6 +56,9 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
+    "optimization_goal": {
+      "$ref": "/schemas/core/optimization-goal.json"
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",

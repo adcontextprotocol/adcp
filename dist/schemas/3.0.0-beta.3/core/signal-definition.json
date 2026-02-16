@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/signal-definition.json",
+  "title": "Signal Definition",
+  "description": "Definition of a signal in a data provider's catalog, published via adagents.json",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Signal identifier within this data provider's catalog"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable signal name",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what this signal represents and how it's derived",
+      "maxLength": 2000
+    },
+    "value_type": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/signal-value-type.json",
+      "description": "The data type of this signal's values"
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for grouping and filtering signals within the catalog",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_-]+$"
+      }
+    },
+    "allowed_values": {
+      "type": "array",
+      "description": "For categorical signals, the valid values users can be assigned",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "range": {
+      "type": "object",
+      "description": "For numeric signals, the valid value range",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum value"
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum value"
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of measurement (e.g., 'score', 'dollars', 'years')"
+        }
+      },
+      "required": ["min", "max"]
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "value_type"
+  ],
+  "additionalProperties": true
+}

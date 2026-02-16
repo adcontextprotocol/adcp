@@ -5,19 +5,25 @@
   "description": "Request parameters for retrieving comprehensive delivery metrics",
   "type": "object",
   "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Filter delivery data to a specific account. When provided, only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account."
+    },
     "media_buy_ids": {
       "type": "array",
       "description": "Array of publisher media buy IDs to get delivery data for",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "buyer_refs": {
       "type": "array",
       "description": "Array of buyer reference IDs to get delivery data for",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "status_filter": {
       "oneOf": [
@@ -28,7 +34,8 @@
           "type": "array",
           "items": {
             "$ref": "/schemas/enums/media-buy-status.json"
-          }
+          },
+          "minItems": 1
         }
       ],
       "description": "Filter by status. Can be a single status or array of statuses"
@@ -36,12 +43,12 @@
     "start_date": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Start date for reporting period (YYYY-MM-DD)"
+      "description": "Start date for reporting period (YYYY-MM-DD). When omitted along with end_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
     "end_date": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "End date for reporting period (YYYY-MM-DD)"
+      "description": "End date for reporting period (YYYY-MM-DD). When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

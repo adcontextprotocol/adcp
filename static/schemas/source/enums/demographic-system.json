@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/demographic-system.json",
+  "title": "Demographic System",
+  "description": "Audience measurement systems for demographic notation in GRP forecasts and pricing",
+  "type": "string",
+  "enum": [
+    "nielsen",
+    "barb",
+    "agf",
+    "oztam",
+    "mediametrie",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "nielsen": "Nielsen notation. Prefix: P(ersons), M(en), W(omen), A(dults), C(hildren), T(eens) + age range. Examples: P18-49, M25-54, W35+",
+    "barb": "BARB (UK). NRS social grade + age bands. Examples: ABC1 Adults, 16-34, Adults",
+    "agf": "AGF Videoforschung (Germany). Erwachsene notation + age bands. Examples: E 14-49, E 14+",
+    "oztam": "OzTAM (Australia). Age/gender bands, 4+ measurement universe",
+    "mediametrie": "Mediametrie (France). Named segments + age bands",
+    "custom": "Publisher-defined demographic notation"
+  }
+}

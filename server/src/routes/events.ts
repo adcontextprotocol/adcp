@@ -14,6 +14,7 @@ import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
+import { CommunityDatabase } from "../db/community-db.js";
 import {
   createCheckoutSession,
   createStripeCustomer,
@@ -1060,6 +1061,15 @@ export function createEventsRouter(): {
         "User registered for event"
       );
 
+      // Award community points + check badges (fire-and-forget)
+      const communityDb = new CommunityDatabase();
+      communityDb.awardPoints(user.id, 'event_registered', 10, event.id, 'event').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to award event registration points');
+      });
+      communityDb.checkAndAwardBadges(user.id, 'event').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to check event badges');
+      });
+
       res.status(201).json({ registration });
     } catch (error) {
       logger.error({ err: error }, "Error registering for event");
@@ -1280,18 +1290,14 @@ export function createEventsRouter(): {
         currency: tier.currency || "USD",
       });
 
-      // Ensure Stripe customer exists
-      let stripeCustomerId = org.stripe_customer_id;
-      if (!stripeCustomerId) {
-        stripeCustomerId = await createStripeCustomer({
+      // Ensure Stripe customer exists (row-level lock prevents duplicate creation)
+      const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(org_id, () =>
+        createStripeCustomer({
           email: user.email,
           name: org.name,
           metadata: { workos_organization_id: org_id },
-        });
-        if (stripeCustomerId) {
-          await orgDb.setStripeCustomerId(org_id, stripeCustomerId);
-        }
-      }
+        })
+      );
 
       // Create a one-time price for this sponsorship
       // Note: In production, you might want to create products/prices in Stripe admin

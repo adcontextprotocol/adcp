@@ -16,6 +16,10 @@
     "content_standards": {
       "type": "boolean",
       "description": "Full support for content_standards configuration including sampling rates and category filtering"
+    },
+    "conversion_tracking": {
+      "type": "boolean",
+      "description": "Supports sync_event_sources and log_event tasks for conversion event tracking"
     }
   },
   "additionalProperties": {

@@ -208,6 +208,34 @@ export async function resolveSlackMentions(
 }
 
 /**
+ * Wrap bare URLs in Slack explicit link format to preserve fragments.
+ *
+ * Slack's auto-linker can drop URL fragments (the #... portion),
+ * which breaks Stripe checkout URLs that require the fragment for the
+ * encrypted session data. Wrapping in <url> ensures Slack preserves
+ * the full URL including fragments.
+ *
+ * Only wraps URLs not already inside Slack link syntax (< >).
+ */
+export function wrapUrlsForSlack(text: string): string {
+  // Match bare URLs (http/https) not already wrapped in < >
+  // Use negative lookbehind for < and ensure URL isn't followed by >
+  // Also skip URLs inside backtick code spans
+  return text.replace(
+    /(?<![<`])(https?:\/\/[^\s>)`]+)/g,
+    (match, url, offset) => {
+      // Check if we're inside a backtick code span
+      const before = text.substring(0, offset);
+      const backtickCount = (before.match(/`/g) || []).length;
+      if (backtickCount % 2 === 1) {
+        return match; // Inside code span, don't wrap
+      }
+      return `<${url}>`;
+    }
+  );
+}
+
+/**
  * Log an interaction for audit purposes
  */
 export function logInteraction(log: AddieInteractionLog): void {

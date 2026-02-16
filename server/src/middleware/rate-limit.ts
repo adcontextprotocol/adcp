@@ -78,3 +78,54 @@ export const orgCreationRateLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Rate limiter for brand creation (community submissions)
+ * Limits: 60 submissions per hour per user/IP
+ */
+export const brandCreationRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for brand creation');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Brand submission rate limit exceeded. Please try again later.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
+ * Rate limiter for bulk resolve endpoints
+ * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
+ */
+export const bulkResolveRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for bulk resolve');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Bulk resolve rate limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});

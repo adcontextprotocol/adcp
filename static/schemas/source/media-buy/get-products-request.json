@@ -7,19 +7,19 @@
   "properties": {
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. When refining a proposal, can include instructions like 'focus more on German speakers' or 'increase mobile allocation'."
-    },
-    "proposal_id": {
-      "type": "string",
-      "description": "Optional proposal ID to refine. When provided with a brief, the publisher will use the brief as refinement instructions for the specified proposal and return an updated version."
+      "description": "Natural language description of campaign requirements."
     },
     "brand_manifest": {
       "$ref": "/schemas/core/brand-manifest-ref.json",
       "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
     },
+    "product_selectors": {
+      "$ref": "/schemas/core/promoted-products.json",
+      "description": "Selectors to filter the brand manifest product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+    },
     "account_id": {
       "type": "string",
-      "description": "Account context for product lookup. When provided, returns products with pricing specific to this account's rate card. Optional if the agent has a single account."
+      "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
     },
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
@@ -27,6 +27,9 @@
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -36,5 +39,8 @@
     }
   },
   "required": [],
+  "dependencies": {
+    "product_selectors": ["brand_manifest"]
+  },
   "additionalProperties": true
 }

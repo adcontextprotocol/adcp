@@ -361,6 +361,8 @@ export class RehearsalService {
         last_active_days_ago: null,
         slack_message_count_30d: Math.round((persona.engagement_score ?? 50) / 5),  // Derive from engagement
         is_committee_leader: false,
+        community_profile_public: false,
+        community_profile_completeness: 0,
       },
       history: [],  // Fresh history for rehearsal
       contact_eligibility: {

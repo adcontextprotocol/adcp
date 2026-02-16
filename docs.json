@@ -208,7 +208,9 @@
                   "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
                   "docs/media-buy/task-reference/update_media_buy",
-                  "docs/media-buy/task-reference/provide_performance_feedback"
+                  "docs/media-buy/task-reference/provide_performance_feedback",
+                  "docs/media-buy/task-reference/sync_event_sources",
+                  "docs/media-buy/task-reference/log_event"
                 ]
               },
               {
@@ -242,6 +244,12 @@
                 ]
               },
               {
+                "group": "Conversion Tracking",
+                "pages": [
+                  "docs/media-buy/conversion-tracking/index"
+                ]
+              },
+              {
                 "group": "Advanced Topics",
                 "pages": [
                   "docs/media-buy/advanced-topics/index",
@@ -269,6 +277,7 @@
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/promoted-offerings",
+              "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -285,9 +294,17 @@
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
-                  "docs/creative/task-reference/list_creative_formats"
+                  "docs/creative/task-reference/list_creative_formats",
+                  "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Industry Guides",
+            "pages": [
+              "docs/guides/index",
+              "docs/guides/commerce-media"
             ]
           },
           {
@@ -296,6 +313,16 @@
               "docs/media-buy/quick-reference",
               "docs/creative/quick-reference",
               "docs/signals/quick-reference",
+              {
+                "group": "Registry API",
+                "openapi": {
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
+                },
+                "pages": [
+                  "docs/registry/index"
+                ]
+              },
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",
@@ -647,7 +674,9 @@
                   "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
                   "docs/media-buy/task-reference/update_media_buy",
-                  "docs/media-buy/task-reference/provide_performance_feedback"
+                  "docs/media-buy/task-reference/provide_performance_feedback",
+                  "docs/media-buy/task-reference/sync_event_sources",
+                  "docs/media-buy/task-reference/log_event"
                 ]
               },
               {
@@ -681,6 +710,12 @@
                 ]
               },
               {
+                "group": "Conversion Tracking",
+                "pages": [
+                  "docs/media-buy/conversion-tracking/index"
+                ]
+              },
+              {
                 "group": "Advanced Topics",
                 "pages": [
                   "docs/media-buy/advanced-topics/index",
@@ -708,6 +743,7 @@
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/promoted-offerings",
+              "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -724,9 +760,17 @@
                   "docs/creative/task-reference/build_creative",
                   "docs/creative/task-reference/preview_creative",
                   "docs/creative/task-reference/preview_creative-advanced",
-                  "docs/creative/task-reference/list_creative_formats"
+                  "docs/creative/task-reference/list_creative_formats",
+                  "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
+            ]
+          },
+          {
+            "group": "Industry Guides",
+            "pages": [
+              "docs/guides/index",
+              "docs/guides/commerce-media"
             ]
           },
           {
@@ -735,6 +779,16 @@
               "docs/media-buy/quick-reference",
               "docs/creative/quick-reference",
               "docs/signals/quick-reference",
+              {
+                "group": "Registry API",
+                "openapi": {
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
+                },
+                "pages": [
+                  "docs/registry/index"
+                ]
+              },
               "docs/reference/gmsf-reference",
               "docs/reference/media-channel-taxonomy",
               "docs/reference/roadmap",

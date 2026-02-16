@@ -17,6 +17,14 @@
       "$ref": "/schemas/core/format-id.json",
       "description": "Format ID to generate. The format definition specifies required input assets and output structure."
     },
+    "brand_manifest": {
+      "$ref": "/schemas/core/brand-manifest-ref.json",
+      "description": "Brand identity and guidelines for creative generation. Can be an inline brand manifest object or a URL to a hosted manifest. Provides brand-level context (colors, logos, tone) that the creative agent uses alongside the creative brief and message."
+    },
+    "creative_brief": {
+      "$ref": "/schemas/core/creative-brief-ref.json",
+      "description": "Campaign-level creative brief with objective, audience, messaging, and reference assets. Can be an inline brief object or a URL to a hosted brief. Supplements the natural language message with structured creative direction."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

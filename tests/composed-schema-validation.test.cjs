@@ -162,6 +162,7 @@ async function runTests() {
     '/schemas/media-buy/create-media-buy-request.json',
     {
       buyer_ref: 'campaign-2024-q4',
+      account_id: 'acc_test_001',
       packages: [
         {
           buyer_ref: 'pkg-001',
@@ -193,6 +194,7 @@ async function runTests() {
     '/schemas/media-buy/create-media-buy-request.json',
     {
       buyer_ref: 'campaign-simple',
+      account_id: 'acc_test_001',
       packages: [
         {
           buyer_ref: 'pkg-001',
@@ -209,6 +211,28 @@ async function runTests() {
       end_time: '2024-12-31T23:59:59Z'
     },
     'Create media buy without optional reporting_webhook'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      buyer_ref: 'single-account-campaign',
+      packages: [
+        {
+          buyer_ref: 'pkg-001',
+          product_id: 'display_standard',
+          budget: 10000,
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand_manifest: {
+        name: 'Single Account Brand',
+        url: 'https://brand.example.com/manifest.json'
+      },
+      start_time: 'asap',
+      end_time: '2024-12-31T23:59:59Z'
+    },
+    'Create media buy without account_id (single-account agent)'
   );
 
   log('');
@@ -270,6 +294,7 @@ async function runTests() {
         path.join(bundledPath, 'media-buy/create-media-buy-request.json'),
         {
           buyer_ref: 'campaign-bundled-test',
+          account_id: 'acc_test_001',
           packages: [
             {
               buyer_ref: 'pkg-001',

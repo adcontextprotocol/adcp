@@ -219,7 +219,7 @@ export async function processFeedsToFetch(): Promise<{
     } catch (error) {
       errorCount++;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ error, feedId: feed.id, name: feed.name }, 'Failed to fetch RSS feed');
+      logger.debug({ feedId: feed.id, name: feed.name, error: errorMessage }, 'Failed to fetch RSS feed');
       await updateFeedStatus(feed.id, false, errorMessage);
     }
 

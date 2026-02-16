@@ -436,7 +436,30 @@ export async function createStripeCustomer(data: {
   }
 
   try {
-    // Check for existing customer with this email
+    // Search by org ID first to prevent duplicates when different users in the same org
+    // have different emails (e.g., bennett@optable.co vs billing@optable.co)
+    const orgId = data.metadata?.workos_organization_id;
+    if (orgId && /^org_[a-zA-Z0-9]+$/.test(orgId)) {
+      const searchResult = await stripe.customers.search({
+        query: `metadata['workos_organization_id']:'${orgId}'`,
+        limit: 1,
+      });
+
+      if (searchResult.data.length > 0) {
+        const existing = searchResult.data[0];
+        await stripe.customers.update(existing.id, {
+          name: data.name,
+          metadata: {
+            ...existing.metadata,
+            ...data.metadata,
+          },
+        });
+        logger.info({ customerId: existing.id, orgId, email: data.email }, 'Found existing Stripe customer by org ID');
+        return existing.id;
+      }
+    }
+
+    // Fall through to email check for cases without org ID
     const existingCustomers = await stripe.customers.list({
       email: data.email,
       limit: 1,
@@ -444,7 +467,6 @@ export async function createStripeCustomer(data: {
 
     if (existingCustomers.data.length > 0) {
       const existing = existingCustomers.data[0];
-      // Update existing customer with new metadata if provided
       if (data.metadata) {
         await stripe.customers.update(existing.id, {
           name: data.name,
@@ -454,7 +476,7 @@ export async function createStripeCustomer(data: {
           },
         });
       }
-      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer');
+      logger.info({ customerId: existing.id, email: data.email }, 'Found existing Stripe customer by email');
       return existing.id;
     }
 
@@ -826,39 +848,26 @@ export async function createAndSendInvoice(
   }
 
   try {
-    // Create or find customer
-    const existingCustomers = await stripe.customers.list({
+    // Find or create customer using shared deduplication logic
+    const customerId = await createStripeCustomer({
       email: data.contactEmail,
-      limit: 1,
+      name: data.companyName,
+      metadata: {
+        contact_name: data.contactName,
+        invoice_request: 'true',
+        ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
+      },
     });
 
-    let customer: Stripe.Customer;
-
-    if (existingCustomers.data.length > 0) {
-      // Update existing customer with new info
-      customer = await stripe.customers.update(existingCustomers.data[0].id, {
-        name: data.companyName,
-        address: data.billingAddress,
-        metadata: {
-          contact_name: data.contactName,
-          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
-        },
-      });
-      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Updated existing Stripe customer for invoice');
-    } else {
-      // Create new customer
-      customer = await stripe.customers.create({
-        email: data.contactEmail,
-        name: data.companyName,
-        address: data.billingAddress,
-        metadata: {
-          contact_name: data.contactName,
-          invoice_request: 'true',
-          ...(data.workosOrganizationId && { workos_organization_id: data.workosOrganizationId }),
-        },
-      });
-      logger.info({ customerId: customer.id, email: data.contactEmail }, 'Created new Stripe customer for invoice');
+    if (!customerId) {
+      logger.error({ email: data.contactEmail }, 'Failed to find or create Stripe customer for invoice');
+      return null;
     }
+
+    // Update with billing address (createStripeCustomer doesn't handle address)
+    const customer = await stripe.customers.update(customerId, {
+      address: data.billingAddress,
+    });
 
     // Verify the price exists and has a valid amount before creating subscription
     const price = await stripe.prices.retrieve(priceId);
@@ -989,6 +998,56 @@ export async function createAndSendInvoice(
   }
 }
 
+/**
+ * Resend an existing open invoice to the customer's billing email
+ */
+export async function resendInvoice(invoiceId: string): Promise<{
+  success: boolean;
+  hosted_invoice_url?: string;
+  error?: string;
+}> {
+  if (!stripe) {
+    return { success: false, error: 'Stripe not initialized' };
+  }
+
+  try {
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    if (invoice.status !== 'open') {
+      return { success: false, error: `Invoice status is "${invoice.status}" — can only resend open invoices` };
+    }
+
+    const sent = await stripe.invoices.sendInvoice(invoiceId);
+    logger.info({ invoiceId, customerEmail: sent.customer_email }, 'Resent invoice');
+    return { success: true, hosted_invoice_url: sent.hosted_invoice_url || undefined };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ err: error, invoiceId }, 'Failed to resend invoice');
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Update the billing email on a Stripe customer
+ */
+export async function updateCustomerEmail(
+  customerId: string,
+  newEmail: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!stripe) {
+    return { success: false, error: 'Stripe not initialized' };
+  }
+
+  try {
+    await stripe.customers.update(customerId, { email: newEmail });
+    logger.info({ customerId, newEmail }, 'Updated customer billing email');
+    return { success: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error({ err: error, customerId }, 'Failed to update customer email');
+    return { success: false, error: msg };
+  }
+}
+
 export interface CheckoutSessionData {
   priceId: string;
   customerId?: string; // Existing Stripe customer ID
@@ -1091,9 +1150,13 @@ export async function createCheckoutSession(
       workosOrganizationId: data.workosOrganizationId,
     }, 'Created checkout session');
 
+    if (!session.url) {
+      logger.error({ sessionId: session.id }, 'Checkout session created but URL is missing');
+      throw new Error('Stripe created checkout session but returned no URL');
+    }
     return {
       sessionId: session.id,
-      url: session.url || '',
+      url: session.url,
     };
   } catch (error) {
     logger.error({ err: error, data }, 'Error creating checkout session');

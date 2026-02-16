@@ -9,10 +9,12 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import type { MemberContext } from '../member-context.js';
 import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   getPriceByLookupKey,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
@@ -51,7 +53,9 @@ You should ask about their company type and approximate revenue to find the righ
     name: 'create_payment_link',
     description: `Create a Stripe checkout payment link for a membership product.
 Use this after finding the right product to give the user a direct link to pay.
-Returns a URL the user can click to complete payment.`,
+Returns a URL the user can click to complete payment.
+The user must have an account (signed up at agenticadvertising.org) before a payment link can be created.
+If the user doesn't have an account, tell them to sign up first.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -61,7 +65,7 @@ Returns a URL the user can click to complete payment.`,
         },
         customer_email: {
           type: 'string',
-          description: 'Customer email address (optional, will pre-fill checkout)',
+          description: 'Customer email address (optional fallback — the authenticated user email is preferred and used automatically)',
         },
       },
       required: ['lookup_key'],
@@ -144,7 +148,7 @@ function formatRevenueTier(tier: string): string {
 /**
  * Tool handler implementations
  */
-export function createBillingToolHandlers(): Map<string, (input: Record<string, unknown>) => Promise<string>> {
+export function createBillingToolHandlers(memberContext?: MemberContext | null): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
   // Find membership products
@@ -217,7 +221,22 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
     const lookupKey = input.lookup_key as string;
     const customerEmail = input.customer_email as string | undefined;
 
-    logger.info({ lookupKey, hasEmail: !!customerEmail }, 'Addie: Creating payment link');
+    // Require org context to ensure the subscription gets linked
+    const orgId = memberContext?.organization?.workos_organization_id;
+    if (!orgId) {
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot create a payment link without an account. Please ask the user to sign up at https://agenticadvertising.org first, then try again.',
+      });
+    }
+
+    // Use actual member email from context, falling back to AI-provided email.
+    // This prevents hallucinated emails (e.g., user@example.com) from being used.
+    const effectiveEmail = memberContext?.workos_user?.email
+      || memberContext?.slack_user?.email
+      || customerEmail;
+
+    logger.info({ lookupKey, orgId, hasEmail: !!effectiveEmail }, 'Addie: Creating payment link');
 
     try {
       // First get the price ID from the lookup key
@@ -229,11 +248,34 @@ export function createBillingToolHandlers(): Map<string, (input: Record<string, 
         });
       }
 
+      // Look up org to get Stripe customer ID and discount info
+      const org = await orgDb.getOrganization(orgId);
+
+      // Ensure a Stripe customer exists with org metadata before creating the
+      // checkout session so that subscription webhooks can link the payment.
+      let customerId: string | undefined;
+      if (effectiveEmail) {
+        customerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+          createStripeCustomer({
+            email: effectiveEmail,
+            name: org?.name || 'Unknown',
+            metadata: { workos_organization_id: orgId },
+          })
+        ) || undefined;
+      } else {
+        customerId = org?.stripe_customer_id || undefined;
+      }
+
       const session = await createCheckoutSession({
         priceId,
-        customerEmail,
-        successUrl: 'https://agenticadvertising.org/dashboard?payment=success',
-        cancelUrl: 'https://agenticadvertising.org/join?payment=cancelled',
+        customerId: customerId || undefined,
+        customerEmail: customerId ? undefined : effectiveEmail,
+        successUrl: 'https://agenticadvertising.org/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}',
+        cancelUrl: 'https://agenticadvertising.org/dashboard?checkout=cancelled',
+        workosOrganizationId: orgId,
+        isPersonalWorkspace: org?.is_personal || false,
+        couponId: org?.stripe_coupon_id || undefined,
+        promotionCode: !org?.stripe_coupon_id ? (org?.stripe_promotion_code || undefined) : undefined,
       });
 
       if (!session) {

@@ -579,6 +579,7 @@ export class MeetingsDatabase {
         WHERE wgm.working_group_id = $1
           AND wgm.status = 'active'
           AND (wgts.topic_slugs && $2 OR wgts.topic_slugs IS NULL)
+        LIMIT 200
       `;
       memberParams = [workingGroupId, topicSlugs];
     } else {
@@ -592,6 +593,7 @@ export class MeetingsDatabase {
         FROM working_group_memberships wgm
         LEFT JOIN users u ON u.workos_user_id = wgm.workos_user_id
         WHERE wgm.working_group_id = $1 AND wgm.status = 'active'
+        LIMIT 200
       `;
       memberParams = [workingGroupId];
     }
@@ -775,7 +777,8 @@ export class MeetingsDatabase {
       WHERE m.slack_user_id = ANY($1)
         AND m.workos_user_id IS NOT NULL
         AND m.slack_is_bot = false
-        AND m.slack_is_deleted = false`,
+        AND m.slack_is_deleted = false
+      LIMIT 200`,
       [slackChannelMembers]
     );
 

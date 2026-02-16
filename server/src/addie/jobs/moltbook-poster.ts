@@ -10,6 +10,7 @@
 import { logger as baseLogger } from '../../logger.js';
 import {
   isMoltbookEnabled,
+  isAccountSuspended,
   createPost,
   getSubmolts,
   type CreatePostResult,
@@ -156,6 +157,12 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
     return result;
   }
 
+  // Check if account is suspended (avoids repeated failed API calls)
+  if (isAccountSuspended()) {
+    logger.debug('Moltbook account is suspended, skipping poster');
+    return result;
+  }
+
   // Check rate limit
   const canPostNow = await canPost();
   if (!canPostNow) {
@@ -190,6 +197,12 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
       logger.warn({ err }, 'Failed to get submolts, using default');
     }
 
+    // Re-check suspension — getSubmolts() or a concurrent job may have detected it
+    if (isAccountSuspended()) {
+      logger.debug('Moltbook account is suspended (detected mid-run), skipping poster');
+      return result;
+    }
+
     // Create the post on Moltbook
     const postResult: CreatePostResult = await createPost(
       article.title,
@@ -199,7 +212,11 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
     );
 
     if (!postResult.success) {
-      logger.error({ error: postResult.error, articleId: article.id }, 'Failed to post to Moltbook');
+      if (isAccountSuspended()) {
+        logger.debug({ articleId: article.id }, 'Skipped Moltbook post - account suspended');
+      } else {
+        logger.error({ error: postResult.error, articleId: article.id }, 'Failed to post to Moltbook');
+      }
       result.errors = 1;
       return result;
     }

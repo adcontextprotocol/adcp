@@ -35,7 +35,8 @@
           "items": {
             "type": "string",
             "pattern": "^[A-Z]{2}$"
-          }
+          },
+          "minItems": 1
         }
       },
       "required": [
@@ -51,6 +52,9 @@
       "type": "integer",
       "description": "Maximum number of results to return",
       "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

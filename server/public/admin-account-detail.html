@@ -617,6 +617,24 @@
       background: var(--color-success-100);
       color: var(--color-success-700);
     }
+
+    /* Registry activity table */
+    .registry-activity-table { width: 100%; border-collapse: collapse; }
+    .registry-activity-table th {
+      background: var(--color-gray-50);
+      padding: var(--space-3);
+      text-align: left;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+      font-size: var(--text-sm);
+    }
+    .registry-activity-table td {
+      padding: var(--space-3);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      font-size: var(--text-sm);
+    }
+    .registry-activity-table tr:hover { background: var(--color-gray-50); }
   </style>
 </head>
 <body>
@@ -824,6 +842,14 @@
               <div id="memberInsightsList" class="empty-state">
                 No insights yet
               </div>
+            </div>
+          </div>
+
+          <!-- Registry Activity -->
+          <div class="card" id="registryActivityCard" style="display: none;">
+            <h2 class="collapsible" onclick="toggleSection(this)">Registry activity</h2>
+            <div class="collapsible-content" id="registryActivityContent">
+              <div class="empty-state">Loading...</div>
             </div>
           </div>
 
@@ -1419,6 +1445,7 @@
         // Load additional data asynchronously
         loadAddieResearch();
         loadMemberInsights();
+        loadRegistryActivity();
       } catch (error) {
         console.error('Error loading account:', error);
         document.getElementById('loading').textContent = 'Error loading account';
@@ -2610,6 +2637,74 @@
 
       } catch (error) {
         console.error('Error loading member insights:', error);
+        card.style.display = 'none';
+      }
+    }
+
+    // =========================================================================
+    // Registry Activity
+    // =========================================================================
+
+    async function loadRegistryActivity() {
+      const card = document.getElementById('registryActivityCard');
+      const container = document.getElementById('registryActivityContent');
+
+      try {
+        const response = await fetch(`/api/admin/accounts/${accountId}/registry-activity?limit=20`);
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            card.style.display = 'none';
+            return;
+          }
+          throw new Error('Failed to load registry activity');
+        }
+
+        const data = await response.json();
+
+        if (!data.edits || data.edits.length === 0) {
+          card.style.display = 'none';
+          return;
+        }
+
+        card.style.display = 'block';
+        container.innerHTML = `
+          <table class="registry-activity-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Domain</th>
+                <th>Editor</th>
+                <th>Summary</th>
+                <th>Rev</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.edits.map(edit => {
+                const date = new Date(edit.created_at);
+                const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                const rollback = edit.is_rollback ? ' (rollback)' : '';
+                return `
+                  <tr>
+                    <td>${escapeHtml(edit.entity_type || '')}</td>
+                    <td>${escapeHtml(edit.domain || '')}</td>
+                    <td>${escapeHtml(edit.editor_name || edit.editor_email || '')}</td>
+                    <td>${escapeHtml(edit.edit_summary || '')}</td>
+                    <td>${edit.revision_number ? 'r' + edit.revision_number + rollback : ''}</td>
+                    <td style="white-space: nowrap;">${dateStr}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+          <div style="margin-top: var(--space-3); font-size: var(--text-sm);">
+            <a href="/admin/bans" style="color: var(--color-brand);">Manage bans</a>
+          </div>
+        `;
+
+      } catch (error) {
+        console.error('Error loading registry activity:', error);
         card.style.display = 'none';
       }
     }

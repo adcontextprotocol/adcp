@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/enums/adcp-domain.json",
+  "title": "AdCP Domain",
+  "description": "AdCP protocol domains for task categorization",
+  "type": "string",
+  "enum": ["media-buy", "signals", "governance", "creative"],
+  "enumDescriptions": {
+    "media-buy": "Campaign creation, package management, delivery optimization, and conversion tracking",
+    "signals": "Audience signal discovery and activation",
+    "governance": "Property governance (identity, authorization, data, selection), brand standards, and compliance",
+    "creative": "Creative asset management, format discovery, and rendering"
+  }
+}

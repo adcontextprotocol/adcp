@@ -11,7 +11,17 @@
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
-      }
+      },
+      "minItems": 1
+    },
+    "geo_countries_exclude": {
+      "type": "array",
+      "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
     },
     "geo_regions": {
       "type": "array",
@@ -19,7 +29,17 @@
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
-      }
+      },
+      "minItems": 1
+    },
+    "geo_regions_exclude": {
+      "type": "array",
+      "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      },
+      "minItems": 1
     },
     "geo_metros": {
       "type": "array",
@@ -42,7 +62,32 @@
         },
         "required": ["system", "values"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
+    },
+    "geo_metros_exclude": {
+      "type": "array",
+      "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes to exclude within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     },
     "geo_postal_areas": {
       "type": "array",
@@ -65,7 +110,40 @@
         },
         "required": ["system", "values"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
+    },
+    "geo_postal_areas_exclude": {
+      "type": "array",
+      "description": "Exclude specific postal areas from delivery. Each entry specifies the postal system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes to exclude within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+      "items": {
+        "$ref": "/schemas/core/daypart-target.json"
+      },
+      "minItems": 1
     },
     "axe_include_segment": {
       "type": "string",
@@ -102,7 +180,8 @@
           "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
           "items": {
             "$ref": "/schemas/enums/age-verification-method.json"
-          }
+          },
+          "minItems": 1
         }
       },
       "required": ["min"],

@@ -1,0 +1,160 @@
+---
+title: Quickstart Guide
+description: Get started with AdCP in 5 minutes
+keywords: [adcp quickstart, getting started, adcp tutorial]
+testable: true
+---
+
+Get started with AdCP in 5 minutes using our public test agent.
+
+## Interactive Testing
+
+Try AdCP without writing code: **[testing.adcontextprotocol.org](https://testing.adcontextprotocol.org)**
+
+## Code Examples
+
+Install the client library:
+
+```bash
+npm install @adcp/client  # JavaScript/TypeScript
+pip install adcp          # Python
+```
+
+Discover products from the test agent:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+const result = await testAgent.getProducts({
+  brief: 'Premium athletic footwear with innovative cushioning',
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`✓ Found ${result.data.products.length} matching products`);
+} else if (result.error) {
+  console.log(`Error: ${result.error}`);
+} else {
+  console.log(`Status: ${result.status}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import GetProductsRequest, BrandManifest
+
+async def discover():
+    result = await test_agent.get_products(
+        GetProductsRequest(
+            brand_manifest=BrandManifest(name='Nike', url='https://nike.com'),
+            brief='Premium athletic footwear with innovative cushioning'
+        )
+    )
+
+    # Check for errors (discriminated union response)
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Error: {result.errors}")
+
+    print(f"✓ Found {len(result.products)} matching products")
+
+asyncio.run(discover())
+```
+
+```bash CLI
+# Using npx (JavaScript/Node.js)
+npx @adcp/client \
+  https://test-agent.adcontextprotocol.org/mcp \
+  get_products \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+
+# Or using uvx (Python)
+uvx adcp \
+  https://test-agent.adcontextprotocol.org/mcp \
+  get_products \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
+```
+
+</CodeGroup>
+
+## What's Next?
+
+Now that you've seen basic product discovery, explore:
+
+- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
+- **[Testable Examples](/docs/media-buy/task-reference/get_products)** - Working code examples for all tasks
+- **[Media Buy Lifecycle](/docs/media-buy/media-buys/)** - Full campaign workflow
+- **[Building with AdCP](/docs/building/)** - MCP and A2A integration
+
+## Need Help?
+
+- Try examples at **[testing.adcontextprotocol.org](https://testing.adcontextprotocol.org)**
+- Read the **[Introduction](/docs/intro)** for concepts
+- Check **[Authentication](/docs/building/integration/authentication)** for production setup
+
+## Test Agent Credentials
+
+**Test agent credentials** (free to use):
+- **Agent URL**: `https://test-agent.adcontextprotocol.org/mcp`
+- **Auth token**: `1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ`
+
+## Understanding Authentication
+
+Some operations work without credentials:
+- `get_adcp_capabilities` - Discover agent capabilities
+- `list_creative_formats` - Browse creative formats
+- `get_products` - Discover inventory (limited results)
+
+Most operations require authentication:
+- `get_products` (full results) - Complete catalog with pricing
+- `create_media_buy` - Create campaigns
+- `sync_creatives` - Upload creatives
+- `get_media_buy_delivery` - Monitor performance
+
+[Learn more about authentication →](/docs/building/integration/authentication)
+
+## Getting Production Credentials
+
+To work with real publishers:
+
+1. **Contact the sales agent** - Find contact info via their agent card (`.well-known/agent-card.json`)
+2. **Request credentials** - Most agents provide API keys or JWT tokens
+3. **Store securely** - Never commit credentials to version control
+
+You need separate credentials for each sales agent you work with.
+
+## Protocol Choice
+
+AdCP works over MCP or A2A protocols. The tasks are identical - choose based on your integration:
+
+- **MCP** - For Claude and MCP-compatible clients
+- **A2A** - For Google's agent ecosystem
+
+[Compare protocols →](/docs/building/understanding/protocol-comparison)
+
+## Next Steps
+
+- **[Media Buy Workflow](/docs/media-buy/)** - Create and manage campaigns
+- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
+
+## Common Issues
+
+### "Invalid request parameters" Error
+
+Check that your request includes required fields. Each task has specific requirements.
+
+[See task reference →](/docs/media-buy/task-reference)
+
+### "Unauthorized" Response
+
+Verify:
+- Auth header is included: `Authorization: Bearer <token>`
+- Token is valid and not expired
+- Agent requires authentication for this operation

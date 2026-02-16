@@ -19,16 +19,60 @@
           "minItems": 1
         }
       },
-      "required": ["major_versions"]
+      "required": [
+        "major_versions"
+      ]
     },
     "supported_protocols": {
       "type": "array",
       "description": "Which AdCP domain protocols this seller supports",
       "items": {
         "type": "string",
-        "enum": ["media_buy", "signals", "governance", "sponsored_intelligence", "creative"]
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative"
+        ]
       },
       "minItems": 1
+    },
+    "account": {
+      "type": "object",
+      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "properties": {
+        "require_operator_auth": {
+          "type": "boolean",
+          "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
+          "default": false
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
+        },
+        "supported_billing": {
+          "type": "array",
+          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "items": {
+            "type": "string",
+            "enum": ["brand", "operator", "agent"]
+          },
+          "minItems": 1
+        },
+        "default_billing": {
+          "type": "string",
+          "enum": ["brand", "operator", "agent"],
+          "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
+        },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "default": false
+        }
+      },
+      "required": ["supported_billing"]
     },
     "media_buy": {
       "type": "object",
@@ -161,11 +205,11 @@
                   "properties": {
                     "supported": {
                       "type": "boolean",
-                      "description": "Whether platform supports age restrictions"
+                      "description": "Whether seller supports age restrictions"
                     },
                     "verification_methods": {
                       "type": "array",
-                      "description": "Age verification methods this platform supports",
+                      "description": "Age verification methods this seller supports",
                       "items": {
                         "$ref": "/schemas/enums/age-verification-method.json"
                       }
@@ -174,15 +218,88 @@
                 },
                 "device_platform": {
                   "type": "boolean",
-                  "description": "Whether platform supports device platform targeting (Sec-CH-UA-Platform values)"
+                  "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
                 },
                 "language": {
                   "type": "boolean",
-                  "description": "Whether platform supports language targeting (ISO 639-1 codes)"
+                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
                 }
               }
             }
           }
+        },
+        "conversion_tracking": {
+          "type": "object",
+          "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
+          "properties": {
+            "supported_event_types": {
+              "type": "array",
+              "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
+              "items": {
+                "$ref": "/schemas/enums/event-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for user matching",
+              "items": {
+                "$ref": "/schemas/enums/uid-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_hashed_identifiers": {
+              "type": "array",
+              "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
+              "items": {
+                "type": "string",
+                "enum": ["hashed_email", "hashed_phone"]
+              },
+              "minItems": 1
+            },
+            "supported_action_sources": {
+              "type": "array",
+              "description": "Action sources this seller accepts events from",
+              "items": {
+                "$ref": "/schemas/enums/action-source.json"
+              },
+              "minItems": 1
+            },
+            "attribution_windows": {
+              "type": "array",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via optimization_goal.attribution_window on packages.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "$ref": "/schemas/enums/event-type.json",
+                    "description": "Event type this window applies to, or omit for default window"
+                  },
+                  "click_through": {
+                    "type": "array",
+                    "description": "Available click-through attribution windows (e.g. [\"7d\"], [\"7d\", \"14d\", \"30d\"])",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "view_through": {
+                    "type": "array",
+                    "description": "Available view-through attribution windows (e.g. [\"1d\"], [\"1d\", \"7d\", \"14d\"])",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "click_through"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
         },
         "portfolio": {
           "type": "object",
@@ -223,7 +340,9 @@
               "maxLength": 10000
             }
           },
-          "required": ["publisher_domains"]
+          "required": [
+            "publisher_domains"
+          ]
         }
       }
     },
@@ -271,7 +390,11 @@
               },
               "type": {
                 "type": "string",
-                "enum": ["binary", "quantitative", "categorical"],
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
                 "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
               },
               "range": {
@@ -287,7 +410,10 @@
                     "description": "Maximum value"
                   }
                 },
-                "required": ["min", "max"]
+                "required": [
+                  "min",
+                  "max"
+                ]
               },
               "categories": {
                 "type": "array",
@@ -306,7 +432,10 @@
                 "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
               }
             },
-            "required": ["feature_id", "type"]
+            "required": [
+              "feature_id",
+              "type"
+            ]
           }
         }
       }
@@ -327,7 +456,10 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["mcp", "a2a"],
+                    "enum": [
+                      "mcp",
+                      "a2a"
+                    ],
                     "description": "Protocol transport type"
                   },
                   "url": {
@@ -336,18 +468,26 @@
                     "description": "Agent endpoint URL for this transport"
                   }
                 },
-                "required": ["type", "url"],
+                "required": [
+                  "type",
+                  "url"
+                ],
                 "additionalProperties": true
               },
               "minItems": 1
             },
             "preferred": {
               "type": "string",
-              "enum": ["mcp", "a2a"],
+              "enum": [
+                "mcp",
+                "a2a"
+              ],
               "description": "Preferred transport when host supports multiple"
             }
           },
-          "required": ["transports"]
+          "required": [
+            "transports"
+          ]
         },
         "capabilities": {
           "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
@@ -359,7 +499,21 @@
           "description": "URL to brand manifest with colors, fonts, logos, tone"
         }
       },
-      "required": ["endpoint", "capabilities"]
+      "required": [
+        "endpoint",
+        "capabilities"
+      ]
+    },
+    "creative": {
+      "type": "object",
+      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
+      "properties": {
+        "supports_brief": {
+          "type": "boolean",
+          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
+        }
+      },
+      "additionalProperties": true
     },
     "extensions_supported": {
       "type": "array",
@@ -390,6 +544,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["adcp", "supported_protocols"],
+  "required": [
+    "adcp",
+    "supported_protocols"
+  ],
   "additionalProperties": true
 }

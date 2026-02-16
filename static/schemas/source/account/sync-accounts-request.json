@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/sync-accounts-request.json",
+  "title": "Sync Accounts Request",
+  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates each seat, and the billing model. The seller provisions or links accounts accordingly, returning per-account status. Brands are identified by house domain + brand_id, resolved via /.well-known/brand.json.",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "description": "Advertiser accounts to sync",
+      "items": {
+        "type": "object",
+        "description": "An advertiser account the agent wants to operate on the seller",
+        "properties": {
+          "house": {
+            "type": "string",
+            "description": "House domain where brand.json is hosted (e.g., 'unilever.com', 'acme-corp.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "brand_id": {
+            "type": "string",
+            "description": "Brand ID within the house portfolio (from brand.json). Required when the house has multiple brands (e.g., 'dove' under unilever.com, 'tide' under pg.com). Omit for single-brand houses.",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "operator": {
+            "type": "string",
+            "description": "Domain of the entity operating the seat (e.g., 'groupm.com', 'mindshare.com'). Verified against the brand's authorized_operators in brand.json. Omit if the brand operates its own seat.",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "billing": {
+            "type": "string",
+            "enum": ["brand", "operator", "agent"],
+            "description": "Who should be invoiced. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing across brands. Omit to accept the seller's default."
+          }
+        },
+        "required": ["house"],
+        "additionalProperties": true
+      },
+      "maxItems": 1000
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, accounts previously synced by this agent but not included in this request will be deactivated. Scoped to the authenticated agent — does not affect accounts managed by other agents. Use with caution."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview what would change without applying. Returns what would be created/updated/deactivated."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["accounts"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency syncing multiple advertisers with different billing",
+      "data": {
+        "accounts": [
+          {
+            "house": "unilever.com",
+            "brand_id": "dove",
+            "operator": "mindshare.com",
+            "billing": "brand"
+          },
+          {
+            "house": "pg.com",
+            "brand_id": "tide",
+            "operator": "groupm.com",
+            "billing": "agent"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Brand buying direct, no operator",
+      "data": {
+        "accounts": [
+          {
+            "house": "acme-corp.com",
+            "billing": "brand"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Agent consolidating billing for all advertisers",
+      "data": {
+        "accounts": [
+          {
+            "house": "unilever.com",
+            "brand_id": "dove",
+            "billing": "agent"
+          },
+          {
+            "house": "unilever.com",
+            "brand_id": "axe",
+            "billing": "agent"
+          }
+        ]
+      }
+    }
+  ]
+}

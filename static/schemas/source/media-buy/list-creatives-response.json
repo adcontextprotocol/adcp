@@ -39,47 +39,11 @@
           }
         }
       },
-      "required": [
-        "total_matching",
-        "returned"
-      ],
+      "required": [],
       "additionalProperties": true
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination information for navigating results",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "description": "Maximum number of results requested",
-          "minimum": 1
-        },
-        "offset": {
-          "type": "integer",
-          "description": "Number of results skipped",
-          "minimum": 0
-        },
-        "has_more": {
-          "type": "boolean",
-          "description": "Whether more results are available"
-        },
-        "total_pages": {
-          "type": "integer",
-          "description": "Total number of pages available",
-          "minimum": 0
-        },
-        "current_page": {
-          "type": "integer",
-          "description": "Current page number (1-based)",
-          "minimum": 1
-        }
-      },
-      "required": [
-        "limit",
-        "offset",
-        "has_more"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/pagination-response.json"
     },
     "creatives": {
       "type": "array",
@@ -345,11 +309,8 @@
           }
         },
         "pagination": {
-          "limit": 50,
-          "offset": 0,
           "has_more": false,
-          "total_pages": 1,
-          "current_page": 1
+          "total_count": 3
         },
         "creatives": [
           {
@@ -395,8 +356,6 @@
           "returned": 1
         },
         "pagination": {
-          "limit": 50,
-          "offset": 0,
           "has_more": false
         },
         "creatives": [

@@ -376,7 +376,8 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      packages: [],
+      account_id: 'acc_test_001',
+      packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand_manifest: {
         name: 'Test Brand'
       },
@@ -465,7 +466,8 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      packages: [],
+      account_id: 'acc_test_001',
+      packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand_manifest: {
         name: 'Test Brand'
       },
@@ -494,7 +496,8 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      packages: [],
+      account_id: 'acc_test_001',
+      packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand_manifest: {
         name: 'Test Brand'
       },
@@ -522,7 +525,8 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      packages: [],
+      account_id: 'acc_test_001',
+      packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand_manifest: {
         name: 'Test Brand'
       },

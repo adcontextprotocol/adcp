@@ -5,6 +5,10 @@
   "description": "Request parameters for retrieving content artifacts from a media buy for validation",
   "type": "object",
   "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Filter artifacts to a specific account. When provided, only returns artifacts for media buys belonging to this account. When omitted, returns artifacts across all accessible accounts. Optional if the agent has a single account."
+    },
     "media_buy_id": {
       "type": "string",
       "description": "Media buy to get artifacts from"
@@ -12,6 +16,7 @@
     "package_ids": {
       "type": "array",
       "items": { "type": "string" },
+      "minItems": 1,
       "description": "Filter to specific packages within the media buy"
     },
     "sampling": {
@@ -47,16 +52,23 @@
         }
       }
     },
-    "limit": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 10000,
-      "default": 1000,
-      "description": "Maximum artifacts to return per request"
-    },
-    "cursor": {
-      "type": "string",
-      "description": "Pagination cursor for fetching subsequent pages"
+    "pagination": {
+      "type": "object",
+      "description": "Pagination parameters. Uses higher limits than standard pagination because artifact result sets can be very large.",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "default": 1000,
+          "description": "Maximum number of artifacts to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
     },
     "context": {
       "$ref": "/schemas/core/context.json"

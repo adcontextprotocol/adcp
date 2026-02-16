@@ -64,7 +64,8 @@ You have access to these tools to help users:
 - get_meeting_details: Get meeting details with attendees and RSVP status
 - rsvp_to_meeting: RSVP to a meeting (accepted, declined, tentative)
 - cancel_meeting: Cancel a meeting (sends notices)
-- add_meeting_attendee: Add someone to a meeting by email
+- cancel_meeting_series: Cancel all upcoming meetings in a recurring series
+- add_meeting_attendee: Add a person to a meeting by email (call once per person to add)
 - update_topic_subscriptions: Update meeting topic subscriptions
 
 **Member Profile:**
@@ -93,8 +94,22 @@ When SI agents appear in your context, you can offer direct connections:
 **During Active SI Sessions:**
 When there is an active SI session, use send_to_si_agent for EVERY user message intended for the brand. You are a relay - let the actual SI agent respond.
 
+**Brand Registry:**
+- research_brand: Research a brand by domain (fetches from Brandfetch API). Auto-saves enrichment data to the registry.
+- resolve_brand: Resolve a domain to its canonical brand identity (checks brand.json)
+- save_brand: Add a community brand to the registry by name/domain. Not needed after research_brand (enrichment is auto-saved). Preserves existing enrichment data.
+- list_brands: List brands in the registry with optional filters
+- list_missing_brands: List most-requested brands not yet in the registry
+
 **Content:**
 - list_perspectives: Browse community articles
+
+**API Keys:**
+API key management is done through the member dashboard, not through Addie tools.
+- To create, view, or revoke API keys, direct members to: https://agenticadvertising.org/dashboard/api-keys
+- API keys are used for programmatic access to authenticated registry endpoints (e.g., submitting brands via REST API)
+- Members must be signed in to manage API keys
+- You cannot create or manage API keys on behalf of users - always link them to the dashboard
 
 **Account Linking:**
 - get_account_link: Generate a sign-in link
@@ -132,6 +147,12 @@ This ensures users are notified when their escalated requests are handled.
 - find_membership_products: Find membership product by type/revenue
 - create_payment_link: Generate Stripe checkout URL
 - send_invoice: Send invoice via email`;
+
+/**
+ * Note appended to requestContext when conversation history could not be loaded.
+ * Tells Claude to ask for clarification on ambiguous short messages rather than guessing.
+ */
+export const HISTORY_UNAVAILABLE_NOTE = 'Note: Conversation history could not be loaded. If the user\'s message is short or seems like a confirmation/reply, ask them to clarify what they\'re referring to.';
 
 /**
  * Minimal fallback prompt - used only when database is unavailable.
@@ -192,12 +213,12 @@ export const STATUS_MESSAGES = {
  * Build dynamic suggested prompts based on user context, role, and active goals
  *
  * @param memberContext - User's member context (or null if lookup failed)
- * @param isAdmin - Whether the user has admin privileges
+ * @param isAAOAdmin - Whether the user is an AAO platform admin
  * @returns Array of suggested prompts tailored to the user
  */
 export async function buildDynamicSuggestedPrompts(
   memberContext: MemberContext | null,
-  isAdmin: boolean
+  isAAOAdmin: boolean
 ): Promise<SuggestedPrompt[]> {
   const isMapped = !!memberContext?.workos_user?.workos_user_id;
 
@@ -223,7 +244,7 @@ export async function buildDynamicSuggestedPrompts(
   }
 
   // Admin users get admin-specific suggestions
-  if (isAdmin) {
+  if (isAAOAdmin) {
     return [
       {
         title: 'Pending invoices',

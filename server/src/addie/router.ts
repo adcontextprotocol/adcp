@@ -71,6 +71,8 @@ export interface RoutingContext {
   channelName?: string;
   /** Member insights (what we know about this user from past conversations) */
   memberInsights?: MemberInsight[];
+  /** Whether the user is an AAO platform admin (checked via aao-admin working group) */
+  isAAOAdmin?: boolean;
 }
 
 /**
@@ -153,9 +155,9 @@ export const ROUTING_RULES = {
       description: 'Learning about adagents.json format and setup',
     },
     membership: {
-      patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group'],
+      patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
       tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
-      description: 'AgenticAdvertising.org membership',
+      description: 'AgenticAdvertising.org membership and API key management',
     },
     find_help: {
       patterns: [
@@ -183,6 +185,11 @@ export const ROUTING_RULES = {
       ],
       tools: ['search_members', 'request_introduction'],
       description: 'Find member organizations who can help with specific needs - searching for vendors, partners, consultants',
+    },
+    community_directory: {
+      patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
+      tools: ['get_my_profile', 'update_my_profile'],
+      description: 'Community directory, people profiles, connections, and coffee chats',
     },
     community: {
       patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
@@ -294,12 +301,12 @@ Use these insights to:
  * Build the routing prompt based on context
  */
 function buildRoutingPrompt(ctx: RoutingContext): string {
-  const isAdmin = ctx.memberContext?.org_membership?.role === 'admin';
+  const isAAOAdmin = ctx.isAAOAdmin ?? false;
   const isMember = !!ctx.memberContext?.workos_user?.workos_user_id;
   const isLinked = isMember;
 
   // Build tool SET descriptions - router selects categories, not individual tools
-  const toolSetsSection = getToolSetDescriptionsForRouter(isAdmin);
+  const toolSetsSection = getToolSetDescriptionsForRouter(isAAOAdmin);
 
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
@@ -316,7 +323,7 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
 The user has NOT linked their Slack account to AgenticAdvertising.org.
 - If they ask about membership features, include the "member" tool set`;
   }
-  if (isAdmin) {
+  if (isAAOAdmin) {
     conditionalRules += `
 The user is an ADMIN.
 - They have access to the "admin" tool set for system operations
@@ -328,7 +335,7 @@ The user is an ADMIN.
 ## User Context
 - Source: ${ctx.source}
 - Is member: ${isMember}
-- Is admin: ${isAdmin}
+- Is admin: ${isAAOAdmin}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
 ${insightsSection}
@@ -345,7 +352,7 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 - Testing/validating AdCP agent implementations → ["agent_testing"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
-- Billing, invoices, payment links → ["billing"]
+- Billing, invoices, payment links, resending invoices → ["billing"]
 - Scheduling meetings, calendar → ["meetings"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
@@ -378,7 +385,7 @@ Respond with a JSON object for the execution plan. Choose ONE action:
 
 4. {"action": "respond", "tool_sets": ["set1", "set2"], "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAdmin ? ', admin' : ''}
+   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, meetings${isAAOAdmin ? ', admin' : ''}
    - Empty array [] means respond without tools (general knowledge)
 
 Respond with ONLY the JSON object, no other text.`;

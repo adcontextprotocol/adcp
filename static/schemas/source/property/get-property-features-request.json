@@ -31,21 +31,24 @@
       "description": "Filter to specific property types (e.g., 'website', 'mobile_app', 'ctv_app'). Only applies when using publisher_domain.",
       "items": {
         "$ref": "/schemas/enums/property-type.json"
-      }
+      },
+      "minItems": 1
     },
     "property_tags": {
       "type": "array",
       "description": "Filter to properties with these tags. Only applies when using publisher_domain.",
       "items": {
         "$ref": "/schemas/core/property-tag.json"
-      }
+      },
+      "minItems": 1
     },
     "feature_ids": {
       "type": "array",
       "description": "Optional filter to specific features. If omitted, returns all available features.",
       "items": {
         "type": "string"
-      }
+      },
+      "minItems": 1
     },
     "context": {
       "$ref": "/schemas/core/context.json"

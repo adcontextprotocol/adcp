@@ -24,6 +24,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
 import type { AddieTool } from '../addie/types.js';
+import type { MCPAuthContext } from './auth.js';
 
 // Knowledge tools (for initialization check only - not exposed directly)
 import {
@@ -80,13 +81,13 @@ export function getAllTools() {
  * - Directory tools (list_members, list_agents, etc.)
  */
 function createAllHandlers() {
-  const handlers = new Map<string, (args: Record<string, unknown>) => Promise<unknown>>();
+  const handlers = new Map<string, (args: Record<string, unknown>, authContext?: MCPAuthContext) => Promise<unknown>>();
 
   // Directory tool handlers use the existing MCPToolHandler
   const directoryHandler = new MCPToolHandler();
   for (const tool of TOOL_DEFINITIONS) {
-    handlers.set(tool.name, async (args) => {
-      return directoryHandler.handleToolCall(tool.name, args);
+    handlers.set(tool.name, async (args, auth) => {
+      return directoryHandler.handleToolCall(tool.name, args, auth);
     });
   }
 
@@ -106,7 +107,7 @@ function createAllHandlers() {
  * MCP Server instance with lazy initialization
  */
 let serverInstance: {
-  handlers: Map<string, (args: Record<string, unknown>) => Promise<unknown>>;
+  handlers: Map<string, (args: Record<string, unknown>, authContext?: MCPAuthContext) => Promise<unknown>>;
   directoryHandler: MCPToolHandler;
 } | null = null;
 
@@ -124,7 +125,7 @@ function getHandlers() {
  * - chat_with_addie: Conversational AI with knowledge + directory access
  * - Directory tools: Programmatic lookup of members, agents, publishers
  */
-export function createUnifiedMCPServer(): Server {
+export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
   const server = new Server(
     {
       name: 'addie',
@@ -162,7 +163,7 @@ export function createUnifiedMCPServer(): Server {
     }
 
     try {
-      const result = await handler(args as Record<string, unknown> || {});
+      const result = await handler(args as Record<string, unknown> || {}, authContext);
       return result as {
         content: Array<{ type: string; text?: string; resource?: { uri: string; mimeType: string; text: string } }>;
         isError?: boolean;

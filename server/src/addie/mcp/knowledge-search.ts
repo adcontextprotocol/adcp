@@ -203,10 +203,11 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
       'A2A (Google Agent-to-Agent protocol and samples), ' +
       'MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), ' +
       'IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), ' +
-      'Prebid (Prebid.js, Prebid Server), and LangGraph. ' +
+      'Prebid (full documentation site with configuration guides, bidder adapter docs, ad ops workflows, GAM integration, troubleshooting, Prebid Mobile, and video; plus Prebid.js source with module docs, and Prebid Server source), ' +
+      'and LangGraph. ' +
       'Use this for protocol details, spec comparisons, implementation examples, and SDK usage.',
     usage_hints:
-      'use for: OpenRTB questions, A2A protocol, MCP implementation, IAB specs, Prebid, TCF/GPP consent, UID2, salesagent setup, SDK usage',
+      'use for: OpenRTB questions, A2A protocol, MCP implementation, IAB specs, Prebid configuration/adapters/troubleshooting/GAM, TCF/GPP consent, UID2, salesagent setup, SDK usage',
     input_schema: {
       type: 'object',
       properties: {
@@ -217,7 +218,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         repo_id: {
           type: 'string',
           description:
-            'Optional filter to search only a specific repo: adcp, salesagent, signals-agent, adcp-client, adcp-client-python, a2a, a2a-samples, mcp-spec, mcp-typescript-sdk, mcp-python-sdk, mcp-servers, iab-artf, iab-ucp, iab-openrtb2, iab-openrtb3, iab-adcom, iab-opendirect, iab-gpp, iab-tcf, iab-usprivacy, iab-uid2-docs, iab-vast, iab-adscert, prebid-js, prebid-server, langgraph',
+            'Optional filter to search only a specific repo: adcp, salesagent, signals-agent, adcp-client, adcp-client-python, a2a, a2a-samples, mcp-spec, mcp-typescript-sdk, mcp-python-sdk, mcp-servers, iab-artf, iab-ucp, iab-openrtb2, iab-openrtb3, iab-adcom, iab-opendirect, iab-gpp, iab-tcf, iab-usprivacy, iab-uid2-docs, iab-vast, iab-adscert, prebid-js, prebid-server, prebid-docs, langgraph',
         },
         limit: {
           type: 'number',

@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-brief.json",
+  "title": "Creative Brief",
+  "description": "Campaign-level creative context for AI-powered creative generation. Provides the layer between brand identity (stable across campaigns) and individual creative execution (per-request). A brand has one brand manifest but different creative briefs for each campaign or flight.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Campaign or flight name for identification"
+    },
+    "objective": {
+      "type": "string",
+      "enum": ["awareness", "consideration", "conversion", "retention", "engagement"],
+      "description": "Campaign objective that guides creative tone and call-to-action strategy"
+    },
+    "tone": {
+      "type": "string",
+      "description": "Desired tone for this campaign, modulating the brand's base tone (e.g., 'playful and festive', 'premium and aspirational')"
+    },
+    "audience": {
+      "type": "string",
+      "description": "Target audience description for this campaign"
+    },
+    "territory": {
+      "type": "string",
+      "description": "Creative territory or positioning the campaign should occupy"
+    },
+    "messaging": {
+      "type": "object",
+      "description": "Messaging framework for the campaign",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "description": "Primary headline"
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Supporting tagline or sub-headline"
+        },
+        "cta": {
+          "type": "string",
+          "description": "Call-to-action text"
+        },
+        "key_messages": {
+          "type": "array",
+          "description": "Key messages to communicate in priority order",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "reference_assets": {
+      "type": "array",
+      "description": "Visual and strategic reference materials such as mood boards, product shots, example creatives, and strategy documents",
+      "items": {
+        "$ref": "/schemas/core/reference-asset.json"
+      }
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": true
+}

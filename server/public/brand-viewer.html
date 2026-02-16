@@ -1,0 +1,1948 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brand Viewer - AgenticAdvertising.org</title>
+    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/design-system.css">
+    <style>
+      body {
+        font-family: var(--font-sans);
+        line-height: var(--leading-normal);
+        color: var(--color-text);
+        margin: 0;
+        padding: 60px 0 0 0;
+        min-height: 100vh;
+      }
+
+      /* Brand tabs */
+      .brand-tabs {
+        display: flex;
+        gap: var(--space-2);
+        margin-bottom: var(--space-8);
+        flex-wrap: wrap;
+      }
+
+      .brand-tab {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-5);
+        border: var(--border-2) solid var(--color-border);
+        border-radius: var(--radius-full);
+        background: var(--color-bg-card);
+        cursor: pointer;
+        font-size: var(--text-sm);
+        font-weight: var(--font-medium);
+        color: var(--color-text-secondary);
+        transition: var(--transition-all);
+      }
+
+      .brand-tab:hover {
+        border-color: var(--color-brand);
+        color: var(--color-brand);
+      }
+
+      .brand-tab.active {
+        background: var(--color-brand);
+        border-color: var(--color-brand);
+        color: white;
+      }
+
+      .brand-tab.active .keller-badge {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+      }
+
+      .keller-badge {
+        font-size: var(--text-xs);
+        padding: var(--space-0.5) var(--space-2);
+        border-radius: var(--radius-full);
+        background: var(--color-gray-100);
+        color: var(--color-text-muted);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+      }
+
+      /* Section headings */
+      .section-heading {
+        font-size: var(--text-xl);
+        font-weight: var(--font-bold);
+        color: var(--color-text-heading);
+        margin-bottom: var(--space-5);
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+      }
+
+      .section-heading .section-icon {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%);
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--text-base);
+        flex-shrink: 0;
+      }
+
+      .viewer-section {
+        margin-bottom: var(--space-8);
+      }
+
+      /* Hierarchy */
+      .hierarchy-tree {
+        padding: var(--space-4);
+      }
+
+      .hierarchy-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+        font-size: var(--text-sm);
+      }
+
+      .hierarchy-children {
+        margin-left: var(--space-8);
+        border-left: var(--border-2) solid var(--color-primary-200);
+        padding-left: var(--space-4);
+      }
+
+      .hierarchy-item .brand-name {
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+      }
+
+      /* Logo grid */
+      .logo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: var(--space-6);
+      }
+
+      .logo-card {
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+      }
+
+      .logo-previews {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .logo-previews-single {
+        grid-template-columns: 1fr;
+      }
+
+      .logo-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-6);
+        min-height: 120px;
+      }
+
+      .logo-preview-light {
+        background: var(--color-surface);
+      }
+
+      .logo-preview-dark {
+        background: var(--color-gray-900);
+      }
+
+      .logo-preview img {
+        max-width: 100%;
+        max-height: 80px;
+        object-fit: contain;
+      }
+
+      .logo-meta {
+        padding: var(--space-4);
+        border-top: 1px solid var(--color-border);
+      }
+
+      .logo-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        margin-bottom: var(--space-3);
+      }
+
+      .logo-tag {
+        font-size: var(--text-xs);
+        padding: var(--space-0.5) var(--space-2);
+        border-radius: var(--radius-full);
+        background: var(--color-primary-100);
+        color: var(--color-brand);
+        font-weight: var(--font-medium);
+      }
+
+      .logo-dimensions {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-3);
+      }
+
+      .logo-actions {
+        display: flex;
+        gap: var(--space-2);
+      }
+
+      /* Color palette */
+      .color-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+      }
+
+      .color-swatch {
+        cursor: pointer;
+        text-align: center;
+        transition: var(--transition-all);
+      }
+
+      .color-swatch:hover {
+        transform: translateY(-2px);
+      }
+
+      .swatch-block {
+        width: 80px;
+        height: 80px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        margin-bottom: var(--space-2);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .swatch-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+        text-transform: capitalize;
+        margin-bottom: var(--space-0.5);
+      }
+
+      .swatch-hex {
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        font-family: var(--font-mono);
+      }
+
+      .copied-toast {
+        font-size: var(--text-xs);
+        color: var(--color-success-600);
+        font-weight: var(--font-semibold);
+      }
+
+      /* Typography section */
+      .font-display {
+        padding: var(--space-4);
+      }
+
+      .font-item {
+        margin-bottom: var(--space-4);
+      }
+
+      .font-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+
+      .font-value {
+        font-size: var(--text-lg);
+        color: var(--color-text-heading);
+      }
+
+      /* Brand voice */
+      .voice-descriptor {
+        font-size: var(--text-lg);
+        font-style: italic;
+        color: var(--color-brand);
+        margin-bottom: var(--space-4);
+        line-height: var(--leading-snug);
+      }
+
+      .voice-attributes {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-bottom: var(--space-6);
+      }
+
+      .voice-attribute {
+        display: inline-block;
+        padding: var(--space-1) var(--space-3);
+        border-radius: var(--radius-full);
+        background: var(--color-primary-100);
+        color: var(--color-brand);
+        font-size: var(--text-sm);
+        font-weight: var(--font-medium);
+      }
+
+      .voice-guidelines {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: var(--space-4);
+      }
+
+      .voice-dos {
+        background: var(--color-success-50);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+      }
+
+      .voice-donts {
+        background: var(--color-error-50);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+      }
+
+      .voice-guidelines-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        margin-bottom: var(--space-3);
+      }
+
+      .voice-dos .voice-guidelines-label {
+        color: var(--color-success-700);
+      }
+
+      .voice-donts .voice-guidelines-label {
+        color: var(--color-error-700);
+      }
+
+      .voice-guidelines-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      .voice-guidelines-list li {
+        font-size: var(--text-sm);
+        padding: var(--space-1) 0;
+        line-height: var(--leading-relaxed);
+      }
+
+      .voice-dos .voice-guidelines-list li {
+        color: var(--color-success-700);
+      }
+
+      .voice-donts .voice-guidelines-list li {
+        color: var(--color-error-700);
+      }
+
+      /* Brand info */
+      .brand-tagline {
+        font-size: var(--text-2xl);
+        font-style: italic;
+        color: var(--color-brand);
+        margin-bottom: var(--space-4);
+        line-height: var(--leading-snug);
+      }
+
+      .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: var(--space-4);
+      }
+
+      .info-item {
+        padding: var(--space-4);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
+      }
+
+      .info-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+
+      .info-value {
+        font-size: var(--text-sm);
+        color: var(--color-text-heading);
+      }
+
+      /* Properties table */
+      .properties-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: var(--text-sm);
+      }
+
+      .properties-table th {
+        text-align: left;
+        padding: var(--space-3) var(--space-4);
+        border-bottom: var(--border-2) solid var(--color-border);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-muted);
+        font-size: var(--text-xs);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+      }
+
+      .properties-table td {
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        color: var(--color-text-heading);
+      }
+
+      .property-type-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        padding: var(--space-0.5) var(--space-2);
+        border-radius: var(--radius-full);
+        background: var(--color-gray-100);
+        color: var(--color-gray-600);
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+      }
+
+      .primary-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        background: var(--color-success-500);
+      }
+
+      /* Contact card */
+      .contact-card {
+        display: flex;
+        align-items: center;
+        gap: var(--space-6);
+        flex-wrap: wrap;
+      }
+
+      .contact-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+      }
+
+      .contact-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+      }
+
+      .contact-value {
+        font-size: var(--text-sm);
+        color: var(--color-text-heading);
+      }
+
+      .contact-value a {
+        color: var(--color-brand);
+        text-decoration: none;
+      }
+
+      .contact-value a:hover {
+        text-decoration: underline;
+      }
+
+      /* Raw JSON */
+      .json-toggle {
+        width: 100%;
+        cursor: pointer;
+      }
+
+      .json-toggle summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-secondary);
+        padding: var(--space-3);
+      }
+
+      .json-toggle summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .json-toggle summary::before {
+        content: '\25B6';
+        font-size: var(--text-xs);
+        transition: transform var(--duration-normal);
+      }
+
+      .json-toggle[open] summary::before {
+        transform: rotate(90deg);
+      }
+
+      .json-container {
+        position: relative;
+        margin-top: var(--space-2);
+      }
+
+      .json-pre {
+        background: var(--color-gray-900);
+        color: var(--color-gray-100);
+        padding: var(--space-5);
+        border-radius: var(--radius-lg);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        line-height: var(--leading-relaxed);
+        max-height: 400px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+
+      .json-copy-btn {
+        position: absolute;
+        top: var(--space-2);
+        right: var(--space-2);
+      }
+
+      /* Loading / Error states */
+      .loading-state {
+        text-align: center;
+        padding: var(--space-16) 0;
+        color: var(--color-text-muted);
+      }
+
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--color-border);
+        border-top-color: var(--color-brand);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto var(--space-4);
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .error-state {
+        text-align: center;
+        padding: var(--space-12) 0;
+      }
+
+      .error-icon {
+        font-size: var(--text-4xl);
+        margin-bottom: var(--space-4);
+      }
+
+      .error-state h2 {
+        color: var(--color-text-heading);
+        margin-bottom: var(--space-2);
+      }
+
+      .error-state p {
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-6);
+      }
+
+      /* Edit form */
+      .edit-form-card {
+        background: var(--color-bg-card);
+        border: var(--border-2) solid var(--color-brand);
+        border-radius: var(--radius-xl);
+        padding: var(--space-6);
+        margin-bottom: var(--space-8);
+      }
+
+      .edit-form-header {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        margin-bottom: var(--space-5);
+        padding-bottom: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .edit-form-header h3 {
+        font-size: var(--text-lg);
+        font-weight: var(--font-bold);
+        color: var(--color-text-heading);
+        margin: 0;
+      }
+
+      .edit-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-4);
+      }
+
+      .edit-form-field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+      }
+
+      .edit-form-field--full {
+        grid-column: 1 / -1;
+      }
+
+      .edit-form-label {
+        font-size: var(--text-sm);
+        font-weight: var(--font-semibold);
+        color: var(--color-text-heading);
+      }
+
+      .edit-form-input {
+        padding: 8px 12px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-bg-card);
+        transition: border-color var(--duration-normal) var(--ease-in-out);
+      }
+
+      .edit-form-input:focus {
+        outline: none;
+        border-color: var(--color-brand);
+        box-shadow: 0 0 0 3px var(--color-primary-100);
+      }
+
+      .edit-form-input::placeholder {
+        color: var(--color-text-muted);
+      }
+
+      select.edit-form-input {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 4l3 3 3-3'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: var(--space-8);
+        cursor: pointer;
+      }
+
+      .edit-form-actions {
+        display: flex;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
+        padding-top: var(--space-4);
+        border-top: 1px solid var(--color-border);
+      }
+
+      .edit-colors-row {
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+        margin-bottom: var(--space-2);
+      }
+
+      .edit-colors-row input[type="text"] {
+        padding: 6px 10px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        font-family: inherit;
+        color: var(--color-text);
+        background: var(--color-bg-card);
+        transition: border-color var(--duration-normal) var(--ease-in-out);
+      }
+
+      .edit-colors-row input[type="text"]:focus {
+        outline: none;
+        border-color: var(--color-brand);
+        box-shadow: 0 0 0 3px var(--color-primary-100);
+      }
+
+      .edit-colors-row input[type="color"] {
+        width: 40px;
+        height: 32px;
+        padding: 2px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        background: var(--color-bg-card);
+      }
+
+      .edit-color-remove {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: var(--text-lg);
+        padding: 0 4px;
+        line-height: 1;
+        transition: color var(--duration-normal) var(--ease-in-out);
+      }
+
+      .edit-color-remove:hover {
+        color: var(--color-error-500);
+      }
+
+      /* Community brand info grid */
+      .community-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: var(--space-4);
+        margin-top: var(--space-4);
+      }
+
+      .community-info-item {
+        padding: var(--space-3);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
+      }
+
+      .community-info-label {
+        font-size: var(--text-xs);
+        font-weight: var(--font-semibold);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-wide);
+        color: var(--color-text-muted);
+        margin-bottom: var(--space-1);
+      }
+
+      .community-info-value {
+        font-size: var(--text-sm);
+        color: var(--color-text-heading);
+      }
+
+      .community-info-value--muted {
+        color: var(--color-text-muted);
+        font-style: italic;
+      }
+
+      .community-color-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-1);
+      }
+
+      .community-color-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
+        font-size: var(--text-xs);
+        color: var(--color-text-secondary);
+      }
+
+      .community-color-dot {
+        width: 20px;
+        height: 20px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--color-border);
+        flex-shrink: 0;
+      }
+
+      .community-empty-message {
+        padding: var(--space-4);
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-lg);
+        border: 1px dashed var(--color-border);
+        text-align: center;
+        margin-top: var(--space-4);
+      }
+
+      .community-empty-message p {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        line-height: var(--leading-relaxed);
+        margin: 0;
+      }
+
+      @media (max-width: 640px) {
+        .edit-form-grid {
+          grid-template-columns: 1fr;
+        }
+        .community-info-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .hidden { display: none; }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .logo-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .info-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .swatch-block {
+          width: 60px;
+          height: 60px;
+        }
+
+        .brand-tabs {
+          flex-direction: column;
+        }
+
+        .contact-card {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <!-- Hero -->
+    <section class="hero hero--article" id="hero-section">
+      <div class="hero-container">
+        <div class="hero-breadcrumb">
+          <a href="/brand">brand.json</a> &rsaquo; Brand Viewer
+        </div>
+        <h1 id="hero-title">Brand Viewer</h1>
+        <p class="hero-subtitle" id="hero-subtitle">Loading brand data...</p>
+      </div>
+    </section>
+
+    <!-- Main content -->
+    <div class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-16);">
+      <!-- Loading state -->
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Fetching brand.json...</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="error-state hidden">
+        <div class="error-icon">&#9888;</div>
+        <h2 id="error-title">Brand not found</h2>
+        <p id="error-message">Could not load brand data for this domain.</p>
+        <a href="/brand" class="btn btn-primary">Go to brand.json Builder</a>
+      </div>
+
+      <!-- Community brand summary (shown when brand.json fails but discovered brand exists) -->
+      <div id="community-brand-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="card" style="padding: var(--space-6);">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+            <div>
+              <h2 id="community-brand-name" style="margin-bottom: var(--space-1);"></h2>
+              <span id="community-brand-domain" style="color: var(--color-text-muted); font-size: var(--text-sm);"></span>
+            </div>
+            <div style="display: flex; gap: var(--space-2); align-items: center;">
+              <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full);">Community contributed</span>
+              <button id="edit-brand-btn" class="hidden" onclick="showEditForm()" style="padding: 4px 12px; font-size: var(--text-xs); font-weight: var(--font-semibold); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-all);">Edit</button>
+            </div>
+          </div>
+          <div id="community-brand-details"></div>
+        </div>
+      </div>
+
+      <!-- Edit form (shown when Edit button is clicked) -->
+      <div id="edit-form-section" class="hidden">
+        <div class="edit-form-card">
+          <div class="edit-form-header">
+            <span class="section-icon" style="width: 28px; height: 28px; font-size: var(--text-sm); background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-500) 100%); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center;">&#9998;</span>
+            <h3>Edit brand details</h3>
+          </div>
+          <div class="edit-form-grid">
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-brand-name">Brand name</label>
+              <input type="text" id="edit-brand-name" class="edit-form-input" placeholder="Brand name">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-industry">Industry</label>
+              <input type="text" id="edit-industry" class="edit-form-input" placeholder="e.g. technology, retail, finance">
+            </div>
+            <div class="edit-form-field edit-form-field--full">
+              <label class="edit-form-label" for="edit-description">Description</label>
+              <textarea id="edit-description" class="edit-form-input" rows="3" placeholder="Brief description of the brand"></textarea>
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-tone">Tone</label>
+              <input type="text" id="edit-tone" class="edit-form-input" placeholder="e.g. professional, friendly, bold">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-house-domain">House domain</label>
+              <input type="text" id="edit-house-domain" class="edit-form-input" placeholder="e.g. parent-company.com">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-keller-type">Architecture</label>
+              <select id="edit-keller-type" class="edit-form-input">
+                <option value="">(none)</option>
+                <option value="master">Master</option>
+                <option value="sub_brand">Sub-brand</option>
+                <option value="endorsed">Endorsed</option>
+                <option value="independent">Independent</option>
+              </select>
+            </div>
+            <div class="edit-form-field edit-form-field--full">
+              <label class="edit-form-label">Colors</label>
+              <div id="edit-colors-container"></div>
+              <button type="button" onclick="addColorField('', '')" class="btn btn-sm btn-ghost" style="width: fit-content; margin-top: var(--space-1);">+ Add Color</button>
+            </div>
+            <div class="edit-form-field edit-form-field--full" style="margin-top: var(--space-2);">
+              <label class="edit-form-label" for="edit-summary">Edit summary <span style="color: var(--color-error-500);">*</span></label>
+              <textarea id="edit-summary" class="edit-form-input" rows="2" placeholder="Describe your changes (required)" required></textarea>
+            </div>
+          </div>
+          <div class="edit-form-actions">
+            <button id="save-edit-btn" class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+            <button class="btn btn-ghost" onclick="hideEditForm()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revision History (shown for community/enriched brands, outside brand-content so it survives error state) -->
+      <div id="history-section" class="hidden" style="margin-bottom: var(--space-8);">
+        <div class="section-heading" style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4);">
+          <span class="section-icon">&#128196;</span>
+          <span style="font-size: var(--text-lg); font-weight: var(--font-semibold);">Revision history</span>
+        </div>
+        <div class="card" style="padding: var(--space-4);">
+          <div id="revisions-list"></div>
+        </div>
+      </div>
+
+      <!-- Brand content -->
+      <div id="brand-content" class="hidden">
+        <!-- Hierarchy -->
+        <div id="hierarchy-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#127970;</span>
+            Brand hierarchy
+          </div>
+          <div class="card">
+            <div id="hierarchy-tree" class="hierarchy-tree"></div>
+          </div>
+        </div>
+
+        <!-- Brand tabs (for multi-brand portfolios) -->
+        <div id="brand-tabs" class="brand-tabs hidden"></div>
+
+        <!-- Logos -->
+        <div id="logos-section" class="viewer-section hidden">
+          <div class="section-heading" style="justify-content: space-between;">
+            <span style="display:flex;align-items:center;gap:var(--space-3);">
+              <span class="section-icon">&#127912;</span>
+              Logos
+            </span>
+            <button class="btn btn-sm btn-ghost" id="download-all-btn" onclick="downloadAllLogos()">Download all</button>
+          </div>
+          <div id="logo-grid" class="logo-grid"></div>
+        </div>
+
+        <!-- Colors -->
+        <div id="colors-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#127912;</span>
+            Color palette
+          </div>
+          <div class="card">
+            <div id="color-grid" class="color-grid"></div>
+          </div>
+        </div>
+
+        <!-- Typography -->
+        <div id="typography-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#65;&#65;</span>
+            Typography
+          </div>
+          <div class="card">
+            <div id="font-display" class="font-display"></div>
+          </div>
+        </div>
+
+        <!-- Brand Info -->
+        <div id="brand-info-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#128172;</span>
+            Brand info
+          </div>
+          <div id="brand-info-content"></div>
+        </div>
+
+        <!-- Properties -->
+        <div id="properties-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#127760;</span>
+            Digital properties
+          </div>
+          <div class="card" style="padding:0;overflow:hidden;">
+            <table class="properties-table" id="properties-table"></table>
+          </div>
+        </div>
+
+        <!-- Contact -->
+        <div id="contact-section" class="viewer-section hidden">
+          <div class="section-heading">
+            <span class="section-icon">&#128231;</span>
+            Contact
+          </div>
+          <div class="card">
+            <div id="contact-content" class="contact-card"></div>
+          </div>
+        </div>
+
+        <!-- Raw JSON -->
+        <div class="viewer-section">
+          <details class="json-toggle card">
+            <summary>View raw brand.json</summary>
+            <div class="json-container">
+              <button class="btn btn-sm btn-ghost json-copy-btn" onclick="copyRawJson()">Copy JSON</button>
+              <pre class="json-pre" id="raw-json"></pre>
+            </div>
+          </details>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div id="adcp-footer"></div>
+
+    <script>
+      // State
+      let brandData = null;
+      let currentBrandId = null;
+      let currentEditStatus = null;
+      let currentDomain = '';
+
+      function escapeHtml(str) {
+        if (str == null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+      }
+
+      function escapeAttr(str) {
+        if (str == null) return '';
+        return escapeHtml(String(str)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function isSafeUrl(url) {
+        try {
+          const parsed = new URL(url, window.location.origin);
+          return ['http:', 'https:'].includes(parsed.protocol);
+        } catch {
+          return false;
+        }
+      }
+
+      function safeHex(hex) {
+        return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : '#cccccc';
+      }
+
+      function safeFontFamily(name) {
+        return String(name).replace(/[;"'<>&]/g, '');
+      }
+
+      function showEditForm() {
+        const form = document.getElementById('edit-form-section');
+        form.classList.remove('hidden');
+        document.getElementById('edit-brand-btn').classList.add('hidden');
+
+        // Pre-fill form from currentEditStatus
+        const manifest = currentEditStatus?.brand_manifest || {};
+        document.getElementById('edit-brand-name').value = currentEditStatus?.brand_name || '';
+        document.getElementById('edit-description').value = manifest.description || '';
+        document.getElementById('edit-industry').value = manifest.industry || '';
+        document.getElementById('edit-tone').value = manifest.tone || '';
+        document.getElementById('edit-house-domain').value = currentEditStatus?.house_domain || '';
+        document.getElementById('edit-keller-type').value = currentEditStatus?.keller_type || '';
+
+        // Pre-fill colors
+        const colorsContainer = document.getElementById('edit-colors-container');
+        colorsContainer.innerHTML = '';
+        if (manifest.colors && typeof manifest.colors === 'object') {
+          Object.entries(manifest.colors).forEach(([name, hex]) => {
+            addColorField(name, hex);
+          });
+        }
+
+        // Scroll form into view
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      function hideEditForm() {
+        document.getElementById('edit-form-section').classList.add('hidden');
+        document.getElementById('edit-brand-btn').classList.remove('hidden');
+      }
+
+      function addColorField(name, hex) {
+        const container = document.getElementById('edit-colors-container');
+        const row = document.createElement('div');
+        row.className = 'edit-colors-row';
+        row.innerHTML = `
+          <input type="text" value="${escapeAttr(name || '')}" placeholder="Color name" style="flex: 1;" class="color-name-input">
+          <input type="color" value="${(hex && /^#[0-9A-Fa-f]{6}$/.test(String(hex))) ? hex : '#000000'}" class="color-hex-input">
+          <input type="text" value="${escapeAttr(hex || '')}" placeholder="#000000" style="width: 90px; font-family: var(--font-mono);" class="color-text-input">
+          <button type="button" onclick="this.parentElement.remove()" class="edit-color-remove" title="Remove color">&times;</button>
+        `;
+        // Sync color picker with text input
+        const colorInput = row.querySelector('.color-hex-input');
+        const textInput = row.querySelector('.color-text-input');
+        colorInput.addEventListener('input', () => { textInput.value = colorInput.value; });
+        textInput.addEventListener('input', () => {
+          if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) colorInput.value = textInput.value;
+        });
+        container.appendChild(row);
+      }
+
+      async function saveEdit() {
+        const editSummary = document.getElementById('edit-summary').value.trim();
+        if (!editSummary) {
+          alert('Edit summary is required');
+          return;
+        }
+
+        const saveBtn = document.getElementById('save-edit-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        // Collect colors
+        const colors = {};
+        document.querySelectorAll('#edit-colors-container > div').forEach(row => {
+          const name = row.querySelector('.color-name-input').value.trim();
+          const hex = row.querySelector('.color-text-input').value.trim();
+          if (name && hex) colors[name] = hex;
+        });
+
+        // Build payload
+        const body = {
+          edit_summary: editSummary,
+          brand_name: document.getElementById('edit-brand-name').value.trim() || undefined,
+          house_domain: document.getElementById('edit-house-domain').value.trim() || undefined,
+          keller_type: document.getElementById('edit-keller-type').value || undefined,
+          brand_manifest: {
+            ...(currentEditStatus?.brand_manifest || {}),
+            description: document.getElementById('edit-description').value.trim() || undefined,
+            industry: document.getElementById('edit-industry').value.trim() || undefined,
+            tone: document.getElementById('edit-tone').value.trim() || undefined,
+          }
+        };
+
+        // Only include colors if user added any
+        if (Object.keys(colors).length > 0) {
+          body.brand_manifest.colors = colors;
+        }
+
+        // Clean undefined values from manifest
+        Object.keys(body.brand_manifest).forEach(k => {
+          if (body.brand_manifest[k] === undefined) delete body.brand_manifest[k];
+        });
+        if (Object.keys(body.brand_manifest).length === 0) delete body.brand_manifest;
+
+        try {
+          const resp = await fetch(`/api/brands/discovered/${encodeURIComponent(currentDomain)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+
+          if (!resp.ok) {
+            const err = await resp.json();
+            alert(err.error || 'Failed to save');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+            return;
+          }
+
+          // Reload page to show updated data
+          window.location.reload();
+        } catch (err) {
+          alert('Failed to save: ' + err.message);
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save Changes';
+        }
+      }
+
+      async function init() {
+        const pathParts = window.location.pathname.split('/');
+        // /brand/view/domain.com → domain is everything after /brand/view/
+        const domain = pathParts.slice(3).join('/');
+
+        if (!domain) {
+          showError('No domain specified', 'Please provide a domain in the URL, e.g. /brand/view/agenticadvertising.org');
+          return;
+        }
+
+        document.getElementById('hero-subtitle').textContent = domain;
+
+        let brandJsonLoaded = false;
+        try {
+          const resp = await fetch(`/api/brands/brand-json?domain=${encodeURIComponent(domain)}`);
+          if (resp.ok) {
+            const result = await resp.json();
+            brandData = result.data;
+
+            if (result.variant === 'house_redirect') {
+              const houseDomain = typeof brandData.house === 'string' ? brandData.house : brandData.house?.domain;
+              showError(
+                `${escapeHtml(domain)} redirects to ${escapeHtml(houseDomain)}`,
+                `This domain's brand.json is a house redirect.`
+              );
+              const link = document.createElement('a');
+              link.href = `/brand/view/${encodeURIComponent(houseDomain)}`;
+              link.className = 'btn btn-primary';
+              link.style.marginTop = 'var(--space-4)';
+              link.textContent = `View ${houseDomain} Brand`;
+              document.getElementById('error-state').appendChild(link);
+            } else if (result.variant === 'authoritative_location') {
+              showError(
+                `${escapeHtml(domain)} redirects to another location`,
+                `Authoritative brand.json is at: ${escapeHtml(brandData.authoritative_location)}`
+              );
+            } else {
+              brandJsonLoaded = true;
+              renderBrandData(result);
+            }
+          }
+        } catch (err) {
+          // brand.json fetch failed - will try community brand fallback below
+        }
+
+        // Always try loading revision history (works for community brands even without brand.json)
+        const hasCommunityData = await loadRevisionHistory(domain);
+
+        // If brand.json didn't load but we have community data, hide the error
+        if (!brandJsonLoaded && hasCommunityData) {
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('error-state').classList.add('hidden');
+        } else if (!brandJsonLoaded && !hasCommunityData) {
+          showError(
+            `Could not load brand data for ${escapeHtml(domain)}`,
+            'Brand not found or invalid'
+          );
+        }
+      }
+
+      function showError(title, message) {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+        document.getElementById('error-title').textContent = title;
+        document.getElementById('error-message').textContent = message;
+      }
+
+      function renderBrandData(result) {
+        const data = result.data;
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('brand-content').classList.remove('hidden');
+
+        // Update hero
+        const house = data.house;
+        if (house && typeof house === 'object') {
+          document.getElementById('hero-title').textContent = house.name || house.domain;
+          document.getElementById('hero-subtitle').textContent = house.domain || '';
+        }
+
+        // Render raw JSON
+        document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+
+        const brands = data.brands || [];
+        if (brands.length === 0) {
+          // Brand agent or simple format — show what we have
+          if (data.brand_agent) {
+            document.getElementById('brand-info-section').classList.remove('hidden');
+            document.getElementById('brand-info-content').innerHTML = `
+              <div class="card">
+                <div class="info-grid">
+                  <div class="info-item">
+                    <div class="info-label">Brand agent URL</div>
+                    <div class="info-value">${isSafeUrl(data.brand_agent.url) ? `<a href="${escapeAttr(data.brand_agent.url)}" target="_blank">${escapeHtml(data.brand_agent.url)}</a>` : escapeHtml(data.brand_agent.url)}</div>
+                  </div>
+                  <div class="info-item">
+                    <div class="info-label">Agent ID</div>
+                    <div class="info-value">${escapeHtml(data.brand_agent.id)}</div>
+                  </div>
+                </div>
+              </div>`;
+          }
+          if (data.contact) renderContact(data.contact);
+          return;
+        }
+
+        // Render brand tabs if multiple brands
+        if (brands.length > 1) {
+          renderBrandTabs(brands);
+        }
+
+        // Render hierarchy
+        if (house && typeof house === 'object') {
+          renderHierarchy(house, brands);
+        }
+
+        // Render first brand (or master brand)
+        const masterBrand = brands.find(b => b.keller_type === 'master') || brands[0];
+        selectBrand(masterBrand.id);
+
+        // Contact
+        if (data.contact) renderContact(data.contact);
+      }
+
+      function renderBrandTabs(brands) {
+        const container = document.getElementById('brand-tabs');
+        container.classList.remove('hidden');
+
+        container.innerHTML = brands.map(brand => {
+          const name = brand.names?.[0] ? Object.values(brand.names[0])[0] : brand.id;
+          const kellerLabel = formatKellerType(brand.keller_type);
+          return `
+            <button class="brand-tab" data-brand-id="${escapeAttr(brand.id)}" onclick="selectBrand('${escapeAttr(brand.id)}')">
+              ${escapeHtml(name)}
+              ${kellerLabel ? `<span class="keller-badge">${escapeHtml(kellerLabel)}</span>` : ''}
+            </button>`;
+        }).join('');
+      }
+
+      function selectBrand(brandId) {
+        currentBrandId = brandId;
+        const brands = brandData.brands || [];
+        const brand = brands.find(b => b.id === brandId);
+        if (!brand) return;
+
+        // Update tab active state
+        document.querySelectorAll('.brand-tab').forEach(tab => {
+          tab.classList.toggle('active', tab.dataset.brandId === brandId);
+        });
+
+        // Render each section
+        renderLogos(brand.logos);
+        renderColors(brand.colors);
+        renderTypography(brand.fonts);
+        renderBrandInfo(brand);
+        renderProperties(brand.properties);
+      }
+
+      function renderHierarchy(house, brands) {
+        const section = document.getElementById('hierarchy-section');
+        section.classList.remove('hidden');
+
+        const tree = document.getElementById('hierarchy-tree');
+        const archLabel = house.architecture ? ` (${house.architecture.replace(/_/g, ' ')})` : '';
+
+        // Build parent-child map
+        const children = {};
+        const roots = [];
+        brands.forEach(b => {
+          if (b.parent_brand) {
+            if (!children[b.parent_brand]) children[b.parent_brand] = [];
+            children[b.parent_brand].push(b);
+          } else {
+            roots.push(b);
+          }
+        });
+
+        function renderNode(brand, depth) {
+          const name = brand.names?.[0] ? Object.values(brand.names[0])[0] : brand.id;
+          const kellerLabel = formatKellerType(brand.keller_type);
+          let html = `
+            <div class="hierarchy-item">
+              <span class="brand-name">${escapeHtml(name)}</span>
+              ${kellerLabel ? `<span class="keller-badge">${escapeHtml(kellerLabel)}</span>` : ''}
+            </div>`;
+
+          const kids = children[brand.id];
+          if (kids && kids.length > 0) {
+            html += `<div class="hierarchy-children">`;
+            kids.forEach(kid => { html += renderNode(kid, depth + 1); });
+            html += `</div>`;
+          }
+          return html;
+        }
+
+        tree.innerHTML = `
+          <div class="hierarchy-item">
+            <span class="brand-name">${escapeHtml(house.name)}</span>
+            <span class="keller-badge">House${escapeHtml(archLabel)}</span>
+          </div>
+          <div class="hierarchy-children">
+            ${roots.map(r => renderNode(r, 1)).join('')}
+          </div>`;
+      }
+
+      function getLogoBackground(logo) {
+        if (logo.background) {
+          if (logo.background === 'dark-bg' || logo.background === 'dark') return 'dark';
+          if (logo.background === 'light-bg' || logo.background === 'light') return 'light';
+          if (logo.background === 'transparent-bg' || logo.background === 'transparent') return 'both';
+        }
+        const tags = logo.tags || [];
+        const hasDark = tags.some(t => t === 'dark-bg' || t === 'dark');
+        const hasLight = tags.some(t => t === 'light-bg' || t === 'light');
+        const hasTransparent = tags.some(t => t === 'transparent-bg' || t === 'transparent');
+        if (hasTransparent) return 'both';
+        if (hasDark && !hasLight) return 'dark';
+        if (hasLight && !hasDark) return 'light';
+        return 'both';
+      }
+
+      function renderLogos(logos) {
+        const section = document.getElementById('logos-section');
+        const grid = document.getElementById('logo-grid');
+
+        if (!logos || logos.length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        grid.innerHTML = logos.map((logo, i) => {
+          const tags = logo.tags || [];
+          const dims = (logo.width && logo.height) ? `${logo.width} x ${logo.height}` : '';
+          const isSameOrigin = logo.url.startsWith(window.location.origin) ||
+            logo.url.startsWith('https://agenticadvertising.org') ||
+            logo.url.startsWith('https://adcontextprotocol.org');
+
+          const bg = getLogoBackground(logo);
+          let previewHtml;
+          const safeLogoUrl = isSafeUrl(logo.url) ? escapeAttr(logo.url) : '';
+          if (bg === 'light') {
+            previewHtml = `
+              <div class="logo-previews logo-previews-single">
+                <div class="logo-preview logo-preview-light">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on light background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
+                </div>
+              </div>`;
+          } else if (bg === 'dark') {
+            previewHtml = `
+              <div class="logo-previews logo-previews-single">
+                <div class="logo-preview logo-preview-dark">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on dark background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
+                </div>
+              </div>`;
+          } else {
+            previewHtml = `
+              <div class="logo-previews">
+                <div class="logo-preview logo-preview-light">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on light background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
+                </div>
+                <div class="logo-preview logo-preview-dark">
+                  ${safeLogoUrl ? `<img src="${safeLogoUrl}" alt="Logo on dark background" loading="lazy">` : '<div class="logo-placeholder">Invalid URL</div>'}
+                </div>
+              </div>`;
+          }
+
+          return `
+            <div class="logo-card">
+              ${previewHtml}
+              <div class="logo-meta">
+                <div class="logo-tags">
+                  ${tags.map(t => `<span class="logo-tag">${escapeHtml(t)}</span>`).join('')}
+                </div>
+                ${dims ? `<div class="logo-dimensions">${escapeHtml(dims)}</div>` : ''}
+                <div class="logo-actions">
+                  ${safeLogoUrl ? `
+                  <a href="${safeLogoUrl}" ${isSameOrigin ? 'download' : 'target="_blank"'} class="btn btn-sm btn-primary">
+                    Download
+                  </a>
+                  <a href="${safeLogoUrl}" target="_blank" class="btn btn-sm btn-ghost">
+                    Open
+                  </a>` : ''}
+                </div>
+              </div>
+            </div>`;
+        }).join('');
+      }
+
+      function downloadAllLogos() {
+        const brands = brandData?.brands || [];
+        const brand = brands.find(b => b.id === currentBrandId);
+        if (!brand?.logos) return;
+
+        brand.logos.forEach((logo, i) => {
+          setTimeout(() => {
+            const a = document.createElement('a');
+            a.href = logo.url;
+            a.download = logo.url.split('/').pop() || `logo-${i}`;
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }, i * 200);
+        });
+      }
+
+      function renderColors(colors) {
+        const section = document.getElementById('colors-section');
+        const grid = document.getElementById('color-grid');
+
+        if (!colors || Object.keys(colors).length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        const order = ['primary', 'secondary', 'accent', 'background', 'text'];
+        const sortedKeys = order.filter(k => colors[k]).concat(
+          Object.keys(colors).filter(k => !order.includes(k))
+        );
+
+        grid.innerHTML = sortedKeys.map(key => {
+          const val = colors[key];
+          const hexValues = Array.isArray(val) ? val : [val];
+          return hexValues.map((hex, i) => `
+            <div class="color-swatch" onclick="copyColor(this, '${escapeAttr(hex)}')" title="Click to copy">
+              <div class="swatch-block" style="background-color: ${safeHex(hex)};"></div>
+              <div class="swatch-label">${escapeHtml(key)}${hexValues.length > 1 ? ' ' + (i + 1) : ''}</div>
+              <div class="swatch-hex" data-hex="${escapeAttr(hex)}">${escapeHtml(hex)}</div>
+            </div>`
+          ).join('');
+        }).join('');
+      }
+
+      function copyColor(el, hex) {
+        navigator.clipboard.writeText(hex).then(() => {
+          const hexEl = el.querySelector('.swatch-hex');
+          const orig = hexEl.textContent;
+          hexEl.innerHTML = '<span class="copied-toast">Copied!</span>';
+          setTimeout(() => { hexEl.textContent = orig; }, 1500);
+        }).catch(() => {});
+      }
+
+      function renderTypography(fonts) {
+        const section = document.getElementById('typography-section');
+        const display = document.getElementById('font-display');
+
+        if (!fonts || (!fonts.primary && !fonts.secondary)) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        let html = '';
+
+        if (fonts.primary) {
+          html += `
+            <div class="font-item">
+              <div class="font-label">Primary font</div>
+              <div class="font-value" style="font-family: ${safeFontFamily(fonts.primary)};">${escapeHtml(fonts.primary)}</div>
+            </div>`;
+        }
+
+        if (fonts.secondary) {
+          html += `
+            <div class="font-item">
+              <div class="font-label">Secondary font</div>
+              <div class="font-value" style="font-family: ${safeFontFamily(fonts.secondary)};">${escapeHtml(fonts.secondary)}</div>
+            </div>`;
+        }
+
+        if (fonts.font_urls?.length) {
+          html += `
+            <div class="font-item">
+              <div class="font-label">Font files</div>
+              ${fonts.font_urls.map(url => `<div class="info-value">${isSafeUrl(url) ? `<a href="${escapeAttr(url)}" target="_blank">${escapeHtml(url)}</a>` : escapeHtml(url)}</div>`).join('')}
+            </div>`;
+        }
+
+        display.innerHTML = html;
+      }
+
+      function renderTone(tone) {
+        if (typeof tone === 'string') {
+          const attributes = tone.split(',').map(s => s.trim()).filter(Boolean);
+          return `
+            <div style="margin-bottom:var(--space-6);">
+              <div class="info-label" style="margin-bottom:var(--space-3);">Brand voice</div>
+              <div class="voice-attributes">
+                ${attributes.map(attr => `<span class="voice-attribute">${escapeHtml(attr)}</span>`).join('')}
+              </div>
+            </div>`;
+        }
+
+        if (typeof tone === 'object' && tone !== null) {
+          let html = '<div style="margin-bottom:var(--space-6);">';
+          html += '<div class="info-label" style="margin-bottom:var(--space-3);">Brand voice</div>';
+
+          if (tone.voice) {
+            html += `<div class="voice-descriptor">"${escapeHtml(tone.voice)}"</div>`;
+          }
+
+          if (tone.attributes && tone.attributes.length) {
+            html += `
+              <div class="voice-attributes">
+                ${tone.attributes.map(attr => `<span class="voice-attribute">${escapeHtml(attr)}</span>`).join('')}
+              </div>`;
+          }
+
+          if ((tone.dos && tone.dos.length) || (tone.donts && tone.donts.length)) {
+            html += '<div class="voice-guidelines">';
+            if (tone.dos && tone.dos.length) {
+              html += `
+                <div class="voice-dos">
+                  <div class="voice-guidelines-label">Do</div>
+                  <ul class="voice-guidelines-list">
+                    ${tone.dos.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                  </ul>
+                </div>`;
+            }
+            if (tone.donts && tone.donts.length) {
+              html += `
+                <div class="voice-donts">
+                  <div class="voice-guidelines-label">Don't</div>
+                  <ul class="voice-guidelines-list">
+                    ${tone.donts.map(item => `<li>${escapeHtml(item)}</li>`).join('')}
+                  </ul>
+                </div>`;
+            }
+            html += '</div>';
+          }
+
+          html += '</div>';
+          return html;
+        }
+
+        return '';
+      }
+
+      function renderBrandInfo(brand) {
+        const section = document.getElementById('brand-info-section');
+        const content = document.getElementById('brand-info-content');
+
+        const hasInfo = brand.tagline || brand.description || brand.tone || brand.industry || brand.target_audience;
+        if (!hasInfo) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        let html = '';
+
+        if (brand.tagline) {
+          html += `<div class="brand-tagline">"${escapeHtml(brand.tagline)}"</div>`;
+        }
+
+        if (brand.description) {
+          html += `<p style="color:var(--color-text-secondary);margin-bottom:var(--space-6);">${escapeHtml(brand.description)}</p>`;
+        }
+
+        if (brand.tone) {
+          html += renderTone(brand.tone);
+        }
+
+        const items = [];
+        if (brand.industry) items.push({ label: 'Industry', value: brand.industry.replace(/_/g, ' ') });
+        if (brand.target_audience) items.push({ label: 'Target audience', value: brand.target_audience });
+
+        if (items.length) {
+          html += `<div class="info-grid">
+            ${items.map(item => `
+              <div class="info-item">
+                <div class="info-label">${escapeHtml(item.label)}</div>
+                <div class="info-value">${escapeHtml(item.value)}</div>
+              </div>`).join('')}
+          </div>`;
+        }
+
+        content.innerHTML = html;
+      }
+
+      function renderProperties(properties) {
+        const section = document.getElementById('properties-section');
+        const table = document.getElementById('properties-table');
+
+        if (!properties || properties.length === 0) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Address</th>
+              <th>Primary</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${properties.map(prop => {
+              const isWebsite = prop.type === 'website';
+              const identifier = isWebsite
+                ? `<a href="https://${escapeHtml(prop.identifier)}" target="_blank" style="color:var(--color-brand);text-decoration:none;">${escapeHtml(prop.identifier)}</a>`
+                : escapeHtml(prop.identifier);
+              const region = prop.region ? ` (${escapeHtml(prop.region)})` : '';
+              const store = prop.store ? ` [${escapeHtml(prop.store)}]` : '';
+
+              return `
+                <tr>
+                  <td><span class="property-type-badge">${escapeHtml(prop.type)}</span>${escapeHtml(region)}${escapeHtml(store)}</td>
+                  <td>${identifier}</td>
+                  <td>${prop.primary ? '<span class="primary-indicator" title="Primary"></span>' : ''}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>`;
+      }
+
+      function renderContact(contact) {
+        const section = document.getElementById('contact-section');
+        const content = document.getElementById('contact-content');
+
+        if (!contact) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        let html = '';
+
+        if (contact.name) {
+          html += `
+            <div class="contact-item">
+              <div class="contact-label">Name</div>
+              <div class="contact-value">${escapeHtml(contact.name)}</div>
+            </div>`;
+        }
+
+        if (contact.email) {
+          html += `
+            <div class="contact-item">
+              <div class="contact-label">Email</div>
+              <div class="contact-value"><a href="mailto:${escapeAttr(contact.email)}">${escapeHtml(contact.email)}</a></div>
+            </div>`;
+        }
+
+        if (contact.domain) {
+          html += `
+            <div class="contact-item">
+              <div class="contact-label">Domain</div>
+              <div class="contact-value"><a href="https://${escapeAttr(contact.domain)}" target="_blank">${escapeHtml(contact.domain)}</a></div>
+            </div>`;
+        }
+
+        content.innerHTML = html;
+      }
+
+      function copyRawJson() {
+        const json = document.getElementById('raw-json').textContent;
+        navigator.clipboard.writeText(json).then(() => {
+          const btn = document.querySelector('.json-copy-btn');
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        }).catch(() => {});
+      }
+
+      function formatKellerType(type) {
+        if (!type) return '';
+        const labels = {
+          master: 'Master',
+          sub_brand: 'Sub-brand',
+          endorsed: 'Endorsed',
+          independent: 'Independent'
+        };
+        return labels[type] || type;
+      }
+
+      // Revision history for community/enriched brands.
+      // Returns true if community brand data was found, false otherwise.
+      async function loadRevisionHistory(domain) {
+        try {
+          // Check if this brand is from the discovered registry (community/enriched)
+          const editStatusResp = await fetch(`/api/brands/discovered/${encodeURIComponent(domain)}/edit-status`);
+          const editStatus = await editStatusResp.json();
+
+          if (!editStatus.editable && editStatus.reason === 'Brand not found in registry') {
+            return false;
+          }
+
+          // Store for edit form
+          currentEditStatus = editStatus;
+          currentDomain = domain;
+
+          // Show edit button if editable and user is logged in
+          const user = window.__APP_CONFIG__?.user;
+          if (editStatus.editable && user) {
+            document.getElementById('edit-brand-btn').classList.remove('hidden');
+          }
+
+          // Load revisions
+          const revisionsResp = await fetch(`/api/brands/discovered/${encodeURIComponent(domain)}/revisions?limit=20`);
+          if (!revisionsResp.ok) return false;
+          const { revisions, total } = await revisionsResp.json();
+
+          // Show community brand summary from edit-status (current state of the brand)
+          // Note: revision snapshots store the state BEFORE an edit, so editStatus is always the current state
+          const brandInfo = {
+            brand_name: editStatus.brand_name,
+            source_type: editStatus.source_type,
+            house_domain: editStatus.house_domain,
+            keller_type: editStatus.keller_type,
+            brand_manifest: editStatus.brand_manifest,
+          };
+
+          if (brandInfo.brand_name) {
+            const section = document.getElementById('community-brand-section');
+            section.classList.remove('hidden');
+
+            document.getElementById('community-brand-name').textContent = brandInfo.brand_name || domain;
+            document.getElementById('community-brand-domain').textContent = domain;
+
+            // Update hero
+            document.getElementById('hero-title').textContent = brandInfo.brand_name || domain;
+
+            // Render community brand details with structured layout
+            const details = document.getElementById('community-brand-details');
+            const manifest = brandInfo.brand_manifest || {};
+            const hasRichContent = manifest.description || manifest.colors || manifest.industry || manifest.tone || manifest.logos?.length || brandInfo.house_domain || brandInfo.keller_type;
+
+            details.innerHTML = '';
+
+            // Logo
+            if (manifest.logos && manifest.logos.length > 0) {
+              const logo = manifest.logos.find(l => l.variant === 'primary') || manifest.logos[0];
+              if (logo.url && isSafeUrl(logo.url)) {
+                details.innerHTML += `
+                  <div style="margin-bottom: var(--space-4);">
+                    <img src="${escapeAttr(logo.url)}" alt="${escapeHtml(brandInfo.brand_name || domain)} logo"
+                         style="max-height: 48px; max-width: 200px; object-fit: contain;" loading="lazy">
+                  </div>`;
+              }
+            }
+
+            if (manifest.description) {
+              details.innerHTML += `<p style="font-size: var(--text-sm); color: var(--color-text-secondary); line-height: var(--leading-relaxed); margin-bottom: var(--space-4);">${escapeHtml(manifest.description)}</p>`;
+            }
+
+            // Build info grid items
+            let gridHtml = '';
+
+            // Domain (always present)
+            gridHtml += `
+              <div class="community-info-item">
+                <div class="community-info-label">Domain</div>
+                <div class="community-info-value"><a href="https://${escapeAttr(domain)}" target="_blank" style="color: var(--color-brand); text-decoration: none;">${escapeHtml(domain)}</a></div>
+              </div>`;
+
+            if (brandInfo.source_type) {
+              gridHtml += `
+                <div class="community-info-item">
+                  <div class="community-info-label">Source</div>
+                  <div class="community-info-value">${escapeHtml(brandInfo.source_type)}</div>
+                </div>`;
+            }
+
+            if (brandInfo.house_domain) {
+              gridHtml += `
+                <div class="community-info-item">
+                  <div class="community-info-label">House</div>
+                  <div class="community-info-value"><a href="https://${escapeAttr(brandInfo.house_domain)}" target="_blank" style="color: var(--color-brand); text-decoration: none;">${escapeHtml(brandInfo.house_domain)}</a></div>
+                </div>`;
+            }
+
+            if (brandInfo.keller_type) {
+              gridHtml += `
+                <div class="community-info-item">
+                  <div class="community-info-label">Architecture</div>
+                  <div class="community-info-value">${escapeHtml(formatKellerType(brandInfo.keller_type))}</div>
+                </div>`;
+            }
+
+            if (manifest.industry) {
+              gridHtml += `
+                <div class="community-info-item">
+                  <div class="community-info-label">Industry</div>
+                  <div class="community-info-value">${escapeHtml(manifest.industry)}</div>
+                </div>`;
+            }
+
+            details.innerHTML += `<div class="community-info-grid">${gridHtml}</div>`;
+
+            if (manifest.tone) {
+              details.innerHTML += renderTone(manifest.tone);
+            }
+
+            // Colors section
+            if (manifest.colors && typeof manifest.colors === 'object' && Object.keys(manifest.colors).length > 0) {
+              let colorsHtml = '<div style="margin-top: var(--space-4);"><div class="community-info-label" style="margin-bottom: var(--space-2);">Colors</div><div class="community-color-swatches">';
+              Object.entries(manifest.colors).forEach(([name, hex]) => {
+                colorsHtml += `
+                  <div class="community-color-chip">
+                    <span class="community-color-dot" style="background: ${safeHex(String(hex))};"></span>
+                    <span>${escapeHtml(name)}</span>
+                    <span style="font-family: var(--font-mono); color: var(--color-text-muted);">${escapeHtml(String(hex))}</span>
+                  </div>`;
+              });
+              colorsHtml += '</div></div>';
+              details.innerHTML += colorsHtml;
+            }
+
+            // Show helpful message if data is minimal
+            if (!hasRichContent) {
+              details.innerHTML += `
+                <div class="community-empty-message">
+                  <p>This brand entry was community contributed. Help improve it by adding details like description, colors, industry, and tone.</p>
+                </div>`;
+            }
+          } else if (!revisions || revisions.length === 0) {
+            return false;
+          }
+
+          // Always show revision history for community brands
+          const historySection = document.getElementById('history-section');
+          historySection.classList.remove('hidden');
+          const list = document.getElementById('revisions-list');
+
+          if (revisions && revisions.length > 0) {
+            list.innerHTML = revisions.map(rev => `
+              <div style="padding: var(--space-3) 0; border-bottom: var(--border-1) solid var(--color-border-light);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <strong>Revision ${rev.revision_number}</strong>
+                    ${rev.is_rollback ? '<span style="color: var(--color-warning-600); font-size: var(--text-xs); margin-left: 4px;">ROLLBACK</span>' : ''}
+                  </div>
+                  <span style="color: var(--color-text-muted); font-size: var(--text-xs);">${new Date(rev.created_at).toLocaleString()}</span>
+                </div>
+                <div style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-top: var(--space-1);">
+                  ${escapeHtml(rev.edit_summary)}
+                </div>
+                <div style="font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-1);">
+                  by ${escapeHtml(rev.editor_name || rev.editor_email || rev.editor_user_id)}
+                </div>
+              </div>
+            `).join('');
+
+            if (total > revisions.length) {
+              list.innerHTML += `<div style="padding: var(--space-3) 0; text-align: center; color: var(--color-text-muted); font-size: var(--text-sm);">
+                Showing ${revisions.length} of ${total} revisions
+              </div>`;
+            }
+          } else {
+            list.innerHTML = `
+              <div style="padding: var(--space-6); text-align: center; color: var(--color-text-muted); font-size: var(--text-sm);">
+                No edits yet. Be the first to improve this entry!
+              </div>`;
+          }
+
+          // Show edit status in hero
+          if (editStatus.editable) {
+            const subtitle = document.getElementById('hero-subtitle');
+            subtitle.innerHTML += ' <span style="font-size: var(--text-xs); background: var(--color-purple-100); color: var(--color-purple-700); padding: 2px 8px; border-radius: var(--radius-full); margin-left: var(--space-2);">Community contributed</span>';
+          } else if (editStatus.reason === 'Managed by brand owner via brand.json') {
+            const subtitle = document.getElementById('hero-subtitle');
+            subtitle.innerHTML += ' <span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 8px; border-radius: var(--radius-full); margin-left: var(--space-2);">Authoritative</span>';
+          }
+
+          return true;
+        } catch (err) {
+          console.error('Failed to load revision history:', err);
+          return false;
+        }
+      }
+
+      // Initialize on load
+      document.addEventListener('DOMContentLoaded', init);
+    </script>
+  </body>
+</html>

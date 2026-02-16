@@ -255,6 +255,70 @@ describe('stripe-client', () => {
 
       expect(result).toBeNull();
     });
+
+    test('searches by workos_organization_id metadata before email', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customers: {
+          search: jest.fn().mockResolvedValue({
+            data: [{ id: 'cus_orgmatch', metadata: { workos_organization_id: 'org_abc' } }],
+          }),
+          update: jest.fn().mockResolvedValue({ id: 'cus_orgmatch' }),
+          list: jest.fn(),
+          create: jest.fn(),
+        },
+      };
+      StripeMock.mockImplementation(() => mockStripeInstance as any);
+
+      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createStripeCustomer({
+        email: 'different-user@example.com',
+        name: 'Org Name',
+        metadata: { workos_organization_id: 'org_abc' },
+      });
+
+      expect(result).toBe('cus_orgmatch');
+      expect(mockStripeInstance.customers.search).toHaveBeenCalledWith({
+        query: "metadata['workos_organization_id']:'org_abc'",
+        limit: 1,
+      });
+      // Should NOT fall through to email check
+      expect(mockStripeInstance.customers.list).not.toHaveBeenCalled();
+      expect(mockStripeInstance.customers.create).not.toHaveBeenCalled();
+    });
+
+    test('falls through to email check when org metadata search returns empty', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as jest.MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customers: {
+          search: jest.fn().mockResolvedValue({ data: [] }),
+          list: jest.fn().mockResolvedValue({ data: [] }),
+          create: jest.fn().mockResolvedValue({ id: 'cus_new456' }),
+        },
+      };
+      StripeMock.mockImplementation(() => mockStripeInstance as any);
+
+      const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createStripeCustomer({
+        email: 'user@example.com',
+        name: 'New Org',
+        metadata: { workos_organization_id: 'org_xyz' },
+      });
+
+      expect(result).toBe('cus_new456');
+      expect(mockStripeInstance.customers.search).toHaveBeenCalled();
+      expect(mockStripeInstance.customers.list).toHaveBeenCalledWith({
+        email: 'user@example.com',
+        limit: 1,
+      });
+      expect(mockStripeInstance.customers.create).toHaveBeenCalled();
+    });
   });
 
   describe('createCustomerPortalSession', () => {
@@ -381,6 +445,10 @@ describe('stripe-client', () => {
             id: 'cus_new123',
             email: 'ruben.schreurs@ebiquity.com',
           }),
+          update: jest.fn().mockResolvedValue({
+            id: 'cus_new123',
+            email: 'ruben.schreurs@ebiquity.com',
+          }),
         },
         subscriptions: {
           create: jest.fn().mockResolvedValue({
@@ -444,6 +512,7 @@ describe('stripe-client', () => {
             id: 'cus_new123',
             email: 'test@example.com',
           }),
+          update: jest.fn().mockResolvedValue({ id: 'cus_new123' }),
         },
         subscriptions: {
           create: jest.fn(),
@@ -481,6 +550,7 @@ describe('stripe-client', () => {
             id: 'cus_new123',
             email: 'test@example.com',
           }),
+          update: jest.fn().mockResolvedValue({ id: 'cus_new123' }),
         },
         subscriptions: {
           create: jest.fn().mockResolvedValue({

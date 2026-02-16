@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/delivery-forecast.json",
+  "title": "Delivery Forecast",
+  "description": "Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help buyers evaluate expected campaign performance before purchase.",
+  "type": "object",
+  "properties": {
+    "points": {
+      "type": "array",
+      "description": "Forecasted delivery at one or more budget levels. A single point is a standard forecast; multiple points ordered by ascending budget form a curve showing how metrics scale with spend. Each point pairs a budget with metric ranges.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/forecast-point.json"
+      },
+      "minItems": 1
+    },
+    "forecast_range_unit": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/forecast-range-unit.json",
+      "description": "How to interpret the points array. 'spend' (default when omitted): points at ascending budget levels. 'reach_freq': points at ascending reach/frequency targets. 'weekly'/'daily': metrics are per-period values. 'clicks'/'conversions': points at ascending outcome targets."
+    },
+    "method": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/forecast-method.json",
+      "description": "Method used to produce this forecast"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for monetary values in this forecast (spend, budget)"
+    },
+    "demographic_system": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/demographic-system.json",
+      "description": "Measurement system for the demographic field. Ensures buyer and seller agree on demographic notation."
+    },
+    "demographic": {
+      "type": "string",
+      "description": "Target demographic code within the specified demographic_system. For Nielsen: P18-49, M25-54, W35+. For BARB: ABC1 Adults, 16-34. For AGF: E 14-49.",
+      "examples": ["P18-49", "A25-54", "W35+", "M18-34"]
+    },
+    "reach_unit": {
+      "$ref": "/schemas/3.0.0-beta.3/enums/reach-unit.json",
+      "description": "Unit of measurement for reach and audience_size metrics in this forecast. Required for cross-channel forecast comparison."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast was computed"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this forecast expires. After this time, the forecast should be refreshed. Forecast expiry does not affect proposal executability."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["points", "method", "currency"],
+  "additionalProperties": true
+}

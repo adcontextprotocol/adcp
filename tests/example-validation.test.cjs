@@ -148,8 +148,10 @@ const exampleData = {
   },
   
   targeting: {
-    "geo_country_any_of": ["US"],
-    "audience_segment_any_of": ["sports_enthusiasts"]
+    "geo_countries": ["US"],
+    "geo_metros_exclude": [
+      { "system": "nielsen_dma", "values": ["602"] }
+    ]
   },
   
   budget: {
@@ -211,6 +213,7 @@ const exampleData = {
   
   createMediaBuyRequest: {
     "buyer_ref": "nike_q1_campaign_2024",
+    "account_id": "acc_nike_001",
     "packages": [
       {
         "buyer_ref": "nike_ctv_sports_package",
@@ -238,8 +241,25 @@ const exampleData = {
     ]
   },
 
+  createMediaBuyRequestNoAccountId: {
+    "buyer_ref": "single_account_campaign",
+    "packages": [
+      {
+        "buyer_ref": "display_package",
+        "products": ["display_premium_sites"]
+      }
+    ],
+    "start_time": "2024-01-01T00:00:00Z",
+    "end_time": "2024-01-31T23:59:59Z",
+    "brand_manifest": {
+      "name": "Acme Corp",
+      "url": "https://acme.com"
+    }
+  },
+
   createMediaBuyRequestAsap: {
     "buyer_ref": "acme_flash_sale_campaign",
+    "account_id": "acc_acme_001",
     "packages": [
       {
         "buyer_ref": "acme_display_package",
@@ -432,6 +452,14 @@ test('create_media_buy response validates against schema', () => {
     exampleData.createMediaBuyResponse,
     '/schemas/source/media-buy/create-media-buy-response.json',
     'create_media_buy response'
+  );
+});
+
+test('create_media_buy request without account_id validates against schema', () => {
+  return validateAgainstSchema(
+    exampleData.createMediaBuyRequestNoAccountId,
+    '/schemas/source/media-buy/create-media-buy-request.json',
+    'create_media_buy request without account_id'
   );
 });
 

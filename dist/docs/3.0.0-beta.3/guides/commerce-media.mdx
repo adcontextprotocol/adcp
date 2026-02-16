@@ -1,0 +1,538 @@
+---
+title: Commerce Media
+description: How AdCP handles retail media — from sponsored product listings to full-funnel retailer media portfolios
+keywords: [commerce media, retail media, retail media network, sponsored products, closed-loop attribution, ROAS, product catalog, SKU]
+---
+
+
+Commerce media — advertising within retail and marketplace environments — lets brands reach shoppers at the point of purchase. AdCP's `retail_media` channel handles the full spectrum: sponsored product listings, on-site display, off-site audience extension, premium placements, and in-store digital.
+
+What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
+
+## Concept Mapping
+
+| Retail Media Concept | AdCP Equivalent | Reference |
+|---|---|---|
+| Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/docs/media-buy/advanced-topics/accounts-and-security) |
+| Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
+| Brand's product catalog | `brand_manifest.product_catalog` | [Brand Manifest](/docs/creative/brand-manifest) |
+| GTIN / SKU selection for promotion | `product_selectors` (`manifest_gtins`, `manifest_skus`) | [Promoted Offerings](/docs/creative/promoted-offerings) |
+| Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
+| On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
+| Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
+| ROAS target / max conversions | `optimization_goal` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
+| Closed-loop measurement | `measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand manifest carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+
+## The Product Spectrum
+
+Major retailers like Walmart Connect, Kroger Precision Marketing, Target Roundel, and Carrefour Links offer diverse product types — not just sponsored listings. All share the `retail_media` channel, but differ in format, pricing, and creative requirements.
+
+### Sponsored Product Listings
+
+The simplest commerce media product. The retailer renders the creative from the buyer's product catalog — no custom creative upload needed. Pricing is typically CPC.
+
+```json
+{
+  "product_id": "grocery_sponsored_products",
+  "name": "Sponsored Products - Search & Browse",
+  "description": "Sponsored product listings in search results and category pages. Products are rendered from retailer catalog data.",
+  "channels": ["retail_media"],
+  "publisher_properties": [
+    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://retailer-ads.example.com", "id": "sponsored_product_listing" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "sp_cpc",
+      "pricing_model": "cpc",
+      "floor_price": 0.25,
+      "price_guidance": { "p50": 0.85, "p75": 1.20 },
+      "currency": "USD",
+      "min_spend_per_package": 50
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Platform Attribution",
+    "notes": "Deterministic purchase attribution via transaction data. 14-day lookback."
+  },
+  "measurement": {
+    "type": "attributed_sales",
+    "attribution": "deterministic_purchase",
+    "window": "14_days",
+    "reporting": "daily_api"
+  },
+  "conversion_tracking": {
+    "action_sources": ["website", "app", "in_store"],
+    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "platform_managed": true
+  },
+  "creative_policy": {
+    "templates_available": true
+  },
+  "catalog_match": {
+    "matched_gtins": ["00013000006408", "00013000006415", "00013000006422"],
+    "submitted_count": 1200
+  }
+}
+```
+
+The `catalog_match` field tells the buyer which of their GTINs are eligible on this retailer. Buyers use these values in `product_selectors.manifest_gtins` when creating media buys — the same way `publisher_properties` lists available properties for refinement. Sellers can include `matched_gtins`, `matched_skus`, or both.
+
+Key characteristics:
+- **CPC pricing** with auction-based bidding
+- **`platform_managed: true`** — the retailer provides always-on purchase attribution
+- **`supported_optimization_strategies`** — tells buyers they can set `target_roas` or `maximize_conversions` on packages via `optimization_goal`
+- **`templates_available: true`** — the retailer renders creatives from catalog data
+- **`action_sources`** includes `in_store` for omnichannel attribution
+
+### On-Site Display and Video
+
+Display and video ads on retailer properties, targeted using retailer first-party shopper data. Buyers provide standard creatives. Higher minimums and CPMs reflect the value of retailer audience data and guaranteed placement.
+
+```json
+{
+  "product_id": "grocery_onsite_display",
+  "name": "Category Shoppers - On-Site Display & Video",
+  "description": "Display and video ads on retailer website and app, targeting shoppers with relevant purchase history.",
+  "channels": ["retail_media"],
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "onsite_cpm",
+      "pricing_model": "cpm",
+      "fixed_price": 14.00,
+      "currency": "USD",
+      "min_spend_per_package": 10000
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Retailer ad server with IAS viewability",
+    "notes": "Impressions per IAB guidelines. MRC-accredited viewability."
+  },
+  "measurement": {
+    "type": "incremental_sales_lift",
+    "attribution": "deterministic_purchase",
+    "window": "30_days",
+    "reporting": "weekly_dashboard"
+  },
+  "creative_policy": {
+    "co_branding": "required",
+    "landing_page": "retailer_site_only",
+    "templates_available": true
+  }
+}
+```
+
+Note the creative policy: retailers commonly require co-branding and restrict landing pages to the retailer's own site.
+
+### Off-Site Audience Extension
+
+The retailer uses first-party purchase data to target audiences on third-party inventory — extending reach beyond the retailer's own site. The product still belongs to the `retail_media` channel because the buying context is the retailer's data asset.
+
+```json
+{
+  "product_id": "grocery_offsite_extension",
+  "name": "Shopper Audiences - Off-Site Display & Video",
+  "description": "Reach retailer shoppers across premium display and video inventory using first-party purchase data.",
+  "channels": ["retail_media"],
+  "publisher_properties": [
+    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "offsite_cpm",
+      "pricing_model": "cpm",
+      "fixed_price": 13.50,
+      "currency": "USD",
+      "min_spend_per_package": 10000
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Self-reported impressions from proprietary ad server",
+    "notes": "Impressions counted per IAB guidelines. Viewability via IAS."
+  },
+  "measurement": {
+    "type": "incremental_sales_lift",
+    "attribution": "deterministic_purchase",
+    "window": "30_days",
+    "reporting": "weekly_dashboard"
+  }
+}
+```
+
+### Premium Placements
+
+Homepage takeovers, category sponsorships, seasonal event placements. These high-visibility positions are sold at fixed rates with guaranteed delivery — often booked well in advance.
+
+```json
+{
+  "product_id": "grocery_homepage_takeover",
+  "name": "Homepage Takeover - 24 Hours",
+  "description": "Exclusive homepage banner and hero placement for 24 hours.",
+  "channels": ["retail_media"],
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
+  ],
+  "placements": [
+    {
+      "placement_id": "homepage_hero",
+      "name": "Homepage Hero Banner",
+      "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" }]
+    },
+    {
+      "placement_id": "homepage_sidebar",
+      "name": "Homepage Sidebar",
+      "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }]
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "takeover_flat",
+      "pricing_model": "flat_rate",
+      "fixed_price": 50000.00,
+      "currency": "USD"
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Retailer ad server",
+    "notes": "Guaranteed impressions based on homepage traffic projections."
+  },
+  "creative_policy": {
+    "co_branding": "required",
+    "landing_page": "retailer_site_only",
+    "templates_available": false
+  }
+}
+```
+
+Premium placements use the `placements` array so buyers can assign different creatives to different positions within the same product.
+
+### In-Store Digital
+
+Digital screens in physical retail locations — checkout lanes, end-caps, and entrance displays. These bridge the digital-physical gap, with measurement tied to in-store purchases.
+
+```json
+{
+  "product_id": "grocery_instore_screens",
+  "name": "In-Store Digital Screens - Checkout & Aisle",
+  "description": "Digital screens at checkout lanes and end-cap displays in 500+ locations.",
+  "channels": ["retail_media"],
+  "publisher_properties": [
+    { "publisher_domain": "grocery-retailer.com", "selection_type": "all" }
+  ],
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "instore_cpm",
+      "pricing_model": "cpm",
+      "fixed_price": 8.00,
+      "currency": "USD",
+      "min_spend_per_package": 5000
+    }
+  ],
+  "delivery_measurement": {
+    "provider": "Venue traffic sensors",
+    "notes": "Impressions estimated from foot traffic data. Updated weekly."
+  },
+  "conversion_tracking": {
+    "action_sources": ["in_store"],
+    "platform_managed": true
+  }
+}
+```
+
+## End-to-End Workflow
+
+<Steps>
+
+### Brand Manifest with Product Catalog
+
+The buyer provides a brand manifest that includes their product catalog feed. This enables SKU-level targeting and catalog-rendered creatives:
+
+```json
+{
+  "name": "Kraft Heinz",
+  "url": "https://kraftheinz.com",
+  "product_catalog": {
+    "feed_url": "https://kraftheinz.com/products.xml",
+    "feed_format": "google_merchant_center",
+    "categories": ["food/sauces", "food/condiments", "beverages"],
+    "update_frequency": "daily"
+  }
+}
+```
+
+The feed contains GTINs, titles, prices, and images — everything needed to render sponsored product listings and match products across retailers.
+
+### Find Products
+
+Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand manifest enables the seller to filter by catalog eligibility:
+
+```json
+{
+  "brief": "Promote our organic ketchup line across grocery retailers. Focus on high-intent shoppers.",
+  "brand_manifest": {
+    "name": "Kraft Heinz",
+    "url": "https://kraftheinz.com",
+    "product_catalog": {
+      "feed_url": "https://kraftheinz.com/products.xml",
+      "feed_format": "google_merchant_center"
+    }
+  },
+  "filters": {
+    "channels": ["retail_media"]
+  }
+}
+```
+
+The seller returns products where the buyer's GTINs have matches in the retailer's catalog. A multi-product retailer might return sponsored products, on-site display, and off-site extension as separate products.
+
+For sponsored product listings, sellers include `catalog_match` on each product to indicate which of the buyer's catalog items are eligible:
+
+```json
+{
+  "product_id": "grocery_sponsored_products",
+  "catalog_match": {
+    "matched_gtins": ["00013000006408", "00013000006415", "..."],
+    "submitted_count": 1200
+  }
+}
+```
+
+This tells the buyer which GTINs are eligible on this retailer and how many of their total catalog items were evaluated. Buyers use `matched_gtins` values in `product_selectors.manifest_gtins` when creating media buys — or use broader selectors like `manifest_tags` and `manifest_category` knowing the catalog coverage.
+
+<Tip>
+Sellers can also return [proposals](/docs/media-buy/product-discovery/media-products#proposals) with recommended budget allocations across product types — encoding media planning expertise that traditionally required human sales reps.
+</Tip>
+
+### Create Media Buy
+
+A single media buy can span multiple product types and retailers. Each package targets a different product:
+
+```json
+{
+  "buyer_ref": "kraft_ketchup_q2",
+  "account_id": "kraft_grocery_acct_001",
+  "brand_manifest": {
+    "name": "Kraft Heinz",
+    "url": "https://kraftheinz.com",
+    "product_catalog": {
+      "feed_url": "https://kraftheinz.com/products.xml",
+      "feed_format": "google_merchant_center"
+    }
+  },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-04-30T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "sponsored_products",
+      "product_id": "grocery_sponsored_products",
+      "pricing_option_id": "sp_cpc",
+      "budget": 15000,
+      "bid_price": 1.10,
+      "pacing": "even",
+      "promoted_offerings": {
+        "brand_manifest": "https://kraftheinz.com/manifest.json",
+        "product_selectors": {
+          "manifest_gtins": ["00013000006408", "00013000006415", "00013000006422"],
+          "manifest_tags": ["ketchup", "organic"]
+        }
+      },
+      "optimization_goal": {
+        "event_source_id": "grocery_retailer_purchases",
+        "event_type": "purchase",
+        "target_roas": 3.0
+      }
+    },
+    {
+      "buyer_ref": "onsite_display",
+      "product_id": "grocery_onsite_display",
+      "pricing_option_id": "onsite_cpm",
+      "budget": 25000,
+      "pacing": "even"
+    },
+    {
+      "buyer_ref": "homepage_launch",
+      "product_id": "grocery_homepage_takeover",
+      "pricing_option_id": "takeover_flat",
+      "budget": 50000
+    }
+  ]
+}
+```
+
+The `account_id` identifies the brand's billing relationship with this retailer. The sponsored products package uses `product_selectors` to specify which items to promote and `optimization_goal` to tell the retailer to optimize for purchases at a 3x ROAS target. The display and premium packages use standard creative workflows.
+
+### Delivery Reporting
+
+Commerce media delivery reports include attribution metrics that traditional media lacks. The `attribution_window` makes the measurement methodology transparent for cross-platform comparison:
+
+```json
+{
+  "reporting_period": {
+    "start": "2026-04-01T00:00:00Z",
+    "end": "2026-04-14T23:59:59Z"
+  },
+  "currency": "USD",
+  "attribution_window": {
+    "click_window_days": 14,
+    "view_window_days": 1,
+    "model": "last_touch"
+  },
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_grocery_001",
+      "buyer_ref": "kraft_ketchup_q2",
+      "status": "active",
+      "totals": {
+        "impressions": 850000,
+        "spend": 10350
+      },
+      "by_package": [
+        {
+          "package_id": "pkg_sp_001",
+          "buyer_ref": "sponsored_products",
+          "pricing_model": "cpc",
+          "rate": 0.92,
+          "currency": "USD",
+          "impressions": 850000,
+          "spend": 10350,
+          "clicks": 11250,
+          "conversions": 2100,
+          "conversion_value": 28500,
+          "roas": 2.75,
+          "cost_per_acquisition": 4.93,
+          "by_action_source": [
+            { "action_source": "website", "count": 1500, "value": 20000 },
+            { "action_source": "app", "count": 350, "value": 4800 },
+            { "action_source": "in_store", "count": 250, "value": 3700 }
+          ],
+          "delivery_status": "delivering"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The `by_action_source` breakdown shows where conversions happened — website, app, and physical store. This omnichannel view is unique to commerce media.
+
+</Steps>
+
+## Closed-Loop Attribution
+
+Commerce media's defining advantage is deterministic purchase attribution. Retailers match ad exposure to transactions using loyalty card data, login state, and point-of-sale records.
+
+### How Products Declare It
+
+Products signal closed-loop capability through two fields:
+
+**`measurement`** describes the attribution methodology:
+```json
+{
+  "measurement": {
+    "type": "attributed_sales",
+    "attribution": "deterministic_purchase",
+    "window": "14_days",
+    "reporting": "daily_api"
+  }
+}
+```
+
+**`conversion_tracking`** declares action sources and whether the retailer manages measurement:
+```json
+{
+  "conversion_tracking": {
+    "action_sources": ["website", "app", "in_store"],
+    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "platform_managed": true
+  }
+}
+```
+
+When `platform_managed` is `true`, the retailer provides always-on measurement. No buyer-side pixel or event source configuration needed.
+
+<Info>
+Different retailers use different attribution windows (e.g., 14-day click vs. 7-day click). The `attribution_window` in delivery responses makes this transparent so buyers can normalize ROAS comparisons across retailers.
+</Info>
+
+### Key Delivery Metrics
+
+| Metric | Field | Description |
+|---|---|---|
+| Return on ad spend | `roas` | `conversion_value / spend` |
+| Attributed revenue | `conversion_value` | Total purchase value attributed to ads |
+| Conversions | `conversions` | Purchase events attributed to ads |
+| Cost per acquisition | `cost_per_acquisition` | `spend / conversions` |
+| New-to-brand rate | `new_to_brand_rate` | Fraction of conversions from first-time brand buyers |
+| In-store sales | `by_action_source` | Breakdown by `website`, `app`, `in_store` |
+| By event type | `by_event_type` | Breakdown by `purchase`, `add_to_cart`, etc. |
+
+## Differences from Traditional Media Buying
+
+| Aspect | Traditional Media | Commerce Media |
+|---|---|---|
+| Attribution | Probabilistic, modeled | Deterministic, purchase-based |
+| Targeting data | Third-party, contextual | First-party purchase/loyalty data |
+| Primary KPIs | Impressions, clicks, CTR | ROAS, conversions, attributed revenue |
+| Creative (sponsored) | Buyer-provided | Catalog-rendered by retailer |
+| Measurement owner | Third-party (IAS, DV) | Retailer platform (`platform_managed`) |
+| Conversion sources | Website only | Website + app + in-store |
+| Landing page | Any destination | Often retailer site only |
+| Pricing models | CPM, CPC, CPCV | CPC (sponsored), CPM (display), flat rate (premium) |
+
+## Best Practices
+
+### For Brands
+
+1. **Set up accounts early** — use `list_accounts` to confirm your billing relationship with each retailer before placing buys
+2. **Keep your product catalog current** — catalog freshness directly affects sponsored product eligibility and performance
+3. **Use `optimization_goal`** — set `target_roas` or `target_cpa` on packages to let the retailer optimize delivery against their purchase data
+4. **Use `product_selectors` strategically** — `manifest_gtins` for specific products, `manifest_tags` or `manifest_category` for broad promotions
+5. **Budget across the funnel** — sponsored products for conversion, on-site display for awareness, off-site for reach extension
+6. **Compare attribution windows** — use `attribution_window` in delivery reports to normalize ROAS across retailers with different lookback windows
+
+### For Retailers
+
+1. **Model product types separately** — sponsored products, on-site display, off-site, and premium placements should be distinct products with appropriate pricing and formats
+2. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_optimization_strategies` so buyers know they can set `optimization_goal` on packages
+3. **Include `attribution_window`** in delivery responses — buyers comparing across retailers need to know your lookback windows and model
+4. **Report `by_action_source`** to show omnichannel impact — website, app, and in-store conversions
+5. **Return `catalog_match`** on sponsored product listings so buyers can see which GTINs/SKUs are eligible
+6. **Set `channels: ["retail_media"]`** on all commerce media products so buyers can filter by channel
+
+## Related Documentation
+
+- [Accounts & Agents](/docs/building/integration/accounts-and-agents) — Account setup and billing relationships
+- [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) — `retail_media` channel definition
+- [Media Products](/docs/media-buy/product-discovery/media-products) — Product model reference
+- [Promoted Offerings](/docs/creative/promoted-offerings) — SKU selection and catalog-rendered creatives
+- [Brand Manifest](/docs/creative/brand-manifest) — Product catalog and brand identity
+- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) — CPC, CPM, flat rate details
+- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goal` and conversion optimization
+- [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) — Commerce attribution metrics
+- [Targeting](/docs/media-buy/advanced-topics/targeting) — Brief-based targeting approach

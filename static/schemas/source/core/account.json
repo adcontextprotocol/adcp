@@ -11,7 +11,7 @@
     },
     "name": {
       "type": "string",
-      "description": "Human-readable account name (e.g., 'Coke', 'Coke c/o Publicis')"
+      "description": "Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')"
     },
     "advertiser": {
       "type": "string",
@@ -23,8 +23,28 @@
     },
     "status": {
       "type": "string",
-      "enum": ["active", "suspended", "closed"],
-      "description": "Account status"
+      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+      "description": "Account status. pending_approval: seller reviewing (credit, contracts). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
+    },
+    "house": {
+      "type": "string",
+      "description": "House domain where brand.json is hosted. Canonical identity anchor for the brand.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "brand_id": {
+      "type": "string",
+      "description": "Brand ID within the house portfolio (from brand.json)",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "operator": {
+      "type": "string",
+      "description": "Domain of the entity operating this account",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "billing": {
+      "type": "string",
+      "enum": ["brand", "operator", "agent"],
+      "description": "Who is invoiced on this account. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing."
     },
     "rate_card": {
       "type": "string",
@@ -54,40 +74,67 @@
     }
   },
   "required": ["account_id", "name", "status"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Direct advertiser account",
       "data": {
-        "account_id": "acc_coke_direct",
-        "name": "Coke",
-        "advertiser": "The Coca-Cola Company",
+        "account_id": "acc_acme_direct",
+        "name": "Acme",
+        "advertiser": "Acme Corp",
         "status": "active",
-        "rate_card": "coke_vip_2024",
+        "rate_card": "acme_vip_2024",
         "payment_terms": "net_30"
       }
     },
     {
       "description": "Advertiser account with agency billing proxy",
       "data": {
-        "account_id": "acc_coke_publicis",
-        "name": "Coke c/o Publicis",
-        "advertiser": "The Coca-Cola Company",
-        "billing_proxy": "Publicis Media",
+        "account_id": "acc_acme_pinnacle",
+        "name": "Acme c/o Pinnacle",
+        "advertiser": "Acme Corp",
+        "billing_proxy": "Pinnacle Media",
         "status": "active",
-        "rate_card": "coke_vip_2024",
+        "rate_card": "acme_vip_2024",
         "payment_terms": "net_60"
       }
     },
     {
       "description": "Agency as direct buyer",
       "data": {
-        "account_id": "acc_publicis",
-        "name": "Publicis",
-        "advertiser": "Publicis Media",
+        "account_id": "acc_pinnacle",
+        "name": "Pinnacle",
+        "advertiser": "Pinnacle Media",
         "status": "active",
         "rate_card": "agency_standard",
         "payment_terms": "net_45"
+      }
+    },
+    {
+      "description": "Account with brand identity and operator (via sync_accounts)",
+      "data": {
+        "account_id": "sub_dove_001",
+        "name": "Dove (via GroupM)",
+        "advertiser": "Unilever",
+        "status": "active",
+        "house": "unilever.com",
+        "brand_id": "dove",
+        "operator": "groupm.com",
+        "billing": "agent",
+        "payment_terms": "net_30"
+      }
+    },
+    {
+      "description": "Pending account awaiting seller approval",
+      "data": {
+        "account_id": "acc_axe_pending",
+        "name": "Axe",
+        "advertiser": "Unilever",
+        "status": "pending_approval",
+        "house": "unilever.com",
+        "brand_id": "axe",
+        "operator": "mindshare.com",
+        "billing": "brand"
       }
     }
   ]

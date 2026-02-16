@@ -11,7 +11,7 @@
     },
     "account_id": {
       "type": "string",
-      "description": "Account to bill for this media buy. Optional if the agent has a single account or the seller can determine the account from context (brand + agent). Required if the agent has multiple accounts and the seller cannot route automatically."
+      "description": "Account to bill for this media buy. Required when the agent has access to multiple accounts; when omitted, the seller uses the agent's sole account. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."
     },
     "proposal_id": {
       "type": "string",
@@ -42,7 +42,8 @@
       "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
-      }
+      },
+      "minItems": 1
     },
     "brand_manifest": {
       "$ref": "/schemas/core/brand-manifest-ref.json",

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/account/list-accounts-response.json",
+  "title": "List Accounts Response",
+  "description": "Response payload for list_accounts task",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "description": "Array of accounts accessible to the authenticated agent",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/account.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.3/core/pagination-response.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": ["accounts"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency with multiple client accounts",
+      "data": {
+        "accounts": [
+          {
+            "account_id": "acc_acme_pinnacle",
+            "name": "Acme c/o Pinnacle",
+            "advertiser": "Acme Corp",
+            "billing_proxy": "Pinnacle Media",
+            "status": "active"
+          },
+          {
+            "account_id": "acc_nova_pinnacle",
+            "name": "Nova c/o Pinnacle",
+            "advertiser": "Nova Brands",
+            "billing_proxy": "Pinnacle Media",
+            "status": "active"
+          },
+          {
+            "account_id": "acc_pinnacle",
+            "name": "Pinnacle",
+            "advertiser": "Pinnacle Media",
+            "status": "active"
+          }
+        ],
+        "pagination": {
+          "has_more": false,
+          "total_count": 3
+        }
+      }
+    },
+    {
+      "description": "Direct advertiser with single account",
+      "data": {
+        "accounts": [
+          {
+            "account_id": "acc_acme_direct",
+            "name": "Acme",
+            "advertiser": "Acme Corp",
+            "status": "active",
+            "rate_card": "acme_vip_2024"
+          }
+        ]
+      }
+    }
+  ]
+}

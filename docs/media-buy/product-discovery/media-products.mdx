@@ -7,7 +7,7 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 
 <Tip>
 **Pricing Models**
-Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/docs/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, vCPM, and flat rate pricing.
+Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/docs/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, CPA, vCPM, flat rate, and time-based pricing.
 </Tip>
 
 ## The Product Model
@@ -15,6 +15,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
+- `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 - `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
@@ -40,10 +41,10 @@ Publishers declare which pricing models they support for each product. Buyers se
 - **CPC** (Cost Per Click) - Cost per click on the ad
 - **CPCV** (Cost Per Completed View) - Cost per 100% video/audio completion
 - **CPV** (Cost Per View) - Cost per view at publisher-defined threshold
-- **CPA** (Cost Per Action) - Cost per conversion/acquisition
-- **CPL** (Cost Per Lead) - Cost per lead generated
+- **CPA** (Cost Per Acquisition) - Cost per conversion event (purchase, lead, signup, etc.)
 - **CPP** (Cost Per Point) - Cost per Gross Rating Point (TV/audio)
 - **Flat Rate** - Fixed cost regardless of delivery volume
+- **Time** - Cost per time unit (day, week, month) that scales with campaign duration
 
 #### PricingOption Structure
 
@@ -495,7 +496,7 @@ This ensures a consistent user experience regardless of what product metadata is
 
 ## Proposals
 
-Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can refine conversationally and execute directly.
+Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute directly.
 
 ### What Are Proposals?
 
@@ -503,8 +504,8 @@ A proposal is a recommended buying strategy that groups products with suggested 
 
 Key characteristics:
 - **Actionable**: Buyers execute proposals directly via `create_media_buy` with a `proposal_id`
-- **Refinable**: Buyers can request changes via natural language in subsequent `get_products` calls
 - **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
+- **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
 ### Proposal Structure
 
@@ -552,7 +553,22 @@ Key characteristics:
     "recommended": 50000,
     "currency": "USD"
   },
-  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)"
+  "brief_alignment": "Achieves 50/20/30 channel split (desktop/mobile/in-app) and 40/60 language split (German/French)",
+  "forecast": {
+    "points": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 800000, "mid": 1200000, "high": 1500000 },
+          "reach": { "low": 400000, "mid": 600000, "high": 750000 },
+          "clicks": { "mid": 4800 }
+        }
+      }
+    ],
+    "method": "modeled",
+    "currency": "USD",
+    "valid_until": "2025-04-15T00:00:00Z"
+  }
 }
 ```
 
@@ -560,9 +576,9 @@ The `tags` field enables grouping allocations by dimension:
 - **By channel**: desktop (50%) + mobile (20%) + in-app (30%) = 100%
 - **By language**: German (40%) + French (60%) = 100%
 
-### Conversational Refinement
+### Iterating on Proposals
 
-Proposals support iterative refinement through natural language:
+Proposals can be refined through session continuity. Within the same session (`context_id` in MCP, `contextId` in A2A), subsequent `get_products` calls carry conversation history, so the publisher can interpret follow-up briefs in context:
 
 ```
 // Initial request
@@ -572,16 +588,15 @@ get_products({
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Refinement request
+// Follow-up within the same session
 get_products({
-  proposal_id: "swiss_balanced_v1",
   brief: "focus more on German speakers - try 60/40 instead of 40/60"
 })
 
-// Response includes updated proposal "swiss_balanced_v2" with adjusted allocations
+// Publisher remembers the conversation and returns an updated proposal
 ```
 
-The publisher interprets the natural language instructions and returns an updated proposal. This mimics the back-and-forth of traditional media planning conversations.
+See [Context & Sessions](/docs/building/integration/context-sessions) for how session continuity works across protocols.
 
 ### Executing a Proposal
 
@@ -590,7 +605,7 @@ To execute a proposal, provide the `proposal_id` and `total_budget` in `create_m
 ```json
 {
   "buyer_ref": "swiss_q1_campaign",
-  "proposal_id": "swiss_balanced_v2",
+  "proposal_id": "swiss_balanced_v1",
   "total_budget": {
     "amount": 50000,
     "currency": "USD"
@@ -616,6 +631,335 @@ Publishers include proposals when:
 - Multiple products work better together than individually
 
 Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+
+### Delivery Forecasts
+
+Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
+
+Each forecast contains a `points` array of one or more ForecastPoints, each pairing a budget level with metric ranges (low/mid/high). A single point is a standard forecast; multiple points ordered by ascending budget show how metrics scale with spend.
+
+Metric keys come from two vocabularies:
+- **Delivery/engagement**: `forecastable-metric` enum values (impressions, reach, clicks, spend, views, completed_views, grps, etc.)
+- **Outcomes**: `event-type` enum values (purchase, lead, app_install, add_to_cart, subscribe, etc.)
+
+This lets sellers forecast both delivery ("1.2M impressions") and outcomes ("1,800 purchases") in a single forecast. Each forecast declares its method:
+
+- **`estimate`** — rough approximation based on historical averages or heuristics
+- **`modeled`** — derived from predictive models or historical data
+- **`guaranteed`** — contractually committed delivery levels backed by reserved inventory
+
+#### Forecast Range Units
+
+The `forecast_range_unit` field tells consumers how to interpret the points array — what axis the curve represents:
+
+- **`spend`** (default) — points at ascending budget levels. Standard budget curve.
+- **`reach_freq`** — points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.
+- **`weekly`** / **`daily`** — metrics are per-period values. Budget refers to total campaign spend. A frequency of 3.2 with `weekly` means 3.2 exposures per week.
+- **`clicks`** / **`conversions`** — points at ascending outcome targets. Used in goal-based planning (e.g., "tell me your conversion goal, I'll tell you the budget").
+
+A spend curve and a reach/frequency curve may contain identical data — the difference is the publisher's intent. A spend curve says "here's what different budgets buy." A reach/frequency curve says "here's what it costs to hit different frequency targets." Consumers can read either curve in either direction.
+
+Temporal units (`weekly`, `daily`) change how metrics are interpreted. Without a range unit (or with `spend`), a frequency of 3.2 means 3.2 total campaign exposures. With `weekly`, it means 3.2 exposures per week.
+
+Forecasts can appear at two levels:
+- **Proposal-level**: aggregate forecast for the entire media plan
+- **Allocation-level**: per-product forecast for individual line items
+
+Allocation-level forecasts may not sum to the proposal-level forecast due to audience overlap and frequency capping. When both are present, the proposal-level forecast is authoritative for total delivery estimation.
+
+For cross-channel planning, forecasts declare a `reach_unit` (individuals, households, devices, accounts, cookies) so buyers can compare reach across publishers. GRP-based forecasts (linear TV, radio) use `demographic_system` and `demographic` to specify the target demo, following the same pattern as CPP pricing.
+
+#### Budget Curve
+
+Multiple forecast points at ascending budget levels show how metrics scale with spend, helping buyers find the optimal investment level:
+
+```json
+{
+  "points": [
+    {
+      "budget": 25000,
+      "metrics": {
+        "impressions": { "low": 400000, "mid": 500000, "high": 600000 },
+        "reach": { "mid": 180000 },
+        "clicks": { "mid": 2000 }
+      }
+    },
+    {
+      "budget": 50000,
+      "metrics": {
+        "impressions": { "low": 850000, "mid": 1050000, "high": 1200000 },
+        "reach": { "mid": 320000 },
+        "clicks": { "mid": 4200 }
+      }
+    },
+    {
+      "budget": 100000,
+      "metrics": {
+        "impressions": { "low": 1500000, "mid": 1900000, "high": 2200000 },
+        "reach": { "mid": 500000 },
+        "clicks": { "mid": 7600 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD",
+  "reach_unit": "individuals"
+}
+```
+
+The curve reveals diminishing returns — doubling budget from $50K to $100K increases reach by ~56%, not 2x. Buyers can use this to negotiate or reallocate budget across publishers.
+
+#### CTV with GRP Demographics
+
+TV and audio forecasts use `demographic_system` and `demographic` to specify the target demo. This ensures buyer and seller agree on the measurement notation:
+
+```json
+{
+  "points": [
+    {
+      "budget": 75000,
+      "metrics": {
+        "grps": { "low": 45, "mid": 60, "high": 72 },
+        "impressions": { "mid": 3200000 },
+        "reach": { "low": 800000, "mid": 1100000, "high": 1300000 },
+        "frequency": { "mid": 2.9 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD",
+  "demographic_system": "nielsen",
+  "demographic": "P18-49",
+  "reach_unit": "households"
+}
+```
+
+The `reach_unit: "households"` tells buyers this CTV publisher counts reach by household, not individual. A display publisher reporting `reach_unit: "devices"` is measuring something different — buyers should not directly compare the two reach numbers.
+
+#### Retail Media with Outcome Forecasts
+
+Retail media publishers can forecast both delivery metrics and conversion outcomes. Outcome metric keys use `event-type` values:
+
+```json
+{
+  "points": [
+    {
+      "budget": 30000,
+      "metrics": {
+        "impressions": { "low": 600000, "mid": 750000, "high": 900000 },
+        "clicks": { "mid": 6000 },
+        "purchase": { "low": 1200, "mid": 1800, "high": 2400 },
+        "add_to_cart": { "mid": 4500 }
+      }
+    }
+  ],
+  "method": "modeled",
+  "currency": "USD"
+}
+```
+
+Here `impressions` and `clicks` are `forecastable-metric` values while `purchase` and `add_to_cart` are `event-type` values. Both use ForecastRange (low/mid/high) and coexist in the same metrics map.
+
+#### Allocation-Level Forecasts
+
+When a proposal includes per-allocation forecasts, buyers can evaluate each product independently:
+
+```json
+{
+  "proposal_id": "retail_holiday_v1",
+  "name": "Holiday Retail Campaign",
+  "allocations": [
+    {
+      "product_id": "sponsored_search",
+      "allocation_percentage": 40,
+      "forecast": {
+        "points": [
+          {
+            "budget": 20000,
+            "metrics": {
+              "impressions": { "mid": 500000 },
+              "clicks": { "mid": 15000 },
+              "purchase": { "mid": 900 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD"
+      }
+    },
+    {
+      "product_id": "offsite_display",
+      "allocation_percentage": 60,
+      "forecast": {
+        "points": [
+          {
+            "budget": 30000,
+            "metrics": {
+              "impressions": { "low": 1800000, "mid": 2200000, "high": 2600000 },
+              "reach": { "mid": 450000 },
+              "purchase": { "low": 400, "mid": 600, "high": 800 }
+            }
+          }
+        ],
+        "method": "modeled",
+        "currency": "USD",
+        "reach_unit": "accounts"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 50000,
+        "metrics": {
+          "impressions": { "low": 2100000, "mid": 2700000, "high": 3100000 },
+          "reach": { "mid": 520000 },
+          "purchase": { "low": 1100, "mid": 1500, "high": 1900 }
+        }
+      }
+    ],
+    "method": "modeled",
+    "currency": "USD",
+    "reach_unit": "accounts"
+  }
+}
+```
+
+Note that the allocation forecasts (900 + 600 = 1,500 purchases) happen to match the proposal forecast in this example, but they often won't — audience overlap and frequency capping mean the whole is typically less than the sum of its parts. The proposal-level forecast is authoritative for total delivery.
+
+#### Broadcast Audio Spot Plan
+
+Broadcast and audio publishers can return spot-plan proposals with `daypart_targets` on each allocation and weekly frequency projections via `forecast_range_unit: "weekly"`. This pattern lets the publisher solve the optimization problem — the buyer specifies frequency goals, and the publisher returns the plan that achieves them:
+
+```json
+{
+  "proposal_id": "iheart_q4_audio",
+  "name": "Q4 Audio - Adults 25-54",
+  "allocations": [
+    {
+      "product_id": "morning_drive_30s",
+      "allocation_percentage": 50,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 6,
+          "end_hour": 10,
+          "label": "Morning Drive"
+        }
+      ],
+      "rationale": "Morning drive delivers highest reach against P25-54 with 3x weekly frequency at 2 spots/day",
+      "forecast": {
+        "points": [
+          {
+            "budget": 37500,
+            "metrics": {
+              "grps": { "mid": 42 },
+              "reach": { "low": 140000, "mid": 180000, "high": 210000 },
+              "frequency": { "mid": 3.2 },
+              "impressions": { "mid": 576000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "afternoon_drive_30s",
+      "allocation_percentage": 30,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 15,
+          "end_hour": 19,
+          "label": "Afternoon Drive"
+        }
+      ],
+      "rationale": "Afternoon drive complements morning with incremental reach and frequency overlap",
+      "forecast": {
+        "points": [
+          {
+            "budget": 22500,
+            "metrics": {
+              "grps": { "mid": 28 },
+              "reach": { "low": 95000, "mid": 120000, "high": 145000 },
+              "frequency": { "mid": 2.4 },
+              "impressions": { "mid": 288000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    },
+    {
+      "product_id": "daytime_30s",
+      "allocation_percentage": 20,
+      "daypart_targets": [
+        {
+          "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          "start_hour": 10,
+          "end_hour": 15,
+          "label": "Daytime"
+        }
+      ],
+      "rationale": "Daytime fill provides frequency reinforcement at lower CPP",
+      "forecast": {
+        "points": [
+          {
+            "budget": 15000,
+            "metrics": {
+              "grps": { "mid": 18 },
+              "reach": { "low": 60000, "mid": 80000, "high": 95000 },
+              "frequency": { "mid": 1.8 },
+              "impressions": { "mid": 144000 }
+            }
+          }
+        ],
+        "forecast_range_unit": "weekly",
+        "method": "modeled",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "P25-54",
+        "reach_unit": "individuals"
+      }
+    }
+  ],
+  "forecast": {
+    "points": [
+      {
+        "budget": 75000,
+        "metrics": {
+          "grps": { "mid": 82 },
+          "reach": { "low": 220000, "mid": 280000, "high": 330000 },
+          "frequency": { "mid": 4.1 },
+          "impressions": { "mid": 1008000 }
+        }
+      }
+    ],
+    "forecast_range_unit": "weekly",
+    "method": "modeled",
+    "currency": "USD",
+    "demographic_system": "nielsen",
+    "demographic": "P25-54",
+    "reach_unit": "individuals"
+  }
+}
+```
+
+The `forecast_range_unit: "weekly"` on each forecast tells the buyer that all metrics are per-week values — frequency of 3.2 means 3.2 exposures per week, not 3.2 over the entire campaign. Budget ($75K) is total campaign spend.
+
+The `daypart_targets` on each allocation specify the publisher's recommended time windows. These are the same structure used in `targeting` for hard daypart constraints — here the publisher is prescribing the spot plan rather than the buyer constraining it.
+
+Note that allocation-level reach doesn't sum to the proposal level (180K + 120K + 80K > 280K) because of audience overlap across dayparts — the same listener may hear morning drive and afternoon drive spots. The proposal-level forecast accounts for this overlap.
 
 ## Integration with Discovery
 

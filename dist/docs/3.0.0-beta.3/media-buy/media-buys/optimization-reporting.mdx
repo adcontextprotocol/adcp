@@ -1,0 +1,908 @@
+---
+title: Optimization & Reporting
+description: Monitor campaign performance, analyze delivery metrics, and optimize media buys using AdCP's reporting and optimization tools.
+keywords: [campaign optimization, performance reporting, delivery analytics, media buy optimization, campaign monitoring]
+---
+
+
+Continuous improvement through data-driven monitoring and optimization. AdCP provides comprehensive reporting tools and optimization features to help you track performance, analyze delivery, and improve campaign outcomes.
+
+Reporting in AdCP aligns with the [Targeting](/docs/media-buy/advanced-topics/targeting) system used for campaign setup, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
+
+Performance data feeds into AdCP's [Accountability & Trust Framework](/docs/media-buy/index.mdx#accountability--trust-framework), enabling publishers to build reputation through consistent delivery and helping buyers make data-driven allocation decisions.
+
+## Key Optimization Tasks
+
+### Delivery Reporting
+Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
+
+Alternatively, configure **webhook-based reporting** during media buy creation to receive automated delivery notifications at regular intervals.
+
+### Campaign Updates
+Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign settings, budgets, and configurations based on performance insights.
+
+## Optimization Workflow
+
+The typical optimization cycle follows this pattern:
+
+1. **Monitor Delivery**: Track campaign performance against targets
+2. **Analyze Performance**: Identify optimization opportunities  
+3. **Make Adjustments**: Update budgets, targeting, or creative assignments
+4. **Track Changes**: Monitor impact of optimizations
+5. **Iterate**: Continuous improvement through regular analysis
+
+## Performance Monitoring
+
+### Real-Time Metrics
+Track campaign delivery as it happens:
+- **Impression delivery** vs. targets
+- **Spend pacing** against budget
+- **Click-through rates** and engagement
+- **Conversion tracking** for business outcomes
+
+### Historical Analysis
+Understand performance trends over time:
+- **Daily/hourly breakdowns** of key metrics
+- **Performance comparisons** across time periods
+- **Trend identification** for optimization opportunities
+
+### Alerting and Notifications
+Stay informed of important campaign events:
+- **Delivery alerts** for pacing issues
+- **Performance notifications** for significant changes
+- **Budget warnings** before limits are reached
+
+## Delivery Methods
+
+Publishers can proactively push reporting data to buyers through webhook notifications or offline file delivery. This eliminates continuous polling and provides timely campaign insights.
+
+**Webhook Push (Real-time)** - HTTP POST to buyer endpoint
+- Best for: Most buyer-seller relationships
+- Latency: Near real-time (seconds to minutes)
+- Cost: Standard webhook infrastructure
+
+**Offline File Delivery (Batch)** - Cloud storage bucket push
+- Best for: Large buyer-seller pairs (high volume)
+- Latency: Scheduled batch delivery (hourly/daily)
+- Cost: Significantly lower ($0.01-0.10 per GB vs. $0.50-2.00 per 1M webhooks)
+- Format: JSON Lines, CSV, or Parquet files
+- Storage: S3, GCS, Azure Blob Storage
+
+### Webhook-Based Reporting
+
+#### Webhook Configuration
+
+Configure reporting webhooks when creating a media buy using the `reporting_webhook` parameter:
+
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "packages": [...],
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "authentication": {
+      "schemes": ["Bearer"],
+      "credentials": "secret_token_min_32_chars"
+    },
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+**Or with HMAC signature (recommended for production):**
+```json
+{
+  "buyer_ref": "campaign_2024",
+  "packages": [...],
+  "reporting_webhook": {
+    "url": "https://buyer.example.com/webhooks/reporting",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "shared_secret_min_32_chars"
+    },
+    "reporting_frequency": "daily"
+  }
+}
+```
+
+**Security is Required:**
+- `authentication` configuration is mandatory (minimum 32 characters)
+- **Bearer tokens**: Simple, good for development (Authorization header)
+- **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
+- Credentials exchanged out-of-band during publisher onboarding
+- See [Security](/docs/building/implementation/security) for implementation details
+
+#### Supported Frequencies
+
+Publishers declare supported reporting frequencies in the product's `reporting_capabilities`. Publishers are **not required** to support all frequencies - choose what makes operational sense for your platform.
+
+- **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
+- **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
+- **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+
+**Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
+
+#### Available Metrics
+
+Metric availability is declared at two levels:
+
+1. **Product level**: `reporting_capabilities.available_metrics` declares what the platform can report
+2. **Format level**: `reported_metrics` on a creative format declares what the format can produce (see [Reported Metrics](/docs/creative/formats#reported-metrics))
+
+Buyers receive the intersection of both. `impressions` and `spend` are always reported regardless of the intersection. Standard metrics include:
+
+- **`impressions`**: Ad views (always available)
+- **`spend`**: Amount spent (always available)
+- **`clicks`**: Click events
+- **`ctr`**: Click-through rate
+- **`views`**: Views at platform-defined threshold
+- **`completed_views`**: 100% video completions
+- **`video_completions`**: Completed video views
+- **`completion_rate`**: Video completion percentage
+- **`conversions`**: Post-click or post-view conversions
+- **`conversion_value`**: Monetary value of attributed conversions
+- **`roas`**: Return on ad spend
+- **`cost_per_acquisition`**: Cost per conversion
+- **`leads`**: Leads generated
+- **`reach`**: Unique reach
+- **`frequency`**: Average frequency per individual
+- **`grps`**: Gross Rating Points (for CPP billing)
+- **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, standard). Separates MRC and GroupM standards.
+- **`engagement_rate`**: Platform-specific engagement metric
+- **`quartile_data`**: Video quartile completion data (q1-q4)
+- **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
+- **`cost_per_click`**: Cost per click
+
+Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
+
+#### Publisher Commitment
+
+When a reporting webhook is configured, publishers commit to sending:
+
+**(campaign_duration / reporting_frequency) + 1** notifications
+
+- One notification per frequency period during the campaign
+- One final notification when the campaign completes
+- If reporting data is delayed beyond the expected delay window, a `"delayed"` notification will be sent
+
+#### Webhook Payload
+
+Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "next_expected_at": "2024-02-06T08:00:00Z",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "buyer_ref": "campaign_a",
+      "status": "active",
+      "totals": {
+        "impressions": 125000,
+        "spend": 5625.00,
+        "clicks": 250,
+        "ctr": 0.002
+      },
+      "by_package": [...]
+    }
+  ]
+}
+```
+
+**Fields:**
+- **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), or `"delayed"` (data not yet available)
+- **`sequence_number`**: Sequential notification number (starts at 1)
+- **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
+- **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
+
+#### Timezone Handling
+
+**All reporting MUST use UTC.** This eliminates DST complexity, simplifies reconciliation, and ensures consistent 24-hour reporting periods.
+
+```json
+{
+  "reporting_capabilities": {
+    "timezone": "UTC",
+    "available_reporting_frequencies": ["daily"],
+    "date_range_support": "date_range"
+  }
+}
+```
+
+**Reporting periods:**
+- Daily: 00:00:00Z to 23:59:59Z (always 24 hours)
+- Hourly: Top of hour to 59:59 seconds (always 1 hour)
+- Monthly: First to last day of month
+
+**Example webhook payload:**
+```json
+{
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  }
+}
+```
+
+#### Delayed Reporting
+
+If reporting data is not available within the product's `expected_delay_minutes`, publishers send a notification with `notification_type: "delayed"`:
+
+```json
+{
+  "notification_type": "delayed",
+  "sequence_number": 3,
+  "next_expected_at": "2024-02-06T10:00:00Z",
+  "message": "Reporting data delayed due to upstream processing. Expected availability in 2 hours."
+}
+```
+
+This prevents buyers from incorrectly assuming a missed notification.
+
+#### Webhook Aggregation
+
+Publishers SHOULD aggregate webhooks to reduce call volume when multiple media buys share:
+- Same webhook URL
+- Same reporting frequency
+- Same reporting period
+
+**Example**: Buyer has 100 active campaigns with daily reporting to the same endpoint. Publisher sends:
+- **Without aggregation**: 100 webhooks per day (inefficient)
+- **With aggregation**: 1 webhook per day containing all 100 campaigns (optimal)
+
+The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buyers should iterate through the array to process each campaign's data.
+
+**Aggregated webhook example:**
+```json
+{
+  "notification_type": "scheduled",
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    { "media_buy_id": "mb_001", "totals": { "impressions": 50000, "spend": 1750 }, ... },
+    { "media_buy_id": "mb_002", "totals": { "impressions": 48500, "spend": 1695 }, ... },
+    // ... 98 more media buys
+  ]
+}
+```
+
+Buyers should iterate through the array and process each media buy independently. If aggregated totals are needed, calculate them from the individual media buy totals.
+
+#### Partial Failure Handling
+
+When aggregating multiple media buys into a single webhook, publishers must handle cases where some campaigns have data available while others don't.
+
+**Approach: Best-Effort Delivery with Status Indicators**
+
+Publishers SHOULD send aggregated webhooks containing all available data, using status fields to indicate partial availability:
+
+```json
+{
+  "notification_type": "scheduled",
+  "sequence_number": 5,
+  "reporting_period": {
+    "start": "2024-02-05T00:00:00Z",
+    "end": "2024-02-05T23:59:59Z"
+  },
+  "currency": "USD",
+  "media_buy_deliveries": [
+    {
+      "media_buy_id": "mb_001",
+      "status": "active",
+      "totals": {
+        "impressions": 50000,
+        "spend": 1750
+      }
+    },
+    {
+      "media_buy_id": "mb_002",
+      "status": "active",
+      "totals": {
+        "impressions": 48500,
+        "spend": 1695
+      }
+    },
+    {
+      "media_buy_id": "mb_003",
+      "status": "reporting_delayed",
+      "message": "Reporting data temporarily unavailable for this campaign",
+      "expected_availability": "2024-02-06T02:00:00Z"
+    }
+  ],
+  "partial_data": true,
+  "unavailable_count": 1
+}
+```
+
+**Key Fields for Partial Failures:**
+- `partial_data`: Boolean indicating if any campaigns are missing data
+- `unavailable_count`: Number of campaigns with delayed/missing data
+- `status`: Per-campaign status (`"active"`, `"reporting_delayed"`, `"failed"`)
+- `expected_availability`: When delayed data is expected (if known)
+
+**When to Use Partial Delivery:**
+1. **Upstream delays**: Some data sources are slower than others
+2. **System degradation**: Partial system outage affects subset of campaigns
+3. **Data quality issues**: Specific campaigns fail validation, others proceed
+4. **Rate limiting**: API limits prevent fetching all campaign data
+
+**When NOT to Use Partial Delivery:**
+1. **Complete system outage**: Send `"delayed"` notification instead
+2. **All campaigns affected**: Use `notification_type: "delayed"`
+3. **Buyer endpoint issues**: Circuit breaker handles this (don't send at all)
+
+**Buyer Processing Logic:**
+```javascript
+function processAggregatedWebhook(webhook) {
+  if (webhook.partial_data) {
+    console.warn(`Partial data: ${webhook.unavailable_count} campaigns delayed`);
+  }
+
+  for (const delivery of webhook.media_buy_deliveries) {
+    if (delivery.status === 'reporting_delayed') {
+      // Mark campaign as pending, retry via polling or wait for next webhook
+      markCampaignPending(delivery.media_buy_id, delivery.expected_availability);
+    } else if (delivery.status === 'active') {
+      // Process normal delivery data
+      processCampaignMetrics(delivery);
+    } else {
+      console.error(`Unexpected status for ${delivery.media_buy_id}: ${delivery.status}`);
+    }
+  }
+}
+```
+
+**Best Practices:**
+- Always include all campaigns in array, even if data unavailable (with status indicator)
+- Set `partial_data: true` flag when any campaigns are delayed/failed
+- Provide `expected_availability` timestamp if known
+- Don't retry the entire webhook - buyers can poll individual campaigns if needed
+- Track partial delivery rates in monitoring to detect systemic issues
+
+#### Privacy and Compliance
+
+##### PII Scrubbing for GDPR/CCPA
+
+Publishers MUST scrub personally identifiable information (PII) from all webhook payloads to ensure GDPR and CCPA compliance. Reporting webhooks should contain only aggregated, anonymized metrics.
+
+**What to Scrub:**
+- User IDs, device IDs, IP addresses
+- Email addresses, phone numbers
+- Precise geolocation data (latitude/longitude)
+- Cookie IDs, advertising IDs (unless aggregated)
+- Any custom dimensions containing PII
+
+**What to Keep:**
+- Aggregated metrics (impressions, spend, clicks, etc.)
+- Coarse geography (city, state, country - not street address)
+- Device type categories (mobile, desktop, tablet)
+- Browser/OS categories
+- Time-based aggregations
+
+**Example - Before PII Scrubbing (❌ DO NOT SEND):**
+```json
+{
+  "media_buy_id": "mb_001",
+  "user_events": [
+    {
+      "user_id": "user_12345",
+      "ip_address": "192.168.1.100",
+      "device_id": "abc-def-ghi",
+      "impressions": 1,
+      "lat": 40.7128,
+      "lon": -74.0060
+    }
+  ]
+}
+```
+
+**Example - After PII Scrubbing (✅ CORRECT):**
+```json
+{
+  "media_buy_id": "mb_001",
+  "totals": {
+    "impressions": 125000,
+    "spend": 5625.00,
+    "clicks": 250
+  },
+  "by_geography": [
+    {
+      "city": "New York",
+      "state": "NY",
+      "country": "US",
+      "impressions": 45000,
+      "spend": 2025.00
+    }
+  ]
+}
+```
+
+**Publisher Responsibilities:**
+- Implement PII scrubbing at the data collection layer, not at webhook delivery
+- Ensure aggregation thresholds prevent re-identification (e.g., minimum 10 users per segment)
+- Document what data is collected vs. what is shared in webhooks
+- Provide data processing agreements (DPAs) for GDPR compliance
+- Support GDPR/CCPA data deletion requests
+
+**Buyer Responsibilities:**
+- Do not request PII in `requested_metrics` or custom dimensions
+- Understand that webhook data is aggregated and anonymized
+- Implement proper data retention policies
+- Include webhook data in privacy policies and user disclosures
+
+#### Implementation Best Practices
+
+1. **Handle Arrays**: Always process `media_buy_deliveries` as an array, even if it contains one element
+2. **Idempotent Handlers**: Process duplicate notifications safely (webhooks use at-least-once delivery)
+3. **Sequence Tracking**: Use `sequence_number` to detect missing or out-of-order notifications
+4. **Fallback Polling**: Continue periodic polling as backup if webhooks fail
+5. **Timezone Awareness**: Store publisher's reporting timezone for accurate period calculation
+6. **Validate Frequency**: Ensure requested frequency is in product's `available_reporting_frequencies`
+7. **Validate Metrics**: Ensure requested metrics are in product's `available_metrics`
+8. **PII Compliance**: Never include user-level data in webhook payloads
+
+#### Webhook Health Monitoring
+
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Lifecycle](/docs/building/implementation/task-lifecycle)).
+
+When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
+
+**Benefits of using task management:**
+- Consistent status tracking across all AdCP operations
+- Standard polling/webhook notification patterns
+- Existing infrastructure for task status, history, and errors
+- No need for media-buy-specific webhook health endpoints
+
+If webhook delivery fails persistently (circuit breaker opens), publishers update the task status to indicate the issue. Buyers detect this through normal task monitoring.
+
+### Offline-File-Delivery-Based Reporting
+
+**Example: Offline Delivery**
+Publisher pushes daily report files to buyer's cloud storage:
+```
+s3://buyer-reports/publisher_name/2024/02/05/media_buy_delivery.json.gz
+```
+
+File contains same structure as webhook payload but aggregated across all campaigns. Buyer processes files on their schedule.
+
+**When to Use Offline Delivery:**
+- \>100 active campaigns with same buyer
+- Hourly reporting requirements (24x cost reduction)
+- High data volume (detailed breakdowns, dimensional data)
+- Buyer has batch processing infrastructure
+
+Publishers declare support for offline delivery in product capabilities:
+```json
+{
+  "reporting_capabilities": {
+    "supports_webhooks": true,
+    "supports_offline_delivery": true,
+    "offline_delivery_protocols": ["s3", "gcs"],
+    "date_range_support": "date_range"
+  }
+}
+```
+
+For offline file delivery, publishers can provide reporting data in JSON Lines (JSONL), CSV, or Parquet format. All formats preserve the nested JSON structure from webhook payloads, making them ideal for batch processing.
+
+Files can be compressed with gzip (`.jsonl.gz`, `.csv.gz`, `.parquet.gz`) to reduce storage and transfer costs.
+
+#### JSON Lines (JSONL)
+
+One media buy delivery per line (newline-delimited JSON). Each line contains a single media buy delivery object with its reporting period and package-level data. Preserves full nested structure. Easy to parse line-by-line for streaming processing.
+
+**Example JSONL file:**
+```jsonl
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_001", "buyer_ref": "campaign_a", "status": "active", "totals": {"impressions": 50000, "spend": 1750.00, "clicks": 100, "ctr": 0.002}, "by_package": [{"package_id": "pkg_001", "impressions": 30000, "spend": 1050.00, "pacing_index": 0.95, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}, {"package_id": "pkg_002", "impressions": 20000, "spend": 700.00, "pacing_index": 0.98, "pricing_model": "cpm", "rate": 0.035, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_002", "buyer_ref": "campaign_b", "status": "active", "totals": {"impressions": 200000, "spend": 9000.00, "clicks": 400, "ctr": 0.002}, "by_package": [{"package_id": "pkg_003", "impressions": 200000, "spend": 9000.00, "pacing_index": 1.02, "pricing_model": "cpm", "rate": 45.00, "currency": "USD"}]}
+{"notification_type": "scheduled", "sequence_number": 5, "next_expected_at": "2024-02-06T08:00:00Z", "reporting_period": {"start": "2024-02-05T00:00:00Z", "end": "2024-02-05T23:59:59Z"}, "currency": "USD", "media_buy_id": "mb_003", "buyer_ref": "campaign_c", "status": "active", "totals": {"impressions": 75000, "spend": 3375.00, "clicks": 150, "ctr": 0.002}, "by_package": [{"package_id": "pkg_004", "impressions": 75000, "spend": 3375.00, "pacing_index": 0.96, "pricing_model": "cpcv", "rate": 0.045, "currency": "USD"}]}
+```
+
+#### CSV
+
+**For tabular analysis**
+
+CSV files require unnesting nested arrays. Each record should be unnested to the `by_package` level, meaning one row per package with parent-level data (reporting period, media buy info, totals) duplicated.
+
+**Example CSV structure:**
+```csv
+notification_type,sequence_number,next_expected_at,reporting_period_start,reporting_period_end,currency,media_buy_id,buyer_ref,status,totals_impressions,totals_spend,totals_clicks,totals_ctr,by_package_package_id,by_package_impressions,by_package_spend,by_package_clicks,by_package_pacing_index,by_package_pricing_model,by_package_rate,by_package_currency
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_001,30000,1050.00,60,0.95,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_001,campaign_a,active,50000,1750.00,100,0.002,pkg_002,20000,700.00,40,0.98,cpm,0.035,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_002,campaign_b,active,200000,9000.00,400,0.002,pkg_003,200000,9000.00,400,1.02,cpm,45.00,USD
+scheduled,5,2024-02-06T08:00:00Z,2024-02-05T00:00:00Z,2024-02-05T23:59:59Z,USD,mb_003,campaign_c,active,75000,3375.00,150,0.002,pkg_004,75000,3375.00,150,0.96,cpcv,0.045,USD
+```
+
+#### Parquet
+
+**For high-volume analytics**
+
+Columnar format optimized for analytics workloads. Excellent compression ratios. Supports nested structures natively. Best for data warehouses and big data processing.
+
+**Example Parquet schema:**
+```json
+{
+  "type": "record",
+  "name": "MediaBuyDelivery",
+  "fields": [
+    {"name": "notification_type", "type": "string"},
+    {"name": "sequence_number", "type": "int"},
+    {"name": "next_expected_at", "type": "string"},
+    {"name": "reporting_period", "type": {
+      "type": "record",
+      "name": "ReportingPeriod",
+      "fields": [
+        {"name": "start", "type": "string"},
+        {"name": "end", "type": "string"}
+      ]
+    }},
+    {"name": "currency", "type": "string"},
+    {"name": "media_buy_id", "type": "string"},
+    {"name": "buyer_ref", "type": "string"},
+    {"name": "status", "type": "string"},
+    {"name": "totals", "type": {
+      "type": "record",
+      "name": "Totals",
+      "fields": [
+        {"name": "impressions", "type": "long"},
+        {"name": "spend", "type": "double"},
+        {"name": "clicks", "type": "long"},
+        {"name": "ctr", "type": "double"}
+      ]
+    }},
+    {"name": "by_package", "type": {
+      "type": "array",
+      "items": {
+        "type": "record",
+        "name": "PackageDelivery",
+        "fields": [
+          {"name": "package_id", "type": "string"},
+          {"name": "impressions", "type": "long"},
+          {"name": "spend", "type": "double"},
+          {"name": "pacing_index", "type": "double"},
+          {"name": "pricing_model", "type": "string"},
+          {"name": "rate", "type": "double"},
+          {"name": "currency", "type": "string"}
+        ]
+      }
+    }}
+  ]
+}
+```
+
+**File Structure:**
+Each file contains one media buy delivery per line (JSONL) or row (CSV/Parquet). Files may contain:
+- Multiple media buy deliveries (one per line/row)
+- Multiple reporting periods for the same media buy (separate rows)
+- Multiple media buys (each with its own rows)
+
+**Processing Recommendations:**
+- Process files in chronological order using file timestamps
+- Handle duplicate files gracefully (idempotent processing)
+- Validate file integrity using checksums if provided
+- Monitor for missing files and alert on gaps
+
+## Data Reconciliation
+
+**The `get_media_buy_delivery` API is the authoritative source of truth for all campaign metrics**, regardless of whether you use webhooks, offline delivery, or polling.
+
+Reconciliation is important for **any reporting delivery method** because:
+- **Webhooks**: May be missed due to network failures or circuit breaker drops
+- **Offline files**: May be delayed, corrupted, or fail to process
+- **Polling**: May miss data during API outages
+- **Late-arriving data**: Impressions can arrive 24-48+ hours after initial reporting (all methods)
+
+#### Reconciliation Process
+
+Buyers SHOULD periodically reconcile delivered data against API to ensure accuracy:
+
+**Recommended Reconciliation Schedule:**
+- **Hourly delivery**: Reconcile via API daily
+- **Daily delivery**: Reconcile via API weekly
+- **Monthly delivery**: Reconcile via API at month end + 7 days
+- **Campaign close**: Always reconcile after campaign_end + attribution_window
+
+**Reconciliation Logic:**
+```javascript
+async function reconcileWebhookData(mediaBuyId, startDate, endDate) {
+  // Get authoritative data from API
+  const apiData = await adcp.getMediaBuyDelivery({
+    media_buy_id: mediaBuyId,
+    date_range: { start: startDate, end: endDate }
+  });
+
+  // Compare with webhook data in local database
+  const webhookData = await db.getWebhookTotals(mediaBuyId, startDate, endDate);
+
+  const discrepancy = {
+    impressions: apiData.totals.impressions - webhookData.impressions,
+    spend: apiData.totals.spend - webhookData.spend,
+    clicks: apiData.totals.clicks - webhookData.clicks
+  };
+
+  // Acceptable discrepancy thresholds
+  const impressionVariance = Math.abs(discrepancy.impressions) / apiData.totals.impressions;
+  const spendVariance = Math.abs(discrepancy.spend) / apiData.totals.spend;
+
+  if (impressionVariance > 0.02 || spendVariance > 0.01) {
+    // Significant discrepancy (>2% impressions or >1% spend)
+    console.warn(`Reconciliation discrepancy for ${mediaBuyId}:`, discrepancy);
+
+    // Update local database with authoritative API data
+    await db.updateCampaignTotals(mediaBuyId, apiData.totals);
+
+    // Alert if discrepancy is unusually large
+    if (impressionVariance > 0.10 || spendVariance > 0.05) {
+      await alertOps(`Large reconciliation discrepancy detected`, {
+        media_buy_id: mediaBuyId,
+        webhook_totals: webhookData,
+        api_totals: apiData.totals,
+        discrepancy
+      });
+    }
+  }
+
+  return {
+    status: impressionVariance < 0.02 ? 'reconciled' : 'discrepancy_found',
+    api_data: apiData.totals,
+    webhook_data: webhookData,
+    discrepancy
+  };
+}
+```
+
+**Why Discrepancies Occur:**
+1. **Delivery failures**: Webhooks missed, offline files corrupted, API timeouts during polling
+2. **Late-arriving data**: Impressions attributed after initial reporting (all delivery methods)
+3. **Data corrections**: Publisher adjusts metrics after initial reporting
+4. **Processing errors**: Buyer-side failures to process delivered data
+5. **Timezone differences**: Period boundaries may differ between delivery and API query
+
+**Source of Truth Rules:**
+- **For billing**: Always use `get_media_buy_delivery` API at campaign end + attribution window
+- **For real-time decisions**: Use delivered data (webhook/file/poll) for speed, reconcile later
+- **For discrepancies**: API data wins, update local records accordingly
+- **For audits**: API provides complete historical data, delivered data is ephemeral
+
+**Best Practices:**
+- Store webhook `sequence_number` to detect missed notifications
+- Run automated reconciliation daily for active campaigns
+- Alert on discrepancies >2% for impressions or >1% for spend
+- Use API data for all financial reporting and invoicing
+- Document reconciliation process for audit compliance
+
+#### Late-Arriving Impressions
+
+Ad serving data often arrives with delays due to attribution windows, offline tracking, and pipeline latency. Publishers declare `expected_delay_minutes` in `reporting_capabilities`:
+- **Display/Video**: Typically 4-6 hours
+- **Audio**: Typically 8-12 hours
+- **CTV**: May be 24+ hours
+
+This represents when **most** data is available, not **all** data.
+
+#### Handling Late Arrivals
+
+When late data arrives for a previously reported period, **resend that period** with `is_adjusted: true`:
+
+```json
+{
+  "notification_type": "adjusted",
+  "reporting_period": {
+    "start": "2024-02-01T00:00:00Z",
+    "end": "2024-02-01T23:59:59Z"
+  },
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_001",
+    "is_adjusted": true,
+    "totals": {
+      "impressions": 51000,  // Updated total (was 50000)
+      "spend": 1785          // Updated spend (was 1750)
+    }
+  }]
+}
+```
+
+**Buyer Processing:**
+```javascript
+function processWebhook(webhook) {
+  for (const delivery of webhook.media_buy_deliveries) {
+    if (delivery.is_adjusted) {
+      // Replace entire period with updated totals
+      db.replaceCampaignPeriod(
+        delivery.media_buy_id,
+        webhook.reporting_period,
+        delivery.totals
+      );
+    } else {
+      // Normal new period data
+      db.insertCampaignPeriod(delivery.media_buy_id, webhook.reporting_period, delivery.totals);
+    }
+  }
+}
+```
+
+**When to send adjusted periods:**
+- Significant data changes (>2% impression variance or >1% spend variance)
+- Final reconciliation at campaign_end + attribution_window
+- Data quality corrections
+
+With polling-only, buyers detect adjustments through reconciliation by comparing API results over time.
+
+#### Webhook Reliability
+
+Reporting webhooks follow AdCP's standard webhook reliability patterns:
+
+- **At-least-once delivery**: Same notification may be delivered multiple times
+- **Best-effort ordering**: Notifications may arrive out of order
+- **Timeout and retry**: Limited retry attempts on delivery failure
+
+See [Webhooks](/docs/building/implementation/webhooks) for detailed implementation guidance.
+
+## Optimization Strategies
+
+### Budget Optimization
+- **Reallocation** between high and low performing packages
+- **Pacing adjustments** for improved delivery
+- **Spend efficiency** analysis and improvements
+
+### Creative Optimization
+- **Performance analysis** by creative asset
+- **A/B testing** different creative approaches
+- **Refresh strategies** to prevent creative fatigue
+
+### Targeting Refinement
+- **Audience performance** analysis
+- **Geographic optimization** based on delivery data
+- **Temporal adjustments** for optimal timing
+
+## Performance Feedback Loop
+The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for detailed API documentation.
+
+### Performance Index Concept
+
+A normalized score indicating relative performance:
+- `0.0` = No measurable value or impact
+- `1.0` = Baseline/expected performance
+- `> 1.0` = Above average (e.g., 1.45 = 45% better)
+- `< 1.0` = Below average (e.g., 0.8 = 20% worse)
+
+### Sharing Performance Data
+
+Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) task:
+
+```json
+{
+  "media_buy_id": "gam_1234567890",
+  "measurement_period": {
+    "start": "2024-01-15T00:00:00Z",
+    "end": "2024-01-21T23:59:59Z"
+  },
+  "performance_index": 1.35,
+  "metric_type": "conversion_rate"
+}
+```
+
+### Supported Metrics
+
+- **overall_performance**: General campaign success
+- **conversion_rate**: Post-click or post-view conversions
+- **brand_lift**: Brand awareness or consideration lift
+- **click_through_rate**: Engagement with creative
+- **completion_rate**: Video or audio completion rates
+- **viewability**: Viewable impression rate
+- **brand_safety**: Brand safety compliance
+- **cost_efficiency**: Cost per desired outcome
+
+### How Publishers Use Performance Data
+
+Publishers can leverage performance indices to:
+
+1. **Optimize Delivery**: Shift impressions to high-performing segments
+2. **Adjust Pricing**: Update CPMs based on proven value
+3. **Improve Products**: Refine product definitions based on performance patterns
+4. **Enhance Algorithms**: Train ML models on actual business outcomes
+
+### Privacy and Data Sharing
+
+- Performance feedback sharing is voluntary and controlled by the buyer
+- Aggregate performance patterns may be used to improve overall platform performance
+- Individual campaign details remain confidential to the buyer-publisher relationship
+
+### Dimensional Performance (Future)
+
+Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
+
+## Targeting Consistency
+Reporting aligns with AdCP's [Targeting](/docs/media-buy/advanced-topics/targeting) approach, enabling:
+- **Consistent analysis** across campaign lifecycle
+- **Granular breakdowns** by targeting parameters
+- **Cross-campaign insights** for portfolio optimization
+
+### Target → Measure → Optimize
+The power of consistent targeting and reporting creates a virtuous cycle:
+
+1. **Target**: Define your audience using briefs and overlays (e.g., "Mobile users in major metros")
+2. **Measure**: Report on the same attributes (Track performance by device type and geography)
+3. **Optimize**: Feed performance back to improve delivery (Shift budget to high-performing segments)
+
+## Standard Metrics
+
+All platforms must support these core metrics:
+
+- **impressions**: Number of ad views
+- **spend**: Amount spent in currency
+- **clicks**: Number of clicks (if applicable)
+- **ctr**: Click-through rate (clicks/impressions)
+
+Optional standard metrics:
+
+- **conversions**: Post-click/view conversions
+- **viewability**: Percentage of viewable impressions
+- **completion_rate**: Video/audio completion percentage
+- **engagement_rate**: Platform-specific engagement metric
+
+## Platform-Specific Considerations
+
+Different platforms offer varying reporting and optimization capabilities:
+
+### Google Ad Manager
+- Comprehensive dimensional reporting, real-time and historical data, advanced viewability metrics
+
+### Kevel
+- Real-time reporting API, custom metric support, flexible aggregation options
+
+### Triton Digital
+- Audio-specific metrics (completion rates, skip rates), station-level performance data, daypart analysis
+
+## Advanced Analytics
+
+### Cross-Campaign Analysis
+- **Portfolio performance** across multiple campaigns
+- **Audience overlap** and frequency management
+- **Budget allocation** optimization across campaigns
+
+### Predictive Insights
+- **Performance forecasting** based on historical data
+- **Optimization recommendations** from AI analysis
+- **Trend prediction** for proactive adjustments
+
+## Response Times
+
+Optimization operations have predictable timing:
+- **Delivery reports**: ~60 seconds (data aggregation)
+- **Campaign updates**: Minutes to days (depending on changes)
+- **Performance analysis**: ~1 second (cached metrics)
+
+## Best Practices
+
+1. **Report Frequently**: Regular reporting improves optimization opportunities
+2. **Track Pacing**: Monitor delivery against targets to avoid under/over-delivery
+3. **Analyze Patterns**: Look for performance trends across dimensions
+4. **Consider Latency**: Some metrics may have attribution delays
+5. **Normalize Metrics**: Use consistent baselines for performance comparison
+
+## Integration with Media Buy Lifecycle
+
+Optimization and reporting is the ongoing phase that runs throughout active campaigns:
+
+- **Connects to Creation**: Use learnings to improve future campaign setup
+- **Guides Updates**: Data-driven decisions for campaign modifications
+- **Enables Scale**: Proven strategies can be applied to similar campaigns
+- **Feeds AI**: Performance data improves automated optimization
+
+## Related Documentation
+
+- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Retrieve delivery reports
+- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Modify campaigns based on performance
+- **[Media Buy Lifecycle](/docs/media-buy/media-buys)** - Complete campaign management workflow
+- **[Targeting](/docs/media-buy/advanced-topics/targeting)** - Brief-based targeting and overlays

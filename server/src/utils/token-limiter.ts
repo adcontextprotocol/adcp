@@ -49,6 +49,11 @@ export const TOKEN_BUFFERS = {
    * Increased from 15K to 45K to prevent prompt overflow errors
    */
   toolDefinitions: 45000,
+  /**
+   * Member context, channel context, and insight goals prepended to user message.
+   * These are added before conversation trimming so must be reserved separately.
+   */
+  prependedContext: 10000,
   /** Reserve space for response generation */
   responseBuffer: 5000,
   /** Safety margin for any miscalculation */
@@ -61,6 +66,7 @@ export const TOKEN_BUFFERS = {
 export const RESERVED_TOKENS =
   TOKEN_BUFFERS.systemPrompt +
   TOKEN_BUFFERS.toolDefinitions +
+  TOKEN_BUFFERS.prependedContext +
   TOKEN_BUFFERS.responseBuffer +
   TOKEN_BUFFERS.safetyMargin;
 
@@ -93,6 +99,7 @@ export function getConversationTokenLimit(model?: string, toolCount?: number): n
     const reserved =
       TOKEN_BUFFERS.systemPrompt +
       toolTokens +
+      TOKEN_BUFFERS.prependedContext +
       TOKEN_BUFFERS.responseBuffer +
       TOKEN_BUFFERS.safetyMargin;
     return limit - reserved;
@@ -264,7 +271,7 @@ export function checkContextLimit(
   headroom: number;
 } {
   const modelLimit = MODEL_CONTEXT_LIMITS[model ?? 'default'] ?? MODEL_CONTEXT_LIMITS.default;
-  const estimatedTotal = systemPromptTokens + messagesTokens + toolsTokens + TOKEN_BUFFERS.responseBuffer;
+  const estimatedTotal = systemPromptTokens + messagesTokens + toolsTokens + TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer;
   const headroom = modelLimit - estimatedTotal;
 
   return {

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/event.json",
+  "title": "Event",
+  "description": "A marketing event (conversion, engagement, or custom) for attribution and optimization",
+  "type": "object",
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "Unique identifier for deduplication (scoped to event_type + event_source_id)",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "event_type": {
+      "$ref": "/schemas/enums/event-type.json",
+      "description": "Standard event type"
+    },
+    "event_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the event occurred"
+    },
+    "user_match": {
+      "$ref": "/schemas/core/user-match.json",
+      "description": "User identifiers for attribution matching"
+    },
+    "custom_data": {
+      "$ref": "/schemas/core/event-custom-data.json",
+      "description": "Event-specific data (value, currency, items, etc.)"
+    },
+    "action_source": {
+      "$ref": "/schemas/enums/action-source.json",
+      "description": "Where the event originated"
+    },
+    "event_source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the event occurred (required when action_source is 'website')"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "description": "Name for custom events (used when event_type is 'custom')"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["event_id", "event_type", "event_time"],
+  "additionalProperties": true
+}

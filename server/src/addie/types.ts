@@ -354,6 +354,10 @@ export interface MemberCapabilities {
   events_registered: number;
   events_attended: number;
 
+  // Community
+  community_profile_public: boolean;
+  community_profile_completeness: number;  // 0-100
+
   // Engagement
   last_active_days_ago: number | null;
   slack_message_count_30d: number;

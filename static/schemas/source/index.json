@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry v1",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.0.0-beta.2",
+  "adcp_version": "3.0.0-beta.3",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -66,6 +66,14 @@
           "$ref": "/schemas/core/error.json",
           "description": "Standard error structure"
         },
+        "pagination-request": {
+          "$ref": "/schemas/core/pagination-request.json",
+          "description": "Standard cursor-based pagination parameters for list request schemas"
+        },
+        "pagination-response": {
+          "$ref": "/schemas/core/pagination-response.json",
+          "description": "Standard cursor-based pagination metadata for list response schemas"
+        },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
           "description": "Sub-asset for multi-asset creative formats"
@@ -82,6 +90,10 @@
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Performance feedback data for a media buy or package"
         },
+        "creative-variant": {
+          "$ref": "/schemas/core/creative-variant.json",
+          "description": "A specific execution variant of a creative with performance metrics"
+        },
         "property": {
           "$ref": "/schemas/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
@@ -94,6 +106,18 @@
           "$ref": "/schemas/core/brand-manifest-ref.json",
           "description": "Brand manifest reference (inline object or URL)"
         },
+        "creative-brief": {
+          "$ref": "/schemas/core/creative-brief.json",
+          "description": "Campaign-level creative context for AI-powered creative generation"
+        },
+        "creative-brief-ref": {
+          "$ref": "/schemas/core/creative-brief-ref.json",
+          "description": "Creative brief reference (inline object or URL)"
+        },
+        "reference-asset": {
+          "$ref": "/schemas/core/reference-asset.json",
+          "description": "A reference asset with semantic role for creative context"
+        },
         "promoted-products": {
           "$ref": "/schemas/core/promoted-products.json",
           "description": "Product or offering selection for campaigns with multiple selection methods"
@@ -105,6 +129,18 @@
         "product-allocation": {
           "$ref": "/schemas/core/product-allocation.json",
           "description": "A budget allocation for a specific product within a proposal"
+        },
+        "delivery-forecast": {
+          "$ref": "/schemas/core/delivery-forecast.json",
+          "description": "Forecasted delivery metrics for a proposal or product allocation"
+        },
+        "forecast-range": {
+          "$ref": "/schemas/core/forecast-range.json",
+          "description": "A forecast value with optional low/high bounds"
+        },
+        "forecast-point": {
+          "$ref": "/schemas/core/forecast-point.json",
+          "description": "A single point on a budget-to-outcome curve"
         },
         "promoted-offerings": {
           "$ref": "/schemas/core/promoted-offerings.json",
@@ -198,9 +234,33 @@
           "$ref": "/schemas/core/data-provider-signal-selector.json",
           "description": "Selects signals from a data provider's adagents.json - supports three patterns: all signals, specific IDs, or by tags"
         },
+        "daypart-target": {
+          "$ref": "/schemas/core/daypart-target.json",
+          "description": "A time window for daypart targeting with days of week and hour range"
+        },
         "signal-targeting": {
           "$ref": "/schemas/core/signal-targeting.json",
           "description": "Targeting constraint for a signal - discriminated union by value_type (binary, categorical, numeric)"
+        },
+        "event": {
+          "$ref": "/schemas/core/event.json",
+          "description": "A marketing event (conversion, engagement, or custom) for attribution"
+        },
+        "user-match": {
+          "$ref": "/schemas/core/user-match.json",
+          "description": "User identifiers for attribution matching (UIDs, hashed identifiers, click IDs)"
+        },
+        "event-custom-data": {
+          "$ref": "/schemas/core/event-custom-data.json",
+          "description": "Event-specific data for attribution and reporting"
+        },
+        "attribution-window": {
+          "$ref": "/schemas/core/attribution-window.json",
+          "description": "Attribution methodology and lookback windows for conversion measurement"
+        },
+        "optimization-goal": {
+          "$ref": "/schemas/core/optimization-goal.json",
+          "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         }
       },
       "requirements": {
@@ -310,7 +370,7 @@
         },
         "task-type": {
           "$ref": "/schemas/enums/task-type.json",
-          "description": "Valid AdCP task types across all domains (create_media_buy, update_media_buy, sync_creatives, activate_signal, get_signals, create_property_list, get_property_list, update_property_list, list_property_lists, delete_property_list)"
+          "description": "Valid AdCP task types across all domains"
         },
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
@@ -352,6 +412,10 @@
           "$ref": "/schemas/enums/daast-tracking-event.json",
           "description": "Standard DAAST tracking events for audio playback and interaction"
         },
+        "day-of-week": {
+          "$ref": "/schemas/enums/day-of-week.json",
+          "description": "Days of the week for daypart targeting"
+        },
         "signal-catalog-type": {
           "$ref": "/schemas/enums/signal-catalog-type.json",
           "description": "Types of signal catalogs (marketplace, custom, owned)"
@@ -364,9 +428,29 @@
           "$ref": "/schemas/enums/feedback-source.json",
           "description": "Source of performance feedback data"
         },
+        "forecast-method": {
+          "$ref": "/schemas/enums/forecast-method.json",
+          "description": "Method used to produce a delivery forecast (estimate, modeled, guaranteed)"
+        },
+        "forecastable-metric": {
+          "$ref": "/schemas/enums/forecastable-metric.json",
+          "description": "Standard metric names for delivery forecasts (audience_size, reach, impressions, clicks, spend, etc.)"
+        },
+        "forecast-range-unit": {
+          "$ref": "/schemas/enums/forecast-range-unit.json",
+          "description": "How to interpret forecast points: spend curve, reach/frequency curve, temporal (weekly/daily), or outcome targets (clicks/conversions)"
+        },
+        "demographic-system": {
+          "$ref": "/schemas/enums/demographic-system.json",
+          "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
+        },
+        "reach-unit": {
+          "$ref": "/schemas/enums/reach-unit.json",
+          "description": "Unit of measurement for reach metrics (individuals, households, devices, accounts, cookies, custom)"
+        },
         "creative-agent-capability": {
           "$ref": "/schemas/enums/creative-agent-capability.json",
-          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview)"
+          "description": "Capabilities supported by creative agents (validation, assembly, generation, preview, delivery)"
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
@@ -471,6 +555,34 @@
         "signal-source": {
           "$ref": "/schemas/enums/signal-source.json",
           "description": "Source type for signal identifiers: 'catalog' (verifiable via data provider) or 'agent' (trust-based)"
+        },
+        "universal-macro": {
+          "$ref": "/schemas/enums/universal-macro.json",
+          "description": "Standardized macro placeholders for dynamic value substitution in creative tracking URLs"
+        },
+        "event-type": {
+          "$ref": "/schemas/enums/event-type.json",
+          "description": "Standard marketing event types for conversion tracking (purchase, lead, add_to_cart, etc.)"
+        },
+        "uid-type": {
+          "$ref": "/schemas/enums/uid-type.json",
+          "description": "Universal ID types for user matching (rampid, id5, uid2, maid, etc.)"
+        },
+        "action-source": {
+          "$ref": "/schemas/enums/action-source.json",
+          "description": "Where the conversion event originated (website, app, offline, etc.)"
+        },
+        "attribution-model": {
+          "$ref": "/schemas/enums/attribution-model.json",
+          "description": "Attribution model used for conversion measurement"
+        },
+        "wcag-level": {
+          "$ref": "/schemas/enums/wcag-level.json",
+          "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
+        },
+        "promoted-offerings-requirement": {
+          "$ref": "/schemas/enums/promoted-offerings-requirement.json",
+          "description": "Content requirements that a creative format can impose on promoted offerings"
         }
       }
     },
@@ -501,9 +613,17 @@
           "$ref": "/schemas/pricing-options/cpp-option.json",
           "description": "Cost Per Point (CPP) pricing for TV/audio with demographic measurement - supports fixed rate and auction modes"
         },
+        "cpa-option": {
+          "$ref": "/schemas/pricing-options/cpa-option.json",
+          "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - fixed price per conversion event"
+        },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",
           "description": "Flat rate pricing for DOOH and sponsorships - supports fixed rate and auction modes"
+        },
+        "time-option": {
+          "$ref": "/schemas/pricing-options/time-option.json",
+          "description": "Time-based pricing - cost per time unit (hour, day, week, month) that scales with campaign duration"
         }
       }
     },
@@ -518,6 +638,16 @@
           "response": {
             "$ref": "/schemas/account/list-accounts-response.json",
             "description": "Response payload for list_accounts task"
+          }
+        },
+        "sync-accounts": {
+          "request": {
+            "$ref": "/schemas/account/sync-accounts-request.json",
+            "description": "Request parameters for syncing advertiser accounts with upsert semantics"
+          },
+          "response": {
+            "$ref": "/schemas/account/sync-accounts-response.json",
+            "description": "Response payload for sync_accounts task"
           }
         }
       }
@@ -614,6 +744,26 @@
             "$ref": "/schemas/media-buy/provide-performance-feedback-response.json",
             "description": "Response payload for provide_performance_feedback task"
           }
+        },
+        "sync-event-sources": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-event-sources-request.json",
+            "description": "Request parameters for configuring event sources on an account"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-event-sources-response.json",
+            "description": "Response payload for sync_event_sources task"
+          }
+        },
+        "log-event": {
+          "request": {
+            "$ref": "/schemas/media-buy/log-event-request.json",
+            "description": "Request parameters for logging conversion or marketing events"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/log-event-response.json",
+            "description": "Response payload for log_event task"
+          }
         }
       }
     },
@@ -648,6 +798,16 @@
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
             "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+          }
+        },
+        "get-creative-delivery": {
+          "request": {
+            "$ref": "/schemas/creative/get-creative-delivery-request.json",
+            "description": "Request parameters for retrieving creative delivery data with variant-level breakdowns"
+          },
+          "response": {
+            "$ref": "/schemas/creative/get-creative-delivery-response.json",
+            "description": "Response payload with creative delivery data including variant manifests and metrics"
           }
         }
       },

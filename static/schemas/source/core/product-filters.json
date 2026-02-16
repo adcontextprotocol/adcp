@@ -17,14 +17,16 @@
       "description": "Filter by format types",
       "items": {
         "$ref": "/schemas/enums/format-category.json"
-      }
+      },
+      "minItems": 1
     },
     "format_ids": {
       "type": "array",
       "description": "Filter by specific format IDs",
       "items": {
         "$ref": "/schemas/core/format-id.json"
-      }
+      },
+      "minItems": 1
     },
     "standard_formats_only": {
       "type": "boolean",
@@ -88,7 +90,8 @@
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
-      }
+      },
+      "minItems": 1
     },
     "regions": {
       "type": "array",
@@ -96,7 +99,8 @@
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
-      }
+      },
+      "minItems": 1
     },
     "metros": {
       "type": "array",
@@ -115,14 +119,16 @@
         },
         "required": ["system", "code"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     },
     "channels": {
       "type": "array",
-      "description": "Filter by advertising channels (e.g., ['display', 'video', 'dooh'])",
+      "description": "Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])",
       "items": {
         "$ref": "/schemas/enums/channels.json"
-      }
+      },
+      "minItems": 1
     },
     "required_axe_integrations": {
       "type": "array",
@@ -130,7 +136,8 @@
       "items": {
         "type": "string",
         "format": "uri"
-      }
+      },
+      "minItems": 1
     },
     "required_features": {
       "$ref": "/schemas/core/media-buy-features.json",
@@ -153,14 +160,16 @@
         },
         "required": ["level"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     },
     "signal_targeting": {
       "type": "array",
       "description": "Filter to products supporting specific signals from data provider catalogs. Products must have the requested signals in their data_provider_signals and signal_targeting_allowed must be true (or all signals requested).",
       "items": {
         "$ref": "/schemas/core/signal-targeting.json"
-      }
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true

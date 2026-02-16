@@ -34,6 +34,8 @@ import { setupStatsRoutes } from "./admin/stats.js";
 import { setupDiscountRoutes } from "./admin/discounts.js";
 import { setupMembersRoutes } from "./admin/members.js";
 import { setupAccountRoutes } from "./admin/accounts.js";
+import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
+import { setupBanRoutes } from "./admin/bans.js";
 
 const logger = createLogger("admin-routes");
 
@@ -114,6 +116,12 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Unified account management routes (replaces separate prospect/org detail)
   setupAccountRoutes(pageRouter, apiRouter);
+
+  // Brand registry enrichment routes (Brandfetch)
+  setupBrandEnrichmentRoutes(apiRouter);
+
+  // Ban management and registry activity routes
+  setupBanRoutes(pageRouter, apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)

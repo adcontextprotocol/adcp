@@ -19,6 +19,7 @@ import { notifyPublishedPost } from "../notifications/slack.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose } from "../slack/client.js";
+import { CommunityDatabase } from "../db/community-db.js";
 
 const logger = createLogger("committee-routes");
 
@@ -961,6 +962,15 @@ export function createCommitteeRouters(): {
 
       invalidateMemberContextCache();
       invalidateWebAdminStatusCache(user.id);
+
+      // Award community points + check badges (fire-and-forget)
+      const communityDb = new CommunityDatabase();
+      communityDb.awardPoints(user.id, 'wg_joined', 15, group.id, 'working_group').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to award WG join points');
+      });
+      communityDb.checkAndAwardBadges(user.id, 'wg').catch(err => {
+        logger.error({ err, userId: user.id }, 'Failed to check WG badges');
+      });
 
       res.status(201).json({ success: true, membership });
     } catch (error) {

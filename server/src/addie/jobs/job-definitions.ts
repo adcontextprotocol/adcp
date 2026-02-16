@@ -27,6 +27,9 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { logger } from '../../logger.js';
+
+const jobLogger = logger.child({ module: 'content-curator-job' });
 
 /**
  * Composite runner for content curator that runs multiple sub-tasks sequentially.
@@ -43,20 +46,20 @@ async function runContentCuratorJob() {
 
   try {
     results.pendingResources = await processPendingResources({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: pending resources failed');
   }
 
   try {
     results.rssPerspectives = await processRssPerspectives({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: RSS perspectives failed');
   }
 
   try {
     results.communityArticles = await processCommunityArticles({ limit: 5 });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: community articles failed');
   }
 
   try {
@@ -64,8 +67,8 @@ async function runContentCuratorJob() {
       const result = await sendChannelMessage(channelId, { text, thread_ts: threadTs });
       return result.ok;
     });
-  } catch {
-    // Error logged by scheduler's top-level handler
+  } catch (error) {
+    jobLogger.error({ error }, 'Content curator: community replies failed');
   }
 
   return results;
@@ -130,15 +133,15 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.postsCreated > 0,
   });
 
-  // Moltbook engagement - engages with Moltbook discussions
+  // Moltbook engagement - engages with Moltbook discussions and checks DMs
   jobScheduler.register({
     name: 'moltbook-engagement',
     description: 'Moltbook engagement',
-    interval: { value: 1, unit: 'hours' },
+    interval: { value: 4, unit: 'hours' },
     initialDelay: { value: 10, unit: 'minutes' },
     runner: runMoltbookEngagementJob,
-    options: { limit: 3 },
-    shouldLogResult: (r) => r.commentsCreated > 0 || r.interestingThreads > 0,
+    options: { limit: 5 },
+    shouldLogResult: (r) => r.commentsCreated > 0 || r.interestingThreads > 0 || r.dmsHandled > 0,
   });
 
   // Content curator - processes external content for knowledge base

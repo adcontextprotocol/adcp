@@ -25,6 +25,14 @@
       },
       "minItems": 1
     },
+    "channels": {
+      "type": "array",
+      "description": "Advertising channels this product is sold as. Products inherit from their properties' supported_channels but may narrow the scope. For example, a product covering YouTube properties might be sold as ['ctv'] even though those properties support ['olv', 'social', 'ctv'].",
+      "items": {
+        "$ref": "/schemas/enums/channels.json"
+      },
+      "uniqueItems": true
+    },
     "format_ids": {
       "type": "array",
       "description": "Array of supported creative format IDs - structured format_id objects with agent_url and id",
@@ -51,10 +59,9 @@
       },
       "minItems": 1
     },
-    "estimated_exposures": {
-      "type": "integer",
-      "description": "Estimated exposures/impressions for guaranteed products",
-      "minimum": 0
+    "forecast": {
+      "$ref": "/schemas/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
     "measurement": {
       "$ref": "/schemas/core/measurement.json"
@@ -102,6 +109,61 @@
       "type": "boolean",
       "default": false,
       "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
+    },
+    "conversion_tracking": {
+      "type": "object",
+      "description": "Conversion tracking for this product. Presence indicates the product supports conversion-optimized delivery. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
+      "properties": {
+        "action_sources": {
+          "type": "array",
+          "description": "Action sources relevant to this product (e.g. a retail media product might have 'in_store' and 'website', while a display product might only have 'website')",
+          "items": {
+            "$ref": "/schemas/enums/action-source.json"
+          },
+          "minItems": 1
+        },
+        "supported_optimization_strategies": {
+          "type": "array",
+          "description": "Optimization strategies this product supports when an optimization_goal is set on a package",
+          "items": {
+            "type": "string",
+            "enum": ["maximize_conversions", "target_cpa", "target_roas"]
+          },
+          "minItems": 1
+        },
+        "platform_managed": {
+          "type": "boolean",
+          "description": "Whether the seller provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
+        }
+      },
+      "additionalProperties": true
+    },
+    "catalog_match": {
+      "type": "object",
+      "description": "When the buyer provides a brand_manifest with product_catalog, indicates which of the buyer's catalog items are eligible for this product. Enables buyers to make informed product_selector choices in create_media_buy. Only present for products where catalog matching is relevant (e.g. sponsored product listings on retail media). Sellers SHOULD include at least one of matched_gtins or matched_skus.",
+      "properties": {
+        "matched_gtins": {
+          "type": "array",
+          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Buyers can use these values in product_selectors.manifest_gtins when creating media buys. Standard GTIN formats (GTIN-8 through GTIN-14).",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{8,14}$"
+          }
+        },
+        "matched_skus": {
+          "type": "array",
+          "description": "SKUs from the buyer's catalog that are eligible on this product's inventory. Buyers can use these values in product_selectors.manifest_skus when creating media buys.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "submitted_count": {
+          "type": "integer",
+          "description": "Total catalog items evaluated from the buyer's feed.",
+          "minimum": 0
+        }
+      },
+      "required": ["submitted_count"]
     },
     "brief_relevance": {
       "type": "string",

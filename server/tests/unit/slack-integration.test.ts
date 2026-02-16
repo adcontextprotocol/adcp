@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import crypto from "crypto";
-import { markdownToSlackLinks } from "../../src/addie/security.js";
+import { markdownToSlackLinks, wrapUrlsForSlack } from "../../src/addie/security.js";
 
 /**
  * Slack Integration Tests
@@ -333,5 +333,65 @@ describe("Markdown to Slack mrkdwn Conversion", () => {
     // The link should still be converted (even if imperfectly)
     expect(result).toContain("<");
     expect(result).toContain("|");
+  });
+});
+
+describe("wrapUrlsForSlack", () => {
+  it("should wrap bare URLs in Slack link format", () => {
+    const text = "Check out https://example.com for details";
+    expect(wrapUrlsForSlack(text)).toBe("Check out <https://example.com> for details");
+  });
+
+  it("should wrap Stripe checkout URLs with fragments", () => {
+    const stripeUrl = "https://checkout.stripe.com/c/pay/cs_live_abc123#fidnandhYHdWcXxpYCc%2FdnAnN2RpdWA";
+    const text = `Here's your payment link: ${stripeUrl}`;
+    expect(wrapUrlsForSlack(text)).toBe(`Here's your payment link: <${stripeUrl}>`);
+  });
+
+  it("should not double-wrap URLs already in Slack link format", () => {
+    const text = "Visit <https://example.com|Example> for more";
+    expect(wrapUrlsForSlack(text)).toBe(text);
+  });
+
+  it("should not double-wrap bare Slack-formatted URLs", () => {
+    const text = "Visit <https://example.com> for more";
+    expect(wrapUrlsForSlack(text)).toBe(text);
+  });
+
+  it("should handle multiple URLs in the same text", () => {
+    const text = "See https://a.com and https://b.com/path";
+    expect(wrapUrlsForSlack(text)).toBe("See <https://a.com> and <https://b.com/path>");
+  });
+
+  it("should handle URLs with query parameters", () => {
+    const text = "Link: https://example.com/search?q=test&page=1";
+    expect(wrapUrlsForSlack(text)).toBe("Link: <https://example.com/search?q=test&page=1>");
+  });
+
+  it("should handle http URLs", () => {
+    const text = "See http://example.com for info";
+    expect(wrapUrlsForSlack(text)).toBe("See <http://example.com> for info");
+  });
+
+  it("should preserve text with no URLs", () => {
+    const text = "No URLs here, just plain text.";
+    expect(wrapUrlsForSlack(text)).toBe(text);
+  });
+
+  it("should not wrap URLs inside backtick code spans", () => {
+    const text = "Use `https://example.com` in your config";
+    expect(wrapUrlsForSlack(text)).toBe(text);
+  });
+
+  it("should handle URLs with encoded characters", () => {
+    const text = "Link: https://example.com/path%20with%20spaces?foo=bar%26baz";
+    expect(wrapUrlsForSlack(text)).toBe("Link: <https://example.com/path%20with%20spaces?foo=bar%26baz>");
+  });
+
+  it("should wrap URL inside markdown-style link (Claude mrkdwn mismatch)", () => {
+    // If Claude outputs markdown instead of Slack mrkdwn, the URL inside () gets wrapped.
+    // This documents current behavior — Claude should output <url|text> for Slack.
+    const text = "[Click here](https://example.com/checkout)";
+    expect(wrapUrlsForSlack(text)).toBe("[Click here](<https://example.com/checkout>)");
   });
 });

@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    /* =============================================================================
+       Person Profile - Uses design system tokens
+       ============================================================================= */
+
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .profile-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* Back link */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-brand);
+      text-decoration: none;
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      margin-bottom: var(--space-6);
+      transition: var(--transition-colors);
+    }
+
+    .back-link:hover {
+      color: var(--color-brand-hover);
+    }
+
+    /* Two-column layout */
+    .profile-layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: var(--space-8);
+      align-items: start;
+    }
+
+    /* Cards */
+    .profile-card {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .profile-card + .profile-card {
+      margin-top: var(--space-6);
+    }
+
+    /* Hero section */
+    .profile-hero {
+      padding: var(--space-8);
+    }
+
+    .profile-hero-top {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-6);
+    }
+
+    .profile-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: var(--radius-full);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .profile-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .profile-avatar-initials {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, var(--color-brand), var(--color-brand-hover));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+    }
+
+    .profile-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .profile-name {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-1) 0;
+      line-height: var(--leading-tight);
+    }
+
+    .profile-headline {
+      font-size: var(--text-lg);
+      color: var(--color-text-muted);
+      margin: 0 0 var(--space-3) 0;
+      line-height: var(--leading-normal);
+    }
+
+    .profile-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .profile-meta-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-1.5);
+    }
+
+    .profile-meta-item svg {
+      flex-shrink: 0;
+    }
+
+    .profile-meta-item a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .profile-meta-item a:hover {
+      text-decoration: underline;
+    }
+
+    /* Social links */
+    .profile-social {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+    }
+
+    .social-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1.5);
+      padding: var(--space-1.5) var(--space-3);
+      background: var(--color-gray-100);
+      border-radius: var(--radius-md);
+      color: var(--color-text-body);
+      text-decoration: none;
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      transition: var(--transition-all);
+    }
+
+    .social-link:hover {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+
+    .social-link svg {
+      flex-shrink: 0;
+    }
+
+    /* Open to section */
+    .open-to-section {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-4) var(--space-8);
+      border-top: var(--border-1) solid var(--color-border-light);
+    }
+
+    .open-to-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1.5);
+      padding: var(--space-1.5) var(--space-3);
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+
+    .open-to-badge svg {
+      flex-shrink: 0;
+    }
+
+    /* Section styles */
+    .profile-section {
+      padding: var(--space-6) var(--space-8);
+      border-top: var(--border-1) solid var(--color-border-light);
+    }
+
+    .profile-section-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin: 0 0 var(--space-4) 0;
+    }
+
+    .profile-bio {
+      color: var(--color-text-body);
+      line-height: var(--leading-relaxed);
+      white-space: pre-wrap;
+      margin: 0;
+    }
+
+    /* Tags */
+    .profile-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+    }
+
+    .profile-tag {
+      padding: var(--space-1.5) var(--space-3);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+
+    .profile-tag-expertise {
+      background: var(--color-primary-100);
+      color: var(--color-primary-800);
+    }
+
+    .profile-tag-interest {
+      background: var(--color-gray-100);
+      color: var(--color-text-body);
+      border: var(--border-1) solid var(--color-border);
+    }
+
+    /* Working group list */
+    .wg-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .wg-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      border: var(--border-1) solid var(--color-border);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-all);
+    }
+
+    .wg-item:hover {
+      border-color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+
+    .wg-item-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--color-brand);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: white;
+    }
+
+    .wg-item-name {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+
+    /* Event list */
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .event-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+    }
+
+    .event-date-box {
+      width: 44px;
+      height: 44px;
+      background: var(--color-primary-100);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .event-date-month {
+      font-size: 10px;
+      font-weight: var(--font-bold);
+      color: var(--color-brand);
+      text-transform: uppercase;
+      line-height: 1;
+    }
+
+    .event-date-day {
+      font-size: var(--text-lg);
+      font-weight: var(--font-bold);
+      color: var(--color-brand);
+      line-height: 1;
+    }
+
+    .event-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+
+    .perspective-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .perspective-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-colors);
+    }
+
+    .perspective-item:hover {
+      background: var(--color-gray-100);
+    }
+
+    .perspective-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .perspective-icon.article {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+    }
+
+    .perspective-icon.link {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .perspective-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .perspective-title {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+      line-height: 1.4;
+    }
+
+    .perspective-meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
+    /* =========================================================================
+       Sidebar
+       ========================================================================= */
+    .sidebar-card {
+      background: var(--color-bg-card);
+      border-radius: var(--card-radius);
+      box-shadow: var(--shadow-sm);
+      padding: var(--space-6);
+    }
+
+    .sidebar-card + .sidebar-card {
+      margin-top: var(--space-6);
+    }
+
+    /* Connection button */
+    .connect-btn {
+      width: 100%;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      cursor: pointer;
+      transition: var(--transition-all);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      text-decoration: none;
+    }
+
+    .connect-btn-primary {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+    }
+
+    .connect-btn-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .connect-btn-secondary {
+      background: var(--color-bg-card);
+      color: var(--color-brand);
+      border: var(--border-2) solid var(--color-brand);
+    }
+
+    .connect-btn-secondary:hover {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .connect-btn-disabled {
+      background: var(--color-gray-100);
+      color: var(--color-text-muted);
+      border: var(--border-1) solid var(--color-border);
+      cursor: default;
+    }
+
+    .connect-btn-success {
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+      border: var(--border-1) solid var(--color-success-500);
+      cursor: default;
+    }
+
+    .connect-btn-accept {
+      background: var(--color-success-500);
+      color: white;
+      border: none;
+    }
+
+    .connect-btn-accept:hover {
+      background: var(--color-success-600);
+    }
+
+    .connect-btn-decline {
+      background: var(--color-bg-card);
+      color: var(--color-error-600);
+      border: var(--border-1) solid var(--color-error-500);
+    }
+
+    .connect-btn-decline:hover {
+      background: var(--color-error-50);
+    }
+
+    .connection-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .connection-actions .connect-btn {
+      flex: 1;
+    }
+
+    /* Message input for connection request */
+    .connect-message-input {
+      display: none;
+      margin-top: var(--space-3);
+    }
+
+    .connect-message-input.visible {
+      display: block;
+    }
+
+    .connect-message-input textarea {
+      width: 100%;
+      padding: var(--space-3);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      font-family: var(--font-sans);
+      font-size: var(--text-sm);
+      resize: vertical;
+      min-height: 80px;
+      transition: var(--transition-colors);
+    }
+
+    .connect-message-input textarea:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .connect-message-actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
+      justify-content: flex-end;
+    }
+
+    .connect-message-actions button {
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      transition: var(--transition-colors);
+    }
+
+    .connect-send-btn {
+      background: var(--color-brand);
+      color: white;
+      border: none;
+    }
+
+    .connect-send-btn:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .connect-cancel-btn {
+      background: var(--color-gray-100);
+      color: var(--color-text-body);
+      border: var(--border-1) solid var(--color-border);
+    }
+
+    .connect-cancel-btn:hover {
+      background: var(--color-gray-200);
+    }
+
+    /* Stats card */
+    .stats-section-title {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0 0 var(--space-4) 0;
+    }
+
+    .tier-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      background: linear-gradient(135deg, var(--color-brand), var(--color-brand-hover));
+      border-radius: var(--radius-lg);
+      color: white;
+      margin-bottom: var(--space-4);
+    }
+
+    .tier-badge-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .tier-badge-info {
+      flex: 1;
+    }
+
+    .tier-badge-name {
+      font-size: var(--text-sm);
+      font-weight: var(--font-bold);
+    }
+
+    .tier-badge-points {
+      font-size: var(--text-xs);
+      opacity: 0.9;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-2) 0;
+    }
+
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .stat-value {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+
+    /* Progress bar */
+    .progress-bar-container {
+      margin-top: var(--space-3);
+    }
+
+    .progress-bar-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: var(--space-1.5);
+    }
+
+    .progress-bar-label span {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .progress-bar-label strong {
+      font-size: var(--text-xs);
+      color: var(--color-text-heading);
+    }
+
+    .progress-bar-track {
+      width: 100%;
+      height: 8px;
+      background: var(--color-gray-100);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--color-brand);
+      border-radius: var(--radius-full);
+      transition: width var(--duration-slow) var(--ease-out);
+    }
+
+    /* Badges grid */
+    .badges-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+      gap: var(--space-3);
+    }
+
+    .badge-item {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-gray-50);
+      border-radius: var(--radius-lg);
+      border: var(--border-1) solid var(--color-border);
+      font-size: var(--text-xl);
+      cursor: default;
+    }
+
+    .badge-item[title] {
+      cursor: help;
+    }
+
+    /* Loading / error states */
+    .profile-loading {
+      text-align: center;
+      padding: var(--space-16);
+      color: var(--color-text-muted);
+    }
+
+    .profile-loading .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-brand);
+      border-radius: var(--radius-full);
+      animation: spin 1s linear infinite;
+      margin: 0 auto var(--space-4);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .profile-error {
+      text-align: center;
+      padding: var(--space-16);
+    }
+
+    .profile-error h2 {
+      font-size: var(--text-2xl);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .profile-error p {
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-6);
+    }
+
+    .profile-error a {
+      color: var(--color-brand);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+    }
+
+    .profile-error a:hover {
+      text-decoration: underline;
+    }
+
+    /* =========================================================================
+       Responsive
+       ========================================================================= */
+    @media (max-width: 900px) {
+      .profile-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar-column {
+        order: -1;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .profile-container {
+        padding: var(--space-4) var(--space-3);
+      }
+
+      .profile-hero {
+        padding: var(--space-6);
+      }
+
+      .profile-hero-top {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .profile-meta {
+        justify-content: center;
+      }
+
+      .profile-social {
+        justify-content: center;
+      }
+
+      .open-to-section {
+        padding: var(--space-4) var(--space-6);
+        justify-content: center;
+      }
+
+      .profile-section {
+        padding: var(--space-5) var(--space-6);
+      }
+
+      .profile-name {
+        font-size: var(--text-2xl);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <div class="profile-container">
+    <a href="/community/people" class="back-link" id="back-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+      People
+    </a>
+
+    <!-- Loading state -->
+    <div id="profile-loading" class="profile-loading">
+      <div class="spinner"></div>
+      <p>Loading profile...</p>
+    </div>
+
+    <!-- Error state -->
+    <div id="profile-error" class="profile-error" style="display: none;"></div>
+
+    <!-- Profile content -->
+    <div id="profile-content" class="profile-layout" style="display: none;">
+      <div class="main-column" id="main-column">
+        <!-- Populated by JavaScript -->
+      </div>
+      <div class="sidebar-column" id="sidebar-column">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    // =========================================================================
+    // State
+    // =========================================================================
+    let profileData = null;
+    let currentUser = null;
+
+    // =========================================================================
+    // Initialization
+    // =========================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      currentUser = window.__APP_CONFIG__?.user || null;
+
+      // Auth check -- community profiles require login
+      if (!currentUser) {
+        window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
+
+      const slug = extractSlug();
+      if (!slug) {
+        showError('Profile not found', 'No profile slug was provided.');
+        return;
+      }
+
+      loadProfile(slug);
+    });
+
+    function extractSlug() {
+      const path = window.location.pathname;
+      const match = path.match(/\/community\/people\/([^/]+)/);
+      return match ? match[1] : null;
+    }
+
+    // =========================================================================
+    // Data fetching
+    // =========================================================================
+    async function loadProfile(slug) {
+      try {
+        const response = await fetch(`/api/community/people/${encodeURIComponent(slug)}`);
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          if (response.status === 404) {
+            showError('Person not found', 'The profile you are looking for does not exist or is not public.');
+            return;
+          }
+          throw new Error('Failed to load profile');
+        }
+
+        const data = await response.json();
+        profileData = data;
+
+        document.getElementById('profile-loading').style.display = 'none';
+        document.getElementById('profile-content').style.display = 'grid';
+
+        renderMainColumn(data);
+        renderSidebar(data);
+
+        // Update page title
+        const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+        document.title = `${fullName} - AgenticAdvertising.org`;
+      } catch (error) {
+        console.error('Load profile error:', error);
+        showError('Error loading profile', 'Something went wrong. Please try again later.');
+      }
+    }
+
+    function showError(title, message) {
+      document.getElementById('profile-loading').style.display = 'none';
+      const errorEl = document.getElementById('profile-error');
+      errorEl.style.display = 'block';
+      errorEl.innerHTML = `
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(message)}</p>
+        <a href="/community/people">Back to people directory</a>
+      `;
+    }
+
+    // =========================================================================
+    // Main column rendering
+    // =========================================================================
+    function renderMainColumn(data) {
+      const main = document.getElementById('main-column');
+      const fullName = [data.first_name, data.last_name].filter(Boolean).join(' ');
+      const initials = [data.first_name, data.last_name]
+        .filter(Boolean)
+        .map(n => n.charAt(0).toUpperCase())
+        .join('');
+      const hasOpenTo = data.open_to_coffee_chat || data.open_to_intros;
+
+      let html = `<div class="profile-card">`;
+
+      // Hero
+      html += `
+        <div class="profile-hero">
+          <div class="profile-hero-top">
+            <div class="profile-avatar">
+              ${data.avatar_url
+                ? `<img src="${escapeHtml(data.avatar_url)}" alt="${escapeHtml(fullName)}">`
+                : `<div class="profile-avatar-initials">${escapeHtml(initials || '?')}</div>`
+              }
+            </div>
+            <div class="profile-info">
+              <h1 class="profile-name">${escapeHtml(fullName)}</h1>
+              ${data.headline ? `<p class="profile-headline">${escapeHtml(data.headline)}</p>` : ''}
+              <div class="profile-meta">
+                ${data.organization_name ? `
+                  <span class="profile-meta-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                      <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                    ${escapeHtml(data.organization_name)}
+                  </span>
+                ` : ''}
+                ${data.city || data.country ? `
+                  <span class="profile-meta-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                      <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                    ${escapeHtml([data.city, data.country].filter(Boolean).join(', '))}
+                  </span>
+                ` : ''}
+              </div>
+              ${data.linkedin_url || data.twitter_url || data.github_username ? `
+                <div class="profile-social">
+                  ${data.github_username ? `
+                    <a href="https://github.com/${escapeHtml(data.github_username)}" target="_blank" rel="noopener noreferrer" class="social-link">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                      </svg>
+                      GitHub
+                    </a>
+                  ` : ''}
+                  ${data.linkedin_url ? `
+                    <a href="${escapeHtml(data.linkedin_url)}" target="_blank" rel="noopener noreferrer" class="social-link">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                      </svg>
+                      LinkedIn
+                    </a>
+                  ` : ''}
+                  ${data.twitter_url ? `
+                    <a href="${escapeHtml(data.twitter_url)}" target="_blank" rel="noopener noreferrer" class="social-link">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                      </svg>
+                      X
+                    </a>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Open to
+      if (hasOpenTo) {
+        html += `<div class="open-to-section">`;
+        if (data.open_to_coffee_chat) {
+          html += `
+            <span class="open-to-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Open to coffee chats
+            </span>
+          `;
+        }
+        if (data.open_to_intros) {
+          html += `
+            <span class="open-to-badge">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Open to introductions
+            </span>
+          `;
+        }
+        html += `</div>`;
+      }
+
+      // About
+      if (data.bio) {
+        html += `
+          <div class="profile-section">
+            <h2 class="profile-section-title">About</h2>
+            <p class="profile-bio">${escapeHtml(data.bio)}</p>
+          </div>
+        `;
+      }
+
+      // Expertise & interests
+      const hasExpertise = data.expertise && data.expertise.length > 0;
+      const hasInterests = data.interests && data.interests.length > 0;
+      if (hasExpertise || hasInterests) {
+        html += `<div class="profile-section">`;
+        if (hasExpertise) {
+          html += `
+            <h2 class="profile-section-title">Expertise</h2>
+            <div class="profile-tags" style="margin-bottom: ${hasInterests ? 'var(--space-4)' : '0'};">
+              ${data.expertise.map(e => `<span class="profile-tag profile-tag-expertise">${escapeHtml(e)}</span>`).join('')}
+            </div>
+          `;
+        }
+        if (hasInterests) {
+          html += `
+            <h2 class="profile-section-title" ${hasExpertise ? 'style="margin-top: var(--space-4);"' : ''}>Interests</h2>
+            <div class="profile-tags">
+              ${data.interests.map(i => `<span class="profile-tag profile-tag-interest">${escapeHtml(i)}</span>`).join('')}
+            </div>
+          `;
+        }
+        html += `</div>`;
+      }
+
+      html += `</div>`; // close profile-card
+
+      // Working groups
+      if (data.working_groups && data.working_groups.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Working groups</h2>
+              <div class="wg-list">
+                ${data.working_groups.map(wg => `
+                  <a href="/working-groups/${escapeHtml(wg.slug)}" class="wg-item">
+                    <div class="wg-item-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                      </svg>
+                    </div>
+                    <span class="wg-item-name">${escapeHtml(wg.name)}</span>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Published content
+      if (data.perspectives && data.perspectives.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Published content</h2>
+              <div class="perspective-list">
+                ${data.perspectives.map(p => {
+                  const isArticle = p.content_type === 'article';
+                  const href = isArticle
+                    ? '/perspectives/' + encodeURIComponent(p.slug)
+                    : escapeHtml(p.external_url || '#');
+                  const target = isArticle ? '' : ' target="_blank" rel="noopener noreferrer"';
+                  const date = new Date(p.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const meta = [p.category, !isArticle && p.external_site_name].filter(Boolean).join(' · ');
+                  const icon = isArticle
+                    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>'
+                    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+                  return `
+                    <a href="${href}" class="perspective-item"${target}>
+                      <div class="perspective-icon ${isArticle ? 'article' : 'link'}">${icon}</div>
+                      <div class="perspective-info">
+                        <div class="perspective-title">${escapeHtml(p.title)}</div>
+                        <div class="perspective-meta">${escapeHtml(date)}${meta ? ' · ' + escapeHtml(meta) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Registry contributions
+      if (data.registry_contributions && data.registry_contributions.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Registry contributions</h2>
+              <div class="perspective-list">
+                ${data.registry_contributions.map(c => {
+                  const date = new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  const isBrand = c.contribution_type.startsWith('brand');
+                  const isCreate = c.contribution_type.endsWith('create');
+                  const href = isBrand ? '/brands/' + encodeURIComponent(c.domain) : '/properties/' + encodeURIComponent(c.domain);
+                  const icon = isBrand
+                    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>'
+                    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>';
+                  const typeLabel = isBrand ? 'Brand' : 'Property';
+                  return `
+                    <a href="${href}" class="perspective-item">
+                      <div class="perspective-icon ${isBrand ? 'article' : 'link'}">${icon}</div>
+                      <div class="perspective-info">
+                        <div class="perspective-title">${escapeHtml(c.domain)}</div>
+                        <div class="perspective-meta">${escapeHtml(date)} · ${typeLabel} ${isCreate ? 'created' : 'edited'}${!isCreate && c.summary ? ' · ' + escapeHtml(c.summary) : ''}</div>
+                      </div>
+                    </a>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // GitHub activity
+      if (data.github_username) {
+        const ghUser = escapeHtml(data.github_username);
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">GitHub activity</h2>
+              <div class="perspective-list">
+                <a href="https://github.com/adcontextprotocol/adcp/issues?q=author:${ghUser}" target="_blank" rel="noopener noreferrer" class="perspective-item">
+                  <div class="perspective-icon article">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                  </div>
+                  <div class="perspective-info">
+                    <div class="perspective-title">Issues</div>
+                    <div class="perspective-meta">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
+                <a href="https://github.com/adcontextprotocol/adcp/pulls?q=author:${ghUser}" target="_blank" rel="noopener noreferrer" class="perspective-item">
+                  <div class="perspective-icon link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"></circle><circle cx="6" cy="6" r="3"></circle><path d="M13 6h3a2 2 0 0 1 2 2v7"></path><line x1="6" y1="9" x2="6" y2="21"></line></svg>
+                  </div>
+                  <div class="perspective-info">
+                    <div class="perspective-title">Pull requests</div>
+                    <div class="perspective-meta">adcontextprotocol/adcp</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Events
+      if (data.events && data.events.length > 0) {
+        html += `
+          <div class="profile-card">
+            <div class="profile-section" style="border-top: none;">
+              <h2 class="profile-section-title">Events</h2>
+              <div class="event-list">
+                ${data.events.map(ev => {
+                  const d = new Date(ev.start_time);
+                  const month = d.toLocaleString('en-US', { month: 'short' });
+                  const day = d.getDate();
+                  return `
+                    <div class="event-item">
+                      <div class="event-date-box">
+                        <span class="event-date-month">${escapeHtml(month)}</span>
+                        <span class="event-date-day">${day}</span>
+                      </div>
+                      <span class="event-title">${escapeHtml(ev.title)}</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      main.innerHTML = html;
+    }
+
+    // =========================================================================
+    // Sidebar rendering
+    // =========================================================================
+    function renderSidebar(data) {
+      const sidebar = document.getElementById('sidebar-column');
+      let html = '';
+
+      // Connection button card
+      html += `<div class="sidebar-card" id="connection-card">`;
+      html += renderConnectionButton(data);
+      html += `</div>`;
+
+      // Community stats card
+      html += `
+        <div class="sidebar-card">
+          <h3 class="stats-section-title">Community stats</h3>
+      `;
+
+      // Tier badge
+      if (data.tier) {
+        html += `
+          <div class="tier-badge">
+            <div class="tier-badge-icon">
+              ${getTierIcon(data.tier)}
+            </div>
+            <div class="tier-badge-info">
+              <div class="tier-badge-name">${escapeHtml(formatTier(data.tier))}</div>
+              <div class="tier-badge-points">${data.total_points || 0} points</div>
+            </div>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="stat-row">
+            <span class="stat-label">Points</span>
+            <span class="stat-value">${data.total_points || 0}</span>
+          </div>
+        `;
+      }
+
+      // Profile completeness
+      if (data.profile_completeness != null) {
+        const pct = Math.round(data.profile_completeness);
+        html += `
+          <div class="progress-bar-container">
+            <div class="progress-bar-label">
+              <span>Profile completeness</span>
+              <strong>${pct}%</strong>
+            </div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`; // close stats card
+
+      // Badges card
+      if (data.badges && data.badges.length > 0) {
+        html += `
+          <div class="sidebar-card">
+            <h3 class="stats-section-title">Badges</h3>
+            <div class="badges-grid">
+              ${data.badges.map(b => `
+                <div class="badge-item" title="${escapeHtml(b.name)}${b.description ? ': ' + escapeHtml(b.description) : ''}">
+                  ${escapeHtml(b.icon) || '&#11088;'}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      sidebar.innerHTML = html;
+    }
+
+    // =========================================================================
+    // Connection button logic
+    // =========================================================================
+    function renderConnectionButton(data) {
+      const isOwnProfile = currentUser && currentUser.id === data.workos_user_id;
+
+      if (isOwnProfile) {
+        return `<a href="/community/profile/edit" class="connect-btn connect-btn-secondary">Edit profile</a>`;
+      }
+
+      if (!currentUser) {
+        return `<a href="/auth/login" class="connect-btn connect-btn-primary">Log in to connect</a>`;
+      }
+
+      const status = data.connection_status;
+
+      if (!status) {
+        return `
+          <button class="connect-btn connect-btn-primary" onclick="showConnectMessage()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="8.5" cy="7" r="4"></circle>
+              <line x1="20" y1="8" x2="20" y2="14"></line>
+              <line x1="23" y1="11" x2="17" y2="11"></line>
+            </svg>
+            Connect
+          </button>
+          <div class="connect-message-input" id="connect-message-input">
+            <textarea id="connect-message" placeholder="Add a message (optional)..."></textarea>
+            <div class="connect-message-actions">
+              <button class="connect-cancel-btn" onclick="hideConnectMessage()">Cancel</button>
+              <button class="connect-send-btn" onclick="sendConnectionRequest()">Send request</button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (status === 'pending') {
+        // Determine direction: if the pending request was sent by the current user
+        // or received by them. The API should indicate this, but we'll handle both cases.
+        if (data.connection_direction === 'received') {
+          return `
+            <div class="connection-actions">
+              <button class="connect-btn connect-btn-accept" onclick="respondToConnection('accepted')">Accept</button>
+              <button class="connect-btn connect-btn-decline" onclick="respondToConnection('declined')">Decline</button>
+            </div>
+          `;
+        }
+        return `
+          <button class="connect-btn connect-btn-disabled" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 6v6l4 2"></path>
+            </svg>
+            Request sent
+          </button>
+        `;
+      }
+
+      if (status === 'accepted') {
+        return `
+          <button class="connect-btn connect-btn-success" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Connected
+          </button>
+        `;
+      }
+
+      // Fallback
+      return '';
+    }
+
+    function showConnectMessage() {
+      document.getElementById('connect-message-input').classList.add('visible');
+    }
+
+    function hideConnectMessage() {
+      document.getElementById('connect-message-input').classList.remove('visible');
+      document.getElementById('connect-message').value = '';
+    }
+
+    async function sendConnectionRequest() {
+      if (!profileData) return;
+
+      const message = document.getElementById('connect-message').value.trim();
+      const card = document.getElementById('connection-card');
+
+      try {
+        card.innerHTML = `<button class="connect-btn connect-btn-disabled" disabled>Sending...</button>`;
+
+        const response = await fetch('/api/community/connections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipient_user_id: profileData.workos_user_id,
+            message: message || undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to send connection request');
+        }
+
+        card.innerHTML = `
+          <button class="connect-btn connect-btn-disabled" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 6v6l4 2"></path>
+            </svg>
+            Request sent
+          </button>
+        `;
+      } catch (error) {
+        console.error('Connection request error:', error);
+        card.innerHTML = renderConnectionButton(profileData);
+      }
+    }
+
+    async function respondToConnection(status) {
+      if (!profileData || !profileData.connection_id) return;
+
+      const card = document.getElementById('connection-card');
+
+      try {
+        card.innerHTML = `<button class="connect-btn connect-btn-disabled" disabled>Updating...</button>`;
+
+        const response = await fetch(`/api/community/connections/${profileData.connection_id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update connection');
+        }
+
+        if (status === 'accepted') {
+          card.innerHTML = `
+            <button class="connect-btn connect-btn-success" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Connected
+            </button>
+          `;
+        } else {
+          profileData.connection_status = null;
+          card.innerHTML = renderConnectionButton(profileData);
+        }
+      } catch (error) {
+        console.error('Connection response error:', error);
+        card.innerHTML = renderConnectionButton(profileData);
+      }
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatTier(tier) {
+      if (!tier) return '';
+      // Convert snake_case or lowercase to title case
+      return tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function getTierIcon(tier) {
+      const icons = {
+        Explorer: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>`,
+        Connector: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`,
+        Champion: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>`,
+        Pioneer: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`,
+      };
+      return icons[tier] || icons.Explorer;
+    }
+  </script>
+</body>
+</html>
+

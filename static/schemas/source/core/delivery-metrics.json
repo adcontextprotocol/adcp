@@ -44,13 +44,66 @@
     },
     "conversions": {
       "type": "number",
-      "description": "Conversions (reserved for future CPA pricing support)",
+      "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
       "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Total monetary value of attributed conversions (in the reporting currency)",
+      "minimum": 0
+    },
+    "roas": {
+      "type": "number",
+      "description": "Return on ad spend (conversion_value / spend)",
+      "minimum": 0
+    },
+    "cost_per_acquisition": {
+      "type": "number",
+      "description": "Cost per conversion (spend / conversions)",
+      "minimum": 0
+    },
+    "new_to_brand_rate": {
+      "type": "number",
+      "description": "Fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+      "minimum": 0,
+      "maximum": 1
     },
     "leads": {
       "type": "number",
-      "description": "Leads generated (reserved for future CPL pricing support)",
+      "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
       "minimum": 0
+    },
+    "by_event_type": {
+      "type": "array",
+      "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "$ref": "/schemas/enums/event-type.json",
+            "description": "The event type"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of events of this type",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of events of this type",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "event_type",
+          "count"
+        ],
+        "additionalProperties": true
+      }
     },
     "grps": {
       "type": "number",
@@ -165,6 +218,77 @@
         }
       },
       "additionalProperties": true
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
+      "properties": {
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",
+          "minimum": 0
+        },
+        "viewable_impressions": {
+          "type": "number",
+          "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+          "minimum": 0
+        },
+        "viewable_rate": {
+          "type": "number",
+          "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "standard": {
+          "type": "string",
+          "enum": ["mrc", "groupm"],
+          "description": "Viewability measurement standard. 'mrc': 50% of pixels in view for 1 second (display) or 2 seconds (video), per MRC/IAB guidelines. 'groupm': 100% of pixels in view for the same durations. These are materially different thresholds and should not be compared across standards."
+        }
+      },
+      "additionalProperties": true
+    },
+    "engagement_rate": {
+      "type": "number",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Definition varies by platform (e.g., likes+comments+shares/impressions on social, interactions/impressions on rich media).",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_per_click": {
+      "type": "number",
+      "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
+    "by_action_source": {
+      "type": "array",
+      "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_source": {
+            "$ref": "/schemas/enums/action-source.json",
+            "description": "Where the conversion occurred"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of conversions from this action source",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of conversions from this action source",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "action_source",
+          "count"
+        ],
+        "additionalProperties": true
+      }
     }
   },
   "additionalProperties": true

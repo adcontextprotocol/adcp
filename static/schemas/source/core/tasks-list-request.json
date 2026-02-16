@@ -18,7 +18,8 @@
           "description": "Filter by multiple AdCP domains",
           "items": {
             "$ref": "/schemas/enums/adcp-domain.json"
-          }
+          },
+          "minItems": 1
         },
         "status": {
           "$ref": "/schemas/enums/task-status.json",
@@ -29,7 +30,8 @@
           "description": "Filter by multiple task statuses",
           "items": {
             "$ref": "/schemas/enums/task-status.json"
-          }
+          },
+          "minItems": 1
         },
         "task_type": {
           "$ref": "/schemas/enums/task-type.json",
@@ -40,7 +42,8 @@
           "description": "Filter by multiple task types",
           "items": {
             "$ref": "/schemas/enums/task-type.json"
-          }
+          },
+          "minItems": 1
         },
         "created_after": {
           "type": "string",
@@ -68,6 +71,7 @@
           "items": {
             "type": "string"
           },
+          "minItems": 1,
           "maxItems": 100
         },
         "context_contains": {
@@ -106,24 +110,7 @@
       "additionalProperties": true
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination parameters",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 50,
-          "description": "Maximum number of tasks to return"
-        },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 0,
-          "description": "Number of tasks to skip"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "include_history": {
       "type": "boolean",
@@ -175,7 +162,7 @@
           "created_after": "2025-01-01T00:00:00Z"
         },
         "pagination": {
-          "limit": 20
+          "max_results": 20
         }
       }
     },

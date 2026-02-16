@@ -9,8 +9,11 @@
 import type { AddieTool } from '../types.js';
 import { BrandManager } from '../../brand-manager.js';
 import { BrandDatabase } from '../../db/brand-db.js';
-import { fetchBrandData, isBrandfetchConfigured } from '../../services/brandfetch.js';
+import { registryRequestsDb } from '../../db/registry-requests-db.js';
+import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from '../../services/brandfetch.js';
+import { createLogger } from '../../logger.js';
 
+const logger = createLogger('brand-tools');
 const brandManager = new BrandManager();
 const brandDb = new BrandDatabase();
 
@@ -20,14 +23,14 @@ const brandDb = new BrandDatabase();
 export const BRAND_TOOLS: AddieTool[] = [
   {
     name: 'research_brand',
-    description: 'Research a brand by domain using Brandfetch API. Returns brand info (logo, colors, company details) if found. Use this when a user asks to look up or research a brand.',
-    usage_hints: 'Use when asked to research a brand, look up brand info, or find brand assets. This tool fetches data from Brandfetch API.',
+    description: 'Research a brand by domain using Brandfetch API. Returns brand info (logo, colors, company details) if found. Automatically saves enrichment data to the registry — no need to call save_brand after.',
+    usage_hints: 'Use when asked to research, enrich, or look up a brand. Enrichment data is cached in the registry automatically.',
     input_schema: {
       type: 'object',
       properties: {
         domain: {
           type: 'string',
-          description: 'Domain to research (e.g., "nike.com", "coca-cola.com")',
+          description: 'Domain to research (e.g., "acme-corp.com", "example.com")',
         },
       },
       required: ['domain'],
@@ -42,7 +45,7 @@ export const BRAND_TOOLS: AddieTool[] = [
       properties: {
         domain: {
           type: 'string',
-          description: 'Domain to resolve (e.g., "jumpman23.com", "nike.com")',
+          description: 'Domain to resolve (e.g., "acme-corp.com", "example.com")',
         },
       },
       required: ['domain'],
@@ -50,8 +53,8 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'save_brand',
-    description: 'Save researched brand data to the registry as an enriched/community brand. Use after researching a brand when the user wants to save the results.',
-    usage_hints: 'Use after research_brand when the user confirms they want to save the brand to the registry.',
+    description: 'Save a brand to the registry as a community brand. Use for manually adding brands (not needed after research_brand, which auto-saves). Preserves any existing enrichment data when manifest is not provided.',
+    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved.',
     input_schema: {
       type: 'object',
       properties: {
@@ -99,6 +102,20 @@ export const BRAND_TOOLS: AddieTool[] = [
       },
     },
   },
+  {
+    name: 'list_missing_brands',
+    description: 'List the most-requested brand domains that are not yet in the registry. Shows demand signals — which brands people are looking for but we don\'t have.',
+    usage_hints: 'Use when asked about gaps in the brand registry, or to find brands worth researching. Pair with research_brand to fill gaps.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -108,9 +125,44 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
 
   handlers.set('research_brand', async (args) => {
-    const domain = args.domain as string;
-    if (!domain) {
+    const rawDomain = args.domain as string;
+    if (!rawDomain) {
       return JSON.stringify({ error: 'domain is required' });
+    }
+
+    // Normalize domain for consistent DB lookups (strip protocol, paths, query strings)
+    const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+    // Check DB for recently enriched data (avoids redundant Brandfetch API calls)
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+    if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
+      const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+      if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+        const manifest = existing.brand_manifest as Record<string, unknown>;
+        const response: Record<string, unknown> = {
+          success: true,
+          domain: existing.domain,
+          cached: true,
+        };
+        response.brand = {
+          name: manifest.name,
+          description: manifest.description,
+          url: manifest.url,
+        };
+        if (Array.isArray(manifest.logos) && manifest.logos.length > 0) {
+          response.logos = (manifest.logos as Array<{ url: string; tags: string[] }>).slice(0, 3);
+        }
+        if (manifest.colors) {
+          response.colors = manifest.colors;
+        }
+        if (Array.isArray(manifest.fonts) && manifest.fonts.length > 0) {
+          response.fonts = manifest.fonts;
+        }
+        if (manifest.company) {
+          response.company = manifest.company;
+        }
+        return JSON.stringify(response, null, 2);
+      }
     }
 
     if (!isBrandfetchConfigured()) {
@@ -129,11 +181,30 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       });
     }
 
+    // Save enrichment to DB for future cache hits
+    if (result.manifest) {
+      brandDb.upsertDiscoveredBrand({
+        domain: result.domain,
+        brand_name: result.manifest.name,
+        brand_manifest: {
+          name: result.manifest.name,
+          url: result.manifest.url,
+          description: result.manifest.description,
+          logos: result.manifest.logos,
+          colors: result.manifest.colors,
+          fonts: result.manifest.fonts,
+          ...(result.company ? { company: result.company } : {}),
+        },
+        has_brand_manifest: true,
+        source_type: 'enriched',
+      }).catch((err) => { logger.warn({ err, domain }, 'Failed to cache enrichment result'); });
+    }
+
     // Format response for Addie
     const response: Record<string, unknown> = {
       success: true,
       domain: result.domain,
-      cached: result.cached,
+      cached: false,
     };
 
     if (result.manifest) {
@@ -188,6 +259,7 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         }, null, 2);
       }
 
+      registryRequestsDb.trackRequest('brand', domain).catch(() => { /* fire-and-forget */ });
       return JSON.stringify({
         error: 'Brand not found',
         domain,
@@ -221,11 +293,50 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       return JSON.stringify({ error: 'brand_name is required' });
     }
 
+    // Check if brand already exists
+    const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+
+    if (existing) {
+      // Existing brand: use revision-tracked edit (skip brand_json sources)
+      if (existing.source_type === 'brand_json') {
+        return JSON.stringify({
+          error: 'Cannot edit authoritative brand (managed via brand.json)',
+          domain,
+        });
+      }
+
+      // Only update manifest fields when explicitly provided.
+      // This prevents overwriting enrichment data from research_brand.
+      const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
+        brand_name: brandName,
+        edit_summary: `Addie enrichment: updated brand data`,
+        editor_user_id: 'system:addie',
+        editor_email: 'addie@agenticadvertising.org',
+        editor_name: 'Addie',
+      };
+      if (brandManifest !== undefined) {
+        editInput.brand_manifest = brandManifest;
+        editInput.has_brand_manifest = !!brandManifest;
+      }
+
+      const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, editInput);
+
+      return JSON.stringify({
+        success: true,
+        message: `Brand "${brandName}" updated in registry (revision ${revision_number})`,
+        domain: brand.domain,
+        id: brand.id,
+        revision_number,
+      }, null, 2);
+    }
+
+    // New brand: upsert directly (Addie is trusted, no pending review)
+    // Preserve any existing enrichment data (e.g., from research_brand cache)
     const saved = await brandDb.upsertDiscoveredBrand({
       domain,
       brand_name: brandName,
       brand_manifest: brandManifest,
-      has_brand_manifest: !!brandManifest,
+      has_brand_manifest: brandManifest !== undefined ? !!brandManifest : undefined,
       source_type: sourceType as 'community' | 'enriched',
     });
 
@@ -270,6 +381,26 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     }));
 
     return JSON.stringify({ brands: result, count: result.length }, null, 2);
+  });
+
+  handlers.set('list_missing_brands', async (args) => {
+    const rawLimit = typeof args.limit === 'number' ? args.limit : 20;
+    const limit = Math.min(Math.max(1, rawLimit), 100);
+
+    const requests = await registryRequestsDb.listUnresolved('brand', { limit });
+
+    if (requests.length === 0) {
+      return 'No missing brand requests recorded yet.';
+    }
+
+    const result = requests.map(r => ({
+      domain: r.domain,
+      request_count: r.request_count,
+      first_requested_at: r.first_requested_at,
+      last_requested_at: r.last_requested_at,
+    }));
+
+    return JSON.stringify({ missing_brands: result, count: result.length }, null, 2);
   });
 
   return handlers;

@@ -74,6 +74,43 @@ function buildMultimodalContentBlocks(
   return { content: contentBlocks, summary };
 }
 
+/**
+ * Action-claiming patterns mapped to the tools that should back them up.
+ * Hoisted to module scope to avoid re-allocation on every response.
+ */
+const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
+  { pattern: /invoice\s+(?:resent|sent)\s+successfully/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
+  { pattern: /(?:successfully\s+)?resent\s+(?:the\s+)?invoice/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
+  { pattern: /(?:billing\s+)?email\s+(?:updated|changed)\s+successfully/i, expectedTools: ['update_billing_email'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?resolved\s+(?:the\s+)?escalation/i, expectedTools: ['resolve_escalation'] },
+  { pattern: /escalation\s+#?\d+\s+(?:has been\s+)?resolved/i, expectedTools: ['resolve_escalation'] },
+  { pattern: /meeting\s+(?:scheduled|created)\s+successfully/i, expectedTools: ['schedule_meeting'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
+];
+
+/**
+ * Detect possible hallucinated actions in response text.
+ * Returns a flag reason if the text claims to have completed an action
+ * but no corresponding tool was actually called AND succeeded.
+ */
+function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
+  for (const { pattern, expectedTools } of HALLUCINATION_PATTERNS) {
+    if (pattern.test(text)) {
+      // Check that a matching tool was called AND succeeded (not just called)
+      const hasSuccessfulTool = expectedTools.some(t =>
+        toolExecutions.some(exec => exec.tool_name === t && !exec.is_error)
+      );
+      if (!hasSuccessfulTool) {
+        return `Possible hallucinated action: text matches "${pattern.source}" but none of [${expectedTools.join(', ')}] succeeded`;
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Default max tool iterations for regular users */
 export const DEFAULT_MAX_ITERATIONS = 10;
 
@@ -93,7 +130,7 @@ export interface RequestTools {
  */
 export interface UserScopedToolsResult {
   tools: RequestTools;
-  isAdmin: boolean;
+  isAAOAdmin: boolean;
 }
 
 /**
@@ -104,6 +141,8 @@ export interface ProcessMessageOptions {
   maxIterations?: number;
   /** Override the default model for this request (e.g., for billing queries requiring precision) */
   modelOverride?: string;
+  /** Per-request context (member info, channel, goals) appended to system prompt */
+  requestContext?: string;
 }
 
 /**
@@ -326,6 +365,11 @@ export class AddieClaudeClient {
     }
     systemPromptMs = Date.now() - promptStart;
 
+    // Append per-request context (member info, channel, goals) to system prompt
+    if (options?.requestContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+    }
+
     // Get config version ID for this interaction (skip for eval mode)
     const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
 
@@ -337,9 +381,10 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools
+    // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
     const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
     const toolCount = allTools.length + (this.webSearchEnabled ? 1 : 0);
 
@@ -489,11 +534,18 @@ export class AddieClaudeClient {
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
+        // Detect possible hallucinated actions (text claims success without successful tool calls)
+        const hallucinationReason = detectHallucinatedAction(text, toolExecutions);
+        if (hallucinationReason) {
+          logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
+        }
+
         return {
           text,
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
-          flagged: false,
+          flagged: !!hallucinationReason,
+          flag_reason: hallucinationReason ?? undefined,
           active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
@@ -808,8 +860,13 @@ export class AddieClaudeClient {
 
     // Get system prompt from database rules (or fallback)
     const promptStart = Date.now();
-    const { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
+    let { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
+
+    // Append per-request context (member info, channel, goals) to system prompt
+    if (options?.requestContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+    }
 
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = await getCurrentConfigVersionId(ruleIds, rulesSnapshot);
@@ -820,9 +877,10 @@ export class AddieClaudeClient {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools
+    // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
-    const allTools = [...this.tools, ...(requestTools?.tools || [])];
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
     const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
     const toolCount = allTools.length; // Note: streaming doesn't use web search
 
@@ -1003,13 +1061,20 @@ export class AddieClaudeClient {
         if (currentResponse.stop_reason === 'end_turn') {
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
+          // Detect possible hallucinated actions (text claims success without successful tool calls)
+          const hallucinationReason = detectHallucinatedAction(fullText, toolExecutions);
+          if (hallucinationReason) {
+            logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
+          }
+
           yield {
             type: 'done',
             response: {
               text: fullText,
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
-              flagged: false,
+              flagged: !!hallucinationReason,
+              flag_reason: hallucinationReason ?? undefined,
               active_rule_ids: ruleIds.length > 0 ? ruleIds : undefined,
               config_version_id: configVersionId ?? undefined,
               timing: {

@@ -30,7 +30,7 @@ import {
 import {
   ADMIN_TOOLS,
   createAdminToolHandlers,
-  isSlackUserAdmin,
+  isSlackUserAAOAdmin,
 } from './mcp/admin-tools.js';
 import {
   MEMBER_TOOLS,
@@ -54,6 +54,10 @@ import {
   ESCALATION_TOOLS,
   createEscalationToolHandlers,
 } from './mcp/escalation-tools.js';
+import {
+  COLLABORATION_TOOLS,
+  createCollaborationToolHandlers,
+} from './mcp/collaboration-tools.js';
 import {
   ADCP_TOOLS,
   createAdcpToolHandlers,
@@ -237,26 +241,15 @@ export function isAddieReady(): boolean {
 }
 
 /**
- * Build message with member context prepended
- *
- * Fetches member context for the user and formats it as a prefix to the message.
- * Also returns the member context for use in creating user-scoped tools.
- * Gracefully degrades to just the original message if context lookup fails.
+ * Build per-request context for the system prompt.
+ * Returns context separately from the user message.
  */
-async function buildMessageWithMemberContext(
-  userId: string,
-  sanitizedMessage: string,
-  isAdmin: boolean
-): Promise<{ message: string; memberContext: MemberContext | null }> {
+async function buildRequestContext(
+  userId: string
+): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
-
-    // Build message with admin prefix if applicable
-    let baseMessage = sanitizedMessage;
-    if (isAdmin) {
-      baseMessage = `[ADMIN USER] ${sanitizedMessage}`;
-    }
 
     // Get insight goals to naturally work into conversation
     const isMapped = !!memberContext?.is_mapped;
@@ -270,19 +263,14 @@ async function buildMessageWithMemberContext(
       logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
     }
 
-    if (memberContextText || insightGoalsText) {
-      const sections = [memberContextText, insightGoalsText].filter(Boolean);
-      return {
-        message: `${sections.join('\n\n')}\n---\n\n${baseMessage}`,
-        memberContext,
-      };
-    }
-    return { message: baseMessage, memberContext };
+    const sections = [memberContextText, insightGoalsText].filter(Boolean);
+    return {
+      requestContext: sections.length > 0 ? sections.join('\n\n') : '',
+      memberContext,
+    };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    // Still add admin prefix if applicable
-    const baseMessage = isAdmin ? `[ADMIN USER] ${sanitizedMessage}` : sanitizedMessage;
-    return { message: baseMessage, memberContext: null };
+    return { requestContext: '', memberContext: null };
   }
 }
 
@@ -297,7 +285,7 @@ async function createUserScopedTools(
   slackUserId?: string,
   threadId?: string
 ): Promise<UserScopedToolsResult> {
-  const memberHandlers = createMemberToolHandlers(memberContext);
+  const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
@@ -306,6 +294,15 @@ async function createUserScopedTools(
   allTools.push(...ESCALATION_TOOLS);
   for (const [name, handler] of escalationHandlers) {
     allHandlers.set(name, handler);
+  }
+
+  // Add collaboration tools (available to all members - DM other members, forward context)
+  if (memberContext?.is_member) {
+    const collaborationHandlers = createCollaborationToolHandlers(memberContext, slackUserId, threadId);
+    allTools.push(...COLLABORATION_TOOLS);
+    for (const [name, handler] of collaborationHandlers) {
+      allHandlers.set(name, handler);
+    }
   }
 
   // Add AdCP protocol tools (standard MCP tools for interacting with agents)
@@ -317,7 +314,7 @@ async function createUserScopedTools(
   }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
-  const userIsAdmin = slackUserId ? await isSlackUserAdmin(slackUserId) : false;
+  const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
 
   // Add admin tools if user is admin
   if (userIsAdmin) {
@@ -385,7 +382,7 @@ async function createUserScopedTools(
       tools: allTools,
       handlers: allHandlers,
     },
-    isAdmin: userIsAdmin,
+    isAAOAdmin: userIsAdmin,
   };
 }
 
@@ -395,7 +392,7 @@ async function createUserScopedTools(
 async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedPrompt[]> {
   try {
     const memberContext = await getMemberContext(userId);
-    const userIsAdmin = await isSlackUserAdmin(userId);
+    const userIsAdmin = await isSlackUserAAOAdmin(userId);
     return buildDynamicSuggestedPrompts(memberContext, userIsAdmin);
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to build dynamic prompts, using defaults');
@@ -449,9 +446,9 @@ export async function handleAssistantMessage(
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
-  // Check if user is an admin (for admin-only tools access)
-  const isAdmin = await isSlackUserAdmin(event.user);
-  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status');
+  // Check if user is an AAO admin (for admin-only tools access)
+  const isAAOAdmin = await isSlackUserAAOAdmin(event.user);
+  logger.debug({ userId: event.user, isAAOAdmin }, 'Addie: Checked admin status');
 
   // Resolve user mentions to include names (e.g., <@U123> -> <@U123|John>)
   const textWithResolvedMentions = await resolveSlackMentions(event.text, lookupSlackUserName);
@@ -466,12 +463,11 @@ export async function handleAssistantMessage(
     // Status update failed, continue anyway
   }
 
-  // Build message with member context for personalization (includes admin prefix if admin)
-  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
-    event.user,
-    inputValidation.sanitized,
-    isAdmin
-  );
+  // Build per-request context for system prompt
+  const { requestContext, memberContext } = await buildRequestContext(event.user);
+
+  // Add admin prefix to user message if applicable
+  const userMessage = isAAOAdmin ? `[ADMIN USER] ${inputValidation.sanitized}` : inputValidation.sanitized;
 
   // Check for sensitive topics before processing
   const sensitiveCheck = await checkForSensitiveTopics(
@@ -499,14 +495,14 @@ export async function handleAssistantMessage(
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts);
 
     // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
     // Process with Claude
     try {
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+      response = await claudeClient.processMessage(userMessage, undefined, userTools, undefined, processOptions);
     } catch (error) {
       logger.error({ error }, 'Addie: Error processing message');
       response = {
@@ -603,9 +599,9 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const startTime = Date.now();
   const interactionId = generateInteractionId();
 
-  // Check if user is an admin (for admin-only tools access)
-  const isAdmin = await isSlackUserAdmin(event.user);
-  logger.debug({ userId: event.user, isAdmin }, 'Addie: Checked admin status for mention');
+  // Check if user is an AAO admin (for admin-only tools access)
+  const isAAOAdmin = await isSlackUserAAOAdmin(event.user);
+  logger.debug({ userId: event.user, isAAOAdmin }, 'Addie: Checked admin status for mention');
 
   // Strip bot mention
   const rawText = botUserId ? stripBotMention(event.text, botUserId) : event.text;
@@ -616,12 +612,11 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   // Sanitize input
   const inputValidation = sanitizeInput(textWithResolvedMentions);
 
-  // Build message with member context for personalization (includes admin prefix if admin)
-  const { message: messageWithContext, memberContext } = await buildMessageWithMemberContext(
-    event.user,
-    inputValidation.sanitized,
-    isAdmin
-  );
+  // Build per-request context for system prompt
+  const { requestContext, memberContext } = await buildRequestContext(event.user);
+
+  // Add admin prefix to user message if applicable
+  const userMessage = isAAOAdmin ? `[ADMIN USER] ${inputValidation.sanitized}` : inputValidation.sanitized;
 
   // Check for sensitive topics before processing (channel mentions are more public)
   const sensitiveCheck = await checkForSensitiveTopics(
@@ -650,14 +645,14 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
 
     // Admin users get higher iteration limit for bulk operations
-    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : undefined;
+    const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
 
     // Process with Claude
     try {
-      response = await claudeClient.processMessage(messageWithContext, undefined, userTools, undefined, processOptions);
+      response = await claudeClient.processMessage(userMessage, undefined, userTools, undefined, processOptions);
     } catch (error) {
       logger.error({ error }, 'Addie: Error processing mention');
       response = {

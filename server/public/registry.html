@@ -175,6 +175,8 @@
         .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
         .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
         .error-text { color: var(--color-error-500); font-size: var(--text-sm); }
+        .hidden { display: none !important; }
+        .add-record-cta { margin-top: var(--space-4); text-align: center; }
         .view { display: none; }
         .view.active { display: block; }
         .tab-content { display: none; }
@@ -477,6 +479,7 @@
                 </div>
                 <div id="signals-agents" class="agent-grid"></div>
             </div>
+
         </div>
     </div>
 
@@ -568,9 +571,9 @@
 
         async function loadAllAgents() {
             try {
-                // Load all agents with health, properties, and capabilities in one call
-                const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
-                const data = await response.json();
+                const agentsResponse = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+
+                const data = await agentsResponse.json();
                 const agents = data.agents || data; // Handle both wrapped and unwrapped response
 
                 salesAgents = agents.filter(a => a.type === 'sales');

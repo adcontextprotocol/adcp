@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/bundled/media-buy/sync-event-sources-request.json",
+  "title": "Sync Event Sources Request",
+  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, buyer-managed event sources on the account not in this request are removed. When event_sources is omitted, the call is discovery-only: it returns all event sources on the account without modification. The response always includes both synced and seller-managed event sources for full visibility.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account to configure event sources for"
+    },
+    "event_sources": {
+      "type": "array",
+      "description": "Event sources to sync (create or update). When omitted, the call is discovery-only and returns all existing event sources on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_source_id": {
+            "type": "string",
+            "description": "Unique identifier for this event source"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this event source"
+          },
+          "event_types": {
+            "type": "array",
+            "description": "Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.",
+            "items": {
+              "title": "Event Type",
+              "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+              "type": "string",
+              "enum": [
+                "page_view",
+                "view_content",
+                "select_content",
+                "select_item",
+                "search",
+                "share",
+                "add_to_cart",
+                "remove_from_cart",
+                "viewed_cart",
+                "add_to_wishlist",
+                "initiate_checkout",
+                "add_payment_info",
+                "purchase",
+                "refund",
+                "lead",
+                "qualify_lead",
+                "close_convert_lead",
+                "disqualify_lead",
+                "complete_registration",
+                "subscribe",
+                "start_trial",
+                "app_install",
+                "app_launch",
+                "contact",
+                "schedule",
+                "donate",
+                "submit_application",
+                "custom"
+              ],
+              "enumDescriptions": {
+                "page_view": "User viewed a page",
+                "view_content": "User viewed specific content (product, article, etc.)",
+                "select_content": "User selected or clicked on content (article, video, etc.)",
+                "select_item": "User selected a specific product or item from a list",
+                "search": "User performed a search",
+                "share": "User shared content via social or messaging",
+                "add_to_cart": "User added an item to cart",
+                "remove_from_cart": "User removed an item from cart",
+                "viewed_cart": "User viewed their shopping cart",
+                "add_to_wishlist": "User added an item to a wishlist",
+                "initiate_checkout": "User started checkout process",
+                "add_payment_info": "User added payment information",
+                "purchase": "User completed a purchase",
+                "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+                "lead": "User expressed interest (form submission, signup, etc.)",
+                "qualify_lead": "Lead qualified by sales or scoring criteria",
+                "close_convert_lead": "Lead converted to a customer or closed deal",
+                "disqualify_lead": "Lead disqualified or marked as not viable",
+                "complete_registration": "User completed account registration",
+                "subscribe": "User subscribed to a service or newsletter",
+                "start_trial": "User started a free trial",
+                "app_install": "User installed an application",
+                "app_launch": "User launched an application",
+                "contact": "User initiated contact (call, message, etc.)",
+                "schedule": "User scheduled an appointment or event",
+                "donate": "User made a donation",
+                "submit_application": "User submitted an application (loan, job, etc.)",
+                "custom": "Custom event type (specify in custom_event_name)"
+              }
+            },
+            "minItems": 1
+          },
+          "allowed_domains": {
+            "type": "array",
+            "description": "Domains authorized to send events for this event source",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "event_source_id"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, event sources not included in this sync will be removed"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "account_id"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-12T12:28:49.132Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

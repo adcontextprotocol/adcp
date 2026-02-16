@@ -8,17 +8,23 @@
     "channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },
+      "minItems": 1,
       "description": "Filter by channel"
     },
     "languages": {
       "type": "array",
       "items": { "type": "string" },
+      "minItems": 1,
       "description": "Filter by BCP 47 language tags"
     },
     "countries": {
       "type": "array",
       "items": { "type": "string" },
+      "minItems": 1,
       "description": "Filter by ISO 3166-1 alpha-2 country codes"
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
     },
     "context": {
       "$ref": "/schemas/core/context.json"

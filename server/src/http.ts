@@ -34,7 +34,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -52,7 +52,7 @@ import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
-import { isWebUserAdmin } from "./addie/mcp/admin-tools.js";
+import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -68,13 +68,21 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createCommunityRouters } from "./routes/community.js";
+import { CommunityDatabase } from "./db/community-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
+import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createApiKeysRouter } from "./routes/api-keys.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { InsightsDatabase } from "./db/insights-db.js";
-import { serveHtmlWithMetaTags } from "./utils/html-config.js";
+import { serveHtmlWithMetaTags, enrichUserWithMembership } from "./utils/html-config.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
+import { BansDatabase } from "./db/bans-db.js";
+import { registryRequestsDb } from "./db/registry-requests-db.js";
+import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
+import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -388,6 +396,8 @@ export class HTTPServer {
   private brandDb: BrandDatabase;
   private brandManager: BrandManager;
   private propertyDb: PropertyDatabase;
+  private bansDb: BansDatabase;
+  private registryRequestsDb = registryRequestsDb;
 
   constructor() {
     this.app = express();
@@ -402,6 +412,7 @@ export class HTTPServer {
     this.brandDb = new BrandDatabase();
     this.brandManager = new BrandManager();
     this.propertyDb = new PropertyDatabase();
+    this.bansDb = new BansDatabase();
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -628,6 +639,21 @@ export class HTTPServer {
 
     this.app.use('/schemas', express.static(schemasPath));
 
+    // Serve domain-specific brand.json for adcontextprotocol.org
+    // The static/.well-known/brand.json has the full house portfolio for agenticadvertising.org.
+    // AdCP domain gets a house redirect pointing to the AgenticAdvertising.org portfolio.
+    this.app.get('/.well-known/brand.json', (req, res, next) => {
+      if (this.isAdcpDomain(req)) {
+        return res.json({
+          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+          "house": "agenticadvertising.org",
+          "note": "AdCP is a sub-brand of AgenticAdvertising.org",
+          "last_updated": "2026-02-08T00:00:00Z"
+        });
+      }
+      next();
+    });
+
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")
@@ -674,6 +700,7 @@ export class HTTPServer {
 
         // Get user from session (if authenticated), passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
 
         // Read and inject config
         let html = await fs.readFile(filePath, 'utf-8');
@@ -723,6 +750,7 @@ export class HTTPServer {
     try {
       // Get user from session (if authenticated), passing res to update cookie if session is refreshed
       const user = await getUserFromRequest(req, res);
+      await enrichUserWithMembership(user);
 
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
@@ -835,6 +863,20 @@ export class HTTPServer {
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
 
+    // Mount public Registry API routes (brands, properties, agents, search, validation)
+    const registryApiRouter = createRegistryApiRouter({
+      brandManager: this.brandManager,
+      brandDb: this.brandDb,
+      propertyDb: this.propertyDb,
+      adagentsManager: this.adagentsManager,
+      healthChecker: this.healthChecker,
+      crawler: this.crawler,
+      capabilityDiscovery: this.capabilityDiscovery,
+      registryRequestsDb,
+      requireAuth,
+    });
+    this.app.use('/api', registryApiRouter);
+
     // Mount member profile routes
     const memberDb = new MemberDatabase();
     const orgDb = new OrganizationDatabase();
@@ -848,6 +890,16 @@ export class HTTPServer {
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
+
+    // Mount community routes
+    const communityDb = new CommunityDatabase();
+    const communitySlackDb = new SlackDatabase();
+    const { publicRouter: communityPublicRouter, userRouter: communityUserRouter } = createCommunityRouters({ communityDb, slackDb: communitySlackDb, memberDb, orgDb, invalidateMemberContextCache });
+    this.app.use('/api/community', communityPublicRouter);
+    this.app.use('/api/me', communityUserRouter);
+
+    // Mount API key management routes
+    this.app.use('/api/me/api-keys', createApiKeysRouter());
 
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
@@ -1272,6 +1324,7 @@ export class HTTPServer {
 
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -1309,6 +1362,7 @@ export class HTTPServer {
 
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
+        await enrichUserWithMembership(user);
         const configScript = getAppConfigScript(user);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
@@ -1333,6 +1387,7 @@ export class HTTPServer {
       res.redirect(301, `/dashboard/membership${query}`);
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
+    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
 
     // My Content - unified CMS for all authenticated users
     this.app.get('/my-content', async (req, res) => {
@@ -1345,7 +1400,7 @@ export class HTTPServer {
     // API endpoints
 
     // Public config endpoint - returns feature flags and auth state for nav
-    this.app.get("/api/config", optionalAuth, (req, res) => {
+    this.app.get("/api/config", optionalAuth, async (req, res) => {
       // Prevent caching - auth state changes on login/logout
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
@@ -1358,13 +1413,18 @@ export class HTTPServer {
         isAdmin = adminEmails.includes(req.user.email.toLowerCase());
       }
 
-      const user = req.user ? {
-        id: req.user.id,
-        email: req.user.email,
-        firstName: req.user.firstName,
-        lastName: req.user.lastName,
-        isAdmin,
-      } : null;
+      let user = null;
+      if (req.user) {
+        await enrichUserWithMembership(req.user as any);
+        user = {
+          id: req.user.id,
+          email: req.user.email,
+          firstName: req.user.firstName,
+          lastName: req.user.lastName,
+          isAdmin,
+          isMember: !!(req.user as any).isMember,
+        };
+      }
 
       res.json({
         authEnabled: AUTH_ENABLED,
@@ -1592,9 +1652,14 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'registry.html');
     });
 
-    // AdAgents Manager UI route - serve adagents.html at /adagents
+    // adagents.json project landing page
     this.app.get("/adagents", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'adagents.html');
+      await this.serveHtmlWithConfig(req, res, 'adagents-landing.html');
+    });
+
+    // adagents.json builder tool
+    this.app.get("/adagents/builder", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile
@@ -1617,14 +1682,41 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
+    // Community pages
+    this.app.get("/community", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/hub.html');
+    });
+    this.app.get("/community/people", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/people.html');
+    });
+    this.app.get("/community/people/:slug", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/person-profile.html');
+    });
+    this.app.get("/community/connections", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/connections.html');
+    });
+    this.app.get("/community/profile/edit", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');
+    });
+
+    // brand.json project landing page
+    this.app.get("/brand", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-landing.html');
+    });
+
+    // Standalone brand registry page
+    this.app.get("/brands", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brands.html');
+    });
+
     // Publishers registry page
     this.app.get("/publishers", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'publishers.html');
     });
 
-    // Properties registry page
-    this.app.get("/properties", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'properties.html');
+    // Properties registry page (redirects to publishers - consolidated)
+    this.app.get("/properties", (_req, res) => {
+      res.redirect(301, '/publishers');
     });
 
     // About AAO page - serve about.html at /about
@@ -1740,122 +1832,6 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'working-groups/manage.html');
     });
 
-    // AdAgents API Routes
-    // Validate domain's adagents.json
-    this.app.post("/api/adagents/validate", async (req, res) => {
-      try {
-        const { domain } = req.body;
-
-        if (!domain || domain.trim().length === 0) {
-          return res.status(400).json({
-            success: false,
-            error: 'Domain is required',
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        logger.info({ domain }, 'Validating adagents.json for domain');
-
-        // Validate the domain's adagents.json
-        const validation = await this.adagentsManager.validateDomain(domain);
-
-        let agentCards = undefined;
-
-        // If adagents.json is found and has agents, validate their cards
-        if (validation.valid && validation.raw_data?.authorized_agents?.length > 0) {
-          logger.info({ agentCount: validation.raw_data.authorized_agents.length }, 'Validating agent cards');
-          agentCards = await this.adagentsManager.validateAgentCards(validation.raw_data.authorized_agents);
-        }
-
-        return res.json({
-          success: true,
-          data: {
-            domain: validation.domain,
-            found: validation.status_code === 200,
-            validation,
-            agent_cards: agentCards,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      } catch (error) {
-        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to validate domain:');
-        return res.status(500).json({
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString(),
-        });
-      }
-    });
-
-    // Create adagents.json file
-    this.app.post("/api/adagents/create", async (req, res) => {
-      try {
-        const {
-          authorized_agents,
-          include_schema = true,
-          include_timestamp = true,
-          properties,
-        } = req.body;
-
-        if (!authorized_agents || !Array.isArray(authorized_agents)) {
-          return res.status(400).json({
-            success: false,
-            error: 'authorized_agents array is required',
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        if (authorized_agents.length === 0) {
-          return res.status(400).json({
-            success: false,
-            error: 'At least one authorized agent is required',
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        logger.info({
-          agentCount: authorized_agents.length,
-          propertyCount: properties?.length || 0,
-        }, 'Creating adagents.json');
-
-        // Validate the proposed structure
-        const validation = this.adagentsManager.validateProposed(authorized_agents);
-
-        if (!validation.valid) {
-          return res.status(400).json({
-            success: false,
-            error: `Validation failed: ${validation.errors.map((e: any) => e.message).join(', ')}`,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        // Create the adagents.json content
-        const adagentsJson = this.adagentsManager.createAdAgentsJson(
-          authorized_agents,
-          include_schema,
-          include_timestamp,
-          properties
-        );
-
-        return res.json({
-          success: true,
-          data: {
-            success: true,
-            adagents_json: adagentsJson,
-            validation,
-          },
-          timestamp: new Date().toISOString(),
-        });
-      } catch (error) {
-        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Failed to create adagents.json:');
-        return res.status(500).json({
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString(),
-        });
-      }
-    });
-
     // Validate agent cards only (utility endpoint)
     this.app.post("/api/adagents/validate-cards", async (req, res) => {
       try {
@@ -1891,100 +1867,26 @@ export class HTTPServer {
       }
     });
 
-    // ========== Brand Registry API Routes ==========
-
-    // GET /api/brands/registry - List all brands in the registry
-    this.app.get('/api/brands/registry', async (req, res) => {
+    // POST /api/brands/discovered - Save a discovered/enriched brand (admin only)
+    this.app.post('/api/brands/discovered', requireAuth, async (req, res) => {
       try {
-        const brands = await this.brandDb.getAllBrandsForRegistry({
-          search: req.query.search as string,
-          limit: parseInt(req.query.limit as string) || 100,
-          offset: parseInt(req.query.offset as string) || 0,
-        });
-
-        // Calculate stats
-        const stats = {
-          total: brands.length,
-          brand_json: brands.filter(b => b.source === 'brand_json').length,
-          hosted: brands.filter(b => b.source === 'hosted').length,
-          community: brands.filter(b => b.source === 'community').length,
-          enriched: brands.filter(b => b.source === 'enriched').length,
-        };
-
-        return res.json({ brands, stats });
-      } catch (error) {
-        logger.error({ error }, 'Failed to list brands');
-        return res.status(500).json({ error: 'Failed to list brands' });
-      }
-    });
-
-    // GET /api/brands/resolve - Resolve a domain to canonical brand
-    this.app.get('/api/brands/resolve', async (req, res) => {
-      try {
-        const domain = req.query.domain as string;
-        const fresh = req.query.fresh === 'true';
-        if (!domain) {
-          return res.status(400).json({ error: 'domain parameter required' });
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
         }
 
-        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: fresh });
-        if (!resolved) {
-          // Check discovered brands as fallback
-          const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
-          if (discovered) {
-            return res.json({
-              canonical_id: discovered.canonical_domain || discovered.domain,
-              canonical_domain: discovered.canonical_domain || discovered.domain,
-              brand_name: discovered.brand_name,
-              source: discovered.source_type,
-              brand_manifest: discovered.brand_manifest,
-            });
-          }
-          return res.status(404).json({ error: 'Brand not found', domain });
-        }
-
-        return res.json(resolved);
-      } catch (error) {
-        logger.error({ error }, 'Failed to resolve brand');
-        return res.status(500).json({ error: 'Failed to resolve brand' });
-      }
-    });
-
-    // GET /api/brands/enrich - Enrich a brand using Brandfetch
-    this.app.get('/api/brands/enrich', async (req, res) => {
-      try {
-        const domain = req.query.domain as string;
-        if (!domain) {
-          return res.status(400).json({ error: 'domain parameter required' });
-        }
-
-        const { fetchBrandData, isBrandfetchConfigured } = await import('./services/brandfetch.js');
-        if (!isBrandfetchConfigured()) {
-          return res.status(503).json({ error: 'Brandfetch not configured' });
-        }
-
-        const enrichment = await fetchBrandData(domain);
-        return res.json(enrichment);
-      } catch (error) {
-        logger.error({ error }, 'Failed to enrich brand');
-        return res.status(500).json({ error: 'Failed to enrich brand' });
-      }
-    });
-
-    // POST /api/brands/discovered - Save a discovered/enriched brand
-    this.app.post('/api/brands/discovered', async (req, res) => {
-      try {
         const { domain, brand_name, brand_manifest, source_type } = req.body;
         if (!domain) {
           return res.status(400).json({ error: 'domain required' });
         }
 
+        const validSourceTypes = ['brand_json', 'hosted', 'enriched', 'community'];
         const brand = await this.brandDb.upsertDiscoveredBrand({
           domain,
           brand_name,
           brand_manifest,
           has_brand_manifest: !!brand_manifest,
-          source_type: source_type || 'enriched',
+          source_type: validSourceTypes.includes(source_type) ? source_type : 'enriched',
         });
 
         return res.json(brand);
@@ -1994,13 +1896,100 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/hosted - Create a hosted brand
-    this.app.post('/api/brands/hosted', optionalAuth, async (req, res) => {
+    // POST /api/brands/discovered/community - Create a new community brand (member-authenticated, pending review)
+    this.app.post('/api/brands/discovered/community', requireAuth, brandCreationRateLimiter, async (req, res) => {
       try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to create brands' });
+        }
+
+        const { domain, brand_name, house_domain, keller_type, parent_brand, brand_manifest } = req.body;
+        if (!domain) {
+          return res.status(400).json({ error: 'domain required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain.toLowerCase());
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from creating brands', reason: banCheck.ban?.reason });
+        }
+
+        const brand = await this.brandDb.createDiscoveredBrand({
+          domain,
+          brand_name,
+          house_domain,
+          keller_type,
+          parent_brand,
+          brand_manifest,
+          has_brand_manifest: !!brand_manifest,
+          source_type: 'community',
+        }, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryCreate({
+          entity_type: 'brand',
+          domain: brand.domain,
+          editor_email: req.user!.email,
+        }).then((slack_thread_ts) => {
+          reviewNewRecord({
+            entity_type: 'brand',
+            domain: brand.domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            snapshot: brand as unknown as Record<string, unknown>,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'New brand review failed'));
+        }).catch((err) => logger.error({ err }, 'New brand notification failed'));
+
+        return res.json({ brand, review_status: 'pending' });
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Brand already exists for this domain' });
+        }
+        logger.error({ error }, 'Failed to create community brand');
+        return res.status(500).json({ error: 'Failed to create brand' });
+      }
+    });
+
+    const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+    const MAX_BRAND_JSON_SIZE = 100_000; // 100KB
+
+    function validateBrandJson(brand_json: unknown, res: import('express').Response): boolean {
+      if (typeof brand_json !== 'object' || Array.isArray(brand_json) || brand_json === null) {
+        res.status(400).json({ error: 'brand_json must be a JSON object' });
+        return false;
+      }
+      if (JSON.stringify(brand_json).length > MAX_BRAND_JSON_SIZE) {
+        res.status(400).json({ error: 'brand_json exceeds maximum size (100KB)' });
+        return false;
+      }
+      return true;
+    }
+
+    // POST /api/brands/hosted - Create a hosted brand (members only)
+    this.app.post('/api/brands/hosted', requireAuth, async (req, res) => {
+      try {
+        // Membership check
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to save brands to registry' });
+        }
+
         const { brand_domain, brand_json } = req.body;
         if (!brand_domain || !brand_json) {
           return res.status(400).json({ error: 'brand_domain and brand_json required' });
         }
+
+        if (!domainPattern.test(brand_domain.toLowerCase())) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        if (!validateBrandJson(brand_json, res)) return;
 
         const brand = await this.brandDb.createHostedBrand({
           brand_domain: brand_domain.toLowerCase(),
@@ -2010,9 +1999,72 @@ export class HTTPServer {
         });
 
         return res.json(brand);
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.constraint === 'hosted_brands_brand_domain_key') {
+          return res.status(409).json({ error: 'Brand already exists for this domain' });
+        }
         logger.error({ error }, 'Failed to create hosted brand');
         return res.status(500).json({ error: 'Failed to create brand' });
+      }
+    });
+
+    // PUT /api/brands/hosted/:domain - Update a hosted brand (members only, owner or admin)
+    this.app.put('/api/brands/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        // Membership check
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to update brands in registry' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const brand = await this.brandDb.getHostedBrandByDomain(domain);
+
+        if (!brand) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        // Check ownership - user must be creator or admin
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isCreator && !isAdmin) {
+          return res.status(403).json({ error: 'Not authorized to update this brand' });
+        }
+
+        const { brand_json } = req.body;
+        if (!brand_json) {
+          return res.status(400).json({ error: 'brand_json required' });
+        }
+
+        if (!validateBrandJson(brand_json, res)) return;
+
+        const updated = await this.brandDb.updateHostedBrand(brand.id, { brand_json });
+        return res.json(updated);
+      } catch (error) {
+        logger.error({ error }, 'Failed to update hosted brand');
+        return res.status(500).json({ error: 'Failed to update brand' });
+      }
+    });
+
+    // GET /api/brands/hosted/:domain - Get a hosted brand by domain
+    this.app.get('/api/brands/hosted/:domain', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+        const brand = await this.brandDb.getHostedBrandByDomain(domain);
+        if (!brand || !brand.is_public) {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+        return res.json({ domain: brand.brand_domain, data: brand.brand_json });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get hosted brand');
+        return res.status(500).json({ error: 'Failed to get brand' });
       }
     });
 
@@ -2027,8 +2079,8 @@ export class HTTPServer {
         }
 
         // Check ownership - user must be creator or admin
-        const isCreator = brand.created_by_email && brand.created_by_email === req.user?.email;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
@@ -2039,6 +2091,247 @@ export class HTTPServer {
         logger.error({ error }, 'Failed to delete hosted brand');
         return res.status(500).json({ error: 'Failed to delete brand' });
       }
+    });
+
+    // ========== Brand Wiki Routes ==========
+
+    // PUT /api/brands/discovered/:domain - Edit a community/enriched brand with revision tracking
+    this.app.put('/api/brands/discovered/:domain', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to edit brands' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
+        const { edit_summary, ...fields } = req.body;
+        if (!edit_summary || typeof edit_summary !== 'string') {
+          return res.status(400).json({ error: 'edit_summary required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+        }
+
+        const { brand, revision_number } = await this.brandDb.editDiscoveredBrand(domain, {
+          ...fields,
+          edit_summary,
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Get old snapshot for review
+        const oldRevision = await this.brandDb.getBrandRevision(domain, revision_number);
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryEdit({
+          entity_type: 'brand',
+          domain,
+          editor_email: req.user!.email,
+          edit_summary,
+          revision_number,
+        }).then((slack_thread_ts) => {
+          reviewRegistryEdit({
+            entity_type: 'brand',
+            domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            edit_summary,
+            old_snapshot: oldRevision?.snapshot || {},
+            new_snapshot: brand as unknown as Record<string, unknown>,
+            revision_number,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'Registry review failed'));
+        }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
+
+        return res.json({ brand, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        if (error.message?.includes('Cannot edit')) {
+          return res.status(403).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to edit discovered brand');
+        return res.status(500).json({ error: 'Failed to edit brand' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/revisions - Brand revision history
+    this.app.get('/api/brands/discovered/:domain/revisions', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const revisions = await this.brandDb.getBrandRevisions(domain, { limit, offset });
+        const total = await this.brandDb.getBrandRevisionCount(domain);
+        return res.json({ revisions, total });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get brand revisions');
+        return res.status(500).json({ error: 'Failed to get revisions' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/revisions/:num - Single revision
+    this.app.get('/api/brands/discovered/:domain/revisions/:num', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const num = parseInt(req.params.num);
+        if (isNaN(num)) {
+          return res.status(400).json({ error: 'Invalid revision number' });
+        }
+        const revision = await this.brandDb.getBrandRevision(domain, num);
+        if (!revision) {
+          return res.status(404).json({ error: 'Revision not found' });
+        }
+        return res.json(revision);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get brand revision');
+        return res.status(500).json({ error: 'Failed to get revision' });
+      }
+    });
+
+    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision (admin only)
+    this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const { to_revision } = req.body;
+        if (!to_revision || typeof to_revision !== 'number') {
+          return res.status(400).json({ error: 'to_revision (number) required' });
+        }
+
+        const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        notifyRegistryRollback({
+          entity_type: 'brand',
+          domain,
+          rolled_back_to: to_revision,
+          rolled_back_by_email: req.user!.email,
+          revision_number,
+        }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
+
+        return res.json({ brand, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to rollback brand');
+        return res.status(500).json({ error: 'Failed to rollback brand' });
+      }
+    });
+
+    // GET /api/brands/discovered/:domain/edit-status - Check if brand is editable
+    this.app.get('/api/brands/discovered/:domain/edit-status', optionalAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+
+        if (!brand) {
+          return res.json({ editable: false, reason: 'Brand not found in registry' });
+        }
+        if (brand.source_type === 'brand_json') {
+          return res.json({ editable: false, reason: 'Managed by brand owner via brand.json' });
+        }
+        if (brand.review_status === 'pending') {
+          return res.json({ editable: false, reason: 'Pending review' });
+        }
+
+        // Check ban if authenticated
+        if (req.user) {
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user.id, domain);
+          if (banCheck.banned) {
+            return res.json({ editable: false, reason: 'You are banned from editing this brand', ban_reason: banCheck.ban?.reason });
+          }
+        }
+
+        return res.json({
+          editable: true,
+          source_type: brand.source_type,
+          brand_name: brand.brand_name,
+          brand_manifest: brand.brand_manifest,
+          house_domain: brand.house_domain,
+          keller_type: brand.keller_type,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to check brand edit status');
+        return res.status(500).json({ error: 'Failed to check edit status' });
+      }
+    });
+
+    // GET /api/registry/requests - List unresolved registry requests (admin only)
+    this.app.get('/api/registry/requests', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const entityType = (req.query.type as string) || 'brand';
+        if (entityType !== 'brand' && entityType !== 'property') {
+          return res.status(400).json({ error: 'type must be "brand" or "property"' });
+        }
+
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        const requests = await this.registryRequestsDb.listUnresolved(entityType, { limit, offset });
+        return res.json({ requests, limit, offset });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list registry requests');
+        return res.status(500).json({ error: 'Failed to list registry requests' });
+      }
+    });
+
+    // GET /api/registry/requests/stats - Registry request statistics (admin only)
+    this.app.get('/api/registry/requests/stats', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const entityType = (req.query.type as string) || 'brand';
+        if (entityType !== 'brand' && entityType !== 'property') {
+          return res.status(400).json({ error: 'type must be "brand" or "property"' });
+        }
+
+        const stats = await this.registryRequestsDb.getStats(entityType);
+        return res.json(stats);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get registry request stats');
+        return res.status(500).json({ error: 'Failed to get registry request stats' });
+      }
+    });
+
+    // brand.json builder tool (must be before wildcard /brand/view/:domain)
+    this.app.get('/brand/builder', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-builder.html');
+    });
+
+    // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
+    this.app.get('/brand/view/:domain(*)', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
+    });
+
+    // GET /property/view/:domain - Property viewer page (wildcard captures dots in domain names)
+    this.app.get('/property/view/:domain(*)', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
     // GET /brand/:id/brand.json - Serve hosted brand.json
@@ -2058,110 +2351,8 @@ export class HTTPServer {
       }
     });
 
-    // ========== Property Registry API Routes ==========
-
-    // GET /api/properties/registry - List all properties in the registry
-    this.app.get('/api/properties/registry', async (req, res) => {
-      try {
-        const properties = await this.propertyDb.getAllPropertiesForRegistry({
-          search: req.query.search as string,
-          limit: parseInt(req.query.limit as string) || 100,
-          offset: parseInt(req.query.offset as string) || 0,
-        });
-
-        // Calculate stats
-        const stats = {
-          total: properties.length,
-          adagents_json: properties.filter(p => p.source === 'adagents_json').length,
-          hosted: properties.filter(p => p.source === 'hosted').length,
-          discovered: properties.filter(p => p.source === 'discovered').length,
-        };
-
-        return res.json({ properties, stats });
-      } catch (error) {
-        logger.error({ error }, 'Failed to list properties');
-        return res.status(500).json({ error: 'Failed to list properties' });
-      }
-    });
-
-    // GET /api/properties/resolve - Resolve a domain to property info
-    this.app.get('/api/properties/resolve', async (req, res) => {
-      try {
-        const domain = req.query.domain as string;
-        if (!domain) {
-          return res.status(400).json({ error: 'domain parameter required' });
-        }
-
-        // Check hosted first
-        const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
-        if (hosted && hosted.is_public) {
-          return res.json({
-            publisher_domain: hosted.publisher_domain,
-            source: 'hosted',
-            authorized_agents: hosted.adagents_json.authorized_agents,
-            properties: hosted.adagents_json.properties,
-            contact: hosted.adagents_json.contact,
-            verified: hosted.domain_verified,
-          });
-        }
-
-        // Check discovered
-        const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
-        if (discovered.length > 0) {
-          const agents = await this.propertyDb.getAgentAuthorizationsForDomain(domain);
-          return res.json({
-            publisher_domain: domain,
-            source: 'adagents_json',
-            authorized_agents: [...new Set(agents.map(a => a.agent_url))].map(url => ({ url })),
-            properties: discovered.map(p => ({
-              id: p.property_id,
-              type: p.property_type,
-              name: p.name,
-              identifiers: p.identifiers,
-              tags: p.tags,
-            })),
-            verified: true,
-          });
-        }
-
-        // Try live validation
-        const validation = await this.adagentsManager.validateDomain(domain);
-        if (validation.valid && validation.raw_data) {
-          return res.json({
-            publisher_domain: domain,
-            source: 'adagents_json',
-            authorized_agents: validation.raw_data.authorized_agents,
-            properties: validation.raw_data.properties,
-            contact: validation.raw_data.contact,
-            verified: true,
-          });
-        }
-
-        return res.status(404).json({ error: 'Property not found', domain });
-      } catch (error) {
-        logger.error({ error }, 'Failed to resolve property');
-        return res.status(500).json({ error: 'Failed to resolve property' });
-      }
-    });
-
-    // GET /api/properties/validate - Validate adagents.json for a domain
-    this.app.get('/api/properties/validate', async (req, res) => {
-      try {
-        const domain = req.query.domain as string;
-        if (!domain) {
-          return res.status(400).json({ error: 'domain parameter required' });
-        }
-
-        const validation = await this.adagentsManager.validateDomain(domain);
-        return res.json(validation);
-      } catch (error) {
-        logger.error({ error }, 'Failed to validate property');
-        return res.status(500).json({ error: 'Failed to validate' });
-      }
-    });
-
-    // POST /api/properties/hosted - Create a hosted property
-    this.app.post('/api/properties/hosted', optionalAuth, async (req, res) => {
+    // POST /api/properties/hosted - Create a hosted property (authenticated)
+    this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
         const { publisher_domain, adagents_json, source_type } = req.body;
         if (!publisher_domain || !adagents_json) {
@@ -2183,6 +2374,63 @@ export class HTTPServer {
       }
     });
 
+    // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
+    this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to create properties' });
+        }
+
+        const { publisher_domain, adagents_json } = req.body;
+        if (!publisher_domain || !adagents_json) {
+          return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, publisher_domain.toLowerCase());
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from creating properties', reason: banCheck.ban?.reason });
+        }
+
+        const property = await this.propertyDb.createCommunityProperty({
+          publisher_domain: publisher_domain.toLowerCase(),
+          adagents_json,
+          source_type: 'community',
+          created_by_user_id: req.user!.id,
+          created_by_email: req.user!.email,
+        }, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryCreate({
+          entity_type: 'property',
+          domain: property.publisher_domain,
+          editor_email: req.user!.email,
+        }).then((slack_thread_ts) => {
+          reviewNewRecord({
+            entity_type: 'property',
+            domain: property.publisher_domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            snapshot: property as unknown as Record<string, unknown>,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'New property review failed'));
+        }).catch((err) => logger.error({ err }, 'New property notification failed'));
+
+        return res.json({ property, review_status: 'pending' });
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Property already exists for this domain' });
+        }
+        logger.error({ error }, 'Failed to create community property');
+        return res.status(500).json({ error: 'Failed to create property' });
+      }
+    });
+
     // DELETE /api/properties/hosted/:domain - Delete a hosted property
     this.app.delete('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
@@ -2194,8 +2442,8 @@ export class HTTPServer {
         }
 
         // Check ownership
-        const isCreator = property.created_by_email && property.created_by_email === req.user?.email;
-        const isAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isCreator = property.created_by_user_id && property.created_by_user_id === req.user?.id;
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
@@ -2205,6 +2453,277 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Failed to delete hosted property');
         return res.status(500).json({ error: 'Failed to delete property' });
+      }
+    });
+
+    // ========== Property Wiki Routes ==========
+
+    // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
+    this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
+      try {
+        await enrichUserWithMembership(req.user as any);
+        if (!(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to edit properties' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+
+        const { edit_summary, adagents_json } = req.body;
+        if (!edit_summary || typeof edit_summary !== 'string') {
+          return res.status(400).json({ error: 'edit_summary required' });
+        }
+
+        // Check ban
+        const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user!.id, domain);
+        if (banCheck.banned) {
+          return res.status(403).json({ error: 'You are banned from editing this property', reason: banCheck.ban?.reason });
+        }
+
+        const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
+          adagents_json,
+          edit_summary,
+          editor_user_id: req.user!.id,
+          editor_email: req.user!.email,
+          editor_name: (req.user as any).displayName || req.user!.email,
+        });
+
+        // Get old snapshot for review
+        const oldRevision = await this.propertyDb.getPropertyRevision(domain, revision_number);
+
+        // Fire-and-forget: Slack notification + Addie review
+        notifyRegistryEdit({
+          entity_type: 'property',
+          domain,
+          editor_email: req.user!.email,
+          edit_summary,
+          revision_number,
+        }).then((slack_thread_ts) => {
+          reviewRegistryEdit({
+            entity_type: 'property',
+            domain,
+            editor_user_id: req.user!.id,
+            editor_email: req.user!.email,
+            edit_summary,
+            old_snapshot: oldRevision?.snapshot || {},
+            new_snapshot: property as unknown as Record<string, unknown>,
+            revision_number,
+            slack_thread_ts: slack_thread_ts || undefined,
+          }).catch((err) => logger.error({ err }, 'Registry review failed'));
+        }).catch((err) => logger.error({ err }, 'Registry edit notification failed'));
+
+        return res.json({ property, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        if (error.message?.includes('Cannot edit')) {
+          return res.status(403).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to edit hosted property');
+        return res.status(500).json({ error: 'Failed to edit property' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/revisions - Property revision history
+    this.app.get('/api/properties/hosted/:domain/revisions', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+        const offset = parseInt(req.query.offset as string) || 0;
+        const revisions = await this.propertyDb.getPropertyRevisions(domain, { limit, offset });
+        const total = await this.propertyDb.getPropertyRevisionCount(domain);
+        return res.json({ revisions, total });
+      } catch (error) {
+        logger.error({ error }, 'Failed to get property revisions');
+        return res.status(500).json({ error: 'Failed to get revisions' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/revisions/:num - Single revision
+    this.app.get('/api/properties/hosted/:domain/revisions/:num', async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const num = parseInt(req.params.num);
+        if (isNaN(num)) {
+          return res.status(400).json({ error: 'Invalid revision number' });
+        }
+        const revision = await this.propertyDb.getPropertyRevision(domain, num);
+        if (!revision) {
+          return res.status(404).json({ error: 'Revision not found' });
+        }
+        return res.json(revision);
+      } catch (error) {
+        logger.error({ error }, 'Failed to get property revision');
+        return res.status(500).json({ error: 'Failed to get revision' });
+      }
+    });
+
+    // POST /api/properties/hosted/:domain/rollback - Rollback property (admin only)
+    this.app.post('/api/properties/hosted/:domain/rollback', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const { to_revision } = req.body;
+        if (!to_revision || typeof to_revision !== 'number') {
+          return res.status(400).json({ error: 'to_revision (number) required' });
+        }
+
+        const { property, revision_number } = await this.propertyDb.rollbackProperty(domain, to_revision, {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: (req.user as any).displayName || req.user!.email,
+        });
+
+        notifyRegistryRollback({
+          entity_type: 'property',
+          domain,
+          rolled_back_to: to_revision,
+          rolled_back_by_email: req.user!.email,
+          revision_number,
+        }).catch((err) => logger.error({ err }, 'Registry rollback notification failed'));
+
+        return res.json({ property, revision_number });
+      } catch (error: any) {
+        if (error.message?.includes('not found')) {
+          return res.status(404).json({ error: error.message });
+        }
+        logger.error({ error }, 'Failed to rollback property');
+        return res.status(500).json({ error: 'Failed to rollback property' });
+      }
+    });
+
+    // GET /api/properties/hosted/:domain/edit-status - Check if property is editable
+    this.app.get('/api/properties/hosted/:domain/edit-status', optionalAuth, async (req, res) => {
+      try {
+        const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        const property = await this.propertyDb.getHostedPropertyByDomain(domain);
+
+        if (!property) {
+          return res.json({ editable: false, reason: 'Property not found in registry' });
+        }
+
+        // Check for authoritative lock
+        const discovered = await this.propertyDb.getDiscoveredPropertiesByDomain(domain);
+        if (discovered.length > 0) {
+          return res.json({ editable: false, reason: 'Managed by property owner via adagents.json' });
+        }
+
+        if (property.review_status === 'pending') {
+          return res.json({ editable: false, reason: 'Pending review' });
+        }
+
+        if (req.user) {
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_property', req.user.id, domain);
+          if (banCheck.banned) {
+            return res.json({ editable: false, reason: 'You are banned from editing this property', ban_reason: banCheck.ban?.reason });
+          }
+        }
+
+        return res.json({
+          editable: true,
+          source_type: property.source_type,
+          publisher_domain: property.publisher_domain,
+          adagents_json: property.adagents_json,
+        });
+      } catch (error) {
+        logger.error({ error }, 'Failed to check property edit status');
+        return res.status(500).json({ error: 'Failed to check edit status' });
+      }
+    });
+
+    // ========== Registry Edit Bans (shared, admin only) ==========
+
+    // POST /api/registry/edit-bans - Create an edit ban
+    this.app.post('/api/registry/edit-bans', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const { entity_type, banned_user_id, banned_email, entity_domain, reason, expires_at } = req.body;
+        if (!entity_type || !banned_user_id || !reason) {
+          return res.status(400).json({ error: 'entity_type, banned_user_id, and reason required' });
+        }
+        if (!['brand', 'property'].includes(entity_type)) {
+          return res.status(400).json({ error: 'entity_type must be "brand" or "property"' });
+        }
+
+        const scope = entity_type === 'brand' ? 'registry_brand' : 'registry_property' as const;
+        const ban = await this.bansDb.createBan({
+          ban_type: 'user',
+          entity_id: banned_user_id,
+          scope,
+          scope_target: entity_domain?.toLowerCase(),
+          banned_by_user_id: req.user!.id,
+          banned_by_email: req.user!.email,
+          banned_email,
+          reason,
+          expires_at: expires_at ? new Date(expires_at) : undefined,
+        });
+
+        notifyRegistryBan({
+          entity_type,
+          banned_email,
+          entity_domain,
+          reason,
+          banned_by_email: req.user!.email,
+        }).catch((err) => logger.error({ err }, 'Registry ban notification failed'));
+
+        return res.json(ban);
+      } catch (error: any) {
+        if (error?.constraint) {
+          return res.status(409).json({ error: 'Ban already exists for this user/scope' });
+        }
+        logger.error({ error }, 'Failed to create edit ban');
+        return res.status(500).json({ error: 'Failed to create ban' });
+      }
+    });
+
+    // GET /api/registry/edit-bans - List active edit bans
+    this.app.get('/api/registry/edit-bans', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const entityType = req.query.entity_type as string | undefined;
+        const scope = entityType === 'brand' ? 'registry_brand'
+          : entityType === 'property' ? 'registry_property'
+          : undefined;
+
+        const bans = await this.bansDb.listBans({
+          scope: scope as 'registry_brand' | 'registry_property' | undefined,
+          entity_id: req.query.banned_user_id as string | undefined,
+        });
+        return res.json({ bans });
+      } catch (error) {
+        logger.error({ error }, 'Failed to list edit bans');
+        return res.status(500).json({ error: 'Failed to list bans' });
+      }
+    });
+
+    // DELETE /api/registry/edit-bans/:id - Remove an edit ban
+    this.app.delete('/api/registry/edit-bans/:id', requireAuth, async (req, res) => {
+      try {
+        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const removed = await this.bansDb.removeBan(req.params.id);
+        if (!removed) {
+          return res.status(404).json({ error: 'Ban not found' });
+        }
+        return res.json({ success: true });
+      } catch (error) {
+        logger.error({ error }, 'Failed to remove edit ban');
+        return res.status(500).json({ error: 'Failed to remove ban' });
       }
     });
 
@@ -2254,38 +2773,6 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ error }, 'Failed to list manifest refs');
         return res.status(500).json({ error: 'Failed to list references' });
-      }
-    });
-
-    // GET /api/manifest-refs/lookup - Look up best reference for a domain (public)
-    this.app.get('/api/manifest-refs/lookup', async (req, res) => {
-      try {
-        const domain = req.query.domain as string;
-        const manifestType = (req.query.type || 'brand.json') as manifestRefsDb.ManifestType;
-
-        if (!domain) {
-          return res.status(400).json({ error: 'domain parameter required' });
-        }
-
-        const ref = await manifestRefsDb.getBestReference(domain, manifestType);
-        if (!ref) {
-          return res.json({ success: false, found: false });
-        }
-
-        return res.json({
-          success: true,
-          found: true,
-          reference: {
-            reference_type: ref.reference_type,
-            manifest_url: ref.manifest_url,
-            agent_url: ref.agent_url,
-            agent_id: ref.agent_id,
-            verification_status: ref.verification_status,
-          }
-        });
-      } catch (error) {
-        logger.error({ error }, 'Failed to lookup manifest ref');
-        return res.status(500).json({ error: 'Failed to lookup reference' });
       }
     });
 
@@ -2379,7 +2866,7 @@ export class HTTPServer {
         // Check if user can delete (admin or creator)
         const devUser = getDevUser(req);
         const isDevAdmin = devUser?.isAdmin === true;
-        const isDbAdmin = req.user && await isWebUserAdmin(req.user.id);
+        const isDbAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
         const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
@@ -3279,6 +3766,45 @@ export class HTTPServer {
             break;
           }
 
+          case 'checkout.session.completed': {
+            const session = event.data.object as Stripe.Checkout.Session;
+            const customerId = session.customer as string | null;
+            const workosOrgId = session.metadata?.workos_organization_id;
+
+            if (customerId && workosOrgId) {
+              // Ensure the Stripe customer is linked to the organization.
+              // This catches cases where the checkout session was created with
+              // customerEmail instead of customerId, causing Stripe to create
+              // a new customer without workos_organization_id metadata.
+              const org = await orgDb.getOrganization(workosOrgId);
+              if (org && !org.stripe_customer_id) {
+                try {
+                  await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to org from checkout.session.completed');
+                } catch (err) {
+                  logger.warn({ err, workosOrgId, customerId }, 'Could not link Stripe customer to org from checkout (possible conflict)');
+                }
+              }
+
+              // Ensure the Stripe customer has org metadata so that subsequent
+              // subscription and invoice webhooks can find the org.
+              try {
+                const customer = await stripe.customers.retrieve(customerId);
+                if ('deleted' in customer && customer.deleted) {
+                  logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
+                } else if (!customer.metadata?.workos_organization_id) {
+                  await stripe.customers.update(customerId, {
+                    metadata: { workos_organization_id: workosOrgId },
+                  });
+                  logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
+                }
+              } catch (err) {
+                logger.error({ err, customerId, workosOrgId }, 'Failed to update Stripe customer metadata from checkout session');
+              }
+            }
+            break;
+          }
+
           default:
             logger.debug({ eventType: event.type }, 'Unhandled webhook event type');
         }
@@ -4161,399 +4687,6 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
-    // Registry API endpoints (consolidated agents, publishers, lookups)
-    this.setupRegistryRoutes();
-  }
-
-  /**
-   * Setup registry API endpoints
-   * Consolidated endpoints for agents, publishers, and lookups
-   * These are the canonical endpoints - old /api/federated/* routes redirect here
-   */
-  private setupRegistryRoutes(): void {
-    const federatedIndex = this.crawler.getFederatedIndex();
-
-    // ========================================
-    // Registry Agents API
-    // ========================================
-
-    // GET /api/registry/agents - List all agents (registered + discovered)
-    // Supports enrichment via query params: health, capabilities, properties
-    this.app.get("/api/registry/agents", async (req, res) => {
-      try {
-        const type = req.query.type as AgentType | undefined;
-        const withHealth = req.query.health === "true";
-        const withCapabilities = req.query.capabilities === "true";
-        const withProperties = req.query.properties === "true";
-
-        // Get agents from federated index (includes both registered and discovered)
-        const federatedAgents = await federatedIndex.listAllAgents(type);
-
-        // Convert FederatedAgent to Agent format for enrichment
-        const agents = federatedAgents.map(fa => ({
-          name: fa.name || fa.url,
-          url: fa.url,
-          type: isValidAgentType(fa.type) ? fa.type : 'unknown',
-          protocol: fa.protocol || 'mcp',
-          description: fa.member?.display_name || fa.discovered_from?.publisher_domain || '',
-          mcp_endpoint: fa.url,
-          contact: {
-            name: fa.member?.display_name || '',
-            email: '',
-            website: '',
-          },
-          added_date: fa.discovered_at || new Date().toISOString().split('T')[0],
-          // Preserve federated metadata
-          source: fa.source,
-          member: fa.member,
-          discovered_from: fa.discovered_from,
-        }));
-
-        const bySource = {
-          registered: federatedAgents.filter(a => a.source === 'registered').length,
-          discovered: federatedAgents.filter(a => a.source === 'discovered').length,
-        };
-
-        // If no enrichment requested, return basic list
-        if (!withHealth && !withCapabilities && !withProperties) {
-          return res.json({
-            agents,
-            count: agents.length,
-            sources: bySource,
-          });
-        }
-
-        // Enrich with health, capabilities, and/or properties
-        const enriched = await Promise.all(
-          agents.map(async (agent): Promise<AgentWithStats> => {
-            const enrichedAgent: AgentWithStats = { ...agent } as AgentWithStats;
-
-            // First, discover capabilities to infer agent type
-            if (withCapabilities) {
-              const capProfile = await this.capabilityDiscovery.discoverCapabilities(agent as Agent);
-              if (capProfile) {
-                enrichedAgent.capabilities = {
-                  tools_count: capProfile.discovered_tools?.length || 0,
-                  tools: capProfile.discovered_tools || [],
-                  standard_operations: capProfile.standard_operations,
-                  creative_capabilities: capProfile.creative_capabilities,
-                  signals_capabilities: capProfile.signals_capabilities,
-                  discovery_error: capProfile.discovery_error,
-                  oauth_required: capProfile.oauth_required,
-                };
-
-                // Infer agent type from discovered capabilities if not already set
-                if (!enrichedAgent.type || enrichedAgent.type === 'unknown') {
-                  const inferredType = this.capabilityDiscovery.inferTypeFromProfile(capProfile);
-                  if (inferredType !== 'unknown') {
-                    enrichedAgent.type = inferredType;
-                  }
-                }
-              }
-            }
-
-            // Now run parallel enrichments with the correct type known
-            const promises = [];
-
-            if (withHealth) {
-              promises.push(
-                this.healthChecker.checkHealth(agent as Agent),
-                this.healthChecker.getStats(agent as Agent)
-              );
-            }
-
-            // For properties, query from database (populated by crawler)
-            // Use enrichedAgent.type which may have been inferred from capabilities
-            if (withProperties && enrichedAgent.type === "sales") {
-              promises.push(
-                federatedIndex.getPropertiesForAgent(agent.url),
-                federatedIndex.getPublisherDomainsForAgent(agent.url)
-              );
-            }
-
-            const results = await Promise.all(promises);
-            let resultIndex = 0;
-
-            if (withHealth) {
-              enrichedAgent.health = results[resultIndex++] as any;
-              enrichedAgent.stats = results[resultIndex++] as any;
-            }
-
-            if (withProperties && enrichedAgent.type === "sales") {
-              const properties = results[resultIndex++] as any[];
-              const publisherDomains = results[resultIndex++] as string[];
-
-              if (properties && properties.length > 0) {
-                // Return summary counts instead of full property list (can be millions)
-                // Full property details available via /api/registry/agents/:id/properties
-                enrichedAgent.publisher_domains = publisherDomains;
-
-                // Count properties by type (channel)
-                const countByType: Record<string, number> = {};
-                for (const prop of properties) {
-                  const type = prop.property_type || 'unknown';
-                  countByType[type] = (countByType[type] || 0) + 1;
-                }
-
-                // Collect all unique tags across properties
-                const allTags = new Set<string>();
-                for (const prop of properties) {
-                  for (const tag of prop.tags || []) {
-                    allTags.add(tag);
-                  }
-                }
-
-                // Property summary instead of full list
-                enrichedAgent.property_summary = {
-                  total_count: properties.length,
-                  count_by_type: countByType,
-                  tags: Array.from(allTags),
-                  publisher_count: publisherDomains.length,
-                };
-              }
-            }
-
-            return enrichedAgent;
-          })
-        );
-
-        res.json({
-          agents: enriched,
-          count: enriched.length,
-          sources: bySource,
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to list agents",
-        });
-      }
-    });
-
-    // ========================================
-    // Registry Publishers API
-    // ========================================
-
-    // GET /api/registry/publishers - List all publishers (registered + discovered)
-    this.app.get("/api/registry/publishers", async (req, res) => {
-      try {
-        const publishers = await federatedIndex.listAllPublishers();
-        const bySource = {
-          registered: publishers.filter(p => p.source === 'registered').length,
-          discovered: publishers.filter(p => p.source === 'discovered').length,
-        };
-        res.json({
-          publishers,
-          count: publishers.length,
-          sources: bySource,
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to list publishers",
-        });
-      }
-    });
-
-    // ========================================
-    // Registry Lookup API
-    // ========================================
-
-    // GET /api/registry/lookup/property - Find agents for a property
-    this.app.get("/api/registry/lookup/property", async (req, res) => {
-      const { type, value } = req.query;
-
-      if (!type || !value) {
-        return res.status(400).json({
-          error: "Missing required query params: type and value",
-        });
-      }
-
-      try {
-        // Query database for agents with matching property identifier
-        const results = await federatedIndex.findAgentsForPropertyIdentifier(
-          type as string,
-          value as string
-        );
-
-        res.json({
-          type,
-          value,
-          agents: results,
-          count: results.length,
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Property lookup failed",
-        });
-      }
-    });
-
-    // GET /api/registry/lookup/domain/:domain - Find agents authorized for a domain
-    this.app.get("/api/registry/lookup/domain/:domain", async (req, res) => {
-      try {
-        const domain = req.params.domain;
-        const result = await federatedIndex.lookupDomain(domain);
-        res.json(result);
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Domain lookup failed",
-        });
-      }
-    });
-
-    // GET /api/registry/lookup/agent/:agentUrl/domains - Get domains for an agent
-    this.app.get("/api/registry/lookup/agent/:agentUrl/domains", async (req, res) => {
-      try {
-        const agentUrl = decodeURIComponent(req.params.agentUrl);
-        const domains = await federatedIndex.getDomainsForAgent(agentUrl);
-        res.json({
-          agent_url: agentUrl,
-          domains,
-          count: domains.length,
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Agent domain lookup failed",
-        });
-      }
-    });
-
-    // ========================================
-    // Registry Validation API
-    // ========================================
-
-    // POST /api/registry/validate/product-authorization
-    // Validate agent authorization against a product's publisher_properties
-    // Accepts same format as Product.publisher_properties from get_products
-    // Use case: "Does agent X have rights to sell this product?"
-    this.app.post("/api/registry/validate/product-authorization", async (req, res) => {
-      try {
-        const { agent_url, publisher_properties } = req.body;
-
-        if (!agent_url) {
-          return res.status(400).json({
-            error: "Missing required field: agent_url",
-          });
-        }
-
-        if (!publisher_properties || !Array.isArray(publisher_properties)) {
-          return res.status(400).json({
-            error: "Missing required field: publisher_properties (array of selectors)",
-          });
-        }
-
-        const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
-
-        res.json({
-          agent_url,
-          ...result,
-          checked_at: new Date().toISOString(),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Product authorization validation failed",
-        });
-      }
-    });
-
-    // POST /api/registry/expand/product-identifiers
-    // Expand publisher_properties selectors to concrete property identifiers
-    // Use case: Real-time system needs to cache all valid identifiers for a product
-    this.app.post("/api/registry/expand/product-identifiers", async (req, res) => {
-      try {
-        const { agent_url, publisher_properties } = req.body;
-
-        if (!agent_url) {
-          return res.status(400).json({
-            error: "Missing required field: agent_url",
-          });
-        }
-
-        if (!publisher_properties || !Array.isArray(publisher_properties)) {
-          return res.status(400).json({
-            error: "Missing required field: publisher_properties (array of selectors)",
-          });
-        }
-
-        const properties = await federatedIndex.expandPublisherPropertiesToIdentifiers(agent_url, publisher_properties);
-
-        // Flatten all identifiers for easy caching
-        const allIdentifiers: Array<{ type: string; value: string; property_id: string; publisher_domain: string }> = [];
-        for (const prop of properties) {
-          for (const identifier of prop.identifiers) {
-            allIdentifiers.push({
-              type: identifier.type,
-              value: identifier.value,
-              property_id: prop.property_id,
-              publisher_domain: prop.publisher_domain,
-            });
-          }
-        }
-
-        res.json({
-          agent_url,
-          properties,
-          identifiers: allIdentifiers,
-          property_count: properties.length,
-          identifier_count: allIdentifiers.length,
-          generated_at: new Date().toISOString(),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Property expansion failed",
-        });
-      }
-    });
-
-    // GET /api/registry/validate/property-authorization
-    // Quick check if a property identifier is authorized for an agent
-    // Optimized for real-time ad request validation
-    // Use case: "Is www.mytimes.com authorized for this agent?"
-    this.app.get("/api/registry/validate/property-authorization", async (req, res) => {
-      try {
-        const { agent_url, identifier_type, identifier_value } = req.query;
-
-        if (!agent_url || !identifier_type || !identifier_value) {
-          return res.status(400).json({
-            error: "Missing required query params: agent_url, identifier_type, identifier_value",
-          });
-        }
-
-        const result = await federatedIndex.isPropertyAuthorizedForAgent(
-          agent_url as string,
-          identifier_type as string,
-          identifier_value as string
-        );
-
-        res.json({
-          agent_url,
-          identifier_type,
-          identifier_value,
-          ...result,
-          checked_at: new Date().toISOString(),
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Property authorization check failed",
-        });
-      }
-    });
-
-    // ========================================
-    // Registry Stats API
-    // ========================================
-
-    // GET /api/registry/stats - Get registry statistics
-    this.app.get("/api/registry/stats", async (req, res) => {
-      try {
-        const stats = await federatedIndex.getStats();
-        res.json(stats);
-      } catch (error) {
-        res.status(500).json({
-          error: error instanceof Error ? error.message : "Failed to get registry stats",
-        });
-      }
-    });
-
   }
 
   private setupAuthRoutes(): void {
@@ -4738,6 +4871,17 @@ Disallow: /api/admin/
           error: 'Missing authorization code',
           message: 'No authorization code provided',
         });
+      }
+
+      // MCP OAuth flow: detect mcp_pending_id in state and delegate
+      if (state) {
+        let parsedState: Record<string, unknown> | undefined;
+        try { parsedState = JSON.parse(state); } catch { /* not JSON */ }
+
+        if (typeof parsedState?.mcp_pending_id === 'string') {
+          const { handleMCPOAuthCallback } = await import('./mcp/oauth-provider.js');
+          return handleMCPOAuthCallback(req, res, code, parsedState.mcp_pending_id);
+        }
       }
 
       try {
@@ -6137,7 +6281,36 @@ Disallow: /api/admin/
           }
         }
 
-        res.json({ member: profile });
+        // For personal orgs, include the user's published content and contributions
+        let perspectives: { id: string; slug: string; title: string; content_type: string; category: string | null; excerpt: string | null; external_url: string | null; external_site_name: string | null; published_at: string }[] = [];
+        let registry_contributions: { contribution_type: string; domain: string; summary: string; created_at: string; revision_number: number | null }[] = [];
+        let github_username: string | null = null;
+        try {
+          const pool = getPool();
+          const orgResult = await pool.query<{ is_personal: boolean }>(
+            'SELECT is_personal FROM organizations WHERE workos_organization_id = $1',
+            [profile.workos_organization_id]
+          );
+          if (orgResult.rows[0]?.is_personal) {
+            const userResult = await pool.query<{ workos_user_id: string; github_username: string | null }>(
+              'SELECT workos_user_id, github_username FROM users WHERE primary_organization_id = $1 LIMIT 1',
+              [profile.workos_organization_id]
+            );
+            const userId = userResult.rows[0]?.workos_user_id;
+            github_username = userResult.rows[0]?.github_username || null;
+            if (userId) {
+              const communityDb = new CommunityDatabase();
+              [perspectives, registry_contributions] = await Promise.all([
+                communityDb.getUserPublishedContent(userId),
+                communityDb.getUserRegistryContributions(userId),
+              ]);
+            }
+          }
+        } catch (err) {
+          logger.debug({ err }, 'Failed to load content for member profile');
+        }
+
+        res.json({ member: profile, perspectives, registry_contributions, github_username });
       } catch (error) {
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({
@@ -6191,223 +6364,6 @@ Disallow: /api/admin/
       } catch (error) {
         logger.error({ err: error }, 'Record member click error');
         res.status(500).json({ error: 'Failed to record click' });
-      }
-    });
-
-    // GET /api/public/discover-agent - Public endpoint to discover agent info (for members directory)
-    this.app.get('/api/public/discover-agent', async (req, res) => {
-      const { url } = req.query;
-
-      if (!url || typeof url !== 'string') {
-        return res.status(400).json({ error: 'URL is required' });
-      }
-
-      try {
-        // Use SingleAgentClient which handles protocol detection and connection automatically
-        const client = new SingleAgentClient({
-          id: 'discovery',
-          name: 'discovery-client',
-          agent_uri: url,
-          protocol: 'mcp', // Library handles protocol detection internally
-        });
-
-        // getAgentInfo() handles all the protocol detection and tool discovery
-        const agentInfo = await client.getAgentInfo();
-        const tools = agentInfo.tools || [];
-
-        // Detect agent type from tools
-        // Check for sales first since sales agents may also expose creative tools
-        let agentType = 'unknown';
-        const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
-        if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
-          agentType = 'sales';
-        } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
-          agentType = 'signals';
-        } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
-          agentType = 'creative';
-        }
-
-        // The library returns our config name, so extract real name from URL or use hostname
-        const hostname = new URL(url).hostname;
-        const agentName = (agentInfo.name && agentInfo.name !== 'discovery-client')
-          ? agentInfo.name
-          : hostname;
-
-        // Detect protocols - check if both MCP and A2A are available
-        const protocols: string[] = [agentInfo.protocol];
-        try {
-          // Check for A2A agent card if we detected MCP
-          if (agentInfo.protocol === 'mcp') {
-            const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await fetch(a2aUrl, {
-              headers: { 'Accept': 'application/json' },
-              signal: AbortSignal.timeout(3000),
-            });
-            if (a2aResponse.ok) {
-              protocols.push('a2a');
-            }
-          }
-        } catch {
-          // Ignore A2A check failures
-        }
-
-        // Fetch type-specific stats
-        let stats: {
-          format_count?: number;
-          product_count?: number;
-          publisher_count?: number;
-        } = {};
-
-        if (agentType === 'creative') {
-          try {
-            const creativeClient = new CreativeAgentClient({ agentUrl: url });
-            const formats = await creativeClient.listFormats();
-            stats.format_count = formats.length;
-          } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
-            stats.format_count = 0;
-          }
-        } else if (agentType === 'sales') {
-          // Always show product and publisher counts for sales agents
-          stats.product_count = 0;
-          stats.publisher_count = 0;
-          try {
-            const result = await client.getProducts({ brief: '' });
-            if (result.data?.products) {
-              stats.product_count = result.data.products.length;
-            }
-          } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch products');
-          }
-        }
-
-        return res.json({
-          name: agentName,
-          description: agentInfo.description,
-          protocols,
-          type: agentType,
-          stats,
-        });
-      } catch (error) {
-        logger.error({ err: error, url }, 'Public agent discovery error');
-
-        if (error instanceof Error && error.name === 'TimeoutError') {
-          return res.status(504).json({
-            error: 'Connection timeout',
-            message: 'Agent did not respond within 10 seconds',
-          });
-        }
-
-        return res.status(500).json({
-          error: 'Agent discovery failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/public/agent-formats - Public endpoint to fetch creative formats from a creative agent
-    this.app.get('/api/public/agent-formats', async (req, res) => {
-      const { url } = req.query;
-
-      if (!url || typeof url !== 'string') {
-        return res.status(400).json({ error: 'URL is required' });
-      }
-
-      try {
-        // CreativeAgentClient handles protocol detection internally
-        const creativeClient = new CreativeAgentClient({
-          agentUrl: url,
-        });
-
-        const formats = await creativeClient.listFormats();
-
-        return res.json({
-          success: true,
-          formats: formats.map(format => {
-            // Cast to allow 'assets' field (added in schema v2.5.2, @adcp/client may not have it yet)
-            const formatWithAssets = format as typeof format & { assets?: unknown };
-            return {
-              format_id: format.format_id,
-              name: format.name,
-              type: format.type,
-              description: format.description,
-              preview_image: format.preview_image,
-              example_url: format.example_url,
-              renders: format.renders,
-              assets_required: format.assets_required, // deprecated but kept for backward compatibility
-              assets: formatWithAssets.assets, // new unified field
-              output_format_ids: format.output_format_ids,
-              agent_url: format.agent_url,
-            };
-          }),
-        });
-      } catch (error) {
-        logger.error({ err: error, url }, 'Agent formats fetch error');
-
-        if (error instanceof Error && error.name === 'TimeoutError') {
-          return res.status(504).json({
-            error: 'Connection timeout',
-            message: 'Agent did not respond within the timeout period',
-          });
-        }
-
-        return res.status(500).json({
-          error: 'Failed to fetch formats',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // GET /api/public/agent-products - Public endpoint to fetch products from a sales agent
-    this.app.get('/api/public/agent-products', async (req, res) => {
-      const { url } = req.query;
-
-      if (!url || typeof url !== 'string') {
-        return res.status(400).json({ error: 'URL is required' });
-      }
-
-      try {
-        const client = new SingleAgentClient({
-          id: 'products-discovery',
-          name: 'products-discovery-client',
-          agent_uri: url,
-          protocol: 'mcp',
-        });
-
-        const result = await client.getProducts({ brief: '' });
-        const products = result.data?.products || [];
-
-        return res.json({
-          success: true,
-          products: products.map((p: any) => ({
-            product_id: p.product_id,
-            name: p.name,
-            description: p.description,
-            property_type: p.property_type,
-            property_name: p.property_name,
-            pricing_model: p.pricing_model,
-            base_rate: p.base_rate,
-            currency: p.currency,
-            format_ids: p.format_ids,
-            delivery_channels: p.delivery_channels,
-            // Include any targeting or audience info if available
-            targeting_capabilities: p.targeting_capabilities,
-          })),
-        });
-      } catch (error) {
-        logger.error({ err: error, url }, 'Agent products fetch error');
-
-        if (error instanceof Error && error.name === 'TimeoutError') {
-          return res.status(504).json({
-            error: 'Connection timeout',
-            message: 'Agent did not respond within the timeout period',
-          });
-        }
-
-        return res.status(500).json({
-          error: 'Failed to fetch products',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
       }
     });
 
@@ -6658,40 +6614,7 @@ Disallow: /api/admin/
       }
     });
 
-    // Publisher Validation: Validate a publisher's adagents.json (public version for members directory)
-    this.app.get('/api/public/validate-publisher', async (req, res) => {
-      const { domain } = req.query;
-
-      if (!domain || typeof domain !== 'string') {
-        return res.status(400).json({ error: 'Domain is required' });
-      }
-
-      try {
-        const result = await this.adagentsManager.validateDomain(domain);
-        const stats = extractPublisherStats(result);
-
-        return res.json({
-          valid: result.valid,
-          domain: result.domain,
-          url: result.url,
-          agent_count: stats.agentCount,
-          property_count: stats.propertyCount,
-          property_type_counts: stats.propertyTypeCounts,
-          tag_count: stats.tagCount,
-          errors: result.errors,
-          warnings: result.warnings,
-        });
-      } catch (error) {
-        logger.error({ err: error, domain }, 'Public publisher validation error');
-
-        return res.status(500).json({
-          error: 'Publisher validation failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    });
-
-    // List all public publishers from member organizations (public endpoint for publishers registry)
+    // DEPRECATED: Returns only member-org-linked publishers. Use /api/properties/registry for the full registry.
     this.app.get('/api/public/publishers', async (req, res) => {
       try {
         const memberDb = new MemberDatabase();
@@ -6811,12 +6734,13 @@ Disallow: /api/admin/
         logger.warn({ error }, 'Failed to sync Stripe customers (non-fatal)');
       }
 
-      // Seed dev organizations if dev mode is enabled
+      // Seed dev organizations and users if dev mode is enabled
       if (isDevModeEnabled()) {
         try {
-          await this.seedDevOrganizations(orgDb);
+          const { seedDevData } = await import("./dev-setup.js");
+          await seedDevData(orgDb);
         } catch (error) {
-          logger.warn({ error }, 'Failed to seed dev organizations (non-fatal)');
+          logger.warn({ error }, 'Failed to seed dev data (non-fatal)');
         }
       }
     }
@@ -6924,53 +6848,6 @@ Disallow: /api/admin/
     logger.info('Database connection closed');
 
     logger.info('Graceful shutdown complete');
-  }
-
-  /**
-   * Seed dev organizations in the database
-   * Creates organizations for dev users so they can access dashboard without onboarding
-   */
-  private async seedDevOrganizations(orgDb: OrganizationDatabase): Promise<void> {
-    const devOrgs = [
-      {
-        id: 'org_dev_company_001',
-        name: 'Dev Company (Member)',
-        is_personal: false,
-        company_type: 'brand' as const,
-        revenue_tier: '5m_50m' as const,
-      },
-      {
-        id: 'org_dev_personal_001',
-        name: 'Dev Personal Workspace',
-        is_personal: true,
-        company_type: null,
-        revenue_tier: null,
-      },
-    ];
-
-    for (const devOrg of devOrgs) {
-      try {
-        // Check if org already exists
-        const existing = await orgDb.getOrganization(devOrg.id);
-        if (!existing) {
-          await orgDb.createOrganization({
-            workos_organization_id: devOrg.id,
-            name: devOrg.name,
-            is_personal: devOrg.is_personal,
-            company_type: devOrg.company_type || undefined,
-            revenue_tier: devOrg.revenue_tier || undefined,
-          });
-          logger.info({ orgId: devOrg.id, name: devOrg.name }, 'Created dev organization');
-        }
-      } catch (error) {
-        // Ignore duplicate key errors (org already exists)
-        if (error instanceof Error && error.message.includes('duplicate key')) {
-          logger.debug({ orgId: devOrg.id }, 'Dev organization already exists');
-        } else {
-          throw error;
-        }
-      }
-    }
   }
 
   private async prewarmCaches(agents: any[]): Promise<void> {

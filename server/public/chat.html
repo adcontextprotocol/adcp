@@ -589,6 +589,31 @@
       color: var(--color-warning-700);
     }
 
+    /* Anonymous tier banner */
+    .anonymous-banner {
+      background: var(--color-bg-subtle);
+      border-bottom: 1px solid var(--color-border);
+      padding: 8px 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      display: none;
+    }
+
+    .anonymous-banner.active {
+      display: block;
+    }
+
+    .anonymous-banner a {
+      color: var(--color-brand);
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .anonymous-banner a:hover {
+      text-decoration: underline;
+    }
+
     /* Status indicator */
     .status-indicator {
       display: flex;
@@ -608,6 +633,21 @@
 
     .status-dot--offline {
       background: var(--color-error-500);
+    }
+
+    .message-limit {
+      font-size: 12px;
+      color: var(--color-text-muted);
+      margin-left: auto;
+    }
+
+    .message-limit a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .message-limit a:hover {
+      text-decoration: underline;
     }
 
     /* Feedback controls */
@@ -768,6 +808,85 @@
       color: var(--color-success-600);
       font-size: 12px;
       padding: 4px 0;
+    }
+
+    /* Session-level feedback prompt */
+    .session-feedback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px 16px;
+      margin: 16px 24px;
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      animation: fadeInUp 0.3s ease-out;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .session-feedback-label {
+      color: var(--color-text-secondary);
+    }
+
+    .session-feedback-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .session-feedback-btn {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      transition: all 0.2s;
+    }
+
+    .session-feedback-btn:hover {
+      border-color: var(--color-brand);
+      background: var(--color-bg-subtle);
+    }
+
+    .session-feedback-btn.positive:hover {
+      background: var(--color-success-500);
+      border-color: var(--color-success-500);
+      color: white;
+    }
+
+    .session-feedback-btn.negative:hover {
+      background: var(--color-error-500);
+      border-color: var(--color-error-500);
+      color: white;
+    }
+
+    .session-feedback-dismiss {
+      background: none;
+      border: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    .session-feedback-dismiss:hover {
+      color: var(--color-text-secondary);
+    }
+
+    .session-feedback--success {
+      justify-content: center;
+      color: var(--color-success-600);
+      border-color: var(--color-success-500);
+      background: var(--color-success-50, var(--color-bg-subtle));
     }
 
     /* SI Agent CTA Buttons */
@@ -2063,6 +2182,7 @@
 </head>
 <body>
   <div id="impersonation-banner" class="impersonation-banner"></div>
+  <div id="anonymous-banner" class="anonymous-banner">Free preview — <a href="/api/auth/login">sign in</a> to search Slack discussions, validate schemas, and get full-quality answers.</div>
   <div id="adcp-nav"></div>
 
   <!-- SI (Sponsored Intelligence) Chat Modal -->
@@ -2216,6 +2336,7 @@
         <div class="status-indicator" id="statusIndicator">
           <span class="status-dot" id="statusDot"></span>
           <span id="statusText">Connecting...</span>
+          <span class="message-limit" id="messageLimit" style="display: none;"></span>
         </div>
       </div>
     </div>
@@ -2343,7 +2464,11 @@
       async function checkImpersonation() {
         try {
           const response = await authFetch('/api/me');
-          if (!response.ok) return; // Not authenticated
+          if (!response.ok) {
+            // Not authenticated — show anonymous banner
+            document.getElementById('anonymous-banner').classList.add('active');
+            return;
+          }
 
           const data = await response.json();
           isAuthenticated = true;
@@ -2371,7 +2496,8 @@
           loadActiveTabs(); // Restore from localStorage
           loadThreads();
         } catch (error) {
-          // Silently ignore - user may not be authenticated
+          // Network error — don't assume anonymous, just skip the banner
+          console.warn('Failed to check auth status:', error);
         }
       }
 
@@ -2423,7 +2549,7 @@
 
       // Clear only chat messages from the container (preserves static elements like home/welcome)
       function clearChatMessages() {
-        const messages = messagesContainer.querySelectorAll('.message');
+        const messages = messagesContainer.querySelectorAll('.message, .session-feedback');
         messages.forEach(msg => msg.remove());
       }
 
@@ -2633,6 +2759,8 @@
         currentTabId = 'home';
         conversationId = null;
         currentChannel = 'web';
+        lastAssistantMessageId = null;
+        clearSessionFeedbackTimer();
 
         // Update UI
         homeTab.classList.add('active');
@@ -2765,9 +2893,14 @@
 
           const data = await response.json();
 
-          // Render messages
+          // Render messages and track last assistant message
+          lastAssistantMessageId = null;
+          clearSessionFeedbackTimer();
           data.messages.forEach(msg => {
             addMessage(msg.content, msg.role, msg.message_id);
+            if (msg.role === 'assistant' && msg.message_id) {
+              lastAssistantMessageId = msg.message_id;
+            }
           });
 
           // Handle read-only mode for Slack threads
@@ -2805,6 +2938,8 @@
         conversationId = null;
         currentChannel = 'web';
         currentTabId = 'home'; // New chat starts from home
+        lastAssistantMessageId = null;
+        clearSessionFeedbackTimer();
 
         // Clear messages and show home
         clearChatMessages();
@@ -3320,6 +3455,80 @@
         }
       }
 
+      // === Session-level feedback ===
+      let sessionFeedbackTimer = null;
+      let lastAssistantMessageId = null;
+      const sessionFeedbackShown = new Set(); // Track per conversation
+
+      function scheduleSessionFeedback() {
+        clearSessionFeedbackTimer();
+        if (!conversationId || sessionFeedbackShown.has(conversationId)) return;
+        if (!lastAssistantMessageId) return;
+
+        // Count assistant messages in current view
+        const assistantMessages = messagesContainer.querySelectorAll('.message--assistant');
+        if (assistantMessages.length < 3) return;
+
+        sessionFeedbackTimer = setTimeout(() => {
+          showSessionFeedback();
+        }, 45000); // 45 seconds of idle
+      }
+
+      function clearSessionFeedbackTimer() {
+        if (sessionFeedbackTimer) {
+          clearTimeout(sessionFeedbackTimer);
+          sessionFeedbackTimer = null;
+        }
+      }
+
+      function showSessionFeedback() {
+        if (!conversationId || sessionFeedbackShown.has(conversationId)) return;
+        sessionFeedbackShown.add(conversationId);
+
+        const prompt = document.createElement('div');
+        prompt.className = 'session-feedback';
+        prompt.innerHTML = `
+          <span class="session-feedback-label">How was this conversation?</span>
+          <div class="session-feedback-buttons">
+            <button class="session-feedback-btn positive" data-rating="5">&#128077; Helpful</button>
+            <button class="session-feedback-btn negative" data-rating="1">&#128078; Not helpful</button>
+          </div>
+          <button class="session-feedback-dismiss" title="Dismiss">&times;</button>
+        `;
+
+        prompt.querySelector('.session-feedback-dismiss').addEventListener('click', () => {
+          prompt.remove();
+        });
+
+        const feedbackMessageId = lastAssistantMessageId;
+        prompt.querySelectorAll('.session-feedback-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const rating = parseInt(btn.dataset.rating);
+            try {
+              await authFetch(`/api/addie/chat/${conversationId}/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  message_id: feedbackMessageId,
+                  rating: rating,
+                  rating_category: 'session',
+                  feedback_tags: null,
+                  improvement_suggestion: null
+                })
+              });
+            } catch (e) {
+              console.error('Session feedback failed:', e);
+            }
+            prompt.innerHTML = '<span>Thanks for the feedback!</span>';
+            prompt.className = 'session-feedback session-feedback--success';
+            setTimeout(() => prompt.remove(), 3000);
+          });
+        });
+
+        messagesContainer.appendChild(prompt);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
       // Add typing indicator
       function addTypingIndicator() {
         const messageDiv = document.createElement('div');
@@ -3580,6 +3789,11 @@
 
         isLoading = true;
         updateSendButton();
+        clearSessionFeedbackTimer();
+
+        // Remove any visible session feedback prompt
+        const existingPrompt = messagesContainer.querySelector('.session-feedback');
+        if (existingPrompt) existingPrompt.remove();
 
         // Request notification permission on first message
         requestNotificationPermission();
@@ -3614,7 +3828,24 @@
           });
 
           if (!response.ok) {
-            throw new Error('Failed to send message');
+            // Surface server error messages (e.g., rate limit "daily limit reached")
+            let errorMsg = 'Failed to send message';
+            try {
+              const errorData = await response.json();
+              if (errorData.message) errorMsg = errorData.message;
+            } catch (e) { /* ignore parse errors */ }
+            throw new Error(errorMsg);
+          }
+
+          // Show remaining message count for anonymous users (when running low)
+          if (!isAuthenticated) {
+            const remaining = parseInt(response.headers.get('RateLimit-Remaining'));
+            const limit = parseInt(response.headers.get('RateLimit-Limit'));
+            const limitEl = document.getElementById('messageLimit');
+            if (!isNaN(remaining) && !isNaN(limit) && remaining <= 15) {
+              limitEl.innerHTML = `${limit - remaining} of ${limit} free messages used \u00b7 <a href="/api/auth/login">sign in</a> for unlimited`;
+              limitEl.style.display = '';
+            }
           }
 
           // Read the SSE stream
@@ -3705,6 +3936,7 @@
 
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
+          if (messageId) lastAssistantMessageId = messageId;
 
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
@@ -3743,6 +3975,9 @@
             }
           }
 
+          // Schedule session-level feedback prompt after idle
+          scheduleSessionFeedback();
+
           // Refresh thread list to show new/updated conversation (debounced)
           scheduleLoadThreads();
 
@@ -3768,6 +4003,7 @@
       chatInput.addEventListener('input', () => {
         autoResize();
         updateSendButton();
+        clearSessionFeedbackTimer(); // Reset idle timer when user types
       });
 
       chatInput.addEventListener('keydown', (e) => {

@@ -36,6 +36,12 @@
         "companion_ads": {
           "type": "boolean",
           "description": "Whether companion display ads are included"
+        },
+        "transcript_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to text transcript of the audio content",
+          "x-accessibility": true
         }
       },
       "required": [
@@ -75,6 +81,12 @@
         "companion_ads": {
           "type": "boolean",
           "description": "Whether companion display ads are included"
+        },
+        "transcript_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to text transcript of the audio content",
+          "x-accessibility": true
         }
       },
       "required": [

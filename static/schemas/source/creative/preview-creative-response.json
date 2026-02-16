@@ -240,6 +240,73 @@
         "results"
       ],
       "additionalProperties": true
+    },
+    {
+      "title": "PreviewCreativeVariantResponse",
+      "type": "object",
+      "description": "Variant preview response - shows what a specific creative variant looked like when served during delivery",
+      "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "variant",
+          "description": "Discriminator indicating this is a variant preview response"
+        },
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned variant identifier"
+        },
+        "creative_id": {
+          "type": "string",
+          "description": "Creative identifier this variant belongs to"
+        },
+        "previews": {
+          "type": "array",
+          "description": "Array of rendered pieces for this variant. Most formats render as a single piece.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "preview_id": {
+                "type": "string",
+                "description": "Unique identifier for this preview"
+              },
+              "renders": {
+                "type": "array",
+                "description": "Rendered pieces for this variant",
+                "items": {
+                  "$ref": "/schemas/creative/preview-render.json"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "preview_id",
+              "renders"
+            ]
+          },
+          "minItems": 1
+        },
+        "manifest": {
+          "$ref": "/schemas/core/creative-manifest.json",
+          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when preview links expire"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "response_type",
+        "variant_id",
+        "previews"
+      ],
+      "additionalProperties": true
     }
   ]
 }

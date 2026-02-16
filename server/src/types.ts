@@ -281,7 +281,7 @@ export interface PublisherConfig {
 /**
  * Brand architecture type from Keller's theory
  */
-export type KellerType = 'master' | 'sub-brand' | 'endorsed' | 'independent';
+export type KellerType = 'master' | 'sub_brand' | 'endorsed' | 'independent';
 
 /**
  * Brand configuration stored in member profiles
@@ -319,7 +319,7 @@ export interface BrandProperty {
  * Brand definition within a house portfolio
  */
 export interface BrandDefinition {
-  canonical_domain: string;
+  id: string;
   names: LocalizedName[];
   keller_type?: KellerType;
   parent_brand?: string;
@@ -332,7 +332,7 @@ export interface BrandDefinition {
  * House definition (corporate entity that owns brands)
  */
 export interface HouseDefinition {
-  canonical_domain: string;
+  domain: string;
   name: string;
   names?: LocalizedName[];
   architecture?: 'branded_house' | 'house_of_brands' | 'hybrid';
@@ -343,6 +343,7 @@ export interface HouseDefinition {
  */
 export interface BrandAgentConfig {
   url: string;
+  id: string;
   capabilities?: string[];
 }
 
@@ -380,6 +381,7 @@ export interface DiscoveredBrand {
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
   source_type: 'brand_json' | 'community' | 'enriched';
+  review_status?: 'pending' | 'approved';
   discovered_at: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -416,6 +418,7 @@ export interface HostedProperty {
   verification_token?: string;
   is_public: boolean;
   source_type: 'community' | 'enriched';
+  review_status?: 'pending' | 'approved';
   created_at: Date;
   updated_at: Date;
 }
@@ -442,6 +445,40 @@ export interface ResolvedProperty {
     email?: string;
   };
   verified: boolean;
+}
+
+/**
+ * Registry revision record (snapshot of a brand or property at a point in time)
+ */
+export interface RegistryRevision {
+  id: string;
+  domain: string;
+  revision_number: number;
+  snapshot: Record<string, unknown>;
+  editor_user_id: string;
+  editor_email?: string;
+  editor_name?: string;
+  edit_summary: string;
+  is_rollback: boolean;
+  rolled_back_to?: number;
+  created_at: Date;
+}
+
+/**
+ * Ban record (platform-wide or registry-scoped)
+ */
+export interface Ban {
+  id: string;
+  ban_type: 'user' | 'organization' | 'api_key';
+  entity_id: string;
+  scope: 'platform' | 'registry_brand' | 'registry_property';
+  scope_target?: string;
+  banned_by_user_id: string;
+  banned_by_email?: string;
+  banned_email?: string;
+  reason: string;
+  expires_at?: Date;
+  created_at: Date;
 }
 
 /**
@@ -686,6 +723,7 @@ export interface CreateWorkingGroupInput {
 
 export interface UpdateWorkingGroupInput {
   name?: string;
+  slug?: string;
   description?: string;
   slack_channel_url?: string;
   slack_channel_id?: string;

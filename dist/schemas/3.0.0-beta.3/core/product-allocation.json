@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.3/core/product-allocation.json",
+  "title": "Product Allocation",
+  "description": "A budget allocation for a specific product within a proposal. Percentages across all allocations in a proposal should sum to 100.",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product (must reference a product in the products array)"
+    },
+    "allocation_percentage": {
+      "type": "number",
+      "description": "Percentage of total budget allocated to this product (0-100)",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Recommended pricing option ID from the product's pricing_options array"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Explanation of why this product and allocation are recommended"
+    },
+    "sequence": {
+      "type": "integer",
+      "description": "Optional ordering hint for multi-line-item plans (1-based)",
+      "minimum": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Categorical tags for this allocation (e.g., 'desktop', 'german', 'mobile') - useful for grouping/filtering allocations by dimension",
+      "items": {
+        "type": "string"
+      }
+    },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Recommended time windows for this allocation in spot-plan proposals.",
+      "items": {
+        "$ref": "/schemas/3.0.0-beta.3/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
+    "forecast": {
+      "$ref": "/schemas/3.0.0-beta.3/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this allocation"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "allocation_percentage"
+  ],
+  "additionalProperties": true
+}

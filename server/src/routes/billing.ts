@@ -642,7 +642,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   // POST /api/admin/stripe-customers/:customerId/link - Manually link a Stripe customer to an org
   apiRouter.post("/stripe-customers/:customerId/link", requireAuth, requireAdmin, async (req, res) => {
     const { customerId } = req.params;
-    const { org_id } = req.body;
+    const { org_id, force } = req.body;
 
     if (!customerId || !customerId.startsWith("cus_")) {
       return res.status(400).json({ error: "Invalid customer ID format" });
@@ -666,12 +666,22 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       const org = orgResult.rows[0];
+      let previousCustomerId: string | null = null;
 
       if (org.stripe_customer_id && org.stripe_customer_id !== customerId) {
-        return res.status(400).json({
-          error: "Organization already linked",
-          message: `This organization is already linked to a different Stripe customer (${org.stripe_customer_id})`,
-        });
+        if (!force) {
+          return res.status(400).json({
+            error: "Organization already linked",
+            message: `This organization is already linked to a different Stripe customer (${org.stripe_customer_id})`,
+            current_customer_id: org.stripe_customer_id,
+            requires_force: true,
+          });
+        }
+        previousCustomerId = org.stripe_customer_id;
+        logger.info(
+          { customerId, orgId: org_id, previousCustomerId, adminEmail: req.user?.email },
+          "Force-replacing existing Stripe customer link"
+        );
       }
 
       // Check if customer is already linked to another org
@@ -685,6 +695,17 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           error: "Customer already linked",
           message: `This Stripe customer is already linked to "${existingLink.rows[0].name}"`,
         });
+      }
+
+      // Clear org metadata on the old Stripe customer to prevent stale search matches
+      if (previousCustomerId && stripe) {
+        try {
+          await stripe.customers.update(previousCustomerId, {
+            metadata: { workos_organization_id: '' },
+          });
+        } catch (err) {
+          logger.warn({ err, previousCustomerId }, "Failed to clear metadata on old Stripe customer");
+        }
       }
 
       // Link the customer
@@ -751,12 +772,15 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       res.json({
         success: true,
-        message: `Linked Stripe customer ${customerId} to "${org.name}"`,
+        message: previousCustomerId
+          ? `Replaced link: ${previousCustomerId} → ${customerId} for "${org.name}"`
+          : `Linked Stripe customer ${customerId} to "${org.name}"`,
         customer_id: customerId,
         org_id,
         org_name: org.name,
         invoices_synced: invoicesSynced,
         subscription_synced: subscriptionSynced,
+        ...(previousCustomerId && { previous_customer_id: previousCustomerId }),
         ...(subscriptionSyncError && { subscription_sync_error: subscriptionSyncError }),
       });
     } catch (error) {
@@ -829,11 +853,10 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       const escapedQuery = query.replace(/[%_\\]/g, "\\$&");
       const result = await pool.query(
         `
-        SELECT workos_organization_id, name, email_domain, stripe_customer_id
+        SELECT workos_organization_id, name, email_domain, stripe_customer_id, is_personal
         FROM organizations
-        WHERE is_personal = false
-          AND (name ILIKE $1 OR email_domain ILIKE $1)
-        ORDER BY name
+        WHERE (name ILIKE $1 OR email_domain ILIKE $1)
+        ORDER BY is_personal, name
         LIMIT 20
       `,
         [`%${escapedQuery}%`]
@@ -1207,17 +1230,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
   /**
    * POST /api/admin/stripe-mismatches/resolve
    * Resolve a Stripe customer mismatch by choosing which customer to keep for an org.
-   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean }
+   * Body: { org_id, action: "use_db" | "use_stripe_metadata", delete_inactive?: boolean, stripe_metadata_customer_id?: string }
    *
    * - use_db: Keep the customer currently in DB, archive/delete the other customer
    * - use_stripe_metadata: Use the customer from Stripe metadata, archive/delete the DB customer
    * - delete_inactive: If true, delete the inactive customer in Stripe (only if it has no activity)
+   * - stripe_metadata_customer_id: Target a specific metadata customer (needed when org has 3+ Stripe customers)
    *
    * Safety: Will refuse to proceed if both customers have activity (open invoices, subscriptions, paid invoices)
    */
   apiRouter.post("/stripe-mismatches/resolve", requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { org_id, action, delete_inactive } = req.body;
+      const { org_id, action, delete_inactive, stripe_metadata_customer_id } = req.body;
 
       if (!org_id || !action) {
         return res.status(400).json({
@@ -1250,9 +1274,11 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         });
       }
 
-      // Find the mismatch for this org
+      // Find the specific mismatch for this org (and specific metadata customer if provided)
       const mismatches = await orgDb.findStripeCustomerMismatches();
-      const mismatch = mismatches.find(m => m.org_id === org_id);
+      const mismatch = stripe_metadata_customer_id
+        ? mismatches.find(m => m.org_id === org_id && m.stripe_metadata_customer_id === stripe_metadata_customer_id)
+        : mismatches.find(m => m.org_id === org_id);
 
       if (!mismatch) {
         return res.status(404).json({

@@ -6,8 +6,8 @@
  * - Managing prospects and enrichment
  *
  * AAO platform admins are determined by membership in the "aao-admin" working group:
- * - Slack users: via isSlackUserAdmin() which looks up WorkOS user ID from Slack mapping
- * - Web users: via isWebUserAdmin() which checks working group membership directly
+ * - Slack users: via isSlackUserAAOAdmin() which looks up WorkOS user ID from Slack mapping
+ * - Web users: via isWebUserAAOAdmin() which checks working group membership directly
  *
  * Note: This is distinct from WorkOS organization admins, who are admins within their
  * own company's organization but do not have AAO platform-wide admin access.
@@ -17,6 +17,7 @@ import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
@@ -28,6 +29,8 @@ import {
   createOrgDiscount,
   createCoupon,
   createPromotionCode,
+  resendInvoice,
+  updateCustomerEmail,
   type PendingInvoice,
   type OpenInvoiceWithCustomer,
 } from '../../billing/stripe-client.js';
@@ -63,6 +66,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  createStripeCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
@@ -95,7 +99,7 @@ const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }
  * Looks up their WorkOS user ID via Slack mapping and checks membership in aao-admin working group
  * Results are cached for 30 minutes to reduce DB load
  */
-export async function isSlackUserAdmin(slackUserId: string): Promise<boolean> {
+export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean> {
   // Check cache first
   const cached = adminStatusCache.get(slackUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -174,7 +178,7 @@ export function invalidateAllAdminCaches(): void {
  * Checks membership in aao-admin working group by WorkOS user ID
  * Results are cached for 30 minutes to reduce DB load
  */
-export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
+export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
   // Check cache first
   const cached = webAdminStatusCache.get(workosUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -206,13 +210,6 @@ export async function isWebUserAdmin(workosUserId: string): Promise<boolean> {
   }
 }
 
-/**
- * Check if a web user has admin privileges (via member context org role)
- * @deprecated Use isWebUserAdmin() for AAO admin checks - this only checks WorkOS org role
- */
-export function isAdmin(memberContext: MemberContext | null): boolean {
-  return memberContext?.org_membership?.role === 'admin';
-}
 
 /**
  * Compute the unified lifecycle stage for an organization.
@@ -337,6 +334,48 @@ Returns a list of organizations with open or draft invoices.`,
         },
       },
       required: ['query'],
+    },
+  },
+
+  {
+    name: 'resend_invoice',
+    description: `Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.`,
+    usage_hints: 'Pass company_name to look up and resend in one step. Use update_billing_email first if the email needs to change.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        invoice_id: {
+          type: 'string',
+          description: 'Stripe invoice ID (starts with in_) — if you already have it',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name to look up (will find their open invoices)',
+        },
+      },
+    },
+  },
+  {
+    name: 'update_billing_email',
+    description: `Update the billing email on a Stripe customer. Use this when invoices need to go to a different email address (e.g., accounts payable). Can look up by org_id or direct customer_id.`,
+    usage_hints: 'Use before resend_invoice if the email needs to change. Get org_id from get_account.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_...) — will look up Stripe customer',
+        },
+        customer_id: {
+          type: 'string',
+          description: 'Direct Stripe customer ID (cus_...) — use if org_id is not available',
+        },
+        email: {
+          type: 'string',
+          description: 'New billing email address',
+        },
+      },
+      required: ['email'],
     },
   },
 
@@ -808,23 +847,47 @@ Returns a list of organizations with open or draft invoices.`,
   },
   {
     name: 'update_org_member_role',
-    description: `Update a user's role within their organization. Use this to change a member's permissions (e.g., promoting to admin so they can manage their team).
+    description: `Update a user's role within their organization. Use this to change a member's permissions.
 
 Common scenarios:
 - User paid for membership but can't manage team → promote to admin
 - Need to grant someone ability to invite team members → promote to admin
-- User should have full control of their org → promote to admin
+- User should have full control of their org → promote to owner
 
-Roles: member (default), admin (can manage team)`,
+Roles: member (default), admin (can manage team), owner (full control)`,
     usage_hints: 'Get user_id from get_account tool or escalation context. Use when members need elevated permissions.',
     input_schema: {
       type: 'object' as const,
       properties: {
         org_id: { type: 'string', description: 'WorkOS organization ID (org_...)' },
         user_id: { type: 'string', description: 'WorkOS user ID (user_...)' },
-        role: { type: 'string', enum: ['member', 'admin'], description: 'New role' },
+        role: { type: 'string', enum: ['member', 'admin', 'owner'], description: 'New role' },
       },
       required: ['org_id', 'user_id', 'role'],
+    },
+  },
+
+  {
+    name: 'rename_working_group',
+    description: `Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").`,
+    usage_hints: 'Look up current slug first with list_working_groups or list_chapters.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        working_group_slug: {
+          type: 'string',
+          description: 'Current slug of the working group/chapter',
+        },
+        new_name: {
+          type: 'string',
+          description: 'New display name',
+        },
+        new_slug: {
+          type: 'string',
+          description: 'New slug (optional — auto-generated from name if not provided)',
+        },
+      },
+      required: ['working_group_slug', 'new_name'],
     },
   },
 
@@ -928,6 +991,20 @@ Roles: member (default), admin (can manage team)`,
     },
   },
   {
+    name: 'complete_task',
+    description: 'Mark a task/reminder as done. Can complete by company name, org ID, or all overdue tasks at once.',
+    usage_hints: 'Use when admin says a task is done, completed, or finished.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        company_name: { type: 'string', description: 'Company name to complete task for' },
+        org_id: { type: 'string', description: 'Organization ID to complete task for' },
+        all_overdue: { type: 'boolean', description: 'Complete all overdue tasks for this user' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'log_conversation',
     description: 'Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.',
     usage_hints: 'Use when admin reports an interaction.',
@@ -1001,6 +1078,24 @@ Roles: member (default), admin (can manage team)`,
         query: { type: 'string', description: 'Company name or domain' },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'list_paying_members',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB). Defaults to corporate members only.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, or membership revenue by tier.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        include_individual: {
+          type: 'boolean',
+          description: 'Include individual (personal) memberships (default: false, corporate only)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 50)',
+        },
+      },
     },
   },
 
@@ -1089,22 +1184,153 @@ Examples:
       required: ['escalation_id'],
     },
   },
+  // ============================================
+  // BAN MANAGEMENT TOOLS
+  // ============================================
   {
-    name: 'send_member_dm',
-    description: 'Send a direct message to a member on Slack. Look up by email (preferred) or name (may need disambiguation). Use for follow-ups, notifications, or closing the loop on resolved requests.',
-    usage_hints: 'Use when you need to reach out privately to a specific member.',
+    name: 'ban_entity',
+    description: `Ban a user, organization, or API key. Scope can be platform-wide (blocks all access) or registry-specific (blocks brand/property edits only).
+
+Examples:
+- Platform ban user: ban_type=user, entity_id=user_01HW..., scope=platform
+- Ban org from brand edits: ban_type=organization, entity_id=org_01HW..., scope=registry_brand
+- Revoke API key: ban_type=api_key, entity_id=wkapikey_..., scope=platform`,
     input_schema: {
       type: 'object' as const,
       properties: {
-        email: { type: 'string', description: 'Member email address (preferred lookup)' },
-        name: { type: 'string', description: 'Member name to search (may return multiple matches)' },
-        slack_user_id: { type: 'string', description: 'Direct Slack user ID (if already known)' },
-        message: { type: 'string', description: 'Message content to send' },
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'What kind of entity to ban',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'The entity ID (WorkOS user ID, org ID, or API key ID)',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'What to ban from: platform (all access) or registry editing',
+        },
+        scope_target: {
+          type: 'string',
+          description: 'For registry bans: specific domain to ban from (omit for global)',
+        },
+        reason: {
+          type: 'string',
+          description: 'Why this entity is being banned',
+        },
+        expires_in_days: {
+          type: 'number',
+          description: 'Ban duration in days (omit for permanent)',
+        },
       },
-      required: ['message'],
+      required: ['ban_type', 'entity_id', 'scope', 'reason'],
+    },
+  },
+  {
+    name: 'unban_entity',
+    description: 'Remove a ban. Provide either the ban ID directly, or the ban_type + entity_id + scope to look it up.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ban_id: {
+          type: 'string',
+          description: 'The ban UUID to remove (if known)',
+        },
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'Entity type (used with entity_id to find the ban)',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'Entity ID to look up (used with ban_type)',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'Scope to match (used with ban_type + entity_id)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_bans',
+    description: 'List active bans. Optionally filter by ban_type, scope, or entity_id.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'Filter by entity type',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'Filter by scope',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'Filter by entity ID',
+        },
+      },
     },
   },
 ];
+
+/**
+ * Format membership tier for display
+ */
+function formatMembershipTier(tier: string): string {
+  const labels: Record<string, string> = {
+    individual_professional: 'Professional ($250/yr)',
+    individual_academic: 'Academic ($50/yr)',
+    company_standard: 'Company Standard ($2.5K or $10K/yr based on revenue)',
+    company_icl: 'Industry Council Leader ($50K/yr)',
+  };
+  return labels[tier] || tier;
+}
+
+/**
+ * Infer membership tier from subscription amount and organization type.
+ * Amounts are in cents. Monthly amounts are annualized for comparison.
+ */
+function inferMembershipTier(
+  amountCents: number | null,
+  interval: string | null,
+  isPersonal: boolean
+): MembershipTier | null {
+  if (amountCents == null || amountCents === 0) return null;
+
+  const annualCents = interval === 'month' ? amountCents * 12 : amountCents;
+
+  if (isPersonal) {
+    if (annualCents >= 25000) return 'individual_professional';
+    if (annualCents >= 5000) return 'individual_academic';
+    return null;
+  }
+
+  // company_standard covers both $2.5K and $10K pricing tiers
+  if (annualCents >= 5000000) return 'company_icl';
+  return 'company_standard';
+}
+
+/**
+ * Format revenue tier for display
+ */
+function formatRevenueTier(tier: string): string {
+  const labels: Record<string, string> = {
+    under_1m: 'Under $1M',
+    '1m_5m': '$1M - $5M',
+    '5m_50m': '$5M - $50M',
+    '50m_250m': '$50M - $250M',
+    '250m_1b': '$250M - $1B',
+    '1b_plus': 'Over $1B',
+  };
+  return labels[tier] || tier;
+}
 
 /**
  * Format currency for display
@@ -1127,10 +1353,18 @@ function formatDate(date: Date): string {
   });
 }
 
-/**
- * Format pending invoice for response
- */
-function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> {
+interface FormattedInvoice {
+  id: string;
+  status: string;
+  amount: string;
+  product: string;
+  sent_to: string;
+  created: string;
+  due_date: string;
+  payment_url: string | null;
+}
+
+function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
   return {
     id: invoice.id,
     status: invoice.status,
@@ -1141,6 +1375,21 @@ function formatPendingInvoice(invoice: PendingInvoice): Record<string, unknown> 
     due_date: invoice.due_date ? formatDate(invoice.due_date) : 'Not set',
     payment_url: invoice.hosted_invoice_url || null,
   };
+}
+
+function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
+  if (pendingInvoices.length === 0) return '';
+  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  for (const inv of pendingInvoices.slice(0, 3)) {
+    const formatted = formatPendingInvoice(inv);
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
+    result += '\n';
+  }
+  if (pendingInvoices.length > 3) {
+    result += `  _... and ${pendingInvoices.length - 3} more (use list_pending_invoices for all)_\n`;
+  }
+  return result;
 }
 
 /**
@@ -1161,21 +1410,14 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
 }
 
 /**
- * Admin tool handler implementations
- * Includes both billing/invoice tools and prospect management tools
+ * Admin tool handler implementations.
+ * Callers must gate access via isSlackUserAAOAdmin/isWebUserAAOAdmin before registering these handlers.
  */
 export function createAdminToolHandlers(
   memberContext?: MemberContext | null
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // Helper for prospect tools that need member context for admin check
-  const requireAdminFromContext = (): string | null => {
-    if (memberContext && !isAdmin(memberContext)) {
-      return '⚠️ This tool requires admin access. If you believe you should have admin access, please contact your organization administrator.';
-    }
-    return null;
-  };
 
   // ============================================
   // BILLING & INVOICE HANDLERS
@@ -1183,8 +1425,6 @@ export function createAdminToolHandlers(
 
   // List pending invoices across all customers (queries Stripe directly)
   handlers.set('list_pending_invoices', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = (input.limit as number) || 20;
 
@@ -1245,10 +1485,173 @@ export function createAdminToolHandlers(
     }
   });
 
+  // Resend an open invoice — by invoice_id or company_name lookup
+  handlers.set('resend_invoice', async (input) => {
+    const invoiceId = input.invoice_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
+
+    // Direct resend by invoice ID
+    if (invoiceId) {
+      if (!invoiceId.startsWith('in_')) {
+        return '❌ Invoice ID must start with in_ (e.g., in_1234567890).';
+      }
+
+      logger.info({ invoiceId }, 'Addie: Admin resending invoice');
+
+      const result = await resendInvoice(invoiceId);
+      if (!result.success) {
+        return `❌ Could not resend invoice: ${result.error}`;
+      }
+
+      let msg = `✅ Invoice ${invoiceId} has been resent.`;
+      if (result.hosted_invoice_url) {
+        msg += `\n\nPayment link: ${result.hosted_invoice_url}`;
+      }
+      return msg;
+    }
+
+    // Lookup by company name
+    if (companyName) {
+      const pool = getPool();
+      const escaped = companyName.replace(/[%_\\]/g, '\\$&');
+      const searchPattern = `%${escaped}%`;
+      const orgResult = await pool.query(
+        `SELECT workos_organization_id, name, stripe_customer_id
+         FROM organizations
+         WHERE is_personal = false
+           AND (LOWER(name) LIKE LOWER($1) ESCAPE '\\' OR LOWER(email_domain) LIKE LOWER($1) ESCAPE '\\')
+         LIMIT 5`,
+        [searchPattern]
+      );
+
+      if (orgResult.rows.length === 0) {
+        return `❌ No organization found matching "${companyName}".`;
+      }
+
+      // Fetch invoices for all orgs with Stripe customers (cache to avoid duplicate API calls)
+      const invoicesByOrg = new Map<string, PendingInvoice[]>();
+      for (const org of orgResult.rows) {
+        if (!org.stripe_customer_id) continue;
+        invoicesByOrg.set(org.workos_organization_id, await getPendingInvoices(org.stripe_customer_id));
+      }
+
+      // Find orgs with open invoices
+      const orgsWithOpen: { org: typeof orgResult.rows[0]; invoices: PendingInvoice[] }[] = [];
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const openInvoices = invoices.filter(inv => inv.status === 'open');
+        if (openInvoices.length > 0) {
+          orgsWithOpen.push({ org, invoices: openInvoices });
+        }
+      }
+
+      // If exactly one org with exactly one open invoice — resend it
+      if (orgsWithOpen.length === 1 && orgsWithOpen[0].invoices.length === 1) {
+        const { org, invoices: openInvoices } = orgsWithOpen[0];
+        const inv = openInvoices[0];
+        logger.info({ invoiceId: inv.id, orgName: org.name }, 'Addie: Admin resending invoice by company lookup');
+
+        const result = await resendInvoice(inv.id);
+        if (!result.success) {
+          return `❌ Found invoice \`${inv.id}\` for ${org.name} but could not resend: ${result.error}`;
+        }
+
+        let msg = `✅ Invoice \`${inv.id}\` for **${org.name}** has been resent.`;
+        msg += `\n**Amount:** ${formatCurrency(inv.amount_due, inv.currency)}`;
+        if (inv.customer_email) msg += `\n**Sent to:** ${inv.customer_email}`;
+        if (result.hosted_invoice_url) msg += `\n**Payment link:** ${result.hosted_invoice_url}`;
+        return msg;
+      }
+
+      // Multiple matches or multiple invoices — list them for the user to choose
+      if (orgsWithOpen.length > 0) {
+        let msg = `Found open invoices for "${companyName}". Which one should I resend?\n\n`;
+        for (const { org, invoices: openInvoices } of orgsWithOpen) {
+          msg += `**${org.name}:**\n`;
+          for (const inv of openInvoices) {
+            const formatted = formatPendingInvoice(inv);
+            msg += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+            if (formatted.sent_to !== 'Unknown') msg += ` → ${formatted.sent_to}`;
+            msg += '\n';
+          }
+        }
+        msg += `\nCall resend_invoice with the specific invoice_id.`;
+        return msg;
+      }
+
+      // No open invoices found — check for drafts and explain
+      const orgNames = orgResult.rows.map((r: { name: string }) => r.name).join(', ');
+      const noStripe = orgResult.rows.filter((r: { stripe_customer_id: string | null }) => !r.stripe_customer_id);
+      let msg = `❌ No open invoices found for "${companyName}".`;
+      if (noStripe.length === orgResult.rows.length) {
+        msg += `\n\nNote: None of the matching organizations (${orgNames}) have a Stripe customer linked.`;
+      } else if (noStripe.length > 0) {
+        msg += `\n\nNote: Some of the matching organizations (${orgNames}) have no Stripe customer linked.`;
+      }
+
+      // Report any draft invoices from the cached results
+      for (const org of orgResult.rows) {
+        const invoices = invoicesByOrg.get(org.workos_organization_id) || [];
+        const draftInvoices = invoices.filter(inv => inv.status === 'draft');
+        if (draftInvoices.length > 0) {
+          msg += `\n\n**${org.name}** has ${draftInvoices.length} draft invoice(s) that haven't been sent yet:`;
+          for (const inv of draftInvoices) {
+            msg += `\n- \`${inv.id}\` — ${formatCurrency(inv.amount_due, inv.currency)} (draft)`;
+          }
+          msg += `\n\nDraft invoices need to be finalized in Stripe before they can be resent.`;
+        }
+      }
+
+      return msg;
+    }
+
+    return '❌ Please provide either an invoice_id (e.g., in_...) or a company_name to look up.';
+  });
+
+  // Update billing email on a Stripe customer
+  handlers.set('update_billing_email', async (input) => {
+    const orgId = input.org_id as string | undefined;
+    const directCustomerId = input.customer_id as string | undefined;
+    const email = input.email as string;
+
+    if (!email) {
+      return '❌ Email is required.';
+    }
+
+    let customerId = directCustomerId;
+
+    if (customerId && !customerId.startsWith('cus_')) {
+      return '❌ A valid Stripe customer ID (starting with cus_) is required.';
+    }
+
+    // Look up Stripe customer from org if needed
+    if (!customerId && orgId) {
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return `❌ Organization ${orgId} not found.`;
+      }
+      if (!org.stripe_customer_id) {
+        return `❌ Organization "${org.name}" has no Stripe customer linked.`;
+      }
+      customerId = org.stripe_customer_id;
+    }
+
+    if (!customerId) {
+      return '❌ Either org_id or customer_id is required.';
+    }
+
+    logger.info({ customerId, email }, 'Addie: Admin updating billing email');
+
+    const result = await updateCustomerEmail(customerId, email);
+    if (!result.success) {
+      return `❌ Could not update email: ${result.error}`;
+    }
+
+    return `✅ Billing email for customer ${customerId} updated to ${email}. Future invoices will be sent to this address.`;
+  });
+
   // Shared handler for get_account and get_organization_details
   const getAccountHandler = async (input: Record<string, unknown>) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const query = input.query as string;
@@ -1310,6 +1713,7 @@ export function createAdminToolHandlers(
         activitiesResult,
         engagementSignals,
         pendingInvoicesResult,
+        subscriptionHistoryResult,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1364,6 +1768,16 @@ export function createAdminToolHandlers(
         orgDb.getEngagementSignals(orgId),
         // Get pending invoices if they have a Stripe customer
         org.stripe_customer_id ? getPendingInvoices(org.stripe_customer_id) : Promise.resolve([]),
+        // Subscription history (cancellations, renewals, signups)
+        pool.query(
+          `SELECT activity_type, description, activity_date, logged_by_name
+           FROM org_activities
+           WHERE organization_id = $1
+             AND activity_type IN ('subscription', 'subscription_cancelled', 'payment')
+           ORDER BY activity_date DESC
+           LIMIT 10`,
+          [orgId]
+        ),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -1373,6 +1787,7 @@ export function createAdminToolHandlers(
       const workingGroups = workingGroupsResult.rows;
       const recentActivities = activitiesResult.rows;
       const pendingInvoices = pendingInvoicesResult;
+      const subscriptionHistory = subscriptionHistoryResult.rows;
 
       // Build comprehensive response
       let response = `## ${org.name}\n\n`;
@@ -1384,7 +1799,15 @@ export function createAdminToolHandlers(
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
       if (org.email_domain) response += `**Domain:** ${org.email_domain}\n`;
       if (org.parent_name) response += `**Parent:** ${org.parent_name}\n`;
+      const displayTier = org.membership_tier
+        || inferMembershipTier(org.subscription_amount, org.subscription_interval, org.is_personal);
+      if (displayTier) {
+        const inferred = !org.membership_tier ? ' _(inferred from amount)_' : '';
+        response += `**Membership Tier:** ${formatMembershipTier(displayTier)}${inferred}\n`;
+      }
+      if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
+      if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
       response += '\n';
 
       // Membership details (if member or has subscription history)
@@ -1392,20 +1815,52 @@ export function createAdminToolHandlers(
         response += `### Membership\n`;
         if (org.subscription_status === 'active') {
           response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          if (org.subscription_amount) {
+            const amount = formatCurrency(org.subscription_amount);
+            const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
+            response += `**Amount:** ${amount}${interval}\n`;
+          }
           if (org.subscription_current_period_end) {
             response += `**Renews:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
           }
+          if (org.subscription_canceled_at) {
+            response += `**Cancels at period end:** Yes (canceled ${formatDate(new Date(org.subscription_canceled_at))})\n`;
+          }
         } else if (org.subscription_status === 'canceled') {
           response += `**Status:** Canceled\n`;
+          if (org.subscription_canceled_at) {
+            response += `**Canceled:** ${formatDate(new Date(org.subscription_canceled_at))}\n`;
+          }
+          if (org.subscription_current_period_end) {
+            response += `**Access until:** ${formatDate(new Date(org.subscription_current_period_end))}\n`;
+          }
         } else if (org.subscription_status === 'past_due') {
           response += `**Status:** Past due - payment needed\n`;
         }
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
+
+        // Subscription history from org_activities
+        if (subscriptionHistory.length > 0) {
+          response += `**Subscription history:**\n`;
+          for (const event of subscriptionHistory) {
+            const date = formatDate(new Date(event.activity_date));
+            response += `  - ${date}: ${event.description || event.activity_type}`;
+            if (event.logged_by_name) response += ` (${event.logged_by_name})`;
+            response += '\n';
           }
         }
+
+        response += renderPendingInvoiceSection(pendingInvoices);
+
+        // Discount info
+        if (org.discount_percent || org.discount_amount_cents) {
+          const discount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : `${formatCurrency(org.discount_amount_cents!)} off`;
+          response += `**Discount:** ${discount}`;
+          if (org.stripe_promotion_code) response += ` (code: ${org.stripe_promotion_code})`;
+          response += '\n';
+        }
+
         response += '\n';
       }
 
@@ -1427,12 +1882,7 @@ export function createAdminToolHandlers(
           response += '\n';
         }
         // Show pending invoices for prospects in negotiating stage too
-        if (pendingInvoices.length > 0) {
-          response += `**Pending invoices:** ${pendingInvoices.length}\n`;
-          for (const inv of pendingInvoices.slice(0, 3)) {
-            response += `  - ${formatPendingInvoice(inv).amount} (${formatPendingInvoice(inv).status})\n`;
-          }
-        }
+        response += renderPendingInvoiceSection(pendingInvoices);
         response += '\n';
       }
 
@@ -1497,10 +1947,14 @@ export function createAdminToolHandlers(
         response += '\n';
       }
 
-      // Recent activities
-      if (recentActivities.length > 0) {
+      // Recent activities (excluding subscription events shown in Membership section)
+      const SUBSCRIPTION_ACTIVITY_TYPES = new Set(['subscription', 'subscription_cancelled', 'payment']);
+      const nonSubscriptionActivities = recentActivities.filter(
+        (a: { activity_type: string }) => !SUBSCRIPTION_ACTIVITY_TYPES.has(a.activity_type)
+      );
+      if (nonSubscriptionActivities.length > 0) {
         response += `### Recent Activity\n`;
-        for (const activity of recentActivities) {
+        for (const activity of nonSubscriptionActivities) {
           const date = formatDate(new Date(activity.activity_date));
           response += `- ${date}: ${activity.activity_type}`;
           if (activity.description) response += ` - ${activity.description}`;
@@ -1531,8 +1985,6 @@ export function createAdminToolHandlers(
 
   // Add prospect
   handlers.set('add_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = input.name as string;
     const companyType = (input.company_type as string) || undefined;
@@ -1604,8 +2056,6 @@ export function createAdminToolHandlers(
 
   // Update prospect
   handlers.set('update_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const orgId = input.org_id as string;
@@ -1697,8 +2147,6 @@ export function createAdminToolHandlers(
 
   // Enrich company
   handlers.set('enrich_company', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     if (!isLushaConfigured()) {
       return '❌ Enrichment is not configured (LUSHA_API_KEY not set).';
@@ -1776,8 +2224,6 @@ export function createAdminToolHandlers(
 
   // List prospects
   handlers.set('list_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const status = input.status as string | undefined;
@@ -1853,8 +2299,6 @@ export function createAdminToolHandlers(
 
   // Send payment request - the unified tool for getting prospects to pay
   handlers.set('send_payment_request', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const companyName = input.company_name as string;
     const domain = input.domain as string | undefined;
@@ -1888,6 +2332,7 @@ export function createAdminToolHandlers(
       prospect_contact_name?: string;
       enrichment_employee_count?: number;
       enrichment_revenue?: number;
+      stripe_customer_id?: string;
       // Discount fields
       discount_percent?: number;
       discount_amount_cents?: number;
@@ -1901,7 +2346,7 @@ export function createAdminToolHandlers(
     const searchResult = await pool.query(
       `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
               prospect_contact_email, prospect_contact_name,
-              enrichment_employee_count, enrichment_revenue,
+              enrichment_employee_count, enrichment_revenue, stripe_customer_id,
               discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
        FROM organizations
        WHERE is_personal = false
@@ -1935,7 +2380,7 @@ export function createAdminToolHandlers(
       const newOrgResult = await pool.query(
         `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
                 prospect_contact_email, prospect_contact_name,
-                enrichment_employee_count, enrichment_revenue,
+                enrichment_employee_count, enrichment_revenue, stripe_customer_id,
                 discount_percent, discount_amount_cents, stripe_coupon_id, stripe_promotion_code
          FROM organizations WHERE workos_organization_id = $1`,
         [createResult.organization.workos_organization_id]
@@ -2150,9 +2595,27 @@ export function createAdminToolHandlers(
             : `$${(org.discount_amount_cents || 0) / 100} off`;
         }
 
+        // Ensure a Stripe customer exists with org metadata before creating the
+        // checkout session. Without this, Stripe creates a new customer during
+        // checkout that has no workos_organization_id metadata, so the subscription
+        // webhook can't link the payment back to the organization.
+        let customerId: string | undefined;
+        if (emailToUse) {
+          customerId = await orgDb.getOrCreateStripeCustomer(org.workos_organization_id, () =>
+            createStripeCustomer({
+              email: emailToUse,
+              name: org.name,
+              metadata: { workos_organization_id: org.workos_organization_id },
+            })
+          ) || undefined;
+        } else {
+          customerId = org.stripe_customer_id;
+        }
+
         const session = await createCheckoutSession({
           priceId: finalProduct.price_id,
-          customerEmail: emailToUse || undefined,
+          customerId: customerId || undefined,
+          customerEmail: customerId ? undefined : (emailToUse || undefined),
           successUrl: `${baseUrl}/dashboard?payment=success`,
           cancelUrl: `${baseUrl}/membership?payment=cancelled`,
           workosOrganizationId: org.workos_organization_id,
@@ -2439,8 +2902,6 @@ export function createAdminToolHandlers(
 
   // Search Lusha for prospects
   handlers.set('prospect_search_lusha', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     if (!isLushaConfigured()) {
       return '❌ Lusha is not configured (LUSHA_API_KEY not set).';
@@ -2493,8 +2954,6 @@ export function createAdminToolHandlers(
 
   // Search industry feeds
   handlers.set('search_industry_feeds', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const query = (input.query as string)?.toLowerCase().trim() || '';
     const status = (input.status as string) || 'all';
@@ -2571,8 +3030,6 @@ export function createAdminToolHandlers(
 
   // Add industry feed
   handlers.set('add_industry_feed', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const feedUrl = (input.feed_url as string)?.trim();
@@ -2640,8 +3097,6 @@ export function createAdminToolHandlers(
 
   // Get feed stats
   handlers.set('get_feed_stats', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const stats = await getFeedStats();
@@ -2675,8 +3130,6 @@ export function createAdminToolHandlers(
 
   // List pending proposals
   handlers.set('list_feed_proposals', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 50);
 
@@ -2714,8 +3167,6 @@ export function createAdminToolHandlers(
 
   // Approve a proposal
   handlers.set('approve_feed_proposal', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const proposalId = Number(input.proposal_id);
     const feedName = (input.feed_name as string)?.trim();
@@ -2784,8 +3235,6 @@ export function createAdminToolHandlers(
 
   // Reject a proposal
   handlers.set('reject_feed_proposal', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const proposalId = Number(input.proposal_id);
     const reason = input.reason as string | undefined;
@@ -2817,8 +3266,6 @@ export function createAdminToolHandlers(
 
   // Add media contact
   handlers.set('add_media_contact', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const slackUserId = input.slack_user_id as string | undefined;
     const email = input.email as string | undefined;
@@ -2867,8 +3314,6 @@ export function createAdminToolHandlers(
 
   // List flagged conversations
   handlers.set('list_flagged_conversations', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const unreviewedOnly = input.unreviewed_only !== false; // Default to true
     const severity = input.severity as 'high' | 'medium' | 'low' | undefined;
@@ -2927,8 +3372,6 @@ export function createAdminToolHandlers(
 
   // Review flagged conversation
   handlers.set('review_flagged_conversation', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const flaggedId = input.flagged_id as number;
     const notes = input.notes as string | undefined;
@@ -2963,8 +3406,6 @@ export function createAdminToolHandlers(
 
   // Grant discount to an organization
   handlers.set('grant_discount', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
@@ -3077,8 +3518,6 @@ export function createAdminToolHandlers(
 
   // Remove discount from an organization
   handlers.set('remove_discount', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = input.org_id as string | undefined;
     const orgName = input.org_name as string | undefined;
@@ -3134,8 +3573,6 @@ export function createAdminToolHandlers(
 
   // List organizations with active discounts
   handlers.set('list_discounts', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const limit = (input.limit as number) || 20;
 
@@ -3185,8 +3622,6 @@ export function createAdminToolHandlers(
 
   // Create standalone promotion code
   handlers.set('create_promotion_code', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const code = input.code as string;
     const name = input.name as string | undefined;
@@ -3283,8 +3718,6 @@ export function createAdminToolHandlers(
 
   // Create chapter
   handlers.set('create_chapter', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const region = (input.region as string)?.trim();
@@ -3362,8 +3795,6 @@ export function createAdminToolHandlers(
 
   // List chapters
   handlers.set('list_chapters', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const chapters = await wgDb.getChapters();
@@ -3407,8 +3838,6 @@ export function createAdminToolHandlers(
 
   // Create industry gathering
   handlers.set('create_industry_gathering', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const name = (input.name as string)?.trim();
     const startDateStr = input.start_date as string;
@@ -3521,8 +3950,6 @@ export function createAdminToolHandlers(
 
   // List industry gatherings
   handlers.set('list_industry_gatherings', async () => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     try {
       const gatherings = await wgDb.getIndustryGatherings();
@@ -3574,8 +4001,6 @@ export function createAdminToolHandlers(
 
   // Add committee leader
   handlers.set('add_committee_leader', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
@@ -3648,8 +4073,6 @@ Committee management page: https://agenticadvertising.org/working-groups/${commi
 
   // Remove committee leader
   handlers.set('remove_committee_leader', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
     let userId = (input.user_id as string)?.trim();
@@ -3700,8 +4123,6 @@ They are still a member but no longer have management access.`;
 
   // List committee leaders
   handlers.set('list_committee_leaders', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const committeeSlug = (input.committee_slug as string)?.trim();
 
@@ -3751,10 +4172,44 @@ Use add_committee_leader to assign a leader.`;
   // ORGANIZATION MANAGEMENT HANDLERS
   // ============================================
 
+  // Rename a working group / chapter / committee
+  handlers.set('rename_working_group', async (input) => {
+    const slug = input.working_group_slug as string;
+    const newName = input.new_name as string;
+    const newSlug = input.new_slug as string | undefined;
+
+    if (!slug || !newName) {
+      return '❌ Both working_group_slug and new_name are required.';
+    }
+
+    try {
+      const wg = await wgDb.getWorkingGroupBySlug(slug);
+      if (!wg) {
+        return `❌ Working group with slug "${slug}" not found.`;
+      }
+
+      const generatedSlug = newSlug || newName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+      if (!generatedSlug) {
+        return '❌ Could not generate a valid slug from that name. Please provide a new_slug explicitly.';
+      }
+
+      await wgDb.updateWorkingGroup(wg.id, {
+        name: newName,
+        slug: generatedSlug,
+      });
+
+      logger.info({ oldSlug: slug, newSlug: generatedSlug, newName }, 'Addie: Admin renamed working group');
+
+      return `✅ Renamed "${wg.name}" → "${newName}"\n\nSlug: ${slug} → ${generatedSlug}\nType: ${wg.committee_type}`;
+    } catch (error) {
+      logger.error({ error, slug, newName }, 'Addie: Error renaming working group');
+      return '❌ Failed to rename working group. Please try again.';
+    }
+  });
+
   // Merge organizations
   handlers.set('merge_organizations', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const primaryOrgId = input.primary_org_id as string;
     const secondaryOrgId = input.secondary_org_id as string;
@@ -4015,8 +4470,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Find duplicate organizations
   handlers.set('find_duplicate_orgs', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const searchType = (input.search_type as string) || 'all';
     const pool = getPool();
@@ -4091,8 +4544,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Manage organization domains
   handlers.set('manage_organization_domains', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const action = input.action as string;
     const organizationId = input.organization_id as string;
@@ -4378,8 +4829,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Update organization member role
   handlers.set('update_org_member_role', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const orgId = (input.org_id as string)?.trim();
     const userId = (input.user_id as string)?.trim();
@@ -4391,8 +4840,8 @@ Use add_committee_leader to assign a leader.`;
     if (!userId) {
       return '❌ user_id is required. This is the WorkOS user ID (starts with user_).';
     }
-    if (!role || !['member', 'admin'].includes(role)) {
-      return '❌ role must be "member" or "admin".';
+    if (!role || !['member', 'admin', 'owner'].includes(role)) {
+      return '❌ role must be "member", "admin", or "owner".';
     }
 
     if (!workos) {
@@ -4455,7 +4904,9 @@ Use add_committee_leader to assign a leader.`;
       logger.info({ orgId, userId, oldRole: currentRole, newRole: role }, 'Addie: Updated org member role');
 
       let response = `✅ Updated ${userName}'s role from **${currentRole}** to **${role}** in ${orgName}.\n\n`;
-      if (role === 'admin') {
+      if (role === 'owner') {
+        response += `They now have full ownership of the organization, including:\n- Invite and manage team members\n- View and manage organization billing\n- Update organization profile`;
+      } else if (role === 'admin') {
         response += `They can now:\n- Invite and manage team members\n- View organization billing\n- Update organization profile`;
       }
       return response;
@@ -4468,8 +4919,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Check domain health
   handlers.set('check_domain_health', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const checkType = (input.check_type as string) || 'all';
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
@@ -4666,8 +5115,6 @@ Use add_committee_leader to assign a leader.`;
 
   // My engaged prospects - list owned prospects sorted by engagement
   handlers.set('my_engaged_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4750,8 +5197,6 @@ Use add_committee_leader to assign a leader.`;
 
   // My followups needed - list owned prospects needing attention
   handlers.set('my_followups_needed', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4841,8 +5286,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Unassigned prospects - list high-engagement prospects without owners
   handlers.set('unassigned_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 50);
@@ -4903,8 +5346,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Claim prospect - assign self as owner
   handlers.set('claim_prospect', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string;
@@ -4998,8 +5439,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Suggest prospects - find unmapped domains and Lusha results
   handlers.set('suggest_prospects', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
@@ -5094,8 +5533,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Set reminder - create a next step/reminder for a prospect
   handlers.set('set_reminder', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string;
@@ -5229,10 +5666,131 @@ Use add_committee_leader to assign a leader.`;
     }
   });
 
+  // Complete task - mark a task/reminder as done
+  handlers.set('complete_task', async (input) => {
+    const pool = getPool();
+    const orgId = input.org_id as string | undefined;
+    const companyName = input.company_name as string | undefined;
+    const allOverdue = input.all_overdue as boolean | undefined;
+
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId) {
+      return '❌ Could not determine your user ID. Please try again.';
+    }
+
+    try {
+      if (allOverdue) {
+        // Complete all overdue tasks for this user
+        const result = await pool.query(`
+          UPDATE org_activities
+          SET next_step_completed_at = NOW(),
+              next_step_completed_reason = 'Marked done by user'
+          WHERE is_next_step = TRUE
+            AND next_step_completed_at IS NULL
+            AND next_step_owner_user_id = $1
+            AND next_step_due_date < CURRENT_DATE
+          RETURNING id, organization_id, description, next_step_due_date
+        `, [userId]);
+
+        if (result.rows.length === 0) {
+          return '✅ No overdue tasks found — you\'re all caught up!';
+        }
+
+        // Clear matching prospect_next_action fields
+        for (const row of result.rows) {
+          if (row.next_step_due_date) {
+            await pool.query(`
+              UPDATE organizations
+              SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+              WHERE workos_organization_id = $1
+                AND prospect_next_action_date = $2
+            `, [row.organization_id, row.next_step_due_date]);
+          }
+        }
+
+        // Get org names for confirmation
+        const orgIds = [...new Set(result.rows.map(r => r.organization_id))];
+        const orgsResult = await pool.query(`
+          SELECT workos_organization_id, name FROM organizations
+          WHERE workos_organization_id = ANY($1)
+        `, [orgIds]);
+        const orgNames = new Map(orgsResult.rows.map(r => [r.workos_organization_id, r.name]));
+
+        const completedList = result.rows.map(r =>
+          `• **${orgNames.get(r.organization_id) || 'Unknown'}**: ${r.description}`
+        ).join('\n');
+
+        return `✅ Completed ${result.rows.length} overdue task${result.rows.length === 1 ? '' : 's'}:\n\n${completedList}`;
+      }
+
+      // Complete task for a specific org
+      if (!orgId && !companyName) {
+        return '❌ Please provide company_name, org_id, or set all_overdue to true.';
+      }
+
+      let targetOrgId = orgId;
+      if (!targetOrgId && companyName) {
+        const escapedName = companyName.replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const searchResult = await pool.query(`
+          SELECT workos_organization_id, name
+          FROM organizations
+          WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'
+            AND is_personal IS NOT TRUE
+          ORDER BY
+            CASE WHEN LOWER(name) = LOWER($2) THEN 0 ELSE 1 END,
+            engagement_score DESC NULLS LAST
+          LIMIT 1
+        `, [`%${escapedName}%`, companyName]);
+
+        if (searchResult.rows.length === 0) {
+          return `❌ No organization found matching "${companyName}".`;
+        }
+        targetOrgId = searchResult.rows[0].workos_organization_id;
+      }
+
+      const result = await pool.query(`
+        UPDATE org_activities
+        SET next_step_completed_at = NOW(),
+            next_step_completed_reason = 'Marked done by user'
+        WHERE is_next_step = TRUE
+          AND next_step_completed_at IS NULL
+          AND organization_id = $1
+          AND next_step_owner_user_id = $2
+        RETURNING id, description, next_step_due_date
+      `, [targetOrgId, userId]);
+
+      // Get org name
+      const orgResult = await pool.query(`
+        SELECT name FROM organizations WHERE workos_organization_id = $1
+      `, [targetOrgId]);
+      const orgName = orgResult.rows[0]?.name || 'Unknown';
+
+      if (result.rows.length === 0) {
+        return `ℹ️ No pending tasks found for **${orgName}**.`;
+      }
+
+      // Clear matching prospect_next_action for all completed tasks
+      for (const row of result.rows) {
+        if (row.next_step_due_date) {
+          await pool.query(`
+            UPDATE organizations
+            SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+            WHERE workos_organization_id = $1
+              AND prospect_next_action_date = $2
+          `, [targetOrgId, row.next_step_due_date]);
+        }
+      }
+
+      const descriptions = result.rows.map(r => r.description).join(', ');
+      return `✅ Completed ${result.rows.length} task${result.rows.length === 1 ? '' : 's'} for **${orgName}**: ${descriptions}`;
+    } catch (error) {
+      logger.error({ error, orgId, userId }, 'Error completing task');
+      return '❌ Failed to complete task. Please try again.';
+    }
+  });
+
   // My upcoming tasks - list future scheduled tasks
   handlers.set('my_upcoming_tasks', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 20, 50);
@@ -5364,8 +5922,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Log conversation - record an interaction and analyze for task management
   handlers.set('log_conversation', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const pool = getPool();
     let orgId = input.org_id as string | undefined;
@@ -5521,8 +6077,6 @@ Use add_committee_leader to assign a leader.`;
 
   // Get insight summary
   handlers.set('get_insight_summary', async (input) => {
-    const adminCheck = requireAdminFromContext();
-    if (adminCheck) return adminCheck;
 
     const insightType = input.insight_type as string | undefined;
     const limit = (input.limit as number) || 5;
@@ -5576,8 +6130,6 @@ Use add_committee_leader to assign a leader.`;
   // MEMBER SEARCH ANALYTICS HANDLERS
   // ============================================
   handlers.set('get_member_search_analytics', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const days = Math.min(Math.max((input.days as number) || 30, 1), 365);
@@ -5688,8 +6240,6 @@ Use add_committee_leader to assign a leader.`;
   // ORGANIZATION ANALYTICS HANDLERS
   // ============================================
   handlers.set('list_organizations_by_users', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const pool = getPool();
@@ -5798,10 +6348,120 @@ Use add_committee_leader to assign a leader.`;
     }
   });
 
+  // List paying members grouped by subscription level
+  handlers.set('list_paying_members', async (input) => {
+    try {
+      const pool = getPool();
+      const includeIndividual = (input.include_individual as boolean) || false;
+      const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
+
+      const result = await pool.query(
+        `SELECT
+          o.name,
+          o.is_personal,
+          o.subscription_amount,
+          o.subscription_currency,
+          o.subscription_interval,
+          o.subscription_status,
+          o.membership_tier,
+          o.company_type,
+          o.created_at,
+          o.subscription_current_period_end
+        FROM organizations o
+        WHERE o.subscription_status = 'active'
+          AND o.subscription_canceled_at IS NULL
+          AND ($1 = true OR o.is_personal = false)
+        ORDER BY o.subscription_amount DESC NULLS LAST, o.name ASC
+        LIMIT $2`,
+        [includeIndividual, limit]
+      );
+
+      if (result.rows.length === 0) {
+        return `No active members found${includeIndividual ? '' : ' (corporate only)'}.`;
+      }
+
+      // Group by annual subscription amount level.
+      // Subdivides company_standard ($2.5K and $10K) into separate display groups.
+      const groups: Record<string, typeof result.rows> = {
+        icl: [],
+        corporate: [],
+        smb: [],
+        other: [],
+        individual: [],
+      };
+
+      for (const org of result.rows) {
+        const amount = org.subscription_amount || 0;
+        const annualCents = org.subscription_interval === 'month' ? amount * 12 : amount;
+
+        if (org.is_personal) {
+          groups.individual.push(org);
+        } else if (annualCents >= 5000000) {
+          groups.icl.push(org);
+        } else if (annualCents >= 1000000) {
+          groups.corporate.push(org);
+        } else if (annualCents >= 250000) {
+          groups.smb.push(org);
+        } else {
+          groups.other.push(org);
+        }
+      }
+
+      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date }) => {
+        const amount = org.subscription_amount
+          ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
+          : 'Comped';
+        const interval = org.subscription_amount
+          ? (org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '')
+          : '';
+        const since = formatDate(org.created_at);
+        return `- **${org.name}** — ${amount}${interval} (since ${since})\n`;
+      };
+
+      let response = `## Active Members\n\n`;
+      response += `**${result.rows.length} active member${result.rows.length !== 1 ? 's' : ''}**`;
+      if (!includeIndividual) response += ` (corporate only)`;
+      response += `\n\n`;
+
+      if (groups.icl.length > 0) {
+        response += `### Industry Council Leaders ($50K/yr)\n`;
+        for (const org of groups.icl) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.corporate.length > 0) {
+        response += `### Corporate ($10K/yr)\n`;
+        for (const org of groups.corporate) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.smb.length > 0) {
+        response += `### Startup/SMB ($2.5K/yr)\n`;
+        for (const org of groups.smb) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.other.length > 0) {
+        response += `### Other\n`;
+        for (const org of groups.other) response += formatRow(org);
+        response += `\n`;
+      }
+
+      if (groups.individual.length > 0) {
+        response += `### Individual\n`;
+        for (const org of groups.individual) response += formatRow(org);
+        response += `\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing members');
+      return '❌ Failed to list members. Please try again.';
+    }
+  });
+
   // List Slack users for a specific organization
   handlers.set('list_slack_users_by_org', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const pool = getPool();
@@ -5952,8 +6612,6 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
 
   handlers.set('tag_insight', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const content = input.content as string;
@@ -6008,8 +6666,6 @@ Use add_committee_leader to assign a leader.`;
   });
 
   handlers.set('list_pending_insights', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const topic = (input.topic as string) || undefined;
@@ -6058,8 +6714,6 @@ Use add_committee_leader to assign a leader.`;
   });
 
   handlers.set('run_synthesis', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const topic = (input.topic as string) || undefined;
@@ -6141,8 +6795,6 @@ Use add_committee_leader to assign a leader.`;
   // LIST ESCALATIONS
   // ============================================
   handlers.set('list_escalations', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     try {
       const status = (input.status as EscalationStatus) || 'open';
@@ -6202,8 +6854,6 @@ Use add_committee_leader to assign a leader.`;
   // RESOLVE ESCALATION
   // ============================================
   handlers.set('resolve_escalation', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
     const escalationId = input.escalation_id;
     if (typeof escalationId !== 'number' || !Number.isInteger(escalationId) || escalationId < 1) {
@@ -6270,127 +6920,128 @@ Use add_committee_leader to assign a leader.`;
   });
 
   // ============================================
-  // SEND MEMBER DM
+  // BAN MANAGEMENT HANDLERS
   // ============================================
-  handlers.set('send_member_dm', async (input) => {
-    const adminError = requireAdminFromContext();
-    if (adminError) return adminError;
 
-    const email = (input.email as string | undefined)?.trim();
-    const name = (input.name as string | undefined)?.trim();
-    const slackUserId = (input.slack_user_id as string | undefined)?.trim();
-    const message = input.message as string | undefined;
-
-    if (!email && !name && !slackUserId) {
-      return '❌ Must provide email, name, or slack_user_id to identify the recipient.';
-    }
-
-    if (!message || message.trim().length === 0) {
-      return '❌ Message content is required.';
-    }
-
-    const MAX_MESSAGE_LENGTH = 4000;
-    if (message.length > MAX_MESSAGE_LENGTH) {
-      return `❌ Message too long (${message.length} characters). Maximum is ${MAX_MESSAGE_LENGTH} characters.`;
-    }
-
-    let targetSlackUserId: string | null = null;
-    let recipientInfo: { name?: string; email?: string } = {};
-
+  handlers.set('ban_entity', async (input) => {
     try {
-      // Priority 1: Direct Slack user ID
-      if (slackUserId) {
-        // Slack user IDs are U or W followed by alphanumeric (e.g., U01234ABCD)
-        if (!/^[UW][A-Z0-9]{8,12}$/i.test(slackUserId)) {
-          return '❌ Invalid Slack user ID format. Expected format: U01234ABCD';
-        }
-        targetSlackUserId = slackUserId;
-        const mapping = await slackDb.getBySlackUserId(slackUserId);
-        recipientInfo = {
-          name: mapping?.slack_real_name || mapping?.slack_display_name || undefined,
-          email: mapping?.slack_email || undefined,
-        };
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const banType = input.ban_type as string;
+      const entityId = input.entity_id as string;
+      const scope = input.scope as string;
+      const scopeTarget = input.scope_target as string | undefined;
+      const reason = input.reason as string;
+      const expiresInDays = input.expires_in_days as number | undefined;
+
+      const validBanTypes = ['user', 'organization', 'api_key'];
+      const validScopes = ['platform', 'registry_brand', 'registry_property'];
+      if (!validBanTypes.includes(banType)) {
+        return `Invalid ban_type. Must be one of: ${validBanTypes.join(', ')}`;
       }
-      // Priority 2: Email lookup
-      else if (email) {
-        const mapping = await slackDb.findByEmail(email);
-        if (!mapping) {
-          return `❌ No Slack user found with email: ${email}\n\nThe member may not have linked their Slack account, or uses a different email in Slack.`;
-        }
-        targetSlackUserId = mapping.slack_user_id;
-        recipientInfo = {
-          name: mapping.slack_real_name || mapping.slack_display_name || undefined,
-          email: mapping.slack_email || undefined,
-        };
-      }
-      // Priority 3: Name search
-      else if (name) {
-        const SEARCH_LIMIT = 10;
-        const matches = await wgDb.searchUsersForLeadership(name, SEARCH_LIMIT);
-
-        if (matches.length === 0) {
-          return `❌ No members found matching name: "${name}"`;
-        }
-
-        if (matches.length > 1) {
-          const matchList = matches.map((m, i) =>
-            `${i + 1}. **${m.name}** (${m.email}) - ${m.org_name}`
-          ).join('\n');
-
-          const truncationNote = matches.length >= SEARCH_LIMIT
-            ? `\n\n_(Showing first ${SEARCH_LIMIT} results. Use a more specific search or email address.)_`
-            : '';
-
-          return `🔍 Multiple members found matching "${name}". Please specify the email address:\n\n${matchList}${truncationNote}\n\nCall again with the specific email address.`;
-        }
-
-        // Single match - look up their Slack ID
-        const match = matches[0];
-        const mapping = await slackDb.findByEmail(match.email);
-
-        if (!mapping) {
-          return `❌ Found member **${match.name}** (${match.email}) but they don't have a linked Slack account.\n\nConsider reaching out via email instead.`;
-        }
-
-        targetSlackUserId = mapping.slack_user_id;
-        recipientInfo = {
-          name: match.name,
-          email: match.email,
-        };
+      if (!validScopes.includes(scope)) {
+        return `Invalid scope. Must be one of: ${validScopes.join(', ')}`;
       }
 
-      if (!targetSlackUserId) {
-        return '❌ Could not resolve recipient Slack ID.';
-      }
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        : undefined;
 
-      // Send the DM
-      const result = await sendDirectMessage(targetSlackUserId, {
-        text: message,
+      const adminUserId = memberContext?.workos_user?.workos_user_id || 'system:addie';
+      const adminEmail = memberContext?.workos_user?.email || 'addie@agenticadvertising.org';
+
+      const ban = await bDb.createBan({
+        ban_type: banType as any,
+        entity_id: entityId,
+        scope: scope as any,
+        scope_target: scopeTarget?.toLowerCase(),
+        banned_by_user_id: adminUserId,
+        banned_by_email: adminEmail,
+        reason,
+        expires_at: expiresAt,
       });
 
-      if (result.ok) {
-        const recipientDisplay = recipientInfo.name
-          ? `**${recipientInfo.name}** (${recipientInfo.email || targetSlackUserId})`
-          : targetSlackUserId;
+      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace('registry_', '') + ' registry edits';
+      let response = `**Ban created** (ID: \`${ban.id}\`)\n`;
+      response += `- **Type**: ${banType}\n`;
+      response += `- **Entity**: \`${entityId}\`\n`;
+      response += `- **Scope**: ${scopeLabel}`;
+      if (scopeTarget) response += ` (domain: ${scopeTarget})`;
+      response += `\n- **Reason**: ${reason}\n`;
+      if (expiresAt) response += `- **Expires**: ${expiresAt.toISOString()}\n`;
+      else response += `- **Duration**: Permanent\n`;
 
-        logger.info({
-          targetSlackUserId,
-          senderWorkosUserId: memberContext?.workos_user?.workos_user_id,
-          messageLength: message.length,
-        }, 'Admin sent DM via Addie');
-
-        return `✅ Message sent to ${recipientDisplay}`;
-      } else {
-        logger.warn({
-          targetSlackUserId,
-          error: result.error,
-        }, 'Failed to send admin DM via Addie');
-
-        return `❌ Failed to send message: ${result.error || 'Unknown error'}`;
+      return response;
+    } catch (error: any) {
+      if (error?.constraint) {
+        return `❌ A ban already exists for this entity/scope combination.`;
       }
+      logger.error({ error }, 'Error creating ban');
+      return `❌ Failed to create ban: ${error?.message || 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('unban_entity', async (input) => {
+    try {
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const banId = input.ban_id as string | undefined;
+      const banType = input.ban_type as string | undefined;
+      const entityId = input.entity_id as string | undefined;
+      const scope = input.scope as string | undefined;
+
+      if (banId) {
+        const removed = await bDb.removeBan(banId);
+        if (!removed) return `No ban found with ID \`${banId}\`.`;
+        return `**Ban removed** (ID: \`${banId}\`, ${removed.ban_type} ${removed.scope})`;
+      }
+
+      if (banType && entityId) {
+        const bans = await bDb.listBans({
+          ban_type: banType as any,
+          entity_id: entityId,
+          scope: scope as any,
+        });
+
+        if (bans.length === 0) return `❌ No active ban found for ${banType} \`${entityId}\`${scope ? ` with scope ${scope}` : ''}.`;
+
+        let response = '';
+        for (const ban of bans) {
+          await bDb.removeBan(ban.id);
+          response += `**Removed**: \`${ban.id}\` (${ban.scope}, reason: ${ban.reason})\n`;
+        }
+        return response;
+      }
+
+      return `❌ Provide either ban_id, or ban_type + entity_id to find the ban.`;
     } catch (error) {
-      logger.error({ error, email, name, slackUserId }, 'Error in send_member_dm');
-      return `❌ Error sending message: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      logger.error({ error }, 'Error removing ban');
+      return `❌ Failed to remove ban.`;
+    }
+  });
+
+  handlers.set('list_bans', async (input) => {
+    try {
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const bans = await bDb.listBans({
+        ban_type: input.ban_type as any,
+        scope: input.scope as any,
+        entity_id: input.entity_id as string | undefined,
+      });
+
+      if (bans.length === 0) return 'No active bans found.';
+
+      let response = `**Active bans** (${bans.length}):\n\n`;
+      for (const ban of bans) {
+        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace('registry_', '').charAt(0).toUpperCase() + ban.scope.replace('registry_', '').slice(1) + ' registry';
+        response += `- **\`${ban.id}\`** — ${ban.ban_type} \`${ban.entity_id}\`\n`;
+        response += `  Scope: ${scopeLabel}${ban.scope_target ? ` (${ban.scope_target})` : ''}\n`;
+        response += `  Reason: ${ban.reason}\n`;
+        if (ban.expires_at) response += `  Expires: ${new Date(ban.expires_at).toISOString()}\n`;
+        response += `  Created: ${new Date(ban.created_at).toISOString()} by ${ban.banned_by_email || ban.banned_by_user_id}\n\n`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing bans');
+      return `❌ Failed to list bans.`;
     }
   });
 

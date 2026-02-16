@@ -48,6 +48,9 @@
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
+    "optimization_goal": {
+      "$ref": "/schemas/core/optimization-goal.json"
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
@@ -56,7 +59,8 @@
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",
       "items": {
         "$ref": "/schemas/core/creative-assignment.json"
-      }
+      },
+      "minItems": 1
     },
     "creatives": {
       "type": "array",
@@ -64,6 +68,7 @@
       "items": {
         "$ref": "/schemas/core/creative-asset.json"
       },
+      "minItems": 1,
       "maxItems": 100
     },
     "ext": {

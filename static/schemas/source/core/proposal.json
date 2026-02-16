@@ -7,7 +7,7 @@
   "properties": {
     "proposal_id": {
       "type": "string",
-      "description": "Unique identifier for this proposal. Used to refine the proposal in subsequent get_products calls or to execute it via create_media_buy."
+      "description": "Unique identifier for this proposal. Used to execute it via create_media_buy."
     },
     "name": {
       "type": "string",
@@ -59,6 +59,10 @@
     "brief_alignment": {
       "type": "string",
       "description": "Explanation of how this proposal aligns with the campaign brief"
+    },
+    "forecast": {
+      "$ref": "/schemas/core/delivery-forecast.json",
+      "description": "Aggregate forecasted delivery metrics for the entire proposal. When both proposal-level and allocation-level forecasts are present, the proposal-level forecast is authoritative for total delivery estimation."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

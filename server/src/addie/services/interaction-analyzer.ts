@@ -377,14 +377,28 @@ export async function applyTaskActions(
             continue;
           }
 
-          await pool.query(`
+          const completedResult = await pool.query(`
             UPDATE org_activities
             SET next_step_completed_at = NOW(),
                 next_step_completed_reason = $2
             WHERE id = $1
               AND is_next_step = TRUE
               AND next_step_completed_at IS NULL
+            RETURNING organization_id, next_step_due_date
           `, [action.existingTaskId, `Auto-completed: ${action.reason}`]);
+
+          // Clear the matching org-level prospect_next_action
+          if (completedResult.rows.length > 0) {
+            const { organization_id, next_step_due_date } = completedResult.rows[0];
+            if (next_step_due_date) {
+              await pool.query(`
+                UPDATE organizations
+                SET prospect_next_action = NULL, prospect_next_action_date = NULL, updated_at = NOW()
+                WHERE workos_organization_id = $1
+                  AND prospect_next_action_date = $2
+              `, [organization_id, next_step_due_date]);
+            }
+          }
 
           logger.info({
             taskId: action.existingTaskId,
