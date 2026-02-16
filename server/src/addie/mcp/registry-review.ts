@@ -11,7 +11,7 @@ import { logger } from '../../logger.js';
 import { ModelConfig } from '../../config/models.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { PropertyDatabase } from '../../db/property-db.js';
-import { RegistryBansDatabase } from '../../db/registry-bans-db.js';
+import { BansDatabase } from '../../db/bans-db.js';
 import {
   notifyAddieReview,
   notifyRegistryApproval,
@@ -25,7 +25,7 @@ export interface ReviewResult {
 
 const brandDb = new BrandDatabase();
 const propertyDb = new PropertyDatabase();
-const bansDb = new RegistryBansDatabase();
+const bansDb = new BansDatabase();
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -142,9 +142,10 @@ Does this look like a legitimate ${record.entity_type} record? Check for spam, n
   } else if (result.verdict === 'malicious') {
     // Ban the editor and delete the record
     try {
-      await bansDb.createEditBan({
-        entity_type: record.entity_type,
-        banned_user_id: record.editor_user_id,
+      await bansDb.createBan({
+        ban_type: 'user',
+        entity_id: record.editor_user_id,
+        scope: record.entity_type === 'brand' ? 'registry_brand' : 'registry_property',
         banned_email: record.editor_email,
         banned_by_user_id: 'system:addie',
         banned_by_email: 'addie@agenticadvertising.org',
@@ -231,11 +232,12 @@ Does this edit look reasonable? Check for vandalism, spam, or obviously incorrec
         }
 
         // Auto-ban
-        await bansDb.createEditBan({
-          entity_type: edit.entity_type,
-          banned_user_id: edit.editor_user_id,
+        await bansDb.createBan({
+          ban_type: 'user',
+          entity_id: edit.editor_user_id,
+          scope: edit.entity_type === 'brand' ? 'registry_brand' : 'registry_property',
+          scope_target: edit.domain,
           banned_email: edit.editor_email,
-          entity_domain: edit.domain,
           banned_by_user_id: 'system:addie',
           banned_by_email: 'addie@agenticadvertising.org',
           reason: `Auto-ban: ${result.reason}`,

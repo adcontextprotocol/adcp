@@ -1184,6 +1184,100 @@ Examples:
       required: ['escalation_id'],
     },
   },
+  // ============================================
+  // BAN MANAGEMENT TOOLS
+  // ============================================
+  {
+    name: 'ban_entity',
+    description: `Ban a user, organization, or API key. Scope can be platform-wide (blocks all access) or registry-specific (blocks brand/property edits only).
+
+Examples:
+- Platform ban user: ban_type=user, entity_id=user_01HW..., scope=platform
+- Ban org from brand edits: ban_type=organization, entity_id=org_01HW..., scope=registry_brand
+- Revoke API key: ban_type=api_key, entity_id=wkapikey_..., scope=platform`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'What kind of entity to ban',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'The entity ID (WorkOS user ID, org ID, or API key ID)',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'What to ban from: platform (all access) or registry editing',
+        },
+        scope_target: {
+          type: 'string',
+          description: 'For registry bans: specific domain to ban from (omit for global)',
+        },
+        reason: {
+          type: 'string',
+          description: 'Why this entity is being banned',
+        },
+        expires_in_days: {
+          type: 'number',
+          description: 'Ban duration in days (omit for permanent)',
+        },
+      },
+      required: ['ban_type', 'entity_id', 'scope', 'reason'],
+    },
+  },
+  {
+    name: 'unban_entity',
+    description: 'Remove a ban. Provide either the ban ID directly, or the ban_type + entity_id + scope to look it up.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ban_id: {
+          type: 'string',
+          description: 'The ban UUID to remove (if known)',
+        },
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'Entity type (used with entity_id to find the ban)',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'Entity ID to look up (used with ban_type)',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'Scope to match (used with ban_type + entity_id)',
+        },
+      },
+    },
+  },
+  {
+    name: 'list_bans',
+    description: 'List active bans. Optionally filter by ban_type, scope, or entity_id.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        ban_type: {
+          type: 'string',
+          enum: ['user', 'organization', 'api_key'],
+          description: 'Filter by entity type',
+        },
+        scope: {
+          type: 'string',
+          enum: ['platform', 'registry_brand', 'registry_property'],
+          description: 'Filter by scope',
+        },
+        entity_id: {
+          type: 'string',
+          description: 'Filter by entity ID',
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -6822,6 +6916,132 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, escalationId }, 'Error resolving escalation');
       return `❌ Failed to resolve escalation #${escalationId}.`;
+    }
+  });
+
+  // ============================================
+  // BAN MANAGEMENT HANDLERS
+  // ============================================
+
+  handlers.set('ban_entity', async (input) => {
+    try {
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const banType = input.ban_type as string;
+      const entityId = input.entity_id as string;
+      const scope = input.scope as string;
+      const scopeTarget = input.scope_target as string | undefined;
+      const reason = input.reason as string;
+      const expiresInDays = input.expires_in_days as number | undefined;
+
+      const validBanTypes = ['user', 'organization', 'api_key'];
+      const validScopes = ['platform', 'registry_brand', 'registry_property'];
+      if (!validBanTypes.includes(banType)) {
+        return `Invalid ban_type. Must be one of: ${validBanTypes.join(', ')}`;
+      }
+      if (!validScopes.includes(scope)) {
+        return `Invalid scope. Must be one of: ${validScopes.join(', ')}`;
+      }
+
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        : undefined;
+
+      const adminUserId = memberContext?.workos_user?.workos_user_id || 'system:addie';
+      const adminEmail = memberContext?.workos_user?.email || 'addie@agenticadvertising.org';
+
+      const ban = await bDb.createBan({
+        ban_type: banType as any,
+        entity_id: entityId,
+        scope: scope as any,
+        scope_target: scopeTarget?.toLowerCase(),
+        banned_by_user_id: adminUserId,
+        banned_by_email: adminEmail,
+        reason,
+        expires_at: expiresAt,
+      });
+
+      const scopeLabel = scope === 'platform' ? 'platform-wide' : scope.replace('registry_', '') + ' registry edits';
+      let response = `**Ban created** (ID: \`${ban.id}\`)\n`;
+      response += `- **Type**: ${banType}\n`;
+      response += `- **Entity**: \`${entityId}\`\n`;
+      response += `- **Scope**: ${scopeLabel}`;
+      if (scopeTarget) response += ` (domain: ${scopeTarget})`;
+      response += `\n- **Reason**: ${reason}\n`;
+      if (expiresAt) response += `- **Expires**: ${expiresAt.toISOString()}\n`;
+      else response += `- **Duration**: Permanent\n`;
+
+      return response;
+    } catch (error: any) {
+      if (error?.constraint) {
+        return `❌ A ban already exists for this entity/scope combination.`;
+      }
+      logger.error({ error }, 'Error creating ban');
+      return `❌ Failed to create ban: ${error?.message || 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('unban_entity', async (input) => {
+    try {
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const banId = input.ban_id as string | undefined;
+      const banType = input.ban_type as string | undefined;
+      const entityId = input.entity_id as string | undefined;
+      const scope = input.scope as string | undefined;
+
+      if (banId) {
+        const removed = await bDb.removeBan(banId);
+        if (!removed) return `No ban found with ID \`${banId}\`.`;
+        return `**Ban removed** (ID: \`${banId}\`, ${removed.ban_type} ${removed.scope})`;
+      }
+
+      if (banType && entityId) {
+        const bans = await bDb.listBans({
+          ban_type: banType as any,
+          entity_id: entityId,
+          scope: scope as any,
+        });
+
+        if (bans.length === 0) return `❌ No active ban found for ${banType} \`${entityId}\`${scope ? ` with scope ${scope}` : ''}.`;
+
+        let response = '';
+        for (const ban of bans) {
+          await bDb.removeBan(ban.id);
+          response += `**Removed**: \`${ban.id}\` (${ban.scope}, reason: ${ban.reason})\n`;
+        }
+        return response;
+      }
+
+      return `❌ Provide either ban_id, or ban_type + entity_id to find the ban.`;
+    } catch (error) {
+      logger.error({ error }, 'Error removing ban');
+      return `❌ Failed to remove ban.`;
+    }
+  });
+
+  handlers.set('list_bans', async (input) => {
+    try {
+      const { bansDb: bDb } = await import('../../db/bans-db.js');
+      const bans = await bDb.listBans({
+        ban_type: input.ban_type as any,
+        scope: input.scope as any,
+        entity_id: input.entity_id as string | undefined,
+      });
+
+      if (bans.length === 0) return 'No active bans found.';
+
+      let response = `**Active bans** (${bans.length}):\n\n`;
+      for (const ban of bans) {
+        const scopeLabel = ban.scope === 'platform' ? 'Platform' : ban.scope.replace('registry_', '').charAt(0).toUpperCase() + ban.scope.replace('registry_', '').slice(1) + ' registry';
+        response += `- **\`${ban.id}\`** — ${ban.ban_type} \`${ban.entity_id}\`\n`;
+        response += `  Scope: ${scopeLabel}${ban.scope_target ? ` (${ban.scope_target})` : ''}\n`;
+        response += `  Reason: ${ban.reason}\n`;
+        if (ban.expires_at) response += `  Expires: ${new Date(ban.expires_at).toISOString()}\n`;
+        response += `  Created: ${new Date(ban.created_at).toISOString()} by ${ban.banned_by_email || ban.banned_by_user_id}\n\n`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing bans');
+      return `❌ Failed to list bans.`;
     }
   });
 

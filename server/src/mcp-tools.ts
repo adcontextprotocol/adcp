@@ -20,7 +20,7 @@ import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
 import { AdAgentsManager } from "./adagents-manager.js";
-import { registryBansDb } from "./db/registry-bans-db.js";
+import { bansDb } from "./db/bans-db.js";
 import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import type { MCPAuthContext } from "./mcp/auth.js";
@@ -1518,7 +1518,7 @@ export class MCPToolHandler {
           };
         }
 
-        const banCheck = await registryBansDb.isUserBanned('brand', authContext.sub, domain);
+        const banCheck = await bansDb.isUserBannedFromRegistry('registry_brand', authContext.sub, domain);
         if (banCheck.banned) {
           return {
             content: [{ type: "text", text: JSON.stringify({ error: "You are banned from editing brands", reason: banCheck.ban?.reason }) }],
@@ -1682,7 +1682,7 @@ export class MCPToolHandler {
           };
         }
 
-        const propBanCheck = await registryBansDb.isUserBanned('property', authContext.sub, publisherDomain);
+        const propBanCheck = await bansDb.isUserBannedFromRegistry('registry_property', authContext.sub, publisherDomain);
         if (propBanCheck.banned) {
           return {
             content: [{ type: "text", text: JSON.stringify({ error: "You are banned from editing properties", reason: propBanCheck.ban?.reason }) }],
