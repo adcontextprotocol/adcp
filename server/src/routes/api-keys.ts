@@ -73,7 +73,17 @@ async function callWidgetApi(
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
-  const data = response.ok ? await response.json() : await response.text();
+  const text = await response.text();
+  let data: unknown;
+  if (!text) {
+    data = null;
+  } else {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
   return { status: response.status, data };
 }
 
@@ -146,6 +156,11 @@ export function createApiKeysRouter(): Router {
           { userId: req.user!.id, organizationId, keyName: name },
           "API key created",
         );
+      } else {
+        logger.warn(
+          { userId: req.user!.id, organizationId, keyName: name, status, response: data },
+          "WorkOS API key creation failed",
+        );
       }
 
       res.status(status).json(data);
@@ -183,9 +198,18 @@ export function createApiKeysRouter(): Router {
           { userId: req.user!.id, organizationId, apiKeyId },
           "API key revoked",
         );
+      } else {
+        logger.warn(
+          { userId: req.user!.id, organizationId, apiKeyId, status },
+          "WorkOS API key revocation failed",
+        );
       }
 
-      res.status(status).json(data);
+      if (status === 204) {
+        res.status(204).end();
+      } else {
+        res.status(status).json(data);
+      }
     } catch (error) {
       logger.error({ err: error }, "Error revoking API key");
       res.status(500).json({
