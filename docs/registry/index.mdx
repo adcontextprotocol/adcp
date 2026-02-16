@@ -12,7 +12,7 @@ The AgenticAdvertising.org registry provides a public REST API for resolving bra
 https://agenticadvertising.org
 ```
 
-All endpoints listed here are **public and require no authentication**.
+Most endpoints are **public and require no authentication**. [Authenticated endpoints](#authenticated-endpoints) require a Bearer token.
 
 ## Quick Start
 
@@ -141,6 +141,113 @@ Bulk endpoints return `429 Too Many Requests` when the limit is exceeded.
 | GET | `/api/public/agent-formats` | Get creative formats from an agent |
 | GET | `/api/public/agent-products` | Get products from a sales agent |
 | GET | `/api/public/validate-publisher` | Validate a publisher domain |
+
+## Authentication
+
+Public endpoints (resolution, discovery, search) require no authentication. Write endpoints require a Bearer token issued to an AgenticAdvertising.org member organization.
+
+### Obtaining an API key
+
+1. Sign in at [agenticadvertising.org/dashboard](https://agenticadvertising.org/dashboard)
+2. Navigate to **API keys** in the sidebar
+3. Click **Create key** and copy the generated key
+
+### Using the API key
+
+Pass the key in the `Authorization` header:
+
+```
+Authorization: Bearer wos_api_key_...
+```
+
+### Authenticated Endpoints
+
+These endpoints require a valid API key.
+
+#### Brand Write
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/brands/discovered/community` | Submit a brand to the registry (pending review) |
+
+**Request body:**
+
+```json
+{
+  "domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "house_domain": "acmecorp.com",
+  "keller_type": "master",
+  "brand_manifest": {
+    "name": "Acme Corp",
+    "description": "A fictional company",
+    "logos": [{ "url": "https://acmecorp.com/logo.svg", "tags": ["icon"] }],
+    "colors": [{ "hex": "#FF5733", "type": "accent" }]
+  }
+}
+```
+
+Only `domain` is required. Submitted brands go through review before appearing in the registry.
+
+**Example:**
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/brands/discovered/community" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"acmecorp.com","brand_name":"Acme Corp"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/discovered/community",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      domain: "acmecorp.com",
+      brand_name: "Acme Corp",
+    }),
+  }
+);
+const result = await res.json();
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/brands/discovered/community",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"domain": "acmecorp.com", "brand_name": "Acme Corp"},
+).json()
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "brand": {
+    "domain": "acmecorp.com",
+    "brand_name": "Acme Corp",
+    "source_type": "community"
+  },
+  "review_status": "pending"
+}
+```
+
+### Error Responses
+
+| Status | Code | Description |
+|--------|------|-------------|
+| 401 | Unauthorized | Missing or invalid API key |
+| 403 | Forbidden | Valid key but insufficient permissions (e.g., not a member) |
+| 409 | Conflict | Brand already exists for this domain |
 
 ## Protocol vs REST API
 

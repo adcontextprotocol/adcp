@@ -34,7 +34,7 @@ import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -72,6 +72,7 @@ import { createCommunityRouters } from "./routes/community.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { createApiKeysRouter } from "./routes/api-keys.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
@@ -896,6 +897,9 @@ export class HTTPServer {
     this.app.use('/api/community', communityPublicRouter);
     this.app.use('/api/me', communityUserRouter);
 
+    // Mount API key management routes
+    this.app.use('/api/me/api-keys', createApiKeysRouter());
+
     // Mount events routes
     const { pageRouter: eventsPageRouter, adminApiRouter: eventsAdminApiRouter, publicApiRouter: eventsPublicApiRouter } = createEventsRouter();
     this.app.use('/admin', eventsPageRouter);               // Admin page: /admin/events
@@ -1382,6 +1386,7 @@ export class HTTPServer {
       res.redirect(301, `/dashboard/membership${query}`);
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
+    this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
 
     // My Content - unified CMS for all authenticated users
     this.app.get('/my-content', async (req, res) => {
@@ -1891,7 +1896,7 @@ export class HTTPServer {
     });
 
     // POST /api/brands/discovered/community - Create a new community brand (member-authenticated, pending review)
-    this.app.post('/api/brands/discovered/community', requireAuth, async (req, res) => {
+    this.app.post('/api/brands/discovered/community', requireAuth, brandCreationRateLimiter, async (req, res) => {
       try {
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {

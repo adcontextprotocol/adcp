@@ -155,9 +155,9 @@ export const ROUTING_RULES = {
       description: 'Learning about adagents.json format and setup',
     },
     membership: {
-      patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group'],
+      patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
       tools: ['get_my_profile', 'list_working_groups', 'join_working_group'],
-      description: 'AgenticAdvertising.org membership',
+      description: 'AgenticAdvertising.org membership and API key management',
     },
     find_help: {
       patterns: [

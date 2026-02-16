@@ -78,6 +78,7 @@
         items: [
           { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
           { href: '/dashboard/emails', label: 'Email Preferences', icon: '📧' },
+          { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
         ]
       }
     ],
