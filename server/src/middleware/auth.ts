@@ -332,6 +332,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     req.accessToken = 'workos-api-key';
     // Store API key info for permission checks
     (req as Request & { apiKey?: ValidatedApiKey }).apiKey = apiKey;
+    // API keys are org-scoped, so the caller is a member by definition
+    (req.user as unknown as Record<string, unknown>).isMember = true;
     return next();
   }
 

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API keys - Dashboard</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: var(--color-bg-page);
+    }
+
+    .page-header {
+      padding: 32px 40px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      color: var(--color-text-heading);
+    }
+
+    .page-header p {
+      margin: 0;
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .page-content {
+      padding: 32px 40px;
+      max-width: 800px;
+    }
+
+    .settings-section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .settings-section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .settings-section-header h2 {
+      margin: 0;
+      font-size: 16px;
+      color: var(--color-text-heading);
+    }
+
+    .settings-section-header p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .settings-section-body {
+      padding: 24px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--color-success-600);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    .toast.error {
+      background: var(--color-error-600);
+    }
+
+    /* Key list */
+    .key-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .key-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .key-row:first-child {
+      padding-top: 0;
+    }
+
+    .key-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .key-info p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+    }
+
+    .key-info code {
+      font-family: monospace;
+      font-size: 12px;
+      background: var(--color-bg-subtle);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state p {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--color-bg-card);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: var(--shadow-xl);
+    }
+
+    .modal h2 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      justify-content: flex-end;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    /* Created key display */
+    .created-key-display {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+
+    .created-key-display label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+
+    .created-key-value {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .created-key-value code {
+      flex: 1;
+      font-family: monospace;
+      font-size: 13px;
+      background: var(--color-bg-card);
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      word-break: break-all;
+    }
+
+    .created-key-warning {
+      margin-top: 12px;
+      padding: 12px;
+      background: var(--color-warning-50);
+      border-left: 4px solid var(--color-warning-500);
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--color-warning-700);
+    }
+
+    /* Usage hint */
+    .usage-hint {
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+
+    .usage-hint h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: var(--color-text-heading);
+    }
+
+    .usage-hint pre {
+      margin: 0;
+      padding: 12px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: 12px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    .usage-hint code {
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Create key modal -->
+  <div id="createModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Create API key</h2>
+      <div id="createForm">
+        <div class="form-group">
+          <label for="keyName">Key name</label>
+          <input type="text" id="keyName" placeholder="e.g., Production SDK, CI pipeline">
+        </div>
+        <div class="modal-buttons">
+          <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+          <button class="btn btn-primary" id="createBtn" onclick="createKey()">Create key</button>
+        </div>
+      </div>
+      <div id="createResult" style="display: none;">
+        <div class="created-key-display">
+          <label>API key</label>
+          <div class="created-key-value">
+            <code id="createdKeyValue"></code>
+            <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy</button>
+          </div>
+          <div class="created-key-warning">
+            Copy this key now. You won't be able to see it again.
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button class="btn btn-primary" onclick="closeCreateModal(); loadKeys();">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revoke key modal -->
+  <div id="revokeModal" class="modal-overlay">
+    <div class="modal">
+      <h2 style="color: var(--color-error-600);">Revoke API key</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: 16px;">
+        Are you sure you want to revoke <strong id="revokeKeyName"></strong>? Any applications using this key will lose access immediately.
+      </p>
+      <div class="modal-buttons">
+        <button class="btn btn-secondary" onclick="closeRevokeModal()">Cancel</button>
+        <button class="btn btn-danger" id="revokeBtn" onclick="confirmRevoke()">Revoke key</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <h1>API keys</h1>
+    <p>Manage API keys for programmatic access to the registry</p>
+  </div>
+
+  <div class="page-content">
+    <div id="loading" class="loading">Loading API keys...</div>
+
+    <div id="content" style="display: none;">
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <div>
+            <h2>Organization API keys</h2>
+            <p>Keys authenticate API requests on behalf of your organization</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openCreateModal()">Create key</button>
+        </div>
+        <div class="settings-section-body">
+          <div id="keysList"></div>
+        </div>
+      </div>
+
+      <div class="usage-hint">
+        <h3>Using your API key</h3>
+        <pre><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
+  -X POST https://agenticadvertising.org/api/brands/discovered/community \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"example.com","brand_name":"Example Corp"}'</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrg = null;
+    let revokeKeyId = null;
+
+    function getOrgId() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get('org') || localStorage.getItem('selectedOrgId');
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    async function loadKeys() {
+      const listEl = document.getElementById('keysList');
+
+      try {
+        const response = await fetch(`/api/me/api-keys?org=${encodeURIComponent(currentOrg.id)}`, {
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load API keys');
+        }
+
+        const data = await response.json();
+        const keys = data.data || [];
+
+        if (keys.length === 0) {
+          listEl.innerHTML = `
+            <div class="empty-state">
+              <p>No API keys yet</p>
+              <p>Create a key to access the registry API programmatically.</p>
+            </div>
+          `;
+          return;
+        }
+
+        listEl.innerHTML = keys.map(key => `
+          <div class="key-row">
+            <div class="key-info">
+              <h3>${escapeHtml(key.name)}</h3>
+              <p>
+                Created ${formatDate(key.createdAt)}
+                ${key.lastUsedAt ? ` · Last used ${formatDate(key.lastUsedAt)}` : ''}
+              </p>
+            </div>
+            <button class="btn btn-danger btn-sm" data-key-id="${escapeHtml(key.id)}" data-key-name="${escapeHtml(key.name)}">Revoke</button>
+          </div>
+        `).join('');
+
+        // Bind revoke buttons via event delegation
+        listEl.querySelectorAll('[data-key-id]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            openRevokeModal(btn.dataset.keyId, btn.dataset.keyName);
+          });
+        });
+      } catch (error) {
+        console.error('Error loading keys:', error);
+        listEl.innerHTML = '<div class="empty-state"><p>Failed to load API keys</p></div>';
+      }
+    }
+
+    function openCreateModal() {
+      document.getElementById('keyName').value = '';
+      document.getElementById('createForm').style.display = 'block';
+      document.getElementById('createResult').style.display = 'none';
+      document.getElementById('createBtn').disabled = false;
+      document.getElementById('createBtn').textContent = 'Create key';
+      document.getElementById('createModal').classList.add('show');
+      document.getElementById('keyName').focus();
+    }
+
+    function closeCreateModal() {
+      document.getElementById('createdKeyValue').textContent = '';
+      document.getElementById('createModal').classList.remove('show');
+    }
+
+    async function createKey() {
+      const name = document.getElementById('keyName').value.trim();
+      if (!name) {
+        showToast('Key name is required', true);
+        return;
+      }
+
+      const btn = document.getElementById('createBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        const response = await fetch(`/api/me/api-keys?org=${encodeURIComponent(currentOrg.id)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name, permissions: [] }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || data.error || 'Failed to create key');
+        }
+
+        const data = await response.json();
+
+        // Show the key value (only shown once)
+        document.getElementById('createdKeyValue').textContent = data.value || '(key not returned)';
+        document.getElementById('createForm').style.display = 'none';
+        document.getElementById('createResult').style.display = 'block';
+      } catch (error) {
+        showToast(error.message || 'Failed to create API key', true);
+        btn.disabled = false;
+        btn.textContent = 'Create key';
+      }
+    }
+
+    function copyKey() {
+      const keyValue = document.getElementById('createdKeyValue').textContent;
+      navigator.clipboard.writeText(keyValue).then(() => {
+        showToast('API key copied to clipboard');
+      }).catch(() => {
+        showToast('Failed to copy - please select and copy manually', true);
+      });
+    }
+
+    function openRevokeModal(keyId, keyName) {
+      revokeKeyId = keyId;
+      document.getElementById('revokeKeyName').textContent = keyName;
+      document.getElementById('revokeBtn').disabled = false;
+      document.getElementById('revokeBtn').textContent = 'Revoke key';
+      document.getElementById('revokeModal').classList.add('show');
+    }
+
+    function closeRevokeModal() {
+      document.getElementById('revokeModal').classList.remove('show');
+      revokeKeyId = null;
+    }
+
+    async function confirmRevoke() {
+      if (!revokeKeyId) return;
+
+      const btn = document.getElementById('revokeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Revoking...';
+
+      try {
+        const response = await fetch(`/api/me/api-keys/${revokeKeyId}?org=${encodeURIComponent(currentOrg.id)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to revoke key');
+        }
+
+        closeRevokeModal();
+        showToast('API key revoked');
+        loadKeys();
+      } catch (error) {
+        showToast(error.message || 'Failed to revoke API key', true);
+        btn.disabled = false;
+        btn.textContent = 'Revoke key';
+      }
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Initialize
+    async function init() {
+      try {
+        const response = await fetch('/api/me', { credentials: 'include' });
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+            return;
+          }
+          throw new Error('Failed to load user data');
+        }
+
+        const data = await response.json();
+        const orgId = getOrgId();
+        currentOrg = data.organizations?.find(o => o.id === orgId) || data.organizations?.[0];
+
+        if (!currentOrg) {
+          document.getElementById('loading').innerHTML = 'No organization found. <a href="/dashboard">Go to dashboard</a>';
+          return;
+        }
+
+        // Initialize sidebar
+        DashboardNav.init({
+          showOrgSwitcher: data.organizations?.length > 1,
+          currentOrgName: currentOrg.name,
+          showAdmin: data.user?.isAdmin,
+        });
+
+        if (data.organizations?.length > 1) {
+          DashboardNav.setOrgOptions(data.organizations, currentOrg.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            window.location.href = '/dashboard/api-keys?org=' + newOrgId;
+          });
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+
+        await loadKeys();
+      } catch (error) {
+        console.error('Error initializing:', error);
+        document.getElementById('loading').innerHTML = 'Error loading page. Please refresh.';
+      }
+    }
+
+    // Close modals on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeCreateModal();
+        closeRevokeModal();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

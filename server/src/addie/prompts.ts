@@ -97,6 +97,13 @@ When there is an active SI session, use send_to_si_agent for EVERY user message 
 **Content:**
 - list_perspectives: Browse community articles
 
+**API Keys:**
+API key management is done through the member dashboard, not through Addie tools.
+- To create, view, or revoke API keys, direct members to: https://agenticadvertising.org/dashboard/api-keys
+- API keys are used for programmatic access to authenticated registry endpoints (e.g., submitting brands via REST API)
+- Members must be signed in to manage API keys
+- You cannot create or manage API keys on behalf of users - always link them to the dashboard
+
 **Account Linking:**
 - get_account_link: Generate a sign-in link
 
