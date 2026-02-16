@@ -291,7 +291,7 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
     url: 'https://github.com/prebid/Prebid.js',
     name: 'Prebid.js',
     description: 'Client-side header bidding library with 200+ bid adapters',
-    indexPatterns: ['README.md', 'CONTRIBUTING.md'],
+    indexPatterns: ['README.md', 'CONTRIBUTING.md', 'modules/**/*.md'],
     branch: 'master',
   },
   {
@@ -300,6 +300,14 @@ const EXTERNAL_REPOS: ExternalRepo[] = [
     name: 'Prebid Server',
     description: 'Server-side header bidding for mobile, AMP, CTV, DOOH',
     indexPatterns: ['README.md', 'docs/**/*.md'],
+    branch: 'master',
+  },
+  {
+    id: 'prebid-docs',
+    url: 'https://github.com/prebid/prebid.github.io',
+    name: 'Prebid Documentation',
+    description: 'Official Prebid documentation site - configuration guides, bidder adapters, ad ops workflows, GAM integration, troubleshooting, Prebid Server, Prebid Mobile, and video',
+    indexPatterns: ['**/*.md'],
     branch: 'master',
   },
 
@@ -786,6 +794,22 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   deploy: ['deployment', 'hosting', 'cloud', 'production'],
   config: ['configure', 'configuration', 'environment', 'settings'],
   run: ['start', 'execute', 'launch'],
+  // Prebid ecosystem
+  prebid: ['header bidding', 'prebid.js', 'prebid server', 'pbs', 'pbjs'],
+  'header bidding': ['prebid', 'prebid.js'],
+  bidder: ['adapter', 'bid adapter', 'demand partner'],
+  adapter: ['bidder', 'bid adapter'],
+  gam: ['google ad manager', 'dfp', 'ad server'],
+  dfp: ['gam', 'google ad manager'],
+  gdpr: ['tcf', 'consent', 'cmp'],
+  consent: ['gdpr', 'tcf', 'cmp', 'gpp'],
+  floors: ['price floors', 'floor price', 'bid floor'],
+  'price floors': ['floors', 'floor price', 'bid floor'],
+  currency: ['currency conversion', 'currency module'],
+  'user id': ['identity', 'userid', 'uid2', 'id module'],
+  video: ['video ads', 'outstream', 'instream', 'vast'],
+  pbjs: ['prebid.js', 'prebid'],
+  pbs: ['prebid server', 'server-side bidding'],
 };
 
 /**
