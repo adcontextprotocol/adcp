@@ -304,6 +304,48 @@ registry.registerPath({
   },
 });
 
+registry.registerPath({
+  method: "post",
+  path: "/api/properties/save",
+  operationId: "saveProperty",
+  summary: "Save property",
+  description:
+    "Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
+  tags: ["Property Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            publisher_domain: z.string().openapi({ example: "examplepub.com" }),
+            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).openapi({ example: [{ url: "https://agent.example.com" }] }),
+            properties: z.array(z.object({ type: z.string(), name: z.string() })).optional().openapi({ example: [{ type: "website", name: "Example Publisher" }] }),
+            contact: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
+            source_type: z.enum(["community", "enriched"]).optional().openapi({ description: "Defaults to 'community'" }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Property saved or updated",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            message: z.string(),
+            id: z.string(),
+            revision_number: z.number().int().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Missing required fields", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Cannot edit authoritative property", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 // Agent Discovery
 registry.registerPath({
   method: "get",
@@ -1098,6 +1140,70 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to bulk resolve properties");
       return res.status(500).json({ error: "Failed to bulk resolve properties" });
+    }
+  });
+
+  router.post("/properties/save", async (req, res) => {
+    try {
+      const { publisher_domain, authorized_agents, properties, contact, source_type } = req.body;
+
+      if (!publisher_domain || typeof publisher_domain !== "string") {
+        return res.status(400).json({ error: "publisher_domain is required" });
+      }
+      if (!Array.isArray(authorized_agents)) {
+        return res.status(400).json({ error: "authorized_agents array is required" });
+      }
+
+      const adagentsJson: Record<string, unknown> = {
+        $schema: "https://adcontextprotocol.org/schemas/v1/adagents.json",
+        authorized_agents,
+        properties: properties || [],
+      };
+      if (contact) {
+        adagentsJson.contact = contact;
+      }
+
+      const existing = await propertyDb.getHostedPropertyByDomain(publisher_domain);
+
+      if (existing) {
+        const discovered = await propertyDb.getDiscoveredPropertiesByDomain(publisher_domain);
+        if (discovered.length > 0) {
+          return res.status(409).json({
+            error: "Cannot edit authoritative property (managed via adagents.json)",
+            domain: publisher_domain,
+          });
+        }
+
+        const { property, revision_number } = await propertyDb.editCommunityProperty(publisher_domain, {
+          adagents_json: adagentsJson,
+          edit_summary: "API: updated property data",
+          editor_user_id: "system:api",
+          editor_email: "api@agenticadvertising.org",
+          editor_name: "Registry API",
+        });
+
+        return res.json({
+          success: true,
+          message: `Property "${publisher_domain}" updated in registry (revision ${revision_number})`,
+          id: property.id,
+          revision_number,
+        });
+      }
+
+      const saved = await propertyDb.createHostedProperty({
+        publisher_domain,
+        adagents_json: adagentsJson,
+        source_type: (source_type as "community" | "enriched") || "community",
+      });
+
+      return res.json({
+        success: true,
+        message: `Hosted property created for ${publisher_domain}`,
+        id: saved.id,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to save property");
+      return res.status(500).json({ error: "Failed to save property" });
     }
   });
 
