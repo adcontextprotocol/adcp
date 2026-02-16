@@ -183,6 +183,7 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
           { meetingId: meeting.id, totalAttendees: filtered.length, max: MAX_CALENDAR_INVITEES },
           'Attendee count exceeds calendar invite limit — truncating'
         );
+        errors.push(`Calendar invites capped at ${MAX_CALENDAR_INVITEES} of ${filtered.length} attendees`);
       }
       const attendeeEmails = filtered
         .slice(0, MAX_CALENDAR_INVITEES)
