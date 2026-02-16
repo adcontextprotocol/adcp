@@ -266,7 +266,7 @@ Example prompts this handles:
         invite_mode: {
           type: 'string',
           enum: ['all_members', 'topic_subscribers', 'slack_channel', 'none'],
-          description: 'Who to invite: all_members (default - invite everyone in the working group), topic_subscribers (only those subscribed to the topics), slack_channel (invite members of a specific Slack channel - requires invite_slack_channel_id), or none (opt-in - create meeting but let people join themselves)',
+          description: 'Who to invite: all_members (default - invite ALL members of the working group, which may be hundreds of people), topic_subscribers (only those subscribed to the topics), slack_channel (invite members of a specific Slack channel - requires invite_slack_channel_id), or none (opt-in - create meeting but let people join themselves)',
         },
         invite_slack_channel_id: {
           type: 'string',
@@ -303,7 +303,7 @@ Example prompts this handles:
   },
   {
     name: 'list_upcoming_meetings',
-    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Use my_committees_only to filter to committees the user is a member of.`,
+    description: `List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -448,7 +448,15 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
   },
   {
     name: 'add_meeting_attendee',
-    description: `Add someone to a meeting. Use this when someone asks to add a specific person to a scheduled meeting. When add_to_series is true, adds them to all upcoming meetings in the same series.`,
+    description: `Add a person to an existing meeting by email. Call this once per person. Use list_upcoming_meetings first to get the meeting_id.
+
+Example: "add Karen, Brian, and Jonathan to the call" requires:
+1. list_upcoming_meetings to find the meeting_id
+2. add_meeting_attendee for Karen
+3. add_meeting_attendee for Brian
+4. add_meeting_attendee for Jonathan
+
+When add_to_series is true, adds them to all upcoming meetings in the same series.`,
     input_schema: {
       type: 'object' as const,
       properties: {

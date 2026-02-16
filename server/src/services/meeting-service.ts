@@ -32,6 +32,10 @@ const logger = createLogger('meeting-service');
 // Host email for Zoom meetings
 const ZOOM_HOST_EMAIL = process.env.ZOOM_HOST_EMAIL || 'addie@agenticadvertising.org';
 
+// Guard against blasting calendar invites to an entire large working group.
+// Google Calendar has practical limits on sendUpdates:'all' and Zoom caps at 300-1000.
+const MAX_CALENDAR_INVITEES = 200;
+
 const meetingsDb = new MeetingsDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 
@@ -171,10 +175,18 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
   let calendarEvent: calendar.CalendarEvent | undefined;
   if (options.sendCalendarInvites !== false && calendar.isGoogleCalendarConfigured()) {
     try {
-      // Get attendees from database
+      // Get attendees from database, capped to avoid Google Calendar API failures
       const attendees = await meetingsDb.getAttendeesForMeeting(meeting.id);
-      const attendeeEmails = attendees
-        .filter(a => a.email)
+      const filtered = attendees.filter(a => a.email);
+      if (filtered.length > MAX_CALENDAR_INVITEES) {
+        logger.warn(
+          { meetingId: meeting.id, totalAttendees: filtered.length, max: MAX_CALENDAR_INVITEES },
+          'Attendee count exceeds calendar invite limit — truncating'
+        );
+        errors.push(`Calendar invites capped at ${MAX_CALENDAR_INVITEES} of ${filtered.length} attendees`);
+      }
+      const attendeeEmails = filtered
+        .slice(0, MAX_CALENDAR_INVITEES)
         .map(a => ({
           email: a.email!,
           displayName: a.name,

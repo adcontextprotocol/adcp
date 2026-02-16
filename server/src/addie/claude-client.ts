@@ -87,6 +87,7 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
   { pattern: /meeting\s+(?:scheduled|created)\s+successfully/i, expectedTools: ['schedule_meeting'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
 ];
 
 /**
