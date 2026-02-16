@@ -54,6 +54,26 @@ export interface PersonListItem {
   connection_status?: string | null;
 }
 
+export interface PersonPerspective {
+  id: string;
+  slug: string;
+  title: string;
+  content_type: 'article' | 'link';
+  category: string | null;
+  excerpt: string | null;
+  external_url: string | null;
+  external_site_name: string | null;
+  published_at: string;
+}
+
+export interface RegistryContribution {
+  contribution_type: 'brand_edit' | 'property_edit' | 'brand_create' | 'property_create';
+  domain: string;
+  summary: string;
+  created_at: string;
+  revision_number: number | null;
+}
+
 export interface PersonDetail extends PersonListItem {
   interests: string[];
   linkedin_url: string | null;
@@ -64,6 +84,8 @@ export interface PersonDetail extends PersonListItem {
   badges: Badge[];
   working_groups: { id: string; name: string; slug: string }[];
   events: { id: string; title: string; start_time: string }[];
+  perspectives: PersonPerspective[];
+  registry_contributions: RegistryContribution[];
   profile_completeness: number;
   connection_status: string | null;
   connection_id: string | null;
@@ -326,11 +348,13 @@ export class CommunityDatabase {
     if (!user) return null;
 
     // Fetch enrichments in parallel
-    const [points, badges, workingGroups, events, connectionStatus] = await Promise.all([
+    const [points, badges, workingGroups, events, perspectives, registryContributions, connectionStatus] = await Promise.all([
       this.getUserPoints(user.workos_user_id),
       this.getUserBadges(user.workos_user_id),
       this.getUserWorkingGroups(user.workos_user_id),
       this.getUserEvents(user.workos_user_id),
+      this.getUserPublishedContent(user.workos_user_id),
+      this.getUserRegistryContributions(user.workos_user_id),
       viewerUserId ? this.getConnectionStatus(viewerUserId, user.workos_user_id) : Promise.resolve(null),
     ]);
 
@@ -341,6 +365,8 @@ export class CommunityDatabase {
       badges,
       working_groups: workingGroups,
       events,
+      perspectives,
+      registry_contributions: registryContributions,
       profile_completeness: this.getProfileCompleteness(user),
       connection_status: connectionStatus?.status || null,
       connection_id: connectionStatus?.id || null,
@@ -368,6 +394,47 @@ export class CommunityDatabase {
        WHERE er.workos_user_id = $1
        ORDER BY e.start_time DESC
        LIMIT 10`,
+      [userId]
+    );
+    return result.rows;
+  }
+
+  async getUserPublishedContent(userId: string): Promise<PersonPerspective[]> {
+    const result = await query<PersonPerspective>(
+      `SELECT DISTINCT p.id, p.slug, p.title, p.content_type, p.category,
+              p.excerpt, p.external_url, p.external_site_name, p.published_at
+       FROM perspectives p
+       LEFT JOIN content_authors ca ON ca.perspective_id = p.id
+       WHERE p.status = 'published'
+         AND (p.author_user_id = $1 OR p.proposer_user_id = $1 OR ca.user_id = $1)
+       ORDER BY p.published_at DESC
+       LIMIT 20`,
+      [userId]
+    );
+    return result.rows;
+  }
+
+  async getUserRegistryContributions(userId: string): Promise<RegistryContribution[]> {
+    const result = await query<RegistryContribution>(
+      `SELECT * FROM (
+        SELECT 'brand_edit' as contribution_type, br.entity_domain as domain,
+               br.edit_summary as summary, br.created_at, br.revision_number
+        FROM brand_revisions br WHERE br.editor_user_id = $1
+        UNION ALL
+        SELECT 'property_edit' as contribution_type, pr.entity_domain as domain,
+               pr.edit_summary as summary, pr.created_at, pr.revision_number
+        FROM property_revisions pr WHERE pr.editor_user_id = $1
+        UNION ALL
+        SELECT 'brand_create' as contribution_type, hb.domain,
+               'Created brand listing' as summary, hb.created_at, NULL as revision_number
+        FROM hosted_brands hb WHERE hb.created_by_user_id = $1
+        UNION ALL
+        SELECT 'property_create' as contribution_type, hp.domain,
+               'Created property listing' as summary, hp.created_at, NULL as revision_number
+        FROM hosted_properties hp WHERE hp.created_by_user_id = $1
+      ) contributions
+      ORDER BY created_at DESC
+      LIMIT 20`,
       [userId]
     );
     return result.rows;

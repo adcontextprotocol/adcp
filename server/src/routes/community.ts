@@ -1,15 +1,22 @@
 import { Router } from "express";
 import { createLogger } from "../logger.js";
 import { requireAuth } from "../middleware/auth.js";
-import { CommunityDatabase } from "../db/community-db.js";
+import { CommunityDatabase, type CommunityProfile } from "../db/community-db.js";
+import { MemberDatabase } from "../db/member-db.js";
+import { OrganizationDatabase } from "../db/organization-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { sendDirectMessage } from "../slack/client.js";
+import { query } from "../db/client.js";
+import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 
 const logger = createLogger("community-routes");
 
 export interface CommunityRoutesConfig {
   communityDb: CommunityDatabase;
   slackDb?: SlackDatabase;
+  memberDb?: MemberDatabase;
+  orgDb?: OrganizationDatabase;
+  invalidateMemberContextCache?: () => void;
 }
 
 /**
@@ -17,7 +24,7 @@ export interface CommunityRoutesConfig {
  * Returns publicRouter (mounted at /api/community) and userRouter (mounted at /api/me).
  */
 export function createCommunityRouters(config: CommunityRoutesConfig) {
-  const { communityDb, slackDb } = config;
+  const { communityDb, slackDb, memberDb, orgDb, invalidateMemberContextCache } = config;
   const publicRouter = Router();
   const userRouter = Router();
 
@@ -242,6 +249,34 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         }
       }
 
+      // Validate member-directory-only fields (synced to member_profiles for individual accounts)
+      if (req.body.offerings !== undefined) {
+        if (!Array.isArray(req.body.offerings) ||
+            !req.body.offerings.every((o: unknown) => typeof o === 'string' && VALID_MEMBER_OFFERINGS.includes(o as any))) {
+          return res.status(400).json({ error: 'Invalid offerings' });
+        }
+      }
+      if (req.body.contact_email !== undefined && typeof req.body.contact_email === 'string' && req.body.contact_email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(req.body.contact_email)) {
+          return res.status(400).json({ error: 'Invalid contact email' });
+        }
+      }
+      if (req.body.contact_phone !== undefined && typeof req.body.contact_phone === 'string' && req.body.contact_phone) {
+        if (req.body.contact_phone.length > 30 || !/^[+\d\s()./-]+$/.test(req.body.contact_phone)) {
+          return res.status(400).json({ error: 'Invalid contact phone' });
+        }
+      }
+      if (req.body.contact_website !== undefined && typeof req.body.contact_website === 'string' && req.body.contact_website) {
+        try {
+          const parsed = new URL(req.body.contact_website);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return res.status(400).json({ error: 'contact_website must be an HTTP or HTTPS URL' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'contact_website must be a valid URL' });
+        }
+      }
+
       // Check if github_username is being set for the first time (for one-time points award)
       const awardGithubPoints = updates.github_username
         ? !(await communityDb.getProfile(user.id))?.github_username
@@ -261,6 +296,21 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
       communityDb.checkAndAwardBadges(user.id, 'profile').catch(
         err => logger.error({ err }, 'Badge check failed')
       );
+
+      // For individual accounts, sync community profile → member_profiles
+      if (memberDb && orgDb) {
+        const memberFields: MemberDirectoryFields = {
+          offerings: Array.isArray(req.body.offerings) ? req.body.offerings as MemberOffering[] : undefined,
+          contact_email: typeof req.body.contact_email === 'string' ? req.body.contact_email : undefined,
+          contact_website: typeof req.body.contact_website === 'string' ? req.body.contact_website : undefined,
+          contact_phone: typeof req.body.contact_phone === 'string' ? req.body.contact_phone : undefined,
+        };
+        try {
+          await syncIndividualMemberProfile(user.id, profile, memberFields, memberDb, orgDb, invalidateMemberContextCache);
+        } catch (err) {
+          logger.error({ err }, 'Member profile sync failed');
+        }
+      }
 
       res.json(profile);
     } catch (error: any) {
@@ -355,4 +405,69 @@ async function notifyConnectionAccepted(
   const text = `${name} accepted your connection request on the AgenticAdvertising.org community!\n\nView your connections: https://agenticadvertising.org/community/connections`;
 
   await sendDirectMessage(mapping.slack_user_id, { text });
+}
+
+/**
+ * For individual (personal) accounts, sync community profile fields to member_profiles
+ * so the member directory listing stays up to date from a single profile form.
+ */
+interface MemberDirectoryFields {
+  offerings?: MemberOffering[];
+  contact_email?: string;
+  contact_website?: string;
+  contact_phone?: string;
+}
+
+async function syncIndividualMemberProfile(
+  userId: string,
+  communityProfile: CommunityProfile,
+  memberFields: MemberDirectoryFields,
+  memberDb: MemberDatabase,
+  orgDb: OrganizationDatabase,
+  invalidateMemberContextCache?: () => void,
+): Promise<void> {
+  // Look up user's org
+  const userRow = await query<{ primary_organization_id: string | null; first_name: string; last_name: string }>(
+    'SELECT primary_organization_id, first_name, last_name FROM users WHERE workos_user_id = $1',
+    [userId]
+  );
+  const user = userRow.rows[0];
+  if (!user?.primary_organization_id) return;
+
+  // Only sync for personal/individual orgs
+  const org = await orgDb.getOrganization(user.primary_organization_id);
+  if (!org?.is_personal) return;
+
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Member';
+
+  // Build mapped fields for member_profiles
+  const memberUpdates: Record<string, unknown> = {
+    display_name: displayName,
+    tagline: communityProfile.headline || null,
+    description: communityProfile.bio || null,
+    logo_url: communityProfile.avatar_url || null,
+    linkedin_url: communityProfile.linkedin_url || null,
+    twitter_url: communityProfile.twitter_url || null,
+  };
+
+  if (memberFields.contact_email !== undefined) memberUpdates.contact_email = memberFields.contact_email;
+  if (memberFields.contact_website !== undefined) memberUpdates.contact_website = memberFields.contact_website;
+  if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
+
+  // Only sync if a member profile already exists — don't auto-create
+  const existingProfile = await memberDb.getProfileByOrgId(user.primary_organization_id);
+  if (!existingProfile) return;
+
+  // Merge offerings: the form only edits individual-relevant offerings (consulting, other).
+  // Preserve any other offerings the existing profile has (e.g. data_provider).
+  if (memberFields.offerings !== undefined) {
+    const individualOfferings: MemberOffering[] = ['consulting', 'other'];
+    const preserved = (existingProfile.offerings || []).filter(
+      (o: MemberOffering) => !individualOfferings.includes(o)
+    );
+    memberUpdates.offerings = [...preserved, ...memberFields.offerings];
+  }
+
+  await memberDb.updateProfileByOrgId(user.primary_organization_id, memberUpdates);
+  invalidateMemberContextCache?.();
 }
