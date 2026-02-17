@@ -347,7 +347,7 @@
         <!-- Search and Filters -->
         <div class="search-filters">
             <div class="search-box">
-                <input type="text" id="search-input" placeholder="Search by brand name or domain..." onkeyup="filterBrands()">
+                <input type="text" id="search-input" placeholder="Search by brand name or domain..." oninput="onSearchInput()">
             </div>
             <div class="filter-row">
                 <div class="filter-group">
@@ -376,18 +376,25 @@
 
     <script type="module">
         let brands = [];
-        let filters = { type: 'house', search: '' };
+        let filters = { type: 'house' };
 
         window.addEventListener('DOMContentLoaded', async () => {
             await loadBrands();
         });
 
-        async function loadBrands() {
+        let activeController = null;
+        async function loadBrands(search) {
+            if (activeController) activeController.abort();
+            activeController = new AbortController();
+
             const grid = document.getElementById('brands-grid');
             grid.innerHTML = renderLoadingSkeleton(6);
 
             try {
-                const response = await fetch('/api/brands/registry');
+                const params = new URLSearchParams();
+                if (search) params.set('search', search);
+                const qs = params.toString();
+                const response = await fetch(`/api/brands/registry${qs ? '?' + qs : ''}`, { signal: activeController.signal });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 brands = data.brands || [];
@@ -402,6 +409,7 @@
 
                 renderBrands();
             } catch (error) {
+                if (error.name === 'AbortError') return;
                 console.error('Failed to load brands:', error);
                 grid.innerHTML = '<div class="empty-state"><div class="empty-state__title">Failed to load brands</div></div>';
             }
@@ -444,12 +452,6 @@
                 if (filters.type === 'house' && brand.keller_type !== 'master' && brand.keller_type !== 'independent') return false;
                 if (filters.type === 'sub_brand' && brand.keller_type !== 'sub_brand' && brand.keller_type !== 'endorsed') return false;
                 if (filters.type === 'brand_json' && brand.source !== 'brand_json' && brand.source !== 'hosted') return false;
-                if (filters.search) {
-                    const q = filters.search.toLowerCase();
-                    if (!brand.brand_name?.toLowerCase().includes(q) &&
-                        !brand.domain?.toLowerCase().includes(q) &&
-                        !brand.house_domain?.toLowerCase().includes(q)) return false;
-                }
                 return true;
             });
 
@@ -539,9 +541,11 @@
             renderBrands();
         };
 
-        window.filterBrands = function() {
-            filters.search = document.getElementById('search-input').value;
-            renderBrands();
+        let searchTimeout = null;
+        window.onSearchInput = function() {
+            clearTimeout(searchTimeout);
+            const value = document.getElementById('search-input').value.trim();
+            searchTimeout = setTimeout(() => loadBrands(value || undefined), 300);
         };
 
         function escapeHtml(str) {
