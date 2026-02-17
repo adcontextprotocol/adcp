@@ -417,19 +417,19 @@ export class CommunityDatabase {
   async getUserRegistryContributions(userId: string): Promise<RegistryContribution[]> {
     const result = await query<RegistryContribution>(
       `SELECT * FROM (
-        SELECT 'brand_edit' as contribution_type, br.entity_domain as domain,
+        SELECT 'brand_edit' as contribution_type, br.brand_domain as domain,
                br.edit_summary as summary, br.created_at, br.revision_number
         FROM brand_revisions br WHERE br.editor_user_id = $1
         UNION ALL
-        SELECT 'property_edit' as contribution_type, pr.entity_domain as domain,
+        SELECT 'property_edit' as contribution_type, pr.publisher_domain as domain,
                pr.edit_summary as summary, pr.created_at, pr.revision_number
         FROM property_revisions pr WHERE pr.editor_user_id = $1
         UNION ALL
-        SELECT 'brand_create' as contribution_type, hb.domain,
+        SELECT 'brand_create' as contribution_type, hb.brand_domain as domain,
                'Created brand listing' as summary, hb.created_at, NULL as revision_number
         FROM hosted_brands hb WHERE hb.created_by_user_id = $1
         UNION ALL
-        SELECT 'property_create' as contribution_type, hp.domain,
+        SELECT 'property_create' as contribution_type, hp.publisher_domain as domain,
                'Created property listing' as summary, hp.created_at, NULL as revision_number
         FROM hosted_properties hp WHERE hp.created_by_user_id = $1
       ) contributions
