@@ -105,7 +105,7 @@ Contains the full brand hierarchy with all brands and properties:
 }
 ```
 
-## House Definition
+## House definition
 
 The house object represents the corporate entity:
 
@@ -116,7 +116,7 @@ The house object represents the corporate entity:
 | `names` | array | No | Localized names |
 | `architecture` | enum | No | `branded_house`, `house_of_brands`, or `hybrid` |
 
-## Brand Definition
+## Brand definition
 
 Each brand in the `brands` array:
 
@@ -162,7 +162,7 @@ Brand architecture classifications from marketing theory:
 | `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately from house | Converse |
 
-## Property Definition
+## Property definition
 
 Properties are digital touchpoints owned by brands:
 
@@ -186,7 +186,7 @@ Matches AdCP property-type enum:
 - `radio`
 - `streaming_audio`
 
-## Resolution Algorithm
+## Resolution algorithm
 
 To resolve a domain to a canonical brand:
 
@@ -201,7 +201,7 @@ To resolve a domain to a canonical brand:
 
 Maximum redirect depth: 3 hops.
 
-## Complete Examples
+## Complete examples
 
 ### Small Business
 
@@ -316,7 +316,7 @@ Recommended cache TTLs:
 - Redirect files: 24 hours
 - Failed lookups: 1 hour
 
-## Best Practices
+## Best practices
 
 1. **Start simple**: Begin with minimal brand.json and add complexity as needed
 2. **Use redirects for subsidiaries**: Point brand domains to house domain

@@ -32,7 +32,7 @@ The Brand Protocol addresses buy-side identity in advertising, providing the sam
 
 This parallel structure makes brands first-class citizens in AdCP.
 
-## How It Works
+## How it works
 
 Brands host a `brand.json` file at `/.well-known/brand.json` on their domain. The file can take one of four forms:
 
@@ -62,7 +62,7 @@ sequenceDiagram
     end
 ```
 
-## Brand Architecture
+## Brand architecture
 
 The protocol supports Keller's brand architecture models:
 
@@ -73,7 +73,7 @@ The protocol supports Keller's brand architecture models:
 | `endorsed` | Independent identity, backed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately | Converse under Nike, Inc. |
 
-## Example: House Portfolio
+## Example: house portfolio
 
 A house domain with multiple brands:
 
@@ -110,7 +110,7 @@ A house domain with multiple brands:
 }
 ```
 
-## Example: Brand Agent
+## Example: brand agent
 
 A brand with an MCP agent that provides brand information:
 
@@ -127,7 +127,7 @@ A brand with an MCP agent that provides brand information:
 
 The agent implements `get_brand_manifest({ house, brand_id })` to return brand manifest data.
 
-## Example: House Redirect
+## Example: house redirect
 
 A brand domain pointing to its house:
 
@@ -138,7 +138,7 @@ A brand domain pointing to its house:
 }
 ```
 
-## Resolution Flow
+## Resolution flow
 
 Given any domain, the protocol resolves to a canonical brand:
 
@@ -158,8 +158,8 @@ There are three ways to obtain a brand manifest, each returning the same data st
 
 | Source | How it works | When to use |
 |--------|-------------|-------------|
-| `resolve_brand()` | Fetches `/.well-known/brand.json`, extracts the manifest | Brand publishes a `brand.json` file |
-| `research_brand()` | Fetches from Brandfetch, saves manifest to registry | No `brand.json` available, need enrichment |
+| `resolve_brand` | Fetches `/.well-known/brand.json`, extracts the manifest | Brand publishes a `brand.json` file |
+| `research_brand` | Fetches from Brandfetch, saves manifest to registry | No `brand.json` available, need enrichment |
 | Registry lookup | Returns community or enriched manifest from the registry | Brand already registered |
 
 Regardless of source, the result is a **brand manifest** that can be passed to any AdCP task.
@@ -190,7 +190,7 @@ When aggregating brand performance:
 2. Group by house for corporate-level reporting
 3. Optionally include/exclude sub-brands
 
-## Brand Context in Requests
+## Brand context in requests
 
 The Brand Protocol is **additive**, not required. Agents should accept brand context in multiple ways:
 
@@ -221,9 +221,9 @@ Brand information changes infrequently (logo updates, guideline refreshes). Reco
 
 Agents should respect HTTP caching headers when fetching brand.json files.
 
-## Future Considerations
+## Future considerations
 
-### Digital Asset Management (DAM)
+### Digital asset management (DAM)
 
 For brands requiring fine-grained control over asset usage, the `brand_agent` variant provides a natural integration point for DAM systems. Agents can:
 - Enforce access control per asset
@@ -233,7 +233,7 @@ For brands requiring fine-grained control over asset usage, the `brand_agent` va
 
 This is optional—brands publishing static brand.json files grant implied permission for compliant creative use. DAM integration is for enterprises with complex licensing requirements.
 
-## MCP Tools
+## MCP tools
 
 The Brand Protocol provides MCP tools for programmatic access:
 
@@ -243,7 +243,7 @@ The Brand Protocol provides MCP tools for programmatic access:
 | `validate_brand_json` | Validate a domain's brand.json |
 | `validate_brand_agent` | Test brand agent reachability |
 
-## Learn More
+## Learn more
 
 <CardGroup cols={2}>
   <Card title="brand.json Spec" icon="code" href="/docs/brand-protocol/brand-json">
