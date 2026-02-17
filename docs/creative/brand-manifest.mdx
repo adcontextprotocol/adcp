@@ -23,7 +23,7 @@ Brand manifests solve a key problem: how to efficiently identify advertisers and
 - **Product catalogs**: SKUs and offerings for promotional targeting
 - **Consistent identity**: Same brand information reused across all requests
 
-### Key Benefits
+### Key benefits
 
 - **Know Your Customer**: Publishers can verify advertisers meet their standards
 - **Privacy Transparency**: Link to privacy policy for consumer consent flows
@@ -33,9 +33,9 @@ Brand manifests solve a key problem: how to efficiently identify advertisers and
 - **Flexible**: Supports SMB to enterprise use cases
 - **AI-Optimized**: Structured for easy ingestion by creative agents
 
-## Providing Brand Manifests
+## Providing brand manifests
 
-### Inline JSON Object
+### Inline JSON object
 
 Provide the brand manifest directly in the request:
 
@@ -51,7 +51,7 @@ Provide the brand manifest directly in the request:
 }
 ```
 
-### URL String
+### URL string
 
 Reference a hosted brand manifest file with a URL string:
 
@@ -70,9 +70,9 @@ The manifest at the URL must conform to the brand-manifest.json schema.
 - **CDN caching**: Leverage edge caching for faster access
 - **Consistency**: Same manifest across all campaigns and platforms
 
-## Use Cases
+## Use cases
 
-### Minimal Manifest (Sales Agents / Media Buying Only)
+### Minimal manifest (sales agents / media buying only)
 
 **If you're building a sales agent focused purely on media buying**, you can provide a minimal manifest. The brand manifest is required so publishers know who the advertiser is (for policy compliance and business purposes), but you don't need extensive brand details unless you're using creative generation or optimization features.
 
@@ -106,7 +106,7 @@ This minimal approach provides:
 
 You can safely skip colors, fonts, logos, product catalogs, and tone unless your use case requires them.
 
-### SMB / Ad Hoc Creative Generation
+### SMB / ad hoc creative generation
 
 For small businesses or one-off campaigns needing creative generation, a minimal brand manifest with a URL provides enough context:
 
@@ -120,7 +120,7 @@ For small businesses or one-off campaigns needing creative generation, a minimal
 
 Creative agents can infer brand information from the URL, pulling logos, colors, and style from the website.
 
-### Enterprise / Established Brand
+### Enterprise / established brand
 
 For established brands with defined guidelines, host the manifest on a CDN:
 
@@ -201,7 +201,7 @@ For established brands with defined guidelines, host the manifest on a CDN:
 }
 ```
 
-### Multi-SKU Retailer
+### Multi-SKU retailer
 
 Large retailers can provide product feeds and asset libraries:
 
@@ -224,7 +224,7 @@ Large retailers can provide product feeds and asset libraries:
 }
 ```
 
-### Brands Without URLs
+### Brands without URLs
 
 Some brands don't have dedicated URLs (white-label products, local businesses, B2B brands). Brand cards support name-only identification:
 
@@ -246,9 +246,9 @@ Some brands don't have dedicated URLs (white-label products, local businesses, B
 - B2B brands without public sites
 - Sub-brands under parent company URLs
 
-## Brand Manifest Schemas
+## Brand manifest schemas
 
-### Brand Manifest Reference (Union Type)
+### Brand manifest reference (union type)
 
 **Schema URL**: [/schemas/v2/core/brand-manifest-ref.json](https://adcontextprotocol.org/schemas/v2/core/brand-manifest-ref.json)
 
@@ -256,13 +256,13 @@ The brand manifest reference is a union type that accepts either:
 1. **Inline object**: Full brand manifest JSON object
 2. **URL reference**: Object with `manifest_url` field pointing to hosted manifest
 
-### Brand Manifest Object
+### Brand manifest object
 
 **Schema URL**: [/schemas/v2/core/brand-manifest.json](https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json)
 
 The structure of the brand manifest object itself (whether provided inline or hosted at a URL).
 
-### Required Fields
+### Required fields
 
 **Either `url` OR `name` is required** (both can be provided):
 
@@ -271,7 +271,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | `url` | string (uri) | Primary brand URL for context and asset discovery |
 | `name` | string | Brand or business name (required if no URL provided) |
 
-### Optional Fields
+### Optional fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -290,7 +290,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 | `contact` | Contact | Brand contact information |
 | `metadata` | Metadata | Version and update tracking |
 
-### Logo Object
+### Logo object
 
 ```typescript
 {
@@ -305,7 +305,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 }
 ```
 
-#### Logo Fields
+#### Logo fields
 
 **`orientation`** (enum) - Logo aspect ratio:
 | Value | Description |
@@ -333,7 +333,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 
 **`tags`** (string array) - Additional custom tags for categorization beyond the standard fields.
 
-#### Logo Example
+#### Logo example
 
 ```json
 {
@@ -369,7 +369,7 @@ The structure of the brand manifest object itself (whether provided inline or ho
 }
 ```
 
-### Tone Object
+### Tone object
 
 The `tone` field provides structured voice guidelines for creative agents.
 
@@ -382,7 +382,7 @@ The `tone` field provides structured voice guidelines for creative agents.
 }
 ```
 
-#### Tone Fields
+#### Tone fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -391,7 +391,7 @@ The `tone` field provides structured voice guidelines for creative agents.
 | `dos` | string[] | Specific guidance for copy generation |
 | `donts` | string[] | Guardrails to avoid brand violations |
 
-#### Tone Example
+#### Tone example
 
 **Minimal tone** (just voice):
 ```json
@@ -429,7 +429,7 @@ The structured tone format enables creative agents to:
 - Apply consistent voice across different creative formats
 - Automate brand guideline compliance without human review
 
-### Colors Object
+### Colors object
 
 ```typescript
 {
@@ -441,7 +441,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-### Fonts Object
+### Fonts object
 
 ```typescript
 {
@@ -451,7 +451,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-### Disclaimer Object
+### Disclaimer object
 
 ```typescript
 {
@@ -461,7 +461,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-### Asset Object
+### Asset object
 
 ```typescript
 {
@@ -480,7 +480,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-### ProductCatalog Object
+### ProductCatalog object
 
 ```typescript
 {
@@ -493,7 +493,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-### AgenticCheckout Object
+### AgenticCheckout object
 
 ```typescript
 {
@@ -503,7 +503,7 @@ The structured tone format enables creative agents to:
 }
 ```
 
-## Integration with AdCP Tasks
+## Integration with AdCP tasks
 
 ### create_media_buy
 
@@ -558,9 +558,9 @@ Use brand manifest to inform creative generation:
 }
 ```
 
-## Best Practices
+## Best practices
 
-### 1. Start Simple, Expand as Needed
+### 1. Start simple, expand as needed
 
 Begin with just a URL. Add more fields only when the URL-based inference isn't sufficient:
 
@@ -578,7 +578,7 @@ Begin with just a URL. Add more fields only when the URL-based inference isn't s
 }
 ```
 
-### 2. Use Structured Fields for Logos
+### 2. Use structured fields for logos
 
 Use the `orientation`, `background`, and `variant` enum fields for reliable filtering by creative agents:
 
@@ -617,7 +617,7 @@ Use the `orientation`, `background`, and `variant` enum fields for reliable filt
 
 Use the `tags` array for additional custom categorization.
 
-### 3. Cache and Reuse Brand Manifests
+### 3. Cache and reuse brand manifests
 
 Brand cards are designed to be cached. Use URL strings for automatic caching:
 
@@ -646,7 +646,7 @@ await createMediaBuy({ brand_manifest: brandManifest, ... });
 await buildCreative({ brand_manifest: brandManifest, ... });
 ```
 
-### 4. Product Feeds for Multi-SKU
+### 4. Product feeds for multi-SKU
 
 Large retailers should provide product feeds:
 
@@ -663,7 +663,7 @@ Large retailers should provide product feeds:
 
 **Supported Feed Formats**: Google Merchant Center, Facebook Catalog, [OpenAI Product Feed](https://developers.openai.com/commerce/specs/feed), Custom
 
-### 5. Asset Libraries for Enterprise
+### 5. Asset libraries for enterprise
 
 Enterprise brands with large asset libraries should provide explicit assets:
 
@@ -694,11 +694,11 @@ Enterprise brands with large asset libraries should provide explicit assets:
 }
 ```
 
-## Privacy Integration
+## Privacy integration
 
 Brand manifests support privacy transparency through the `privacy_policy_url` field. This enables AI platforms to present explicit privacy choices to users before sharing personal data with advertisers.
 
-### Consumer Consent Flow
+### Consumer consent flow
 
 When an AI assistant helps a user engage with an advertiser (booking a flight, making a purchase, etc.), the platform can use the brand manifest's privacy policy URL to:
 
@@ -706,7 +706,7 @@ When an AI assistant helps a user engage with an advertiser (booking a flight, m
 2. **Enable informed decisions**: Users can review data practices before data handoff
 3. **Support machine-readable terms**: Works alongside [MyTerms/IEEE P7012](https://myterms.info) for automated privacy negotiation
 
-### Example with Privacy Policy
+### Example with privacy policy
 
 ```json
 {
@@ -717,15 +717,15 @@ When an AI assistant helps a user engage with an advertiser (booking a flight, m
 }
 ```
 
-### MyTerms Discovery
+### MyTerms discovery
 
 For advertisers implementing [IEEE P7012 (MyTerms)](https://myterms.info), AI platforms can discover machine-readable privacy terms from the advertiser's domain (e.g., `/.well-known/myterms`). The brand manifest's `privacy_policy_url` serves as the human-readable fallback and explicit consent path.
 
-## Agentic Commerce Integration
+## Agentic commerce integration
 
 Brand manifests support integration with AI commerce platforms through the `product_catalog` field. This enables AI agents to discover products and complete purchases on behalf of users.
 
-### OpenAI Commerce
+### OpenAI commerce
 
 For merchants implementing [OpenAI's Commerce specifications](https://developers.openai.com/commerce), the brand manifest provides a bridge:
 
@@ -756,7 +756,7 @@ For merchants implementing [OpenAI's Commerce specifications](https://developers
 | `agentic_checkout.endpoint` | Base URL for [OpenAI's Agentic Checkout API](https://developers.openai.com/commerce/specs/checkout) |
 | `agentic_checkout.spec` | Version identifier for the checkout spec |
 
-### Feed Format Mapping
+### Feed format mapping
 
 If you have an existing Google Merchant Center feed, here's how key fields map to OpenAI's spec:
 
@@ -773,7 +773,7 @@ If you have an existing Google Merchant Center feed, here's how key fields map t
 | `is_eligible_search` | N/A | OpenAI-specific flag |
 | `is_eligible_checkout` | N/A | OpenAI-specific flag |
 
-## Evolution and Versioning
+## Evolution and versioning
 
 Brand cards are versioned using the `metadata.version` field:
 
@@ -826,7 +826,7 @@ For implementations using the legacy `brand_guidelines` field in `build_creative
 }
 ```
 
-## Brand Discovery
+## Brand discovery
 
 For discoverable brand identity, brands can host their manifest via a `brand.json` file at a well-known location:
 
@@ -856,7 +856,7 @@ A brand with an agent that provides brand manifests via MCP:
 
 See [Brand Protocol](/docs/brand-protocol/index) for the complete brand.json specification.
 
-## Related Documentation
+## Related documentation
 
 - **[Brand Protocol](/docs/brand-protocol/index)** - Brand discovery via brand.json
 - **[create_media_buy](/docs/media-buy/task-reference/create_media_buy)** - Media buy creation with brand context

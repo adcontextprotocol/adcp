@@ -14,10 +14,10 @@ Two related but distinct concepts appear throughout the protocol:
 | **Brand manifest** | A data structure describing a brand's identity (name, logos, colors, tone, etc.) | Anywhere — inline in AdCP requests, in the registry, or inside a brand.json file | Anyone (agencies, registries, brands) |
 | **brand.json** | A file published at `/.well-known/brand.json` that declares brand ownership and hierarchy | On the brand's own domain | The brand itself |
 
-A `brand.json` file may **contain** brand manifest data, but most AdCP operations work with the brand manifest directly. You don't need a `brand.json` file to use AdCP — you can pass brand manifests inline or reference the registry.
+A `brand.json` file may **include** brand identity data (logos, colors, tone) or point to a brand agent that provides it. But most AdCP operations work with the brand manifest directly. You don't need a `brand.json` file to use AdCP — you can pass brand manifests inline or reference the registry.
 
 <Tip>
-Think of `brand.json` as a business card holder on a company's front door. The **brand manifest** is the actual business information inside. You can get that information from the door, from a directory, or handed to you directly.
+Think of `brand.json` as a signpost on a company's front door. It might provide brand information directly, redirect you to a house domain, or point you to a brand agent. The **brand manifest** is the information itself, regardless of how you obtained it.
 </Tip>
 
 ## Purpose
@@ -158,9 +158,9 @@ There are three ways to obtain a brand manifest, each returning the same data st
 
 | Source | How it works | When to use |
 |--------|-------------|-------------|
-| `resolve_brand` | Fetches `/.well-known/brand.json`, extracts the manifest | Brand publishes a `brand.json` file |
-| `research_brand` | Fetches from Brandfetch, saves manifest to registry | No `brand.json` available, need enrichment |
-| Registry lookup | Returns community or enriched manifest from the registry | Brand already registered |
+| [`resolve_brand`](#mcp-tools) | Fetches `/.well-known/brand.json`, extracts the manifest | Brand publishes a `brand.json` file |
+| [Brand enrichment](/docs/registry/index#brand-resolution) | Fetches from Brandfetch, saves manifest to registry | No `brand.json` available, need enrichment |
+| [Registry lookup](/docs/registry/index#brand-resolution) | Returns community or enriched manifest from the registry | Brand already registered |
 
 Regardless of source, the result is a **brand manifest** that can be passed to any AdCP task.
 
@@ -246,10 +246,10 @@ The Brand Protocol provides MCP tools for programmatic access:
 ## Learn more
 
 <CardGroup cols={2}>
-  <Card title="brand.json Spec" icon="code" href="/docs/brand-protocol/brand-json">
+  <Card title="brand.json spec" icon="code" href="/docs/brand-protocol/brand-json">
     Complete technical specification for the brand.json file format.
   </Card>
-  <Card title="Brand Manifest" icon="palette" href="/docs/creative/brand-manifest">
+  <Card title="Brand manifest" icon="palette" href="/docs/creative/brand-manifest">
     Brand identity and visual guidelines schema.
   </Card>
 </CardGroup>
