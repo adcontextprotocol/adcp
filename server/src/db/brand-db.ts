@@ -319,11 +319,15 @@ export class BrandDatabase {
     primary_color?: string;
     industry?: string;
     sub_brand_count: number;
+    employee_count: number;
   }>> {
-    const limit = options.limit || 500;
     const offset = options.offset || 0;
     const escapedSearch = options.search ? options.search.replace(/[%_\\]/g, '\\$&') : null;
     const search = escapedSearch ? `%${escapedSearch}%` : null;
+
+    const params: (string | number | null)[] = [search, offset];
+    const limitClause = options.limit ? `LIMIT $3` : '';
+    if (options.limit) params.push(options.limit);
 
     const result = await query<{
       domain: string;
@@ -337,6 +341,7 @@ export class BrandDatabase {
       primary_color?: string;
       industry?: string;
       sub_brand_count: number;
+      employee_count: number;
     }>(
       `
       SELECT
@@ -350,7 +355,8 @@ export class BrandDatabase {
         brand_json->'logos'->0->>'url' as logo_url,
         brand_json->'colors'->>'primary' as primary_color,
         brand_json->'company'->>'industry' as industry,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
+        COALESCE((brand_json->'company'->>'employees')::int, 0) as employee_count
       FROM hosted_brands
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
@@ -368,16 +374,18 @@ export class BrandDatabase {
         brand_manifest->'logos'->0->>'url' as logo_url,
         brand_manifest->'colors'->>'primary' as primary_color,
         brand_manifest->'company'->>'industry' as industry,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count,
+        COALESCE((brand_manifest->'company'->>'employees')::int, 0) as employee_count
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
         AND (review_status IS NULL OR review_status = 'approved')
         AND domain NOT IN (SELECT brand_domain FROM hosted_brands WHERE is_public = true)
 
-      ORDER BY brand_name, domain
-      LIMIT $2 OFFSET $3
+      ORDER BY employee_count DESC, brand_name, domain
+      ${limitClause}
+      OFFSET $2
       `,
-      [search, limit, offset]
+      params
     );
 
     return result.rows;

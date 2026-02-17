@@ -732,7 +732,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     try {
       const brands = await brandDb.getAllBrandsForRegistry({
         search: req.query.search as string,
-        limit: Math.min(parseInt(req.query.limit as string) || 500, 5000),
+        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined,
         offset: parseInt(req.query.offset as string) || 0,
       });
 
