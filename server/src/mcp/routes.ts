@@ -20,6 +20,7 @@ import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
+import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
 import { createUnifiedMCPServer } from './server.js';
 import { createOAuthProvider, MCP_AUTH_ENABLED } from './oauth-provider.js';
 import {
@@ -51,6 +52,7 @@ const mcpRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('mcp:'),
   keyGenerator: (req: MCPAuthenticatedRequest) => {
     return `user:${req.mcpAuth?.sub || 'anonymous'}`;
   },

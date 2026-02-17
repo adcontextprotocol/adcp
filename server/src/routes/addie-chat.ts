@@ -13,6 +13,7 @@ import { validate as uuidValidate } from "uuid";
 import rateLimit from "express-rate-limit";
 import cors from "cors";
 import { createLogger } from "../logger.js";
+import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
@@ -275,6 +276,7 @@ interface ConversationMessage {
 const chatRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 messages per minute per IP
+  store: new PostgresStore('chat:'),
   message: { error: "Too many requests", message: "Please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -288,6 +290,7 @@ const chatRateLimiter = rateLimit({
 const anonymousDailyLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
   max: 50, // 50 messages per day for anonymous users
+  store: new PostgresStore('anon-daily:'),
   skip: (req) => !!(req as any).user?.id, // Authenticated users bypass
   keyGenerator: (req) => {
     const ip = req.ip || 'unknown';
