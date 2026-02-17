@@ -5,6 +5,21 @@ sidebarTitle: Overview
 
 The Brand Protocol enables brands to claim their identity and establish a verifiable source of truth through a standardized discovery mechanism. By hosting a `brand.json` file at a well-known location, brands can declare their identity, brand hierarchy, and optionally designate official brand agents.
 
+## Key concepts
+
+Two related but distinct concepts appear throughout the protocol:
+
+| Term | What it is | Where it lives | Who creates it |
+|------|-----------|----------------|----------------|
+| **Brand manifest** | A data structure describing a brand's identity (name, logos, colors, tone, etc.) | Anywhere — inline in AdCP requests, in the registry, or inside a brand.json file | Anyone (agencies, registries, brands) |
+| **brand.json** | A file published at `/.well-known/brand.json` that declares brand ownership and hierarchy | On the brand's own domain | The brand itself |
+
+A `brand.json` file may **contain** brand manifest data, but most AdCP operations work with the brand manifest directly. You don't need a `brand.json` file to use AdCP — you can pass brand manifests inline or reference the registry.
+
+<Tip>
+Think of `brand.json` as a business card holder on a company's front door. The **brand manifest** is the actual business information inside. You can get that information from the door, from a directory, or handed to you directly.
+</Tip>
+
 ## Purpose
 
 The Brand Protocol addresses buy-side identity in advertising, providing the same clarity that the Property Protocol provides for the sell-side:
@@ -137,9 +152,21 @@ jumpman23.com
   -> Result: { house: "nikeinc.com", brand_id: "air_jordan" }
 ```
 
-## Use Cases
+## Brand resolution sources
 
-### Creative Generation
+There are three ways to obtain a brand manifest, each returning the same data structure:
+
+| Source | How it works | When to use |
+|--------|-------------|-------------|
+| `resolve_brand()` | Fetches `/.well-known/brand.json`, extracts the manifest | Brand publishes a `brand.json` file |
+| `research_brand()` | Fetches from Brandfetch, saves manifest to registry | No `brand.json` available, need enrichment |
+| Registry lookup | Returns community or enriched manifest from the registry | Brand already registered |
+
+Regardless of source, the result is a **brand manifest** that can be passed to any AdCP task.
+
+## Use cases
+
+### Creative generation
 
 When a creative agent needs brand assets:
 
@@ -147,7 +174,7 @@ When a creative agent needs brand assets:
 2. Get brand manifest (from agent or inline)
 3. Generate on-brand creatives
 
-### Brand Verification
+### Brand verification
 
 When verifying brand claims:
 
@@ -155,7 +182,7 @@ When verifying brand claims:
 2. Follow redirects to house if needed
 3. Verify brand exists in portfolio
 
-### Reporting Roll-up
+### Reporting roll-up
 
 When aggregating brand performance:
 
@@ -169,10 +196,14 @@ The Brand Protocol is **additive**, not required. Agents should accept brand con
 
 | Request Field | Behavior |
 |--------------|----------|
-| `brand_manifest: {...}` | Use explicit inline manifest (highest priority) |
-| `brand_domain: "nike.com"` | Resolve via Brand Protocol |
-| `brand_url: "https://..."` | Fetch directly from URL |
+| `brand_manifest: {...}` | Use the brand manifest data directly (highest priority) |
+| `brand_domain: "nike.com"` | Resolve via Brand Protocol, extract manifest |
+| `brand_url: "https://..."` | Fetch manifest directly from URL |
 | *(none provided)* | Operate without brand context |
+
+<Note>
+Pass the **brand manifest** (the identity data), not the `brand.json` file. The `brand_manifest` field in tasks like `create_media_buy` expects the manifest object or a URL to one — regardless of how you obtained it.
+</Note>
 
 This flexibility allows:
 - Agencies to pass manifests they already have cached

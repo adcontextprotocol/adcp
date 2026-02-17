@@ -9,6 +9,10 @@ The **Brand Manifest** is a standardized format for identifying the advertiser a
 
 Brand manifests can be provided either **inline as a JSON object** or **by URL reference** to a hosted manifest file.
 
+<Info>
+The brand manifest is the **data** — it can come from anywhere. A [`brand.json` file](/docs/brand-protocol/brand-json) is one way brands can self-publish a manifest, but you can also pass manifests inline, host them on a CDN, or look them up from the [registry](/docs/registry/index). When using `brand_manifest` in tasks like `create_media_buy`, pass the manifest object (or a URL to one) — not the `brand.json` file itself.
+</Info>
+
 ## Overview
 
 Brand manifests solve a key problem: how to efficiently identify advertisers and provide brand context without requiring complex authorization flows or repeated data entry. The brand manifest provides:
