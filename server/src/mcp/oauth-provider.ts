@@ -3,6 +3,7 @@
  *
  * Implements OAuthServerProvider as an OAuth broker:
  * - Persists client registrations in PostgreSQL
+ * - Persists pending auths and auth codes in PostgreSQL
  * - Delegates user authentication to WorkOS AuthKit via /auth/callback
  * - Issues its own authorization codes to MCP clients
  * - Validates AuthKit JWTs for bearer auth
@@ -17,6 +18,7 @@ import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextproto
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createLogger } from '../logger.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
+import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
 
 const logger = createLogger('mcp-oauth');
 
@@ -34,78 +36,10 @@ const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
  */
 export const MCP_AUTH_ENABLED = process.env.MCP_AUTH_DISABLED !== 'true';
 
-// ---------------------------------------------------------------------------
-// TTL Map — generic in-memory store with per-entry expiry
-// ---------------------------------------------------------------------------
-
-class TTLMap<V> {
-  private store = new Map<string, { value: V; expiresAt: number }>();
-  private cleanupInterval: NodeJS.Timeout;
-
-  constructor(
-    private defaultTTLMs: number,
-    cleanupIntervalMs = 60_000,
-  ) {
-    this.cleanupInterval = setInterval(() => this.evict(), cleanupIntervalMs);
-    this.cleanupInterval.unref();
-  }
-
-  set(key: string, value: V, ttlMs?: number): void {
-    this.store.set(key, {
-      value,
-      expiresAt: Date.now() + (ttlMs ?? this.defaultTTLMs),
-    });
-  }
-
-  get(key: string): V | undefined {
-    const entry = this.store.get(key);
-    if (!entry) return undefined;
-    if (Date.now() > entry.expiresAt) {
-      this.store.delete(key);
-      return undefined;
-    }
-    return entry.value;
-  }
-
-  delete(key: string): boolean {
-    return this.store.delete(key);
-  }
-
-  private evict(): void {
-    const now = Date.now();
-    for (const [key, entry] of this.store) {
-      if (now > entry.expiresAt) {
-        this.store.delete(key);
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Stores
-// ---------------------------------------------------------------------------
-
-interface PendingAuth {
-  clientId: string;
-  redirectUri: string;
-  codeChallenge: string;
-  state?: string;
-  scopes: string[];
-  resource?: URL;
-}
-
-interface AuthCodeData {
-  clientId: string;
-  codeChallenge: string;
-  accessToken: string;
-  refreshToken: string;
-}
-
-/** Pending authorizations — 10 minute TTL */
-const pendingAuths = new TTLMap<PendingAuth>(10 * 60 * 1000);
-
-/** Authorization codes — 5 minute TTL */
-const authCodes = new TTLMap<AuthCodeData>(5 * 60 * 1000);
+// Periodically clean up expired OAuth state rows
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const cleanupTimer = setInterval(() => mcpOAuthStateDb.cleanupExpired(), CLEANUP_INTERVAL_MS);
+cleanupTimer.unref();
 
 // ---------------------------------------------------------------------------
 // JWT verification (unchanged from previous implementation)
@@ -203,13 +137,13 @@ class MCPOAuthProvider implements OAuthServerProvider {
   ): Promise<void> {
     const pendingId = crypto.randomUUID();
 
-    pendingAuths.set(pendingId, {
+    await mcpOAuthStateDb.setPendingAuth(pendingId, {
       clientId: client.client_id,
       redirectUri: params.redirectUri,
       codeChallenge: params.codeChallenge,
       state: params.state,
       scopes: params.scopes || [],
-      resource: params.resource,
+      resource: params.resource?.toString(),
     });
 
     // Redirect to AuthKit via WorkOS SDK (reuses existing WORKOS_REDIRECT_URI)
@@ -228,7 +162,7 @@ class MCPOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     authorizationCode: string,
   ): Promise<string> {
-    const data = authCodes.get(authorizationCode);
+    const data = await mcpOAuthStateDb.getAuthCode(authorizationCode);
     if (!data) {
       throw new Error('Invalid or expired authorization code');
     }
@@ -242,19 +176,21 @@ class MCPOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     authorizationCode: string,
     _codeVerifier?: string,
-    _redirectUri?: string,
+    redirectUri?: string,
     _resource?: URL,
   ): Promise<OAuthTokens> {
-    const data = authCodes.get(authorizationCode);
+    // Atomic consume: DELETE ... RETURNING prevents double-exchange race
+    const data = await mcpOAuthStateDb.consumeAuthCode(authorizationCode);
     if (!data) {
       throw new Error('Invalid or expired authorization code');
     }
     if (data.clientId !== client.client_id) {
       throw new Error('Authorization code was not issued to this client');
     }
-
-    // Consume the code (single-use)
-    authCodes.delete(authorizationCode);
+    // RFC 6749 §4.1.3: if redirect_uri was in the authorization request, it must match
+    if (data.redirectUri && data.redirectUri !== redirectUri) {
+      throw new Error('redirect_uri does not match the authorization request');
+    }
 
     return {
       access_token: data.accessToken,
@@ -309,7 +245,8 @@ export async function handleMCPOAuthCallback(
   workosCode: string,
   mcpPendingId: string,
 ): Promise<void> {
-  const pending = pendingAuths.get(mcpPendingId);
+  // Atomic consume: DELETE ... RETURNING prevents double-use race
+  const pending = await mcpOAuthStateDb.consumePendingAuth(mcpPendingId);
   if (!pending) {
     logger.warn({ mcpPendingId }, 'MCP OAuth: Pending auth not found or expired');
     res.status(400).json({
@@ -318,9 +255,6 @@ export async function handleMCPOAuthCallback(
     });
     return;
   }
-
-  // Consume pending auth (single-use)
-  pendingAuths.delete(mcpPendingId);
 
   // Exchange WorkOS code for tokens
   let authResult: { accessToken: string; refreshToken: string };
@@ -340,9 +274,10 @@ export async function handleMCPOAuthCallback(
   // Generate local authorization code
   const localCode = crypto.randomBytes(32).toString('hex');
 
-  authCodes.set(localCode, {
+  await mcpOAuthStateDb.setAuthCode(localCode, {
     clientId: pending.clientId,
     codeChallenge: pending.codeChallenge,
+    redirectUri: pending.redirectUri,
     accessToken: authResult.accessToken,
     refreshToken: authResult.refreshToken,
   });

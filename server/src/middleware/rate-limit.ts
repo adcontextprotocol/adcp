@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
+import { PostgresStore } from './pg-rate-limit-store.js';
 
 const logger = createLogger('rate-limit');
 
@@ -36,6 +37,7 @@ export const invitationRateLimiter = rateLimit({
   max: 10, // 10 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('invite:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -62,6 +64,7 @@ export const orgCreationRateLimiter = rateLimit({
   max: 5, // 5 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('org:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -88,6 +91,7 @@ export const brandCreationRateLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('brand:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -114,6 +118,7 @@ export const bulkResolveRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('resolve:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {

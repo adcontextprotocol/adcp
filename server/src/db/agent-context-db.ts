@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { encrypt as encryptToken, decrypt as decryptToken } from './encryption.js';
 import crypto from 'crypto';
 
 // =====================================================
@@ -101,57 +102,6 @@ export interface RecordTestInput {
   user_id?: string;
   steps_json?: any;
   agent_profile_json?: any;
-}
-
-// =====================================================
-// ENCRYPTION HELPERS
-// =====================================================
-
-// Encryption key derivation (in production, use a proper KMS)
-// For now, derive key from a secret + org ID
-const ENCRYPTION_SECRET = process.env.AGENT_TOKEN_ENCRYPTION_SECRET;
-if (!ENCRYPTION_SECRET && process.env.NODE_ENV === 'production') {
-  throw new Error('AGENT_TOKEN_ENCRYPTION_SECRET must be set in production');
-}
-const effectiveEncryptionSecret = ENCRYPTION_SECRET || 'dev-secret-change-in-production';
-
-function deriveKey(organizationId: string): Buffer {
-  return crypto.pbkdf2Sync(effectiveEncryptionSecret, organizationId, 100000, 32, 'sha256');
-}
-
-function encryptToken(token: string, organizationId: string): { encrypted: string; iv: string } {
-  const key = deriveKey(organizationId);
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-
-  let encrypted = cipher.update(token, 'utf8', 'base64');
-  encrypted += cipher.final('base64');
-
-  // Append auth tag
-  const authTag = cipher.getAuthTag();
-  encrypted += ':' + authTag.toString('base64');
-
-  return {
-    encrypted,
-    iv: iv.toString('base64'),
-  };
-}
-
-function decryptToken(encrypted: string, iv: string, organizationId: string): string {
-  const key = deriveKey(organizationId);
-  const ivBuffer = Buffer.from(iv, 'base64');
-
-  // Split encrypted data and auth tag
-  const [encryptedData, authTagBase64] = encrypted.split(':');
-  const authTag = Buffer.from(authTagBase64, 'base64');
-
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, ivBuffer);
-  decipher.setAuthTag(authTag);
-
-  let decrypted = decipher.update(encryptedData, 'base64', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
 }
 
 function getTokenHint(token: string): string {

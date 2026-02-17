@@ -20,6 +20,7 @@ import { discoverOAuthMetadata } from '@adcp/client/auth';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { AgentContextDatabase, OAuthTokens, OAuthClient } from '../db/agent-context-db.js';
+import * as agentOAuthFlowsDb from '../db/agent-oauth-flows-db.js';
 import { getWebMemberContext } from '../addie/member-context.js';
 
 /**
@@ -54,42 +55,9 @@ interface ClientRegistrationResponse {
 
 const logger = createLogger('agent-oauth');
 
-// Pending request context for auto-retry after OAuth
-interface PendingRequest {
-  task: string;
-  params: Record<string, unknown>;
-}
-
-// In-memory store for pending OAuth flows (state -> flow data)
-// In production, consider using Redis for multi-instance deployments
-interface PendingOAuthFlow {
-  agentContextId: string;
-  organizationId: string;
-  userId: string;
-  codeVerifier: string;
-  redirectUri: string;
-  agentUrl: string;
-  pendingRequest?: PendingRequest;
-  createdAt: Date;
-}
-
-const pendingFlows = new Map<string, PendingOAuthFlow>();
-
-// Warn about in-memory storage in production
-if (process.env.NODE_ENV === 'production') {
-  logger.warn('OAuth pending flows stored in memory - may cause issues with multiple instances or restarts');
-}
-
-// Clean up old pending flows (older than 10 minutes)
-setInterval(() => {
-  const now = Date.now();
-  const maxAge = 10 * 60 * 1000; // 10 minutes
-  for (const [state, flow] of pendingFlows.entries()) {
-    if (now - flow.createdAt.getTime() > maxAge) {
-      pendingFlows.delete(state);
-    }
-  }
-}, 60 * 1000); // Run every minute
+// Periodic cleanup of expired flows
+const cleanupTimer = setInterval(() => agentOAuthFlowsDb.cleanupExpired(), 5 * 60 * 1000);
+cleanupTimer.unref();
 
 /**
  * Generate PKCE code verifier and challenge
@@ -227,7 +195,7 @@ export function createAgentOAuthRouter(): Router {
       }
 
       // Parse pending request context (for auto-retry after OAuth)
-      let pendingRequest: PendingRequest | undefined;
+      let pendingRequest: { task: string; params: Record<string, unknown> } | undefined;
       if (pending_task && typeof pending_task === 'string') {
         try {
           const params = pending_params && typeof pending_params === 'string'
@@ -316,8 +284,8 @@ export function createAgentOAuthRouter(): Router {
       const { verifier, challenge } = generatePKCE();
       const state = generateState();
 
-      // Store pending flow
-      pendingFlows.set(state, {
+      // Store pending flow in PostgreSQL
+      await agentOAuthFlowsDb.setPendingFlow(state, {
         agentContextId: agent_context_id,
         organizationId,
         userId,
@@ -325,7 +293,6 @@ export function createAgentOAuthRouter(): Router {
         redirectUri,
         agentUrl: agentContext.agent_url,
         pendingRequest,
-        createdAt: new Date(),
       });
 
       // Build authorization URL
@@ -370,15 +337,12 @@ export function createAgentOAuthRouter(): Router {
         return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No state parameter received')}`);
       }
 
-      // Get pending flow
-      const flow = pendingFlows.get(state);
+      // Atomic consume: DELETE ... RETURNING prevents double-use race
+      const flow = await agentOAuthFlowsDb.consumePendingFlow(state);
       if (!flow) {
         logger.warn({ state }, 'OAuth callback with unknown state');
         return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('Invalid or expired OAuth session')}`);
       }
-
-      // Remove from pending
-      pendingFlows.delete(state);
 
       // Discover token endpoint
       const agentHost = new URL(flow.agentUrl).hostname;
