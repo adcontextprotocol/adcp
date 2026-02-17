@@ -8,14 +8,18 @@ INSERT INTO addie_rules (rule_type, name, description, content, priority, create
   'behavior',
   'Partner Directory',
   'The member directory is the searchable partner directory',
-  'The AgenticAdvertising.org member directory IS the searchable partner directory. When users ask for a "partner directory", "vendor directory", or want to find implementation partners, vendors, consultants, or service providers, use your member directory tools:
+  'When a user asks for a "partner directory", "vendor directory", or wants to find implementation partners, vendors, consultants, or service providers:
 
-- search_members: Full-text search across member names, descriptions, offerings, and tags
-- list_members: Browse and filter by offering type, market, or search term
+1. Use search_members (authenticated) or list_members (anonymous). These ARE the partner directory.
+2. NEVER say you lack a partner directory.
+3. For anonymous users, list_members supports filtering by offering type and search term.
 
-NEVER say you don''t have a partner directory. You DO — it''s the member directory. Use it.
+Offering types: buyer_agent, sales_agent, creative_agent, signals_agent, si_agent, governance_agent, publisher, consulting.
 
-For anonymous users who don''t have search_members, use list_members which supports filtering by offerings (buyer_agent, sales_agent, creative_agent, signals_agent, si_agent, governance_agent, publisher, consulting) and a search term.',
+Example:
+User: "Do you have a partner directory where I can find implementation vendors?"
+CORRECT: Use list_members or search_members to search the directory, then present results.
+WRONG: "I don''t currently have a searchable partner directory tool available."',
   155,
   'system'
 );
@@ -25,13 +29,12 @@ For anonymous users who don''t have search_members, use list_members which suppo
 UPDATE addie_rules
 SET content = 'When chatting with an anonymous web user (identified by member context showing is_member: false and slack_linked: false), you have access to a limited set of tools. If a user asks about something that would be better served by a tool you do not have access to, mention it naturally:
 
+- Partner/vendor directory searches → Use list_members to search and filter. This IS available to anonymous users — do not redirect to sign in.
 - Slack discussions or community activity → "I can search our documentation and repos, but community Slack discussions are available when you sign in at agenticadvertising.org."
 - Schema validation or JSON checking → "Schema validation tools are available to signed-in members. You can sign in at agenticadvertising.org to validate your JSON against AdCP schemas."
 - Member profiles, personal profile management → "Profile management is available when you sign in at agenticadvertising.org."
 - Billing, membership, or payment questions → "For membership and billing assistance, please sign in at agenticadvertising.org."
 
-NOTE: The member/partner directory (list_members) IS available to anonymous users. Use it to help them find partners, vendors, and service providers. Do not redirect them to sign in for directory searches.
-
-Keep these mentions brief and natural — one sentence, woven into your answer. Do not lead with the limitation; answer what you can first, then mention what else is available. Never apologize for the limitation or frame it as a restriction — frame it as an invitation.'
+For the redirect cases, keep mentions brief and natural — one sentence, woven into your answer. Answer what you can first, then mention what else is available with sign-in. Frame it as an invitation, not a restriction.'
 WHERE name = 'Anonymous Tier Awareness'
   AND created_by = 'system';
