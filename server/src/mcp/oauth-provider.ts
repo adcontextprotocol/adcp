@@ -2,7 +2,7 @@
  * MCP OAuth Provider
  *
  * Implements OAuthServerProvider as an OAuth broker:
- * - Handles client registration and PKCE locally (in-memory)
+ * - Persists client registrations in PostgreSQL
  * - Delegates user authentication to WorkOS AuthKit via /auth/callback
  * - Issues its own authorization codes to MCP clients
  * - Validates AuthKit JWTs for bearer auth
@@ -16,6 +16,7 @@ import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createLogger } from '../logger.js';
+import * as mcpClientsDb from '../db/mcp-clients-db.js';
 
 const logger = createLogger('mcp-oauth');
 
@@ -100,9 +101,6 @@ interface AuthCodeData {
   refreshToken: string;
 }
 
-/** Registered MCP clients — 30 day TTL */
-const clients = new TTLMap<OAuthClientInformationFull>(30 * 24 * 60 * 60 * 1000);
-
 /** Pending authorizations — 10 minute TTL */
 const pendingAuths = new TTLMap<PendingAuth>(10 * 60 * 1000);
 
@@ -182,26 +180,21 @@ class MCPOAuthProvider implements OAuthServerProvider {
    */
   skipLocalPkceValidation = false;
 
-  get clientsStore(): OAuthRegisteredClientsStore {
-    return {
-      getClient: async (
-        clientId: string,
-      ): Promise<OAuthClientInformationFull | undefined> => {
-        // Only return registered clients.
-        // Unregistered clients must register via /register first.
-        // This prevents open-redirect attacks via unvalidated redirect_uris.
-        return clients.get(clientId);
-      },
+  readonly clientsStore: OAuthRegisteredClientsStore = {
+    getClient: async (
+      clientId: string,
+    ): Promise<OAuthClientInformationFull | undefined> => {
+      return mcpClientsDb.getClient(clientId);
+    },
 
-      registerClient: async (
-        clientInfo: OAuthClientInformationFull,
-      ): Promise<OAuthClientInformationFull> => {
-        clients.set(clientInfo.client_id, clientInfo);
-        logger.info({ clientId: clientInfo.client_id }, 'MCP OAuth: Client registered');
-        return clientInfo;
-      },
-    };
-  }
+    registerClient: async (
+      clientInfo: OAuthClientInformationFull,
+    ): Promise<OAuthClientInformationFull> => {
+      await mcpClientsDb.registerClient(clientInfo);
+      logger.info({ clientId: clientInfo.client_id }, 'MCP OAuth: Client registered');
+      return clientInfo;
+    },
+  };
 
   async authorize(
     client: OAuthClientInformationFull,
