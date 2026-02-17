@@ -86,7 +86,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   directory: {
     name: 'directory',
-    description: 'Find member organizations, request introductions, search for vendors/partners, explore the member directory, research or manage brands, look up brand assets (logos, colors), and find registry gaps',
+    description: 'The searchable partner directory — find member organizations, request introductions, search for vendors/partners/consultants, browse the member directory, research or manage brands, look up brand assets (logos, colors), and find registry gaps',
     tools: [
       'search_members',
       'request_introduction',
