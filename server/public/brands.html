@@ -382,14 +382,19 @@
             await loadBrands();
         });
 
+        let activeController = null;
         async function loadBrands(search) {
+            if (activeController) activeController.abort();
+            activeController = new AbortController();
+
             const grid = document.getElementById('brands-grid');
             grid.innerHTML = renderLoadingSkeleton(6);
 
             try {
                 const params = new URLSearchParams();
                 if (search) params.set('search', search);
-                const response = await fetch(`/api/brands/registry?${params}`);
+                const qs = params.toString();
+                const response = await fetch(`/api/brands/registry${qs ? '?' + qs : ''}`, { signal: activeController.signal });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 brands = data.brands || [];
@@ -404,6 +409,7 @@
 
                 renderBrands();
             } catch (error) {
+                if (error.name === 'AbortError') return;
                 console.error('Failed to load brands:', error);
                 grid.innerHTML = '<div class="empty-state"><div class="empty-state__title">Failed to load brands</div></div>';
             }

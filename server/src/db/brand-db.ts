@@ -356,7 +356,7 @@ export class BrandDatabase {
         brand_json->'colors'->>'primary' as primary_color,
         brand_json->'company'->>'industry' as industry,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
-        COALESCE((brand_json->'company'->>'employees')::int, 0) as employee_count
+        COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM hosted_brands
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
@@ -375,7 +375,7 @@ export class BrandDatabase {
         brand_manifest->'colors'->>'primary' as primary_color,
         brand_manifest->'company'->>'industry' as industry,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count,
-        COALESCE((brand_manifest->'company'->>'employees')::int, 0) as employee_count
+        COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\d+$' THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
         AND (review_status IS NULL OR review_status = 'approved')
