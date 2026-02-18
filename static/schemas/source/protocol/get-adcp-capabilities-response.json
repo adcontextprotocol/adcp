@@ -493,10 +493,10 @@
           "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",
           "description": "Modalities, components, and commerce capabilities"
         },
-        "brand_manifest_url": {
+        "brand_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to brand manifest with colors, fonts, logos, tone"
+          "description": "URL to brand.json with colors, fonts, logos, tone"
         }
       },
       "required": [

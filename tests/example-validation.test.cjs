@@ -251,9 +251,8 @@ const exampleData = {
     ],
     "start_time": "2024-01-01T00:00:00Z",
     "end_time": "2024-01-31T23:59:59Z",
-    "brand_manifest": {
-      "name": "Acme Corp",
-      "url": "https://acme.com"
+    "brand": {
+      "domain": "acmecorp.com"
     }
   },
 

@@ -31,17 +31,36 @@
     },
     "logo": {
       "type": "object",
-      "description": "Brand logo asset",
+      "description": "Brand logo asset with structured fields for orientation, background compatibility, and variant type",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
           "description": "URL to the logo asset"
         },
+        "orientation": {
+          "type": "string",
+          "enum": ["square", "horizontal", "vertical", "stacked"],
+          "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
+        },
+        "background": {
+          "type": "string",
+          "enum": ["dark-bg", "light-bg", "transparent-bg"],
+          "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
+        },
+        "variant": {
+          "type": "string",
+          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
+        },
         "tags": {
           "type": "array",
-          "description": "Semantic tags (e.g., 'dark', 'light', 'square', 'horizontal', 'icon')",
+          "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields",
           "items": { "type": "string" }
+        },
+        "usage": {
+          "type": "string",
+          "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds')"
         },
         "width": { "type": "integer", "description": "Width in pixels" },
         "height": { "type": "integer", "description": "Height in pixels" }
@@ -83,25 +102,31 @@
     },
     "asset": {
       "type": "object",
-      "description": "Brand asset (image, video, audio)",
+      "description": "Brand asset (image, video, audio, text)",
       "properties": {
         "asset_id": { "type": "string", "description": "Unique identifier" },
         "asset_type": {
-          "type": "string",
-          "enum": ["image", "video", "audio", "text"],
-          "description": "Asset type"
+          "$ref": "/schemas/enums/asset-content-type.json",
+          "description": "Type of asset content"
         },
-        "url": { "type": "string", "format": "uri", "description": "URL to asset" },
+        "url": { "type": "string", "format": "uri", "description": "URL to CDN-hosted asset file" },
         "tags": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product')"
+          "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product', 'holiday')"
         },
         "name": { "type": "string", "description": "Human-readable name" },
-        "width": { "type": "integer" },
-        "height": { "type": "integer" },
-        "duration_seconds": { "type": "number" },
-        "format": { "type": "string", "description": "File format (jpg, mp4, etc.)" }
+        "description": { "type": "string", "description": "Asset description or usage notes" },
+        "width": { "type": "integer", "description": "Image/video width in pixels" },
+        "height": { "type": "integer", "description": "Image/video height in pixels" },
+        "duration_seconds": { "type": "number", "description": "Video/audio duration in seconds" },
+        "file_size_bytes": { "type": "integer", "description": "File size in bytes" },
+        "format": { "type": "string", "description": "File format (e.g., 'jpg', 'mp4', 'mp3')" },
+        "metadata": {
+          "type": "object",
+          "description": "Additional asset-specific metadata",
+          "additionalProperties": true
+        }
       },
       "required": ["asset_id", "asset_type", "url"],
       "additionalProperties": true
@@ -143,24 +168,38 @@
       "type": "object",
       "description": "Product catalog for e-commerce brands",
       "properties": {
-        "feed_url": { "type": "string", "format": "uri" },
+        "feed_url": { "type": "string", "format": "uri", "description": "URL to product catalog feed" },
         "feed_format": {
           "type": "string",
-          "enum": ["google_merchant_center", "facebook_catalog", "openai_product_feed", "custom"]
+          "enum": ["google_merchant_center", "facebook_catalog", "openai_product_feed", "custom"],
+          "description": "Format of the product feed"
         },
         "categories": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "description": "Product categories available in the catalog"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the product catalog was last updated"
         },
         "update_frequency": {
           "type": "string",
-          "enum": ["realtime", "hourly", "daily", "weekly"]
+          "enum": ["realtime", "hourly", "daily", "weekly"],
+          "description": "How frequently the product catalog is updated"
         },
         "agentic_checkout": {
           "type": "object",
+          "description": "Agentic checkout endpoint configuration",
           "properties": {
-            "endpoint": { "type": "string", "format": "uri" },
-            "spec": { "type": "string", "enum": ["openai_agentic_checkout_v1"] }
+            "endpoint": { "type": "string", "format": "uri", "description": "Base URL for checkout session API" },
+            "spec": { "type": "string", "enum": ["openai_agentic_checkout_v1"], "description": "Checkout API specification" },
+            "supported_payment_providers": {
+              "type": "array",
+              "description": "Payment providers supported by this checkout endpoint",
+              "items": { "type": "string" }
+            }
           },
           "required": ["endpoint", "spec"]
         }
@@ -170,11 +209,16 @@
     },
     "brand": {
       "type": "object",
-      "description": "A brand within a house portfolio. Combines identity (who) with creative assets (how to represent). Referenced as house + brand_id.",
+      "description": "A brand within a house portfolio. Combines identity (who) with creative assets (how to represent). Referenced as domain + brand_id.",
       "properties": {
         "id": {
           "$ref": "#/definitions/brand_id",
           "description": "Brand identifier within the house. House chooses this ID."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Primary brand URL for context and asset discovery"
         },
         "names": {
           "type": "array",
@@ -292,7 +336,15 @@
         },
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
-          "description": "Brand agent that provides dynamic brand manifest data. Agent implements get_brand_manifest({ house, brand_id })."
+          "description": "Brand agent that provides dynamic brand data via MCP"
+        },
+        "contact": {
+          "type": "object",
+          "description": "Brand-level contact information",
+          "properties": {
+            "email": { "type": "string", "format": "email", "description": "Contact email" },
+            "phone": { "type": "string", "description": "Contact phone number" }
+          }
         }
       },
       "required": ["id", "names"],
@@ -327,7 +379,7 @@
     },
     "brand_agent": {
       "type": "object",
-      "description": "Reference to a brand agent that provides brand manifest data via MCP",
+      "description": "Reference to a brand agent that provides brand data via MCP",
       "properties": {
         "url": {
           "type": "string",
@@ -506,12 +558,26 @@
       "brands": [
         {
           "id": "tide",
+          "url": "https://tide.com",
           "names": [{"en": "Tide"}, {"es": "Tide"}, {"zh": "汰渍"}],
           "keller_type": "master",
           "industry": "cpg",
           "description": "Laundry detergent brand",
           "logos": [
-            {"url": "https://cdn.pg.com/tide/logo-square.png", "tags": ["square", "primary"]}
+            {
+              "url": "https://cdn.pg.com/tide/logo-square.png",
+              "orientation": "square",
+              "background": "transparent-bg",
+              "variant": "primary",
+              "usage": "Primary logo for general use"
+            },
+            {
+              "url": "https://cdn.pg.com/tide/logo-horizontal-dark.png",
+              "orientation": "horizontal",
+              "background": "dark-bg",
+              "variant": "full-lockup",
+              "usage": "Full lockup for dark backgrounds"
+            }
           ],
           "colors": {"primary": "#FF6600", "secondary": "#0066CC"},
           "tone": {
@@ -524,15 +590,23 @@
           "properties": [
             {"type": "website", "identifier": "tide.com", "primary": true},
             {"type": "mobile_app", "store": "apple", "identifier": "com.pg.tide"}
-          ]
+          ],
+          "contact": {
+            "email": "brands@pg.com"
+          }
         },
         {
           "id": "pampers",
+          "url": "https://pampers.com",
           "names": [{"en": "Pampers"}],
           "keller_type": "master",
           "industry": "cpg",
           "logos": [
-            {"url": "https://cdn.pg.com/pampers/logo.png", "tags": ["primary"]}
+            {
+              "url": "https://cdn.pg.com/pampers/logo.png",
+              "orientation": "horizontal",
+              "variant": "primary"
+            }
           ],
           "colors": {"primary": "#00A0D2"},
           "properties": [
@@ -557,11 +631,24 @@
       "brands": [
         {
           "id": "nike",
+          "url": "https://nike.com",
           "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
           "keller_type": "master",
           "logos": [
-            {"url": "https://cdn.nike.com/swoosh-dark.svg", "tags": ["dark", "icon"]},
-            {"url": "https://cdn.nike.com/logo-full.svg", "tags": ["full", "horizontal"]}
+            {
+              "url": "https://cdn.nike.com/swoosh-dark.svg",
+              "orientation": "horizontal",
+              "background": "dark-bg",
+              "variant": "icon",
+              "usage": "Swoosh icon for dark backgrounds"
+            },
+            {
+              "url": "https://cdn.nike.com/logo-full.svg",
+              "orientation": "horizontal",
+              "background": "light-bg",
+              "variant": "full-lockup",
+              "usage": "Full logo with wordmark for light backgrounds"
+            }
           ],
           "colors": {"primary": "#111111", "accent": "#FF6600"},
           "tone": "inspirational, bold, athletic",
@@ -574,11 +661,17 @@
         },
         {
           "id": "air_jordan",
+          "url": "https://jordan.com",
           "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
           "keller_type": "endorsed",
           "parent_brand": "nike",
           "logos": [
-            {"url": "https://cdn.nike.com/jumpman.svg", "tags": ["icon"]}
+            {
+              "url": "https://cdn.nike.com/jumpman.svg",
+              "orientation": "square",
+              "background": "transparent-bg",
+              "variant": "icon"
+            }
           ],
           "colors": {"primary": "#CE1141", "secondary": "#111111"},
           "properties": [
@@ -592,10 +685,15 @@
         },
         {
           "id": "converse",
+          "url": "https://converse.com",
           "names": [{"en": "Converse"}],
           "keller_type": "independent",
           "logos": [
-            {"url": "https://cdn.converse.com/star.svg", "tags": ["icon"]}
+            {
+              "url": "https://cdn.converse.com/star.svg",
+              "orientation": "square",
+              "variant": "icon"
+            }
           ],
           "properties": [
             {"type": "website", "identifier": "converse.com", "primary": true}

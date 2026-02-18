@@ -32,9 +32,9 @@
       "$ref": "/schemas/property/property-list-filters.json",
       "description": "Dynamic filters applied when resolving the list"
     },
-    "brand_manifest": {
-      "$ref": "/schemas/core/brand-manifest.json",
-      "description": "Brand identity used to automatically apply appropriate rules"
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Brand reference used to automatically apply appropriate rules. Resolved to full brand identity at execution time."
     },
     "webhook_url": {
       "type": "string",

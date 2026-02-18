@@ -417,7 +417,7 @@ export const TOOL_DEFINITIONS = [
         },
         brand_manifest: {
           type: "object",
-          description: "Brand manifest data (logo, colors, company info)",
+          description: "Brand identity data (logo, colors, company info) stored in the registry",
         },
         edit_summary: {
           type: "string",

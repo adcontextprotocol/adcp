@@ -29,9 +29,8 @@ import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   }
 });
 
@@ -47,12 +46,12 @@ if (result.success && result.data) {
 ```python Python
 import asyncio
 from adcp.testing import test_agent
-from adcp.types import GetProductsRequest, BrandManifest
+from adcp.types import GetProductsRequest, BrandRef
 
 async def discover():
     result = await test_agent.get_products(
         GetProductsRequest(
-            brand_manifest=BrandManifest(name='Nike', url='https://nike.com'),
+            brand=BrandRef(domain='acmecorp.com'),
             brief='Premium athletic footwear with innovative cushioning'
         )
     )
@@ -71,14 +70,14 @@ asyncio.run(discover())
 npx @adcp/client \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 
 # Or using uvx (Python)
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 

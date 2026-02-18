@@ -5,7 +5,7 @@ title: brand.json Specification
 The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports four mutually exclusive variants to accommodate different use cases.
 
 <Info>
-`brand.json` is a discovery file that declares brand ownership and may include brand identity data. Most AdCP operations work with the [brand manifest](/docs/creative/brand-manifest) directly — you don't need a `brand.json` file to use AdCP. You can also pass manifests inline or look them up from the [registry](/docs/registry/index).
+`brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/docs/registry/index).
 </Info>
 
 ## File location
@@ -77,7 +77,7 @@ Designates an MCP agent that provides brand information:
 Optional fields:
 - `contact`: Contact information
 
-When a brand has an agent, the agent is the authoritative source for brand information. Agents implement `get_brand_manifest({ house, brand_id })` to return brand manifest data.
+When a brand has an agent, the agent is the authoritative source for brand identity data.
 
 ### 4. House Portfolio
 
@@ -127,10 +127,10 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
-| `brand_agent` | object | No | Agent providing brand manifest data `{ url, id }` |
-| `logos` | array | No | Brand logo assets (inline manifest data) |
-| `colors` | object | No | Brand color palette (inline manifest data) |
-| `fonts` | object | No | Brand typography (inline manifest data) |
+| `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
+| `logos` | array | No | Brand logo assets |
+| `colors` | object | No | Brand color palette |
+| `fonts` | object | No | Brand typography |
 | `tone` | string | No | Brand voice and messaging tone |
 | `tagline` | string | No | Brand tagline or slogan |
 
@@ -221,11 +221,10 @@ Maximum redirect depth: 3 hops.
       "properties": [
         {"type": "website", "identifier": "bobsburgers.com", "primary": true}
       ],
-      "brand_manifest": {
-        "name": "Bob's Burgers",
-        "url": "https://bobsburgers.com",
-        "colors": {"primary": "#FF6B35"}
-      }
+      "logos": [
+        { "url": "https://bobsburgers.com/logo.svg", "tags": ["icon"] }
+      ],
+      "colors": { "primary": "#FF6B35" }
     }
   ]
 }

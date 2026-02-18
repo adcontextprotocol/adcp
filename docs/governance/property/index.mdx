@@ -130,16 +130,14 @@ Buyers create **property lists on governance agents** - the agents manage these 
         { "feature_id": "mfa_score", "min_value": 70, "max_value": 100 }
       ]
     },
-    "brand_manifest": {
-      "brand_name": "ToyBrand",
-      "industry": "toys",
-      "target_audience": "children_under_13"
+    "brand": {
+      "domain": "toybrand.com"
     }
   }
 }
 ```
 
-When you provide a brand manifest, governance agents automatically apply appropriate rules (COPPA for children's brands, content filtering based on industry, etc.).
+When you provide a brand reference, governance agents resolve the brand identity and automatically apply appropriate rules (COPPA for children's brands, content filtering based on industry, etc.).
 
 A buyer agent typically works with **multiple governance agents** (brand suitability, quality, sustainability) and aggregates/intersects their results into a final compliant list.
 
@@ -183,7 +181,7 @@ flowchart TB
 1. **Publisher declares** properties, sales agents, AND governance agents in `adagents.json`
 2. **Buyer discovers** governance agents by reading `property_features` from adagents.json
 3. **Buyer queries** each governance agent's `get_adcp_capabilities` for detailed capabilities
-4. **Buyer creates** property lists on each governance agent with filters and brand manifests
+4. **Buyer creates** property lists on each governance agent with filters and brand references
 5. **Governance agents evaluate** properties and notify buyer via webhooks when lists change
 6. **Buyer aggregates** results into a final compliant list
 7. **Buyer shares** property list reference with sellers (with auth token)
@@ -268,7 +266,7 @@ Both protocols operate on properties but serve different purposes:
 **Buyers:**
 1. Discover governance agents by reading `property_features` from publishers' adagents.json files
 2. Query each governance agent's `get_adcp_capabilities` for capabilities
-3. Create property lists on relevant governance agents with filters and brand manifests
+3. Create property lists on relevant governance agents with filters and brand references
 4. Aggregate results into a final compliant list
 5. Share property list references with sellers (with auth tokens)
 

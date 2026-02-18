@@ -34,6 +34,7 @@ export interface UpdateHostedBrandInput {
  */
 export interface UpsertDiscoveredBrandInput {
   domain: string;
+  brand_id?: string;
   canonical_domain?: string;
   house_domain?: string;
   brand_name?: string;
@@ -197,11 +198,12 @@ export class BrandDatabase {
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
     const result = await query<DiscoveredBrand>(
       `INSERT INTO discovered_brands (
-        domain, canonical_domain, house_domain, brand_name, brand_names,
+        domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
         keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
         has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
       ON CONFLICT (domain) DO UPDATE SET
+        brand_id = COALESCE(EXCLUDED.brand_id, discovered_brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
         house_domain = EXCLUDED.house_domain,
         brand_name = EXCLUDED.brand_name,
@@ -218,6 +220,7 @@ export class BrandDatabase {
       RETURNING *`,
       [
         input.domain.toLowerCase(),
+        input.brand_id || null,
         input.canonical_domain || null,
         input.house_domain || null,
         input.brand_name || null,
@@ -244,6 +247,30 @@ export class BrandDatabase {
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * Get discovered brand by domain + optional brand_id (brand reference lookup).
+   * If brand_id is provided, looks for a brand with that brand_id under the domain.
+   * If no brand_id, falls back to getDiscoveredBrandByDomain.
+   */
+  async getDiscoveredBrandByRef(domain: string, brandId?: string): Promise<DiscoveredBrand | null> {
+    if (!brandId) {
+      return this.getDiscoveredBrandByDomain(domain);
+    }
+    const result = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    if (result.rows[0]) {
+      return this.deserializeDiscoveredBrand(result.rows[0]);
+    }
+    // Fall back to house domain lookup (brand_id might be under the house)
+    const houseResult = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE house_domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    return houseResult.rows[0] ? this.deserializeDiscoveredBrand(houseResult.rows[0]) : null;
   }
 
   /**

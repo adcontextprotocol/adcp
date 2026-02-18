@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/promoted-offerings.json",
   "title": "Promoted Offerings",
-  "description": "Complete offering specification combining brand manifest, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
+  "description": "Complete offering specification combining brand reference, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
   "type": "object",
   "properties": {
-    "brand_manifest": {
-      "$ref": "/schemas/core/brand-manifest-ref.json",
-      "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest."
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Brand reference. Resolved to full brand identity (logos, colors, tone, assets) at execution time for creative generation."
     },
     "si_agent_url": {
       "type": "string",
@@ -16,7 +16,7 @@
     },
     "product_selectors": {
       "$ref": "/schemas/core/promoted-products.json",
-      "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote"
+      "description": "Selectors to choose which products/offerings from the brand's product catalog to promote"
     },
     "offerings": {
       "type": "array",
@@ -27,7 +27,7 @@
     },
     "asset_selectors": {
       "type": "object",
-      "description": "Selectors to choose specific assets from the brand manifest",
+      "description": "Selectors to choose specific assets from the brand's asset library",
       "properties": {
         "tags": {
           "type": "array",
@@ -68,16 +68,15 @@
     }
   },
   "required": [
-    "brand_manifest"
+    "brand"
   ],
   "additionalProperties": true,
   "examples": [
     {
       "description": "Traditional creative offering (no SI)",
       "data": {
-        "brand_manifest": {
-          "name": "Brand Name",
-          "url": "https://brand.com"
+        "brand": {
+          "domain": "acmecorp.com"
         },
         "product_selectors": {
           "manifest_skus": ["SKU-123", "SKU-456"]
@@ -91,8 +90,10 @@
     {
       "description": "Offerings with SI agent for conversational experiences",
       "data": {
-        "brand_manifest": "https://brand.com/manifest.json",
-        "si_agent_url": "https://agent.brand.com/mcp",
+        "brand": {
+          "domain": "acmecorp.com"
+        },
+        "si_agent_url": "https://agent.acmecorp.com/mcp",
         "offerings": [
           {
             "offering_id": "q1-2025-trial",
@@ -100,13 +101,13 @@
             "description": "Try our platform free for 30 days",
             "valid_from": "2025-01-01T00:00:00Z",
             "valid_to": "2025-03-31T23:59:59Z",
-            "checkout_url": "https://brand.com/signup"
+            "checkout_url": "https://acmecorp.com/signup"
           },
           {
             "offering_id": "standard-product",
             "name": "Enterprise Platform",
             "description": "Our flagship enterprise solution",
-            "landing_url": "https://brand.com/enterprise"
+            "landing_url": "https://acmecorp.com/enterprise"
           }
         ]
       }
@@ -114,15 +115,18 @@
     {
       "description": "Offerings with both creatives and SI",
       "data": {
-        "brand_manifest": "https://brand.com/manifest.json",
-        "si_agent_url": "https://agent.brand.com/mcp",
+        "brand": {
+          "domain": "pg.com",
+          "brand_id": "tide"
+        },
+        "si_agent_url": "https://agent.tide.com/mcp",
         "offerings": [
           {
             "offering_id": "summer-campaign",
             "name": "Summer Sale",
             "description": "Up to 50% off summer collection",
-            "landing_url": "https://brand.com/summer",
-            "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+            "landing_url": "https://tide.com/summer",
+            "portfolio_ref": "https://tide.com/portfolios/summer-2025.json"
           }
         ]
       }

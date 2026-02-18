@@ -171,9 +171,8 @@ async function runTests() {
           pricing_option_id: 'cpm_standard'
         }
       ],
-      brand_manifest: {
-        name: 'Test Brand',
-        url: 'https://brand.example.com/manifest.json'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z',
@@ -203,9 +202,8 @@ async function runTests() {
           pricing_option_id: 'cpm_fixed'
         }
       ],
-      brand_manifest: {
-        name: 'Simple Brand',
-        url: 'https://brand.example.com/manifest.json'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z'
@@ -225,9 +223,8 @@ async function runTests() {
           pricing_option_id: 'cpm_fixed'
         }
       ],
-      brand_manifest: {
-        name: 'Single Account Brand',
-        url: 'https://brand.example.com/manifest.json'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z'
@@ -276,16 +273,18 @@ async function runTests() {
   log('');
 
   // Test 5: Bundled schemas (no $ref resolution needed)
+  // Prefer latest/ (dev build) over versioned directories (releases)
   const BUNDLED_DIR = path.join(__dirname, '../dist/schemas');
+  const latestBundledPath = path.join(BUNDLED_DIR, 'latest', 'bundled');
   const bundledVersionDirs = fs.existsSync(BUNDLED_DIR)
     ? fs.readdirSync(BUNDLED_DIR).filter(d => /^\d+\.\d+\.\d+$/.test(d))
     : [];
 
-  if (bundledVersionDirs.length > 0) {
-    const latestVersion = bundledVersionDirs.sort().pop();
-    const bundledPath = path.join(BUNDLED_DIR, latestVersion, 'bundled');
+  const bundledPath = fs.existsSync(latestBundledPath) ? latestBundledPath
+    : bundledVersionDirs.length > 0 ? path.join(BUNDLED_DIR, bundledVersionDirs.sort().pop(), 'bundled')
+    : null;
 
-    if (fs.existsSync(bundledPath)) {
+  if (bundledPath && fs.existsSync(bundledPath)) {
       log('Bundled Schemas (no $ref resolution needed):', 'info');
 
       // Test bundled schema validation WITHOUT custom loadSchema
@@ -303,9 +302,8 @@ async function runTests() {
               pricing_option_id: 'cpm_standard'
             }
           ],
-          brand_manifest: {
-            name: 'Test Brand',
-            url: 'https://brand.example.com/manifest.json'
+          brand: {
+            domain: 'acmecorp.com'
           },
           start_time: 'asap',
           end_time: '2024-12-31T23:59:59Z'
@@ -349,7 +347,6 @@ async function runTests() {
       );
 
       log('');
-    }
   } else {
     log('');
     log('Bundled Schemas:', 'warning');
