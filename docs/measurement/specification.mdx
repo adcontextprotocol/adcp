@@ -285,6 +285,8 @@ Measurement agents declare capabilities in the `measurement` section of `get_adc
 
 ### Capability structure
 
+Each measurement scope declares `methodologies` (enum array of supported types), `metric_types`, and `supported_channels`. This follows the same pattern as capability declarations in other AdCP protocols.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `campaign_measurement` | object | Campaign-level capabilities (per media buy) |
@@ -292,50 +294,16 @@ Measurement agents declare capabilities in the `measurement` section of `get_adc
 | `data_transports` | string[] | Supported transport types |
 | `results_delivery` | string[] | `webhook`, `polling`, or both |
 | `reporting_cadence` | string[] | `daily`, `weekly`, or `on_model_refresh` |
-| `exposure_event_version` | string | Accepted exposure event schema version |
 
-### Methodology profiles
-
-Each scope contains a `methodologies` array of structured profiles designed for AI assistants to recommend approaches:
+Each scope object contains:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | Methodology identifier |
-| `name` | string | Yes | Display name |
-| `description` | string | Yes | Plain-English explanation |
-| `best_for` | string[] | No | Scenarios where this methodology excels |
-| `limitations` | string[] | No | Known limitations |
-| `minimum_requirements` | object | No | Minimum data requirements |
-| `time_to_insight_days` | integer | No | Expected days to first results |
-| `methodology_url` | string (uri) | No | Link to detailed documentation |
+| `methodologies` | string[] | Yes | Supported methodology types |
+| `metric_types` | string[] | Yes | Metric types this scope can produce |
+| `supported_channels` | string[] | No | Channels this scope can measure |
 
-### Methodology types
-
-| Type | Description |
-|------|-------------|
-| `mmm` | Marketing mix modeling -- regression-based channel-level analysis |
-| `mta` | Multi-touch attribution -- user-level credit assignment |
-| `incrementality_test` | Randomized experiment measuring causal lift |
-| `brand_lift_study` | Survey-based awareness and intent measurement |
-| `geo_experiment` | Geographic holdout comparing treatment and control regions |
-| `unified` | Combined methodology integrating multiple approaches |
-| `custom` | Provider-specific methodology |
-
-### Metric types
-
-| Metric | Description |
-|--------|-------------|
-| `incremental_conversions` | Conversions causally attributed to ad exposure |
-| `incremental_revenue` | Revenue causally attributed to ad exposure |
-| `incremental_roas` | Incremental return on ad spend |
-| `roi` | Return on investment |
-| `mroi` | Marginal ROI at current spend levels |
-| `cpik` | Cost per incremental KPI |
-| `channel_contribution` | Channel's share of total measured outcome (0-1) |
-| `brand_lift` | Change in awareness, consideration, or purchase intent |
-| `search_lift` | Incremental search volume from ad exposure |
-| `foot_traffic_lift` | Incremental store visits from ad exposure |
-| `custom` | Provider-specific metric |
+Channel measurement additionally supports `minimum_history_weeks` and `maximum_channels`.
 
 ### Example capabilities response
 
@@ -343,45 +311,7 @@ Each scope contains a `methodologies` array of structured profiles designed for 
 {
   "$schema": "/schemas/core/measurement-capabilities.json",
   "campaign_measurement": {
-    "methodologies": [
-      {
-        "type": "geo_experiment",
-        "name": "Geo-based incrementality",
-        "description": "Geographic holdout test comparing treatment and control regions to measure causal lift from advertising",
-        "best_for": [
-          "Proving causal impact of a specific channel",
-          "Evaluating new channel launches"
-        ],
-        "limitations": [
-          "Requires sufficient geographic coverage",
-          "Higher cost due to withheld impressions in control regions"
-        ],
-        "minimum_requirements": {
-          "history_weeks": 12,
-          "minimum_geos": 20,
-          "minimum_spend": { "amount": 50000, "currency": "USD" }
-        },
-        "time_to_insight_days": 42
-      },
-      {
-        "type": "incrementality_test",
-        "name": "Randomized incrementality",
-        "description": "Audience-level randomized experiment measuring the causal effect of ad exposure on conversions",
-        "best_for": [
-          "Measuring lift for digital channels with audience targeting",
-          "Creative-level incrementality"
-        ],
-        "limitations": [
-          "Requires audience-level signal integration",
-          "Not suitable for channels without user-level targeting"
-        ],
-        "minimum_requirements": {
-          "history_weeks": 4,
-          "minimum_conversions_per_week": 100
-        },
-        "time_to_insight_days": 28
-      }
-    ],
+    "methodologies": ["geo_experiment", "incrementality_test"],
     "metric_types": [
       "incremental_conversions",
       "incremental_revenue",
@@ -391,27 +321,7 @@ Each scope contains a `methodologies` array of structured profiles designed for 
     "supported_channels": ["display", "olv", "ctv", "social"]
   },
   "channel_measurement": {
-    "methodologies": [
-      {
-        "type": "mmm",
-        "name": "Marketing mix modeling",
-        "description": "Regression-based analysis of spend vs outcomes across channels over time, providing budget allocation guidance",
-        "best_for": [
-          "Long-term budget allocation across channels",
-          "Understanding channel saturation and diminishing returns"
-        ],
-        "limitations": [
-          "Requires 52+ weeks of historical data",
-          "Cannot attribute at user or creative level"
-        ],
-        "minimum_requirements": {
-          "history_weeks": 52,
-          "minimum_conversions_per_week": 50
-        },
-        "time_to_insight_days": 14,
-        "methodology_url": "https://measurement.example.com/methodology/mmm"
-      }
-    ],
+    "methodologies": ["mmm"],
     "metric_types": [
       "roi",
       "mroi",
@@ -424,8 +334,7 @@ Each scope contains a `methodologies` array of structured profiles designed for 
   },
   "data_transports": ["snowflake_share", "cloud_bucket", "direct_api"],
   "results_delivery": ["webhook", "polling"],
-  "reporting_cadence": ["weekly", "on_model_refresh"],
-  "exposure_event_version": "1.0"
+  "reporting_cadence": ["weekly", "on_model_refresh"]
 }
 ```
 
@@ -549,8 +458,7 @@ A conformant Measurement Protocol agent SHOULD:
 
 1. Support multiple data transport types
 2. Include confidence intervals with metric results
-3. Provide methodology profiles in capabilities
-4. Include interpretation hints for AI assistants
+3. Include interpretation hints for AI assistants
 
 ### Orchestrator conformance
 

@@ -29,43 +29,7 @@ Declare `campaign_measurement` if your agent measures specific media buys.
   "supported_protocols": ["measurement"],
   "measurement": {
     "campaign_measurement": {
-      "methodologies": [
-        {
-          "type": "incrementality_test",
-          "name": "Geo-Based Incrementality",
-          "description": "Measures causal lift by comparing treatment and control geographic regions",
-          "best_for": [
-            "Proving causal impact of specific campaigns",
-            "New channel evaluation"
-          ],
-          "limitations": [
-            "Requires sufficient geographic coverage",
-            "Revenue impact of holdout during test period"
-          ],
-          "minimum_requirements": {
-            "minimum_geos": 20,
-            "minimum_spend": { "amount": 50000, "currency": "USD" }
-          },
-          "time_to_insight_days": 28
-        },
-        {
-          "type": "brand_lift_study",
-          "name": "Brand Lift Survey",
-          "description": "Measures awareness and consideration lift via exposed vs. control survey panels",
-          "best_for": [
-            "Upper-funnel campaign evaluation",
-            "Awareness campaign measurement"
-          ],
-          "limitations": [
-            "Survey-based, not behavioral",
-            "Requires sufficient sample size"
-          ],
-          "minimum_requirements": {
-            "minimum_spend": { "amount": 25000, "currency": "USD" }
-          },
-          "time_to_insight_days": 21
-        }
-      ],
+      "methodologies": ["incrementality_test", "brand_lift_study", "geo_experiment"],
       "metric_types": [
         "incremental_conversions",
         "incremental_revenue",
@@ -76,8 +40,7 @@ Declare `campaign_measurement` if your agent measures specific media buys.
     },
     "data_transports": ["snowflake_share", "cloud_bucket"],
     "results_delivery": ["webhook", "polling"],
-    "reporting_cadence": ["weekly", "on_model_refresh"],
-    "exposure_event_version": "1.0"
+    "reporting_cadence": ["weekly", "on_model_refresh"]
   }
 }
 ```
@@ -91,27 +54,7 @@ Declare `channel_measurement` if your agent runs marketing mix models across the
   "supported_protocols": ["measurement"],
   "measurement": {
     "channel_measurement": {
-      "methodologies": [
-        {
-          "type": "mmm",
-          "name": "Marketing Mix Modeling",
-          "description": "Bayesian regression model decomposing outcomes by channel spend over time",
-          "best_for": [
-            "Long-term budget allocation across channels",
-            "Understanding diminishing returns by channel"
-          ],
-          "limitations": [
-            "Requires 2+ years of weekly data",
-            "Cannot attribute at user level"
-          ],
-          "minimum_requirements": {
-            "history_weeks": 104,
-            "minimum_conversions_per_week": 50
-          },
-          "time_to_insight_days": 14,
-          "methodology_url": "https://measurement.example.com/methodology/mmm"
-        }
-      ],
+      "methodologies": ["mmm"],
       "metric_types": [
         "roi",
         "mroi",
@@ -329,68 +272,12 @@ Readiness is a lifecycle state, not an error. Your agent should return honest re
 
 Readiness appears in both `register_media_buys` responses (per media buy) and `get_measurement_results` responses.
 
-## Methodology profiles
-
-Methodology profiles are the primary way your agent communicates what it can do. They appear in capabilities and are designed for both human decision-makers and AI assistants to evaluate.
-
-### Required fields
-
-Every methodology profile must include:
-
-```json
-{
-  "type": "incrementality_test",
-  "name": "Geo-Based Incrementality",
-  "description": "Measures causal lift by comparing treatment and control regions"
-}
-```
-
-### Recommended fields
-
-Include these fields to help orchestrators select the right methodology:
-
-```json
-{
-  "type": "geo_experiment",
-  "name": "Geographic Lift Test",
-  "description": "Statistically designed geographic holdout measuring causal impact",
-  "best_for": [
-    "Proving causal impact of a specific channel",
-    "Validating MMM results with an in-market experiment"
-  ],
-  "limitations": [
-    "Requires 20+ geographic regions",
-    "Revenue impact during holdout period",
-    "Results may not generalize to non-tested geos"
-  ],
-  "minimum_requirements": {
-    "minimum_geos": 20,
-    "minimum_spend": { "amount": 50000, "currency": "USD" },
-    "minimum_conversions_per_week": 100
-  },
-  "time_to_insight_days": 28,
-  "methodology_url": "https://measurement.example.com/methodology/geo-lift"
-}
-```
-
-### Methodology types
-
-| Type | Description | Typical scope |
-|------|-------------|---------------|
-| `mmm` | Marketing mix modeling | Channel |
-| `mta` | Multi-touch attribution | Campaign |
-| `incrementality_test` | Randomized experiment measuring causal lift | Campaign |
-| `brand_lift_study` | Survey-based awareness and intent measurement | Campaign |
-| `geo_experiment` | Geographic holdout comparing treatment and control regions | Campaign |
-| `unified` | Combined approach integrating multiple methodologies | Both |
-| `custom` | Provider-specific methodology | Either |
-
 ## Deployment checklist
 
 Before launching your measurement agent:
 
 - [ ] `get_adcp_capabilities` returns valid `measurement` section with at least one scope
-- [ ] At least one methodology profile declared with `type`, `name`, and `description`
+- [ ] `methodologies` lists all methodology types your agent supports
 - [ ] `metric_types` lists all metrics your agent can produce
 - [ ] `data_transports` lists at least one supported transport type
 - [ ] `results_delivery` declares supported delivery mechanisms
@@ -407,6 +294,5 @@ Before launching your measurement agent:
 ## Related documentation
 
 - [Measurement Protocol overview](/docs/measurement/overview) -- Protocol concepts and architecture
-- [Choosing a methodology](/docs/measurement/choosing-methodology) -- Decision framework for methodology selection
 - [Quick reference](/docs/measurement/quick-reference) -- Compact task reference
 - [Authentication](/docs/building/integration/authentication) -- AdCP authentication patterns

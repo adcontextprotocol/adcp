@@ -62,9 +62,9 @@ Exposure data is the raw material for measurement. Rather than prescribing a sin
 
 The protocol defines a standardized exposure event schema covering impressions, clicks, conversions, and video completions. Each event carries its `media_buy_id`, `creative_id`, channel, cost, and geographic context. User identity is intentionally omitted from the schema -- identity matching is negotiated out-of-band during data transport setup.
 
-### Methodology profiles
+### Methodology declaration
 
-Measurement agents declare their supported methodologies through structured profiles in `get_adcp_capabilities`. Each profile includes a plain-English description, the scenarios it is best suited for, its known limitations, minimum data requirements, and expected time to first results. This enables orchestrators (and the humans overseeing them) to select the right approach for each measurement question.
+Measurement agents declare their supported methodologies in `get_adcp_capabilities` as enum arrays (e.g., `["geo_experiment", "incrementality_test"]`). This follows the same pattern as other AdCP capability declarations — simple feature lists that orchestrators can use to match agents to measurement needs.
 
 ## Getting started
 
