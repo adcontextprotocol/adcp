@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/confidence-interval-method.json",
+  "title": "Confidence Interval Method",
+  "description": "Statistical method used to compute a confidence interval",
+  "type": "string",
+  "enum": [
+    "bayesian_credible",
+    "frequentist_confidence"
+  ],
+  "enumDescriptions": {
+    "bayesian_credible": "Bayesian credible interval — represents probability of the parameter (used by Meridian)",
+    "frequentist_confidence": "Frequentist confidence interval — represents long-run coverage probability"
+  }
+}

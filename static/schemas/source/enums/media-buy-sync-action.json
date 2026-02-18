@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/media-buy-sync-action.json",
+  "title": "Media Buy Sync Action",
+  "description": "Action taken on a media buy during registration with a measurement agent",
+  "type": "string",
+  "enum": [
+    "created",
+    "updated",
+    "unchanged",
+    "failed"
+  ],
+  "enumDescriptions": {
+    "created": "Media buy was newly registered with the measurement agent",
+    "updated": "Existing media buy registration was updated",
+    "unchanged": "Media buy was already registered with identical configuration",
+    "failed": "Registration failed for this media buy — see per-item errors"
+  }
+}

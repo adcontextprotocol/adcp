@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tracker.json",
+  "title": "Tracker",
+  "description": "Tracking URL provided by a measurement agent for ad exposure measurement",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/tracker-type.json",
+      "description": "Type of tracking event this URL captures"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Tracking URL to fire on the corresponding event"
+    }
+  },
+  "required": ["type", "url"],
+  "additionalProperties": true
+}

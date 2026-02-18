@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-scope.json",
+  "title": "Measurement Scope",
+  "description": "Scope of measurement results — campaign-level or channel-level",
+  "type": "string",
+  "enum": [
+    "campaign",
+    "channel"
+  ],
+  "enumDescriptions": {
+    "campaign": "Results for specific media buys and creatives",
+    "channel": "Results for entire advertising channels across the marketing portfolio"
+  }
+}

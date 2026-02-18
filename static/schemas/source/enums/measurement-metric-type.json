@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-metric-type.json",
+  "title": "Measurement Metric Type",
+  "description": "Metric types produced by measurement agents. Terminology aligns with Google Meridian and Meta Robyn conventions.",
+  "type": "string",
+  "enum": [
+    "incremental_conversions",
+    "incremental_revenue",
+    "incremental_roas",
+    "roi",
+    "mroi",
+    "cpik",
+    "channel_contribution",
+    "brand_lift",
+    "search_lift",
+    "foot_traffic_lift",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "incremental_conversions": "Conversions causally attributed to advertising exposure",
+    "incremental_revenue": "Revenue causally attributed to advertising exposure",
+    "incremental_roas": "Incremental return on ad spend (incremental revenue / spend)",
+    "roi": "Return on investment: (revenue - cost) / cost",
+    "mroi": "Marginal ROI — expected return from the next dollar of spend at current levels",
+    "cpik": "Cost per incremental KPI — spend required to generate one additional outcome",
+    "channel_contribution": "Channel's share of total measured outcome (0-1)",
+    "brand_lift": "Change in brand awareness, consideration, or purchase intent",
+    "search_lift": "Incremental search volume attributed to advertising exposure",
+    "foot_traffic_lift": "Incremental physical store visits attributed to advertising exposure",
+    "custom": "Provider-specific metric not covered by standard types"
+  }
+}

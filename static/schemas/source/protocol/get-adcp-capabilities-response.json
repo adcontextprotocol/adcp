@@ -33,7 +33,8 @@
           "signals",
           "governance",
           "sponsored_intelligence",
-          "creative"
+          "creative",
+          "measurement"
         ]
       },
       "minItems": 1
@@ -514,6 +515,10 @@
         }
       },
       "additionalProperties": true
+    },
+    "measurement": {
+      "$ref": "/schemas/core/measurement-capabilities.json",
+      "description": "Measurement protocol capabilities. Only present if measurement is in supported_protocols. Declares campaign-level and/or channel-level measurement capabilities."
     },
     "extensions_supported": {
       "type": "array",

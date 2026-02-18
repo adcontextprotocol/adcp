@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-status.json",
+  "title": "Measurement Status",
+  "description": "Lifecycle status of a media buy within a measurement agent",
+  "type": "string",
+  "enum": [
+    "pending_data",
+    "modeling",
+    "reporting",
+    "completed",
+    "paused"
+  ],
+  "enumDescriptions": {
+    "pending_data": "Registered but waiting for sufficient exposure data",
+    "modeling": "Data received, model is training or processing",
+    "reporting": "Results are available and being updated on cadence",
+    "completed": "Measurement is complete (flight ended, final results available)",
+    "paused": "Measurement is paused (e.g., flight paused, data feed interrupted)"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/confidence-interval.json",
+  "title": "Confidence Interval",
+  "description": "Statistical confidence interval for a measurement result. Supports both Bayesian credible intervals (used by Meridian) and frequentist confidence intervals.",
+  "type": "object",
+  "properties": {
+    "level": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence/credibility level (e.g., 0.9 for 90%, 0.95 for 95%)",
+      "examples": [0.9, 0.95]
+    },
+    "lower_bound": {
+      "type": "number",
+      "description": "Lower bound of the interval"
+    },
+    "upper_bound": {
+      "type": "number",
+      "description": "Upper bound of the interval"
+    },
+    "method": {
+      "$ref": "/schemas/enums/confidence-interval-method.json",
+      "description": "Statistical method used to compute the interval. Bayesian credible intervals represent probability of the parameter; frequentist confidence intervals represent long-run coverage."
+    }
+  },
+  "required": ["level", "lower_bound", "upper_bound"],
+  "additionalProperties": true
+}

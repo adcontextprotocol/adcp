@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/measurement/get-measurement-results-request.json",
+  "title": "Get Measurement Results Request",
+  "description": "Retrieve measurement results from a measurement agent. Supports both campaign-level (per media buy) and channel-level (MMM portfolio) scopes.",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "$ref": "/schemas/enums/measurement-scope.json",
+      "description": "Measurement scope — campaign for per-media-buy results, channel for portfolio-level MMM results"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Filter to specific media buys (campaign scope only)",
+      "items": { "type": "string" }
+    },
+    "buyer_refs": {
+      "type": "array",
+      "description": "Filter to specific buyer references (campaign scope only, alternative to media_buy_ids)",
+      "items": { "type": "string" }
+    },
+    "channels": {
+      "type": "array",
+      "description": "Filter to specific channels (channel scope only)",
+      "items": {
+        "$ref": "/schemas/enums/channels.json"
+      }
+    },
+    "measurement_period": {
+      "type": "object",
+      "description": "Time period for measurement results",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date",
+          "description": "Period start date (YYYY-MM-DD)"
+        },
+        "end": {
+          "type": "string",
+          "format": "date",
+          "description": "Period end date (YYYY-MM-DD)"
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": true
+    },
+    "metric_types": {
+      "type": "array",
+      "description": "Filter to specific metric types",
+      "items": {
+        "$ref": "/schemas/enums/measurement-metric-type.json"
+      },
+      "uniqueItems": true
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Pagination parameters"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["scope", "measurement_period"],
+  "additionalProperties": true
+}

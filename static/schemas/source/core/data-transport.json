@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/data-transport.json",
+  "title": "Data Transport",
+  "description": "Configuration for delivering exposure data to a measurement agent. Uses 'type' as discriminator to determine transport-specific fields.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Snowflake data share for zero-copy data access",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "snowflake_share",
+          "description": "Discriminator for Snowflake data share transport"
+        },
+        "account_locator": {
+          "type": "string",
+          "description": "Snowflake account locator (e.g., 'xy12345.us-east-1')"
+        },
+        "share_name": {
+          "type": "string",
+          "description": "Name of the Snowflake share"
+        },
+        "database": {
+          "type": "string",
+          "description": "Database name within the share"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["type", "account_locator", "share_name"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Cloud storage bucket (S3, GCS, or Azure Blob Storage)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "cloud_bucket",
+          "description": "Discriminator for cloud bucket transport"
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["s3", "gcs", "azure_blob"],
+          "description": "Cloud storage provider"
+        },
+        "bucket": {
+          "type": "string",
+          "description": "Bucket or container name"
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Key prefix for data files within the bucket"
+        },
+        "region": {
+          "type": "string",
+          "description": "Cloud region for the bucket"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["type", "provider", "bucket"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Direct API endpoint for real-time or batch data delivery",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "direct_api",
+          "description": "Discriminator for direct API transport"
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "API endpoint URL for data delivery"
+        },
+        "authentication": {
+          "type": "object",
+          "description": "Authentication configuration for the API endpoint. Credentials are exchanged out-of-band during onboarding.",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/enums/auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            }
+          },
+          "required": ["schemes"],
+          "additionalProperties": true
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["type", "endpoint"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Agent-hosted endpoint for orchestrator to poll for data",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "polling",
+          "description": "Discriminator for polling transport"
+        },
+        "poll_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "Endpoint URL to poll for available data"
+        },
+        "poll_interval_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Recommended polling interval in seconds",
+          "default": 3600
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["type", "poll_endpoint"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Measurement agent connects to ad platforms directly using its own integrations. The orchestrator provides platform account identifiers so the agent can pull data autonomously.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "provider_managed",
+          "description": "Discriminator for provider-managed transport"
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Ad platforms the agent will connect to for this account",
+          "items": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "type": "string",
+                "description": "Platform identifier (e.g., 'meta_ads', 'google_ads', 'tiktok_ads', 'shopify')"
+              },
+              "account_ids": {
+                "type": "array",
+                "description": "Platform-specific account identifiers the agent should access",
+                "items": { "type": "string" },
+                "minItems": 1
+              }
+            },
+            "required": ["platform", "account_ids"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["type", "platforms"],
+      "additionalProperties": true
+    }
+  ]
+}

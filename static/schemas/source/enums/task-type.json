@@ -18,7 +18,9 @@
     "sync_accounts",
     "get_creative_delivery",
     "sync_event_sources",
-    "log_event"
+    "log_event",
+    "register_media_buys",
+    "get_measurement_results"
   ],
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
@@ -34,11 +36,13 @@
     "sync_accounts": "Account domain: Sync advertiser accounts with a seller, declaring brands, operators, and billing arrangements",
     "get_creative_delivery": "Creative domain: Retrieve variant-level creative delivery data",
     "sync_event_sources": "Media-buy domain: Configure event sources on an account with upsert semantics",
-    "log_event": "Media-buy domain: Send conversion or marketing events for attribution"
+    "log_event": "Media-buy domain: Send conversion or marketing events for attribution",
+    "register_media_buys": "Measurement domain: Register media buys with a measurement agent, get trackers, negotiate data transport",
+    "get_measurement_results": "Measurement domain: Retrieve campaign-level or channel-level measurement results"
   },
   "notes": [
     "Task types map to specific AdCP task operations",
-    "Each task type belongs to the 'media-buy', 'signals', 'property', 'account', or 'creative' domain",
+    "Each task type belongs to the 'media-buy', 'signals', 'property', 'account', 'creative', or 'measurement' domain",
     "This enum is used in task management APIs (tasks/list, tasks/get) and webhook payloads",
     "New task types require a minor version bump per semantic versioning"
   ]

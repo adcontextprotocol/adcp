@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/readiness-blocker.json",
+  "title": "Readiness Blocker",
+  "description": "Machine-readable codes for issues preventing measurement readiness",
+  "type": "string",
+  "enum": [
+    "insufficient_history",
+    "insufficient_spend",
+    "insufficient_geos",
+    "insufficient_conversions",
+    "data_not_connected",
+    "model_training"
+  ],
+  "enumDescriptions": {
+    "insufficient_history": "Not enough historical data for the methodology",
+    "insufficient_spend": "Spend volume too low for reliable measurement",
+    "insufficient_geos": "Not enough geographic regions for geo experiments",
+    "insufficient_conversions": "Conversion volume too low for reliable modeling",
+    "data_not_connected": "Exposure data transport not yet configured or delivering",
+    "model_training": "Model is currently training on ingested data"
+  }
+}

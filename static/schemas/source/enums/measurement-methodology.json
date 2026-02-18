@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-methodology.json",
+  "title": "Measurement Methodology",
+  "description": "Methodologies used by measurement agents to evaluate advertising effectiveness",
+  "type": "string",
+  "enum": [
+    "mmm",
+    "mta",
+    "incrementality_test",
+    "brand_lift_study",
+    "geo_experiment",
+    "unified",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "mmm": "Marketing mix modeling — regression-based channel-level analysis of spend vs outcomes over time",
+    "mta": "Multi-touch attribution — user-level credit assignment across touchpoints",
+    "incrementality_test": "Randomized experiment measuring causal lift from advertising exposure",
+    "brand_lift_study": "Survey-based measurement of awareness, consideration, and purchase intent",
+    "geo_experiment": "Geographic holdout test comparing treatment and control regions",
+    "unified": "Combined methodology integrating multiple measurement approaches",
+    "custom": "Provider-specific methodology not covered by standard types"
+  }
+}

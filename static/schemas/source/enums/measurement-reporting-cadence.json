@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/measurement-reporting-cadence.json",
+  "title": "Measurement Reporting Cadence",
+  "description": "How frequently a measurement agent produces updated results",
+  "type": "string",
+  "enum": [
+    "daily",
+    "weekly",
+    "on_model_refresh"
+  ],
+  "enumDescriptions": {
+    "daily": "Results updated daily",
+    "weekly": "Results updated weekly",
+    "on_model_refresh": "Results updated when the model is retrained or refreshed"
+  }
+}

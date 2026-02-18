@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/data-transport-type.json",
+  "title": "Data Transport Type",
+  "description": "Transport mechanisms for delivering exposure data to measurement agents",
+  "type": "string",
+  "enum": [
+    "snowflake_share",
+    "cloud_bucket",
+    "direct_api",
+    "polling",
+    "provider_managed"
+  ],
+  "enumDescriptions": {
+    "snowflake_share": "Snowflake data share for zero-copy data access",
+    "cloud_bucket": "Cloud storage bucket (S3, GCS, or Azure Blob Storage)",
+    "direct_api": "Direct API endpoint for real-time or batch data delivery",
+    "polling": "Agent-hosted endpoint for orchestrator to poll for data",
+    "provider_managed": "Measurement agent connects to ad platforms directly via its own integrations"
+  }
+}

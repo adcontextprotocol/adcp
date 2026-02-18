@@ -1,0 +1,606 @@
+---
+title: Measurement specification
+sidebarTitle: Specification
+description: Technical specification for the AdCP measurement protocol
+testable: true
+---
+
+<Info>
+**AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Info>
+
+**Status**: Request for Comments
+**Last Updated**: February 2026
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Abstract
+
+The Measurement Protocol defines a standard interface for AI-powered advertising measurement. This protocol enables AI agents to register media buys with measurement providers, negotiate exposure data transport, and retrieve causal performance results across campaign and channel scopes.
+
+## Protocol overview
+
+The Measurement Protocol operates across two independent scopes:
+
+- **Campaign measurement** -- evaluates specific media buys using incrementality tests, multi-touch attribution, or lift studies. Results are keyed by `media_buy_id` and `creative_id`.
+- **Channel measurement** -- marketing mix modeling (MMM) across the advertiser's full media portfolio. Results are keyed by advertising channel and produce budget reallocation guidance.
+
+A measurement agent MAY support one or both scopes. Orchestrators MUST check `get_adcp_capabilities` to determine which scopes an agent supports before issuing task requests.
+
+### Data flow
+
+The protocol follows a three-phase data flow:
+
+1. **Registration** -- the orchestrator registers media buys with the measurement agent and negotiates data transport
+2. **Exposure delivery** -- the orchestrator delivers exposure events (impressions, clicks, conversions) through the negotiated transport
+3. **Results retrieval** -- the orchestrator polls for measurement results or receives them via webhook
+
+Exposure data flows outside the MCP/A2A channel. The protocol negotiates the transport mechanism during registration, then data moves through bulk channels (Snowflake shares, cloud buckets, or direct APIs) suited to high-volume event streams.
+
+## Transport requirements
+
+Measurement agents MUST support at least one of the following transports:
+
+| Transport | Protocol | Description |
+|-----------|----------|-------------|
+| MCP | Model Context Protocol | Tool-based interaction via JSON-RPC |
+| A2A | Agent-to-Agent | Message-based interaction |
+
+Measurement agents SHOULD support MCP as the preferred transport.
+
+Measurement agents MUST declare Measurement Protocol support via `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "adcp": { "major_versions": [2] },
+  "supported_protocols": ["measurement"]
+}
+```
+
+## Orchestrator workflows
+
+### Campaign measurement workflow
+
+Campaign measurement evaluates specific media buys. The orchestrator drives the workflow:
+
+```
+1. get_adcp_capabilities        Discover methodologies, data transports, metrics
+2. register_media_buys          Register media buys, negotiate data transport
+3. [exposure data flows]        Deliver events via negotiated transport
+4. get_measurement_results      Retrieve per-media-buy results (scope: campaign)
+5. [translate results]          Feed results into provide_performance_feedback
+```
+
+**Step 1: Capability discovery.** The orchestrator calls `get_adcp_capabilities` to inspect the `measurement` section. This reveals supported methodologies, metric types, data transports, and reporting cadence.
+
+**Step 2: Registration.** The orchestrator calls `register_media_buys` with media buy metadata (identifiers, channels, flight dates, budgets, KPIs) and a `data_transport` configuration. The agent confirms transport and returns per-item registration status, readiness assessments, and any tracking URLs to attach to ad serving.
+
+**Step 3: Exposure delivery.** The orchestrator delivers exposure events through the negotiated transport. Events follow the standardized exposure event schema. This step operates outside the MCP/A2A channel.
+
+**Step 4: Results retrieval.** The orchestrator calls `get_measurement_results` with `scope: "campaign"` and a measurement period. The agent returns per-media-buy metrics with confidence intervals, readiness status, and baseline expectations.
+
+**Step 5: Feedback loop.** The orchestrator translates measurement results into `provide_performance_feedback` calls to sales agents, closing the optimization loop. Incremental ROAS from the measurement agent informs budget reallocation across media buys.
+
+### Channel measurement workflow
+
+Channel measurement provides portfolio-level budget allocation guidance:
+
+```
+1. get_adcp_capabilities        Discover MMM capabilities, required history
+2. [negotiate transport]        Establish channel-level data feed
+3. [data flows]                 Deliver historical spend and outcome data
+4. get_measurement_results      Retrieve channel-level results (scope: channel)
+5. [adjust budget allocation]   Reallocate spend based on marginal ROI
+```
+
+**Step 1: Capability discovery.** The orchestrator inspects the `channel_measurement` section of capabilities, noting `minimum_history_weeks` (typically 52-104) and `maximum_channels`.
+
+**Step 2-3: Data delivery.** The orchestrator negotiates transport and delivers historical spend and outcome data per channel. Channel measurement typically requires longer history than campaign measurement.
+
+**Step 4: Results retrieval.** The orchestrator calls `get_measurement_results` with `scope: "channel"`. The agent returns per-channel metrics including `saturation_index`, `response_curve` points, and `recommendations` with specific budget reallocation guidance.
+
+**Step 5: Budget adjustment.** The orchestrator uses channel-level marginal ROI and saturation analysis to shift budget across channels. Recommendations include `current_weekly_spend`, `recommended_weekly_spend`, and the projected KPI impact of following the recommendation.
+
+## Data transport negotiation
+
+Exposure data transport is negotiated during the first `register_media_buys` call. The orchestrator proposes a transport configuration; the agent confirms or returns its supported alternatives.
+
+Four transport types are defined:
+
+| Type | Description | Best for |
+|------|-------------|----------|
+| `snowflake_share` | Snowflake data share for zero-copy access | Large-scale, enterprise integrations |
+| `cloud_bucket` | S3, GCS, or Azure Blob Storage | Batch delivery, cross-cloud flexibility |
+| `direct_api` | API endpoint for push-based delivery | Real-time or near-real-time data |
+| `polling` | Agent-hosted endpoint for pull-based access | Simple integrations, low volume |
+| `provider_managed` | Measurement provider connects directly to ad platforms | Platform-integrated measurement providers |
+
+### Transport configuration examples
+
+**Snowflake share:**
+
+```json
+{
+  "type": "snowflake_share",
+  "account_locator": "xy12345.us-east-1",
+  "share_name": "adcp_exposure_data",
+  "database": "measurement_db"
+}
+```
+
+**Cloud bucket:**
+
+```json
+{
+  "type": "cloud_bucket",
+  "provider": "s3",
+  "bucket": "acme-exposure-data",
+  "prefix": "adcp/events/",
+  "region": "us-east-1"
+}
+```
+
+**Direct API:**
+
+```json
+{
+  "type": "direct_api",
+  "endpoint": "https://measurement.example.com/api/v1/events"
+}
+```
+
+**Polling:**
+
+```json
+{
+  "type": "polling",
+  "poll_endpoint": "https://measurement.example.com/api/v1/poll",
+  "poll_interval_seconds": 3600
+}
+```
+
+Orchestrators SHOULD propose a transport type that appears in the agent's `data_transports` capability. If the proposed transport is not supported, the agent MUST return an error with the `transport_not_configured` code.
+
+Once negotiated, transport configuration is reused for subsequent `register_media_buys` calls. The orchestrator MAY omit `data_transport` on subsequent calls to keep the existing configuration.
+
+## Exposure event format
+
+Exposure events are the raw material for measurement. The protocol defines a standardized schema covering impressions, clicks, and conversions. Events are delivered through the negotiated transport, not through MCP/A2A calls.
+
+### Schema
+
+**Schema**: [`core/exposure-event.json`](/schemas/core/exposure-event.json)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event_type` | string | Yes | `impression`, `click`, or `conversion` |
+| `event_id` | string | Yes | Unique identifier for deduplication |
+| `timestamp` | string (date-time) | Yes | ISO 8601 timestamp |
+| `media_buy_id` | string | Conditional | AdCP media buy identifier (required unless `buyer_ref` provided) |
+| `creative_id` | string | No | Creative identifier |
+| `buyer_ref` | string | Conditional | Buyer reference (alternative to `media_buy_id`) |
+| `channel` | string | No | Advertising channel |
+| `cost` | object | No | Cost with `amount`, `currency`, and optional `model` |
+| `geo` | object | No | Geographic context: `country`, `region`, `dma` |
+| `impression_id` | string | No | Links click/conversion events to originating impression |
+| `conversion_value` | object | No | Conversion value with `amount` and `currency` (conversion events only) |
+| `order_id` | string | No | Order or transaction identifier (conversion events only) |
+| `customer_type` | string | No | `new` or `returning` (conversion events only) |
+| `ext` | object | No | Vendor extensions |
+
+User identity is intentionally omitted from the exposure event schema. Identity matching (device graphs, clean rooms, hashed identifiers) is negotiated out-of-band during data transport setup. This separation keeps the event schema portable across privacy regimes.
+
+### Example
+
+```json
+{
+  "$schema": "/schemas/core/exposure-event.json",
+  "event_type": "impression",
+  "event_id": "evt_a1b2c3d4e5f6",
+  "timestamp": "2026-02-15T14:32:00Z",
+  "media_buy_id": "mb_summer_campaign_001",
+  "creative_id": "cr_video_30s_v2",
+  "channel": "olv",
+  "cost": {
+    "amount": 0.012,
+    "currency": "USD",
+    "model": "cpm"
+  },
+  "geo": {
+    "country": "US",
+    "region": "US-NY",
+    "dma": "501"
+  }
+}
+```
+
+### Deduplication
+
+Measurement agents MUST deduplicate events by `event_id`. Orchestrators SHOULD generate globally unique `event_id` values (UUIDs or similar) and MUST use stable identifiers when retrying failed deliveries.
+
+## Readiness lifecycle
+
+Readiness is a first-class concept in the protocol. When a measurement agent does not yet have sufficient data to produce results, it returns a readiness object describing the current state. This is not an error -- it is a lifecycle signal that the orchestrator can act on.
+
+### Readiness object
+
+**Schema**: [`core/readiness.json`](/schemas/core/readiness.json)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ready` | boolean | Yes | Whether results are available |
+| `estimated_ready_date` | string (date) | No | When results are expected |
+| `blockers` | array | No | Specific issues preventing readiness |
+| `data_coverage` | object | No | Current vs required data coverage |
+
+### Blocker codes
+
+When `ready` is `false`, the `blockers` array explains why:
+
+| Code | Description |
+|------|-------------|
+| `insufficient_history` | Not enough historical data for the methodology |
+| `insufficient_spend` | Spend volume too low for reliable modeling |
+| `insufficient_geos` | Too few geographic regions for geo experiments |
+| `insufficient_conversions` | Conversion volume too low for reliable measurement |
+| `data_not_connected` | Exposure data transport not yet delivering data |
+| `model_training` | Data is available, model is still training |
+
+### Data coverage
+
+The `data_coverage` object provides a quantitative view of progress:
+
+```json
+{
+  "ready": false,
+  "estimated_ready_date": "2026-04-15",
+  "blockers": [
+    {
+      "code": "insufficient_history",
+      "description": "MMM requires 52 weeks of data; 38 weeks currently available"
+    }
+  ],
+  "data_coverage": {
+    "history_weeks": 38,
+    "required_weeks": 52
+  }
+}
+```
+
+Orchestrators SHOULD use `estimated_ready_date` to schedule follow-up `get_measurement_results` calls rather than polling continuously. Orchestrators MUST NOT treat a `ready: false` response as an error.
+
+### Where readiness appears
+
+Readiness objects appear in two places:
+
+- **`register_media_buys` response** -- per-media-buy readiness after registration
+- **`get_measurement_results` response** -- per-result readiness (campaign scope)
+
+## Measurement capabilities
+
+Measurement agents declare capabilities in the `measurement` section of `get_adcp_capabilities`. This structure enables orchestrators to select agents and methodologies programmatically.
+
+**Schema**: [`core/measurement-capabilities.json`](/schemas/core/measurement-capabilities.json)
+
+### Capability structure
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `campaign_measurement` | object | Campaign-level capabilities (per media buy) |
+| `channel_measurement` | object | Channel-level capabilities (MMM/portfolio) |
+| `data_transports` | string[] | Supported transport types |
+| `results_delivery` | string[] | `webhook`, `polling`, or both |
+| `reporting_cadence` | string[] | `daily`, `weekly`, or `on_model_refresh` |
+| `exposure_event_version` | string | Accepted exposure event schema version |
+
+### Methodology profiles
+
+Each scope contains a `methodologies` array of structured profiles designed for AI assistants to recommend approaches:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | Methodology identifier |
+| `name` | string | Yes | Display name |
+| `description` | string | Yes | Plain-English explanation |
+| `best_for` | string[] | No | Scenarios where this methodology excels |
+| `limitations` | string[] | No | Known limitations |
+| `minimum_requirements` | object | No | Minimum data requirements |
+| `time_to_insight_days` | integer | No | Expected days to first results |
+| `methodology_url` | string (uri) | No | Link to detailed documentation |
+
+### Methodology types
+
+| Type | Description |
+|------|-------------|
+| `mmm` | Marketing mix modeling -- regression-based channel-level analysis |
+| `mta` | Multi-touch attribution -- user-level credit assignment |
+| `incrementality_test` | Randomized experiment measuring causal lift |
+| `brand_lift_study` | Survey-based awareness and intent measurement |
+| `geo_experiment` | Geographic holdout comparing treatment and control regions |
+| `unified` | Combined methodology integrating multiple approaches |
+| `custom` | Provider-specific methodology |
+
+### Metric types
+
+| Metric | Description |
+|--------|-------------|
+| `incremental_conversions` | Conversions causally attributed to ad exposure |
+| `incremental_revenue` | Revenue causally attributed to ad exposure |
+| `incremental_roas` | Incremental return on ad spend |
+| `roi` | Return on investment |
+| `mroi` | Marginal ROI at current spend levels |
+| `cpik` | Cost per incremental KPI |
+| `channel_contribution` | Channel's share of total measured outcome (0-1) |
+| `brand_lift` | Change in awareness, consideration, or purchase intent |
+| `search_lift` | Incremental search volume from ad exposure |
+| `foot_traffic_lift` | Incremental store visits from ad exposure |
+| `custom` | Provider-specific metric |
+
+### Example capabilities response
+
+```json
+{
+  "$schema": "/schemas/core/measurement-capabilities.json",
+  "campaign_measurement": {
+    "methodologies": [
+      {
+        "type": "geo_experiment",
+        "name": "Geo-based incrementality",
+        "description": "Geographic holdout test comparing treatment and control regions to measure causal lift from advertising",
+        "best_for": [
+          "Proving causal impact of a specific channel",
+          "Evaluating new channel launches"
+        ],
+        "limitations": [
+          "Requires sufficient geographic coverage",
+          "Higher cost due to withheld impressions in control regions"
+        ],
+        "minimum_requirements": {
+          "history_weeks": 12,
+          "minimum_geos": 20,
+          "minimum_spend": { "amount": 50000, "currency": "USD" }
+        },
+        "time_to_insight_days": 42
+      },
+      {
+        "type": "incrementality_test",
+        "name": "Randomized incrementality",
+        "description": "Audience-level randomized experiment measuring the causal effect of ad exposure on conversions",
+        "best_for": [
+          "Measuring lift for digital channels with audience targeting",
+          "Creative-level incrementality"
+        ],
+        "limitations": [
+          "Requires audience-level signal integration",
+          "Not suitable for channels without user-level targeting"
+        ],
+        "minimum_requirements": {
+          "history_weeks": 4,
+          "minimum_conversions_per_week": 100
+        },
+        "time_to_insight_days": 28
+      }
+    ],
+    "metric_types": [
+      "incremental_conversions",
+      "incremental_revenue",
+      "incremental_roas",
+      "cpik"
+    ],
+    "supported_channels": ["display", "olv", "ctv", "social"]
+  },
+  "channel_measurement": {
+    "methodologies": [
+      {
+        "type": "mmm",
+        "name": "Marketing mix modeling",
+        "description": "Regression-based analysis of spend vs outcomes across channels over time, providing budget allocation guidance",
+        "best_for": [
+          "Long-term budget allocation across channels",
+          "Understanding channel saturation and diminishing returns"
+        ],
+        "limitations": [
+          "Requires 52+ weeks of historical data",
+          "Cannot attribute at user or creative level"
+        ],
+        "minimum_requirements": {
+          "history_weeks": 52,
+          "minimum_conversions_per_week": 50
+        },
+        "time_to_insight_days": 14,
+        "methodology_url": "https://measurement.example.com/methodology/mmm"
+      }
+    ],
+    "metric_types": [
+      "roi",
+      "mroi",
+      "channel_contribution",
+      "incremental_revenue"
+    ],
+    "supported_channels": ["display", "olv", "ctv", "social", "search", "radio"],
+    "minimum_history_weeks": 52,
+    "maximum_channels": 15
+  },
+  "data_transports": ["snowflake_share", "cloud_bucket", "direct_api"],
+  "results_delivery": ["webhook", "polling"],
+  "reporting_cadence": ["weekly", "on_model_refresh"],
+  "exposure_event_version": "1.0"
+}
+```
+
+## Tasks
+
+The Measurement Protocol defines two tasks.
+
+### register_media_buys
+
+**Schema**: [`measurement/register-media-buys-request.json`](/schemas/measurement/register-media-buys-request.json) / [`measurement/register-media-buys-response.json`](/schemas/measurement/register-media-buys-response.json)
+
+Register media buys with a measurement agent and negotiate data transport.
+
+**Requirements:**
+- Orchestrators MUST include at least one media buy with either `media_buy_id` or `buyer_ref`
+- Orchestrators SHOULD include `data_transport` on the first call to negotiate transport
+- Measurement agents MUST return an `action` for each media buy (`created`, `updated`, `unchanged`, or `failed`)
+- Measurement agents MUST return `readiness` for each successfully registered media buy
+- Measurement agents MAY return `trackers` (impression, click, or viewability URLs) for the orchestrator to attach to ad serving
+- When `delete_missing` is `true`, measurement agents MUST deregister media buys not included in the request
+- When `dry_run` is `true`, measurement agents MUST preview changes without applying them
+
+### get_measurement_results
+
+**Schema**: [`measurement/get-measurement-results-request.json`](/schemas/measurement/get-measurement-results-request.json) / [`measurement/get-measurement-results-response.json`](/schemas/measurement/get-measurement-results-response.json)
+
+Retrieve measurement results for campaign-level or channel-level analysis.
+
+**Requirements:**
+- Orchestrators MUST include `scope` (`campaign` or `channel`) and `measurement_period`
+- For campaign scope, orchestrators MAY filter by `media_buy_ids`, `buyer_refs`, or `metric_types`
+- For channel scope, orchestrators MAY filter by `channels` or `metric_types`
+- Measurement agents MUST return `scope` and a `results` array
+- Each result item MUST include a `scope` discriminator field matching the requested scope
+- Results with `readiness.ready: true` SHOULD include a `metrics` array with `metric_type` and `value`
+- Measurement agents SHOULD include `confidence` intervals for each metric
+- For campaign scope, measurement agents SHOULD include `readiness` and `baseline` expectations
+- For channel scope, measurement agents SHOULD include `saturation_index`, `response_curve`, and `recommendations`
+
+## Error handling
+
+Measurement agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
+
+### Domain-specific error codes
+
+| Error code | Description |
+|------------|-------------|
+| `insufficient_data` | Not enough data to produce results for the requested period |
+| `model_not_ready` | Model has not completed training or initialization |
+| `media_buy_not_found` | Referenced media buy is not registered with this agent |
+| `transport_not_configured` | Data transport has not been negotiated or proposed type is unsupported |
+| `unsupported_methodology` | Requested methodology is not supported by this agent |
+| `flight_too_short` | Media buy flight is too short for the requested methodology |
+| `data_stale` | Exposure data has not been updated within the expected cadence |
+
+Measurement agents MUST use these error codes in the `code` field of error objects. Orchestrators SHOULD handle these errors programmatically.
+
+### Discriminated union error handling
+
+Measurement task responses use the standard AdCP discriminated union pattern. Orchestrators MUST check for errors before accessing success fields:
+
+```javascript test=false
+const result = await agent.getMeasurementResults({
+  scope: 'campaign',
+  measurement_period: { start: '2026-01-01', end: '2026-01-31' }
+});
+
+if (result.errors) {
+  console.error('Failed:', result.errors[0].message);
+} else {
+  for (const item of result.results) {
+    if (item.readiness && !item.readiness.ready) {
+      console.log(`${item.media_buy_id}: not ready until ${item.readiness.estimated_ready_date}`);
+    } else {
+      for (const metric of item.metrics) {
+        console.log(`${item.media_buy_id}: ${metric.metric_type} = ${metric.value}`);
+      }
+    }
+  }
+}
+```
+
+## Security considerations
+
+### Transport security
+
+All Measurement Protocol communications MUST use HTTPS with TLS 1.2 or higher.
+
+### Authentication
+
+- Orchestrators MUST authenticate with measurement agents using valid credentials
+- Measurement agents MUST validate credentials before processing requests
+- Measurement agents MUST use account context to determine data access
+
+### Exposure data security
+
+- Exposure data transport credentials MUST be exchanged out-of-band during onboarding
+- Orchestrators MUST NOT include user-level identifiers in exposure events sent through the protocol
+- Identity matching (device graphs, clean rooms) MUST be negotiated out-of-band
+- Measurement agents MUST NOT expose raw exposure data to unauthorized parties
+
+### Result confidentiality
+
+- Measurement results MUST only be returned to authenticated orchestrators with access to the referenced media buys
+- Measurement agents MUST NOT return results for media buys belonging to other accounts
+
+## Conformance
+
+### Measurement agent conformance
+
+A conformant Measurement Protocol agent MUST:
+
+1. Support at least one specified transport (MCP or A2A)
+2. Implement `register_media_buys` and `get_measurement_results` tasks per their schemas
+3. Return required fields as defined in response schemas
+4. Use specified error codes
+5. Return readiness assessments when results are not yet available
+6. Support at least one data transport type
+
+A conformant Measurement Protocol agent SHOULD:
+
+1. Support multiple data transport types
+2. Include confidence intervals with metric results
+3. Provide methodology profiles in capabilities
+4. Include interpretation hints for AI assistants
+
+### Orchestrator conformance
+
+A conformant Measurement Protocol orchestrator MUST:
+
+1. Authenticate with measurement agents
+2. Include required fields as defined in request schemas
+3. Handle readiness responses without treating them as errors
+4. Deliver exposure data through the negotiated transport
+
+## Implementation notes
+
+### Response time expectations
+
+Measurement agents SHOULD target the following response times:
+
+| Operation type | Target latency |
+|----------------|----------------|
+| register_media_buys (up to 100 items) | < 10 seconds |
+| get_measurement_results (campaign) | < 30 seconds |
+| get_measurement_results (channel) | < 30 seconds |
+
+### Idempotency
+
+- `register_media_buys` is idempotent by `media_buy_id` or `buyer_ref`. Re-registering an identical media buy SHOULD return `action: "unchanged"`.
+
+### Measurement status lifecycle
+
+Each registered media buy transitions through a measurement lifecycle:
+
+| Status | Description |
+|--------|-------------|
+| `pending_data` | Registered, waiting for exposure data |
+| `modeling` | Data received, model training |
+| `reporting` | Results available, updated on cadence |
+| `completed` | Flight ended, final results available |
+| `paused` | Measurement paused (flight paused, data feed interrupted) |
+
+## Schema reference
+
+| Schema | Description |
+|--------|-------------|
+| [`measurement/register-media-buys-request.json`](/schemas/measurement/register-media-buys-request.json) | register_media_buys request |
+| [`measurement/register-media-buys-response.json`](/schemas/measurement/register-media-buys-response.json) | register_media_buys response |
+| [`measurement/get-measurement-results-request.json`](/schemas/measurement/get-measurement-results-request.json) | get_measurement_results request |
+| [`measurement/get-measurement-results-response.json`](/schemas/measurement/get-measurement-results-response.json) | get_measurement_results response |
+| [`core/exposure-event.json`](/schemas/core/exposure-event.json) | Exposure event |
+| [`core/measurement-capabilities.json`](/schemas/core/measurement-capabilities.json) | Measurement capabilities |
+| [`core/readiness.json`](/schemas/core/readiness.json) | Readiness assessment |
+| [`core/measurement-metric.json`](/schemas/core/measurement-metric.json) | Measurement metric |
+| [`core/data-transport.json`](/schemas/core/data-transport.json) | Data transport configuration |
+| [`core/channel-reallocation.json`](/schemas/core/channel-reallocation.json) | Channel reallocation recommendation |
+| [`core/tracker.json`](/schemas/core/tracker.json) | Tracking URL |

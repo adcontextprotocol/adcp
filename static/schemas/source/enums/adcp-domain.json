@@ -4,11 +4,12 @@
   "title": "AdCP Domain",
   "description": "AdCP protocol domains for task categorization",
   "type": "string",
-  "enum": ["media-buy", "signals", "governance", "creative"],
+  "enum": ["media-buy", "signals", "governance", "creative", "measurement"],
   "enumDescriptions": {
     "media-buy": "Campaign creation, package management, delivery optimization, and conversion tracking",
     "signals": "Audience signal discovery and activation",
     "governance": "Property governance (identity, authorization, data, selection), brand standards, and compliance",
-    "creative": "Creative asset management, format discovery, and rendering"
+    "creative": "Creative asset management, format discovery, and rendering",
+    "measurement": "Cross-channel measurement, attribution, and incrementality analysis"
   }
 }

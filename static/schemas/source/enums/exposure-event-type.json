@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/exposure-event-type.json",
+  "title": "Exposure Event Type",
+  "description": "Types of advertising exposure events delivered to measurement agents",
+  "type": "string",
+  "enum": [
+    "impression",
+    "click",
+    "conversion"
+  ],
+  "enumDescriptions": {
+    "impression": "Ad was rendered and viewable",
+    "click": "User clicked on the ad",
+    "conversion": "User completed a desired action (purchase, signup, etc.)"
+  }
+}

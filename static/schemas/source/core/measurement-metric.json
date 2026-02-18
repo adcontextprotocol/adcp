@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-metric.json",
+  "title": "Measurement Metric",
+  "description": "An individual metric result from a measurement agent, with statistical confidence and interpretation hints for AI assistants",
+  "type": "object",
+  "properties": {
+    "metric_type": {
+      "$ref": "/schemas/enums/measurement-metric-type.json",
+      "description": "Type of metric being reported"
+    },
+    "value": {
+      "type": "number",
+      "description": "Metric value"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code, required for monetary metrics (incremental_revenue, roi, mroi, cpik)",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP"]
+    },
+    "confidence": {
+      "$ref": "/schemas/core/confidence-interval.json",
+      "description": "Statistical confidence interval for this metric"
+    },
+    "methodology": {
+      "$ref": "/schemas/enums/measurement-methodology.json",
+      "description": "Methodology used to compute this metric"
+    },
+    "model_version": {
+      "type": "string",
+      "description": "Version identifier for the model that produced this result"
+    },
+    "interpretation": {
+      "type": "object",
+      "description": "Human-readable interpretation hints for AI assistants and dashboards",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "Plain-English summary of what this metric means",
+          "examples": [
+            "For every $1 spent, this channel generated $3.20 in incremental revenue",
+            "Display contributed 12% of total conversions during this period"
+          ]
+        },
+        "confidence_note": {
+          "type": "string",
+          "description": "What would increase confidence in this result",
+          "examples": [
+            "Confidence would improve with 4 more weeks of data",
+            "Adding geo-level granularity would narrow the interval"
+          ]
+        },
+        "action_suggestion": {
+          "type": "string",
+          "description": "Suggested action based on this result",
+          "examples": [
+            "Consider increasing spend — marginal ROI remains above 2x",
+            "This channel is near saturation — reallocate incremental budget elsewhere"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["metric_type", "value"],
+  "additionalProperties": true
+}

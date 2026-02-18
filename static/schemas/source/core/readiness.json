@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/readiness.json",
+  "title": "Readiness",
+  "description": "Assessment of whether a measurement agent has sufficient data to produce results. Readiness is a first-class concept — not an error, but a lifecycle state that the orchestrator can act on.",
+  "type": "object",
+  "properties": {
+    "ready": {
+      "type": "boolean",
+      "description": "Whether measurement results are available"
+    },
+    "estimated_ready_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Estimated date when results will be available (YYYY-MM-DD)"
+    },
+    "blockers": {
+      "type": "array",
+      "description": "Specific issues preventing readiness",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "/schemas/enums/readiness-blocker.json",
+            "description": "Machine-readable blocker code"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of the blocker"
+          }
+        },
+        "required": ["code", "description"],
+        "additionalProperties": true
+      }
+    },
+    "data_coverage": {
+      "type": "object",
+      "description": "Current data coverage relative to requirements",
+      "properties": {
+        "history_weeks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Weeks of historical data currently available"
+        },
+        "required_weeks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Weeks of historical data required for the methodology"
+        }
+      },
+      "required": ["history_weeks", "required_weeks"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["ready"],
+  "additionalProperties": true
+}

@@ -1,0 +1,384 @@
+---
+title: get_measurement_results
+testable: true
+---
+
+# get_measurement_results
+
+Retrieve measurement results from a measurement agent. Supports two scopes with different result shapes: **campaign** (per media buy) and **channel** (portfolio-level MMM).
+
+**Response time**: < 5s (results are pre-computed)
+
+**Request schema**: [`/schemas/measurement/get-measurement-results-request.json`](https://adcontextprotocol.org/schemas/measurement/get-measurement-results-request.json)
+**Response schema**: [`/schemas/measurement/get-measurement-results-response.json`](https://adcontextprotocol.org/schemas/measurement/get-measurement-results-response.json)
+
+## Scopes
+
+| Scope | What it measures | Typical methodology |
+|-------|-----------------|-------------------|
+| `campaign` | Individual media buy or creative performance | Incrementality testing, lift studies, conversion modeling |
+| `channel` | Entire advertising channels across the portfolio | Media mix modeling (MMM), multi-touch attribution |
+
+The `scope` determines which fields appear in each result item. Campaign results include `media_buy_id`, `creative_id`, `spend`, `baseline`, and `readiness`. Channel results include `channel`, `saturation_index`, `response_curve`, and `recommendations`.
+
+## Request parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scope` | string | Yes | `campaign` or `channel` |
+| `measurement_period` | object | Yes | Time period with `start` and `end` (YYYY-MM-DD) |
+| `media_buy_ids` | string[] | No | Filter to specific media buys (campaign scope only) |
+| `buyer_refs` | string[] | No | Filter by buyer references (campaign scope only, alternative to `media_buy_ids`) |
+| `channels` | string[] | No | Filter to specific channels (channel scope only): `display`, `olv`, `social`, `search`, `ctv`, `linear_tv`, etc. |
+| `metric_types` | string[] | No | Filter to specific metrics: `incremental_conversions`, `incremental_revenue`, `incremental_roas`, `roi`, `mroi`, `cpik`, `channel_contribution`, `brand_lift`, `search_lift`, `foot_traffic_lift`, `custom` |
+| `pagination` | object | No | Pagination parameters |
+
+## Response structure
+
+The response uses a discriminated union. Check for `errors` before accessing `results`:
+
+- **Success**: Contains `scope` and `results` array
+- **Error**: Contains `errors` array
+
+## Campaign scope
+
+Campaign-scope results provide per-media-buy and per-creative measurement. Each result includes metrics with statistical confidence intervals, spend totals, and a baseline showing expected outcomes without advertising.
+
+### Campaign result fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | `"campaign"` discriminator |
+| `media_buy_id` | string | AdCP media buy identifier |
+| `buyer_ref` | string | Buyer reference identifier |
+| `creative_id` | string | Creative identifier (for creative-level breakdown) |
+| `measurement_period` | object | Time period these results cover |
+| `readiness` | Readiness | Whether results are mature enough to act on |
+| `metrics` | Metric[] | Measurement metrics with confidence intervals |
+| `spend` | object | Total spend during this period (`amount`, `currency`) |
+| `baseline` | object | Expected outcomes without advertising (`expected_conversions`, `expected_revenue`) |
+
+### Campaign scope example request
+
+```json
+{
+  "$schema": "/schemas/measurement/get-measurement-results-request.json",
+  "scope": "campaign",
+  "media_buy_ids": ["mb_acme_display_q1"],
+  "measurement_period": {
+    "start": "2026-01-15",
+    "end": "2026-02-15"
+  },
+  "metric_types": ["incremental_conversions", "incremental_roas"]
+}
+```
+
+### Campaign scope example response
+
+```json
+{
+  "$schema": "/schemas/measurement/get-measurement-results-response.json",
+  "scope": "campaign",
+  "results": [
+    {
+      "scope": "campaign",
+      "media_buy_id": "mb_acme_display_q1",
+      "measurement_period": {
+        "start": "2026-01-15",
+        "end": "2026-02-15"
+      },
+      "readiness": {
+        "ready": true,
+        "data_coverage": {
+          "history_weeks": 4,
+          "required_weeks": 4
+        }
+      },
+      "metrics": [
+        {
+          "metric_type": "incremental_conversions",
+          "value": 1247,
+          "confidence": {
+            "level": 0.90,
+            "lower_bound": 980,
+            "upper_bound": 1510,
+            "method": "bayesian_credible"
+          },
+          "methodology": "geo_experiment",
+          "interpretation": {
+            "summary": "Display prospecting drove an estimated 1,247 incremental conversions over the 4-week period",
+            "confidence_note": "Confidence would improve with 4 more weeks of data",
+            "action_suggestion": "On track to hit the 5,000-conversion target over the full flight"
+          }
+        },
+        {
+          "metric_type": "incremental_roas",
+          "value": 3.2,
+          "currency": "USD",
+          "confidence": {
+            "level": 0.90,
+            "lower_bound": 2.5,
+            "upper_bound": 3.9,
+            "method": "bayesian_credible"
+          },
+          "methodology": "geo_experiment",
+          "interpretation": {
+            "summary": "For every $1 spent, display generated $3.20 in incremental revenue",
+            "action_suggestion": "iROAS exceeds the 3.0 target -- consider increasing spend"
+          }
+        }
+      ],
+      "spend": {
+        "amount": 72500,
+        "currency": "USD"
+      },
+      "baseline": {
+        "expected_conversions": 4200,
+        "expected_revenue": 310000
+      }
+    }
+  ]
+}
+```
+
+## Channel scope
+
+Channel-scope results provide portfolio-level measurement across entire advertising channels. These results come from media mix modeling (MMM) and include saturation curves, marginal ROI, and budget reallocation recommendations.
+
+### Channel result fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | `"channel"` discriminator |
+| `channel` | string | Advertising channel (`display`, `olv`, `social`, `search`, `ctv`, `linear_tv`, etc.) |
+| `measurement_period` | object | Time period these results cover |
+| `metrics` | Metric[] | Channel-level metrics (typically `roi`, `mroi`, `cpik`, `channel_contribution`) |
+| `spend` | object | Total spend in this channel during the period |
+| `saturation_index` | number (0-1) | How close this channel is to saturation (0 = no diminishing returns, 1 = fully saturated) |
+| `response_curve` | array | Points on the response curve showing expected KPI at different spend levels |
+| `recommendations` | ChannelReallocation[] | Budget reallocation recommendations |
+
+### Response curve points
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `spend_multiplier` | number | Multiplier relative to current spend (1.0 = current level) |
+| `expected_kpi` | number | Expected KPI value at this spend level |
+
+### Channel reallocation recommendation
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel` | string | Channel this recommendation applies to |
+| `current_weekly_spend` | object | Current weekly spend (`amount`, `currency`) |
+| `recommended_weekly_spend` | object | Recommended weekly spend (`amount`, `currency`) |
+| `marginal_roi_at_current` | number | Marginal ROI at current spend |
+| `marginal_roi_at_recommended` | number | Marginal ROI at recommended spend |
+| `saturation_index` | number (0-1) | Channel saturation level |
+| `channel_contribution` | number (0-1) | Channel's share of total outcome |
+| `expected_kpi_impact` | number | Projected KPI change if recommendation is followed |
+| `rationale` | string | Human-readable explanation |
+
+### Channel scope example request
+
+```json
+{
+  "$schema": "/schemas/measurement/get-measurement-results-request.json",
+  "scope": "channel",
+  "channels": ["display", "olv", "social", "search"],
+  "measurement_period": {
+    "start": "2025-07-01",
+    "end": "2025-12-31"
+  },
+  "metric_types": ["roi", "mroi", "cpik", "channel_contribution"]
+}
+```
+
+### Channel scope example response
+
+```json
+{
+  "$schema": "/schemas/measurement/get-measurement-results-response.json",
+  "scope": "channel",
+  "results": [
+    {
+      "scope": "channel",
+      "channel": "display",
+      "measurement_period": {
+        "start": "2025-07-01",
+        "end": "2025-12-31"
+      },
+      "metrics": [
+        {
+          "metric_type": "roi",
+          "value": 2.8,
+          "currency": "USD",
+          "confidence": {
+            "level": 0.90,
+            "lower_bound": 2.1,
+            "upper_bound": 3.5,
+            "method": "bayesian_credible"
+          },
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "Display generated $2.80 in revenue for every $1 spent over the past 6 months"
+          }
+        },
+        {
+          "metric_type": "mroi",
+          "value": 1.4,
+          "currency": "USD",
+          "confidence": {
+            "level": 0.90,
+            "lower_bound": 0.9,
+            "upper_bound": 1.9,
+            "method": "bayesian_credible"
+          },
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "The next dollar spent on display is expected to return $1.40",
+            "action_suggestion": "Marginal ROI is positive but declining -- approaching saturation"
+          }
+        },
+        {
+          "metric_type": "channel_contribution",
+          "value": 0.18,
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "Display contributed 18% of total measured conversions"
+          }
+        }
+      ],
+      "spend": {
+        "amount": 450000,
+        "currency": "USD"
+      },
+      "saturation_index": 0.72,
+      "response_curve": [
+        { "spend_multiplier": 0.5, "expected_kpi": 0.68 },
+        { "spend_multiplier": 0.75, "expected_kpi": 0.87 },
+        { "spend_multiplier": 1.0, "expected_kpi": 1.0 },
+        { "spend_multiplier": 1.25, "expected_kpi": 1.08 },
+        { "spend_multiplier": 1.5, "expected_kpi": 1.12 }
+      ],
+      "recommendations": [
+        {
+          "channel": "display",
+          "current_weekly_spend": { "amount": 17300, "currency": "USD" },
+          "recommended_weekly_spend": { "amount": 14000, "currency": "USD" },
+          "marginal_roi_at_current": 1.4,
+          "marginal_roi_at_recommended": 1.9,
+          "saturation_index": 0.72,
+          "channel_contribution": 0.18,
+          "expected_kpi_impact": -0.03,
+          "rationale": "Display is 72% saturated. Reducing spend by $3,300/week would only reduce conversions by 3% while freeing budget for higher-ROI channels."
+        }
+      ]
+    },
+    {
+      "scope": "channel",
+      "channel": "search",
+      "measurement_period": {
+        "start": "2025-07-01",
+        "end": "2025-12-31"
+      },
+      "metrics": [
+        {
+          "metric_type": "roi",
+          "value": 5.1,
+          "currency": "USD",
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "Search generated $5.10 in revenue for every $1 spent"
+          }
+        },
+        {
+          "metric_type": "mroi",
+          "value": 3.8,
+          "currency": "USD",
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "The next dollar spent on search is expected to return $3.80",
+            "action_suggestion": "Strong marginal returns -- consider increasing spend"
+          }
+        },
+        {
+          "metric_type": "channel_contribution",
+          "value": 0.35,
+          "methodology": "mmm",
+          "interpretation": {
+            "summary": "Search contributed 35% of total measured conversions"
+          }
+        }
+      ],
+      "spend": {
+        "amount": 280000,
+        "currency": "USD"
+      },
+      "saturation_index": 0.38,
+      "response_curve": [
+        { "spend_multiplier": 0.5, "expected_kpi": 0.58 },
+        { "spend_multiplier": 1.0, "expected_kpi": 1.0 },
+        { "spend_multiplier": 1.5, "expected_kpi": 1.35 },
+        { "spend_multiplier": 2.0, "expected_kpi": 1.58 }
+      ],
+      "recommendations": [
+        {
+          "channel": "search",
+          "current_weekly_spend": { "amount": 10770, "currency": "USD" },
+          "recommended_weekly_spend": { "amount": 14070, "currency": "USD" },
+          "marginal_roi_at_current": 3.8,
+          "marginal_roi_at_recommended": 2.9,
+          "saturation_index": 0.38,
+          "channel_contribution": 0.35,
+          "expected_kpi_impact": 0.08,
+          "rationale": "Search is only 38% saturated with strong marginal returns. Increasing spend by $3,300/week (reallocated from display) is projected to lift conversions by 8%."
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Error response
+
+```json
+{
+  "$schema": "/schemas/measurement/get-measurement-results-response.json",
+  "errors": [
+    {
+      "code": "INSUFFICIENT_DATA",
+      "message": "No measurement data available for the requested period. Results require at least 4 weeks of exposure data."
+    }
+  ]
+}
+```
+
+## Metric object
+
+Each metric in the `metrics` array follows a consistent structure:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `metric_type` | string | Yes | The metric type |
+| `value` | number | Yes | The metric value |
+| `currency` | string | No | ISO 4217 code, required for monetary metrics (`incremental_revenue`, `roi`, `mroi`, `cpik`) |
+| `confidence` | object | No | Statistical confidence interval (`level`, `lower_bound`, `upper_bound`, `method`) |
+| `methodology` | string | No | Methodology used: `mmm`, `geo_experiment`, `conversion_lift`, `causal_impact`, `synthetic_control`, `survey`, `custom` |
+| `model_version` | string | No | Version of the model that produced this result |
+| `interpretation` | object | No | Human-readable interpretation (`summary`, `confidence_note`, `action_suggestion`) |
+
+The `interpretation` field is designed for AI assistants. An orchestrator can relay the `summary` and `action_suggestion` directly to the human buyer without needing to interpret raw numbers.
+
+## Usage notes
+
+1. **Scope determines shape**: Campaign and channel results have different fields. Use the scope that matches your question.
+2. **Readiness in campaign scope**: Check `readiness.ready` before acting on results. Early results may have wide confidence intervals.
+3. **Response curves are relative**: The `spend_multiplier` in response curves is relative to current spend (1.0 = current level). Use these to model "what if" scenarios.
+4. **Recommendations are cross-channel**: Channel-scope recommendations account for the full portfolio. A recommendation to reduce display and increase search comes as a pair.
+5. **Confidence intervals matter**: Always consider the confidence interval width when making budget decisions. A metric with value 3.0 and interval [0.5, 5.5] is much less actionable than one with interval [2.5, 3.5].
+6. **Pagination**: For accounts with many media buys, use `pagination` to page through campaign-scope results.
+
+## Related tasks
+
+- [register_media_buys](./register_media_buys) - Register media buys for measurement

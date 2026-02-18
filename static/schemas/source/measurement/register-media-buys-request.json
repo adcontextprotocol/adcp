@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/measurement/register-media-buys-request.json",
+  "title": "Register Media Buys Request",
+  "description": "Register media buys with a measurement agent for tracking and measurement. Lightweight registration — the agent builds full understanding from exposure data delivered via the negotiated transport.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Advertiser account identifier. Optional if the agent has a single account."
+    },
+    "media_buys": {
+      "type": "array",
+      "description": "Media buys to register for measurement",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "AdCP media buy identifier"
+          },
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference identifier (alternative to media_buy_id)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable label for the media buy"
+          },
+          "channel": {
+            "$ref": "/schemas/enums/channels.json",
+            "description": "Advertising channel for this media buy"
+          },
+          "flight": {
+            "type": "object",
+            "description": "Flight dates for this media buy",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date",
+                "description": "Flight start date (YYYY-MM-DD)"
+              },
+              "end": {
+                "type": "string",
+                "format": "date",
+                "description": "Flight end date (YYYY-MM-DD)"
+              }
+            },
+            "required": ["start", "end"],
+            "additionalProperties": true
+          },
+          "budget": {
+            "type": "object",
+            "description": "Budget for this media buy",
+            "properties": {
+              "amount": {
+                "type": "number",
+                "minimum": 0
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            "required": ["amount", "currency"],
+            "additionalProperties": true
+          },
+          "creative_ids": {
+            "type": "array",
+            "description": "Creative identifiers used in this media buy",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "kpis": {
+            "type": "array",
+            "description": "Key performance indicators for this media buy",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric_type": {
+                  "$ref": "/schemas/enums/measurement-metric-type.json"
+                },
+                "target": {
+                  "type": "number",
+                  "description": "Target value for this KPI"
+                }
+              },
+              "required": ["metric_type"],
+              "additionalProperties": true
+            }
+          }
+        },
+        "anyOf": [
+          { "required": ["media_buy_id"] },
+          { "required": ["buyer_ref"] }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "data_transport": {
+      "$ref": "/schemas/core/data-transport.json",
+      "description": "Data transport configuration for exposure data delivery. Negotiated on first call; subsequent calls may omit if already configured."
+    },
+    "results_delivery": {
+      "$ref": "/schemas/core/results-delivery.json",
+      "description": "Configuration for how measurement results are delivered back"
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, media buys not included in this request will be deregistered"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview changes without applying them"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Webhook configuration for async task notifications"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["media_buys"],
+  "additionalProperties": true
+}

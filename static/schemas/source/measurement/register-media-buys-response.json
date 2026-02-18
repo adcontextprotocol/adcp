@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/measurement/register-media-buys-response.json",
+  "title": "Register Media Buys Response",
+  "description": "Response from registering media buys with a measurement agent. Returns either per-item results (success) OR operation-level errors (complete failure).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "RegisterMediaBuysSuccess",
+      "description": "Success response — media buys were processed (may include per-item failures)",
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean",
+          "description": "Whether this was a dry run (no actual changes made)"
+        },
+        "media_buys": {
+          "type": "array",
+          "description": "Results for each media buy processed",
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_buy_id": {
+                "type": "string",
+                "description": "AdCP media buy identifier (echoed from request)"
+              },
+              "buyer_ref": {
+                "type": "string",
+                "description": "Buyer's reference identifier (echoed from request)"
+              },
+              "external_id": {
+                "type": "string",
+                "description": "Measurement agent's internal identifier for this media buy"
+              },
+              "action": {
+                "$ref": "/schemas/enums/media-buy-sync-action.json",
+                "description": "Action taken for this media buy"
+              },
+              "measurement_status": {
+                "$ref": "/schemas/enums/measurement-status.json",
+                "description": "Current measurement lifecycle status"
+              },
+              "readiness": {
+                "$ref": "/schemas/core/readiness.json",
+                "description": "Readiness assessment for this media buy"
+              },
+              "trackers": {
+                "type": "array",
+                "description": "Tracking URLs to add to ad serving for this media buy",
+                "items": {
+                  "$ref": "/schemas/core/tracker.json"
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Per-item errors (only present when action='failed')",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "description": "Non-fatal warnings about this media buy",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": true
+          }
+        },
+        "data_transport": {
+          "$ref": "/schemas/core/data-transport.json",
+          "description": "Confirmed data transport configuration"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["media_buys"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "RegisterMediaBuysError",
+      "description": "Error response — operation failed completely, no media buys were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["media_buys"] },
+          { "required": ["dry_run"] }
+        ]
+      }
+    }
+  ]
+}

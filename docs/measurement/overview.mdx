@@ -1,0 +1,77 @@
+---
+title: Measurement Protocol
+sidebarTitle: Overview
+description: Cross-channel measurement, attribution, and incrementality analysis for AI-powered advertising
+---
+
+# Measurement Protocol
+
+The Measurement Protocol enables AI agents to register media buys with measurement providers and retrieve causal performance results. Measurement providers operate as agents in the AdCP ecosystem, receiving exposure data and returning structured metrics that orchestrators use to optimize spend.
+
+## A paradigm shift
+
+Traditional measurement requires manual data exports, bespoke integrations per provider, and weeks of back-and-forth to configure studies. The Measurement Protocol treats measurement companies as first-class agents in an agentic workflow. An orchestrator registers its media buys, negotiates data transport, and retrieves results through the same MCP-based interface it uses for every other advertising operation.
+
+This means measurement becomes continuous rather than periodic, programmatic rather than manual, and actionable rather than retrospective.
+
+## Two measurement scopes
+
+The protocol defines two distinct capabilities that a measurement agent may support independently.
+
+### Campaign measurement
+
+Measures specific media buys using incrementality tests, multi-touch attribution, or lift studies. Results are keyed by `media_buy_id` and `creative_id`, enabling the orchestrator to evaluate and optimize individual campaigns.
+
+Methodologies include geo-based experiments, randomized holdouts, brand lift surveys, and multi-touch attribution.
+
+### Channel measurement
+
+Marketing mix modeling (MMM) across the advertiser's full media portfolio. Results are keyed by channel and provide budget allocation guidance at the portfolio level. This scope aligns with the terminology used by open-source MMM frameworks such as Meridian and Robyn.
+
+Channel measurement typically requires longer data history (52-104 weeks) and produces reallocation recommendations rather than per-campaign metrics.
+
+## Industry mapping
+
+AdCP uses consistent identifiers that map to standard industry concepts.
+
+| Industry concept | AdCP identifier | Description |
+|-----------------|----------------|-------------|
+| Campaign | `media_buy_id` / `buyer_ref` | The unit of media execution being measured |
+| Creative | `creative_id` | The specific creative variant shown |
+| Advertiser | `account_id` | The advertiser account across the measurement relationship |
+| Channel | `channel` | The advertising channel (display, video, social, etc.) |
+
+## Tasks
+
+| Task | Purpose |
+|------|---------|
+| [`register_media_buys`](/docs/measurement/tasks/register_media_buys) | Register media buys with a measurement agent for tracking |
+| [`get_measurement_results`](/docs/measurement/tasks/get_measurement_results) | Retrieve campaign-level or channel-level measurement results |
+
+## Key concepts
+
+### Readiness
+
+Readiness is a first-class concept in the protocol, not an error. When a measurement agent does not yet have sufficient data to produce results, it returns a readiness object describing what is missing (insufficient history, insufficient spend, model still training) and an estimated date when results will be available. Orchestrators use this to schedule follow-up requests rather than treating the response as a failure.
+
+### Data transport negotiation
+
+Exposure data is the raw material for measurement. Rather than prescribing a single delivery method, the protocol supports negotiation between the orchestrator and the measurement agent. Supported transports include Snowflake data shares, cloud storage buckets (S3, GCS, Azure Blob), direct API endpoints, and polling. Transport is configured during the first `register_media_buys` call and reused for subsequent registrations.
+
+### Exposure events
+
+The protocol defines a standardized exposure event schema covering impressions, clicks, conversions, and video completions. Each event carries its `media_buy_id`, `creative_id`, channel, cost, and geographic context. User identity is intentionally omitted from the schema -- identity matching is negotiated out-of-band during data transport setup.
+
+### Methodology profiles
+
+Measurement agents declare their supported methodologies through structured profiles in `get_adcp_capabilities`. Each profile includes a plain-English description, the scenarios it is best suited for, its known limitations, minimum data requirements, and expected time to first results. This enables orchestrators (and the humans overseeing them) to select the right approach for each measurement question.
+
+## Getting started
+
+1. **Discover capabilities** -- call `get_adcp_capabilities` on a measurement agent to see its supported methodologies, channels, and data transports
+2. **Register media buys** -- use `register_media_buys` to tell the agent which campaigns to track, and negotiate data transport in the same call
+3. **Deliver exposure data** -- begin sending exposure events through the negotiated transport
+4. **Check readiness** -- call `get_measurement_results` and inspect the readiness object; the agent will indicate when sufficient data has accumulated
+5. **Retrieve results** -- call `get_measurement_results` with the appropriate scope (`campaign` or `channel`) and measurement period
+
+See the [Measurement Specification](/docs/measurement/specification) for complete technical details.

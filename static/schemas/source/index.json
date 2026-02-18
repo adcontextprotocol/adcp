@@ -261,6 +261,42 @@
         "optimization-goal": {
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
+        },
+        "confidence-interval": {
+          "$ref": "/schemas/core/confidence-interval.json",
+          "description": "Statistical confidence interval for measurement results (Bayesian credible or frequentist)"
+        },
+        "tracker": {
+          "$ref": "/schemas/core/tracker.json",
+          "description": "Tracking URL provided by a measurement agent"
+        },
+        "results-delivery": {
+          "$ref": "/schemas/core/results-delivery.json",
+          "description": "Configuration for measurement results delivery (webhook and/or polling)"
+        },
+        "measurement-metric": {
+          "$ref": "/schemas/core/measurement-metric.json",
+          "description": "Individual metric result from a measurement agent with confidence and interpretation"
+        },
+        "data-transport": {
+          "$ref": "/schemas/core/data-transport.json",
+          "description": "Data transport configuration for exposure data delivery (discriminated union by type)"
+        },
+        "readiness": {
+          "$ref": "/schemas/core/readiness.json",
+          "description": "Readiness assessment for measurement — blockers, data coverage, estimated ready date"
+        },
+        "exposure-event": {
+          "$ref": "/schemas/core/exposure-event.json",
+          "description": "Standardized advertising exposure event for delivery to measurement agents"
+        },
+        "measurement-capabilities": {
+          "$ref": "/schemas/core/measurement-capabilities.json",
+          "description": "Capabilities declared by a measurement agent (campaign and channel measurement)"
+        },
+        "channel-reallocation": {
+          "$ref": "/schemas/core/channel-reallocation.json",
+          "description": "Budget reallocation recommendation from channel-level measurement (MMM)"
         }
       },
       "requirements": {
@@ -454,7 +490,7 @@
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "AdCP protocol domains (media-buy, signals, governance, creative)"
+          "description": "AdCP protocol domains (media-buy, signals, governance, creative, measurement)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",
@@ -583,6 +619,50 @@
         "promoted-offerings-requirement": {
           "$ref": "/schemas/enums/promoted-offerings-requirement.json",
           "description": "Content requirements that a creative format can impose on promoted offerings"
+        },
+        "measurement-methodology": {
+          "$ref": "/schemas/enums/measurement-methodology.json",
+          "description": "Methodologies used by measurement agents (mmm, mta, incrementality_test, etc.)"
+        },
+        "measurement-metric-type": {
+          "$ref": "/schemas/enums/measurement-metric-type.json",
+          "description": "Metric types produced by measurement agents (roi, mroi, cpik, channel_contribution, etc.)"
+        },
+        "data-transport-type": {
+          "$ref": "/schemas/enums/data-transport-type.json",
+          "description": "Transport mechanisms for exposure data delivery (snowflake_share, cloud_bucket, direct_api, polling, provider_managed)"
+        },
+        "measurement-reporting-cadence": {
+          "$ref": "/schemas/enums/measurement-reporting-cadence.json",
+          "description": "Reporting frequency for measurement agents (daily, weekly, on_model_refresh)"
+        },
+        "tracker-type": {
+          "$ref": "/schemas/enums/tracker-type.json",
+          "description": "Types of tracking pixels or URLs (click, impression, viewability)"
+        },
+        "media-buy-sync-action": {
+          "$ref": "/schemas/enums/media-buy-sync-action.json",
+          "description": "Action taken on a media buy during measurement registration (created, updated, unchanged, failed)"
+        },
+        "measurement-status": {
+          "$ref": "/schemas/enums/measurement-status.json",
+          "description": "Lifecycle status of a media buy within a measurement agent"
+        },
+        "readiness-blocker": {
+          "$ref": "/schemas/enums/readiness-blocker.json",
+          "description": "Machine-readable codes for issues preventing measurement readiness"
+        },
+        "confidence-interval-method": {
+          "$ref": "/schemas/enums/confidence-interval-method.json",
+          "description": "Statistical method used to compute a confidence interval (bayesian_credible, frequentist_confidence)"
+        },
+        "exposure-event-type": {
+          "$ref": "/schemas/enums/exposure-event-type.json",
+          "description": "Types of advertising exposure events (impression, click, conversion)"
+        },
+        "measurement-scope": {
+          "$ref": "/schemas/enums/measurement-scope.json",
+          "description": "Scope of measurement results (campaign or channel)"
         }
       }
     },
@@ -1008,6 +1088,31 @@
           "response": {
             "$ref": "/schemas/content-standards/get-media-buy-artifacts-response.json",
             "description": "Response payload with content artifacts for validation"
+          }
+        }
+      }
+    },
+    "measurement": {
+      "description": "Measurement protocol for campaign-level and channel-level measurement capabilities",
+      "tasks": {
+        "register-media-buys": {
+          "request": {
+            "$ref": "/schemas/measurement/register-media-buys-request.json",
+            "description": "Request parameters for registering media buys with a measurement agent"
+          },
+          "response": {
+            "$ref": "/schemas/measurement/register-media-buys-response.json",
+            "description": "Response payload for register_media_buys task"
+          }
+        },
+        "get-measurement-results": {
+          "request": {
+            "$ref": "/schemas/measurement/get-measurement-results-request.json",
+            "description": "Request parameters for retrieving measurement results (campaign or channel scope)"
+          },
+          "response": {
+            "$ref": "/schemas/measurement/get-measurement-results-response.json",
+            "description": "Response payload for get_measurement_results task"
           }
         }
       }

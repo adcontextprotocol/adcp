@@ -1,0 +1,243 @@
+---
+title: Choosing a methodology
+sidebarTitle: Choosing a methodology
+description: Decision framework for selecting measurement methodologies
+---
+
+Different measurement questions require different methodologies. This guide helps orchestrators and advertisers select the right approach based on their goals, data availability, and constraints.
+
+## Methodology comparison
+
+| | MMM | MTA | Incrementality test | Brand lift study | Geo experiment |
+|--|-----|-----|---------------------|-----------------|----------------|
+| **AdCP type** | `mmm` | `mta` | `incrementality_test` | `brand_lift_study` | `geo_experiment` |
+| **Scope** | Channel | Campaign | Campaign | Campaign | Campaign |
+| **Measures causality** | Correlation | Correlation | Causal | Survey-based | Causal |
+| **Granularity** | Channel-level | User-level | Campaign-level | Campaign-level | Geo-level |
+| **Time to insight** | 2-4 weeks (once data available) | Continuous | 3-6 weeks | 2-4 weeks | 4-8 weeks |
+| **Ongoing cost** | Low (model refresh) | Medium (data pipeline) | High (holdout revenue loss) | Medium (survey panels) | High (holdout revenue loss) |
+| **Best for** | Budget allocation | Touchpoint credit | Proving causal impact | Upper-funnel campaigns | Channel validation |
+
+## When to use each methodology
+
+### Marketing mix modeling (MMM)
+
+Use MMM when you need to understand how budget should be allocated across channels. MMM analyzes the relationship between channel spend and business outcomes over time, producing ROI, marginal ROI, and saturation curves for each channel.
+
+**AdCP scope:** `channel`
+
+**Good for:**
+- Setting quarterly or annual channel budgets
+- Understanding diminishing returns per channel
+- Measuring channels that lack user-level tracking (TV, radio, out-of-home)
+- Privacy-safe measurement that does not require user-level data
+
+**Not suited for:**
+- Real-time optimization of individual campaigns
+- User-level attribution
+- Short-duration campaigns without historical context
+
+**AdCP metrics produced:** `roi`, `mroi`, `cpik`, `channel_contribution`
+
+### Multi-touch attribution (MTA)
+
+Use MTA when you need user-level credit assignment across touchpoints. MTA tracks individual users through the conversion funnel and assigns fractional credit to each ad exposure.
+
+**AdCP scope:** `campaign`
+
+**Good for:**
+- Understanding which touchpoints contribute to conversion
+- Optimizing creative and placement mix within a campaign
+- Real-time performance signals
+
+**Not suited for:**
+- Proving causal impact (MTA measures correlation, not causation)
+- Cross-device measurement without identity resolution
+- Channels without user-level tracking
+
+**AdCP metrics produced:** `incremental_conversions`, `incremental_revenue`, `incremental_roas`
+
+### Incrementality test
+
+Use incrementality tests when you need to prove that advertising caused a measurable lift. Randomized experiments split audiences into treatment and control groups to measure causal impact.
+
+**AdCP scope:** `campaign`
+
+**Good for:**
+- Proving that a campaign caused incremental conversions
+- Evaluating a channel or tactic for the first time
+- Validating MMM model outputs with in-market experiments
+
+**Not suited for:**
+- Always-on measurement (tests have a defined duration)
+- Small-budget campaigns where holdout groups are impractical
+- Situations where any revenue loss from holdouts is unacceptable
+
+**AdCP metrics produced:** `incremental_conversions`, `incremental_revenue`, `incremental_roas`
+
+### Brand lift study
+
+Use brand lift studies to measure upper-funnel impact: awareness, consideration, and purchase intent. These studies survey exposed and control groups to detect attitude changes.
+
+**AdCP scope:** `campaign`
+
+**Good for:**
+- Awareness and branding campaigns
+- Measuring impact on consideration and purchase intent
+- Video and display campaigns where direct response is not the goal
+
+**Not suited for:**
+- Direct response campaigns with clear conversion events
+- Small campaigns without sufficient reach for survey panels
+- Real-time optimization
+
+**AdCP metrics produced:** `brand_lift`, `search_lift`
+
+### Geo experiment
+
+Use geo experiments to measure causal impact using geographic holdouts. Treatment regions receive advertising while control regions do not, and the difference in outcomes measures lift.
+
+**AdCP scope:** `campaign`
+
+**Good for:**
+- Proving causal impact without user-level tracking
+- Measuring channels that lack individual addressability (TV, DOOH, radio)
+- Validating MMM channel-level estimates with an in-market test
+
+**Not suited for:**
+- Advertisers with insufficient geographic coverage
+- Hyper-local businesses with only a few markets
+- Campaigns where withholding ads from control regions is unacceptable
+
+**AdCP metrics produced:** `incremental_conversions`, `incremental_revenue`, `incremental_roas`
+
+## Data requirements
+
+### MMM
+
+| Requirement | Minimum | Recommended | Source |
+|------------|---------|-------------|--------|
+| Historical data | 52 weeks | 104+ weeks | Meridian recommends 2+ years of weekly data |
+| Granularity | Weekly | Weekly | Daily is optional but weekly is standard |
+| Conversions per week | 30+ | 50+ | Needed for reliable signal detection |
+| Channels modeled | 2+ | 5-15 | Upper bound depends on data volume |
+
+**Data inputs:**
+- Weekly spend by channel
+- Weekly KPI (conversions, revenue, signups)
+- Control variables (seasonality, promotions, macro trends)
+- Optional: geographic breakdown, impression data
+
+### Geo experiment
+
+| Requirement | Minimum | Recommended | Source |
+|------------|---------|-------------|--------|
+| Geographic regions | 10 | 20+ | GeoLift recommends 20+ for reliable power analysis |
+| Test duration | 14 days | 28-42 days | Depends on effect size and conversion volume |
+| Pre-test baseline | 8 weeks | 12+ weeks | Historical data for power analysis and geo matching |
+| Conversions per geo per week | 10+ | 25+ | Needed for statistical significance |
+
+**Data inputs:**
+- Geo-level conversion and revenue data (pre and during test)
+- Geo-level spend data
+- Treatment and control geo assignments (provided by the measurement agent)
+
+### MTA
+
+| Requirement | Minimum | Recommended |
+|------------|---------|-------------|
+| Exposure data | User-level impressions and clicks | All touchpoints with timestamps |
+| Conversion data | User-level conversions with timestamps | Conversion values and types |
+| Identity coverage | 40%+ match rate | 70%+ match rate |
+| Lookback window | 7 days | 30 days |
+
+**Data inputs:**
+- User-level exposure events (impression, click, conversion)
+- Identity graph or matching keys (negotiated out-of-band)
+- Conversion events with timestamps and values
+
+### Brand lift study
+
+| Requirement | Minimum | Recommended |
+|------------|---------|-------------|
+| Campaign reach | 500K impressions | 2M+ impressions |
+| Survey panel size | 1,000 respondents | 5,000+ respondents |
+| Exposed group minimum | 500 | 2,000+ |
+| Control group minimum | 500 | 2,000+ |
+| Campaign duration | 7 days | 14+ days |
+
+**Data inputs:**
+- Exposed user list (for panel construction)
+- Survey responses (awareness, consideration, intent)
+- Control panel responses
+
+## Combining methodologies
+
+No single methodology answers every measurement question. The most effective measurement programs combine approaches that complement each other.
+
+### MMM for budget allocation, incrementality for validation
+
+Use MMM as the primary tool for ongoing budget allocation across channels. The model produces ROI, marginal ROI, and saturation curves that guide quarterly planning. Then run periodic geo experiments or incrementality tests on specific channels to validate the MMM estimates.
+
+This combination works because:
+- MMM provides continuous, portfolio-wide guidance
+- Incrementality tests provide causal proof for specific claims
+- Test results can calibrate the MMM model, improving future accuracy
+
+**AdCP workflow:**
+1. `get_measurement_results` with `scope: "channel"` for ongoing MMM results
+2. When mROI estimates seem high for a channel, work with the measurement agent to set up a geo experiment
+3. After the experiment, `get_measurement_results` with `scope: "campaign"` to compare test results with MMM predictions
+4. Feed the comparison back to the measurement agent for model calibration
+
+### MTA for daily optimization, MMM for strategic allocation
+
+Use MTA for real-time signal processing and in-flight campaign optimization. Use MMM for strategic decisions about how much to spend in each channel.
+
+This combination works because:
+- MTA provides fast feedback on creative and placement performance
+- MMM accounts for lagged effects and cross-channel interactions that MTA misses
+- The two approaches cover different time horizons
+
+### Brand lift for upper funnel, incrementality for lower funnel
+
+For campaigns that span awareness and conversion objectives, use brand lift studies to measure attitude change and incrementality tests to measure behavioral change.
+
+## Meridian terminology alignment
+
+The AdCP measurement metric types align with terminology used by open-source MMM frameworks. Here is how AdCP metric types map to Meridian concepts.
+
+| AdCP metric type | Meridian concept | Definition |
+|-----------------|-----------------|------------|
+| `roi` | ROI | (incremental revenue - cost) / cost |
+| `mroi` | mROI | Expected return from the next dollar of spend at current levels |
+| `cpik` | CPIK | Cost per incremental KPI -- spend required to generate one additional outcome |
+| `channel_contribution` | Channel contribution | Channel's share of total measured outcome (0-1), after removing baseline |
+
+These metrics appear in `get_measurement_results` responses with `scope: "channel"`. Each metric includes a `confidence` object with a credible or confidence interval, allowing orchestrators to assess the reliability of the estimate before acting on it.
+
+## Decision flowchart
+
+Use these questions to narrow your methodology choice:
+
+1. **Are you allocating budget across channels or evaluating a specific campaign?**
+   - Across channels: Start with MMM (`scope: "channel"`)
+   - Specific campaign: Continue to question 2
+
+2. **Do you need to prove causation or is correlation sufficient?**
+   - Causation required: Continue to question 3
+   - Correlation sufficient: Use MTA
+
+3. **Is your goal awareness/perception or conversions/revenue?**
+   - Awareness/perception: Use brand lift study
+   - Conversions/revenue: Continue to question 4
+
+4. **Do you have 20+ geographic regions with conversion data?**
+   - Yes: Use geo experiment
+   - No: Use audience-based incrementality test
+
+## Related documentation
+
+- [Measurement Protocol overview](/docs/measurement/overview) -- Protocol concepts and architecture
+- [Implementing measurement agents](/docs/measurement/implementing-measurement-agents) -- Guide for measurement providers
+- [Quick reference](/docs/measurement/quick-reference) -- Compact task reference

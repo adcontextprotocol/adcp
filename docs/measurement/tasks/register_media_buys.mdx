@@ -1,0 +1,254 @@
+---
+title: register_media_buys
+testable: true
+---
+
+# register_media_buys
+
+Register media buys with a measurement agent for tracking and measurement. The registration is lightweight -- the agent builds full understanding from exposure data delivered via the negotiated data transport.
+
+**Response time**: < 5s
+
+**Request schema**: [`/schemas/measurement/register-media-buys-request.json`](https://adcontextprotocol.org/schemas/measurement/register-media-buys-request.json)
+**Response schema**: [`/schemas/measurement/register-media-buys-response.json`](https://adcontextprotocol.org/schemas/measurement/register-media-buys-response.json)
+
+## How it works
+
+The orchestrator registers media buys by providing lightweight metadata: identifiers, channel, flight dates, budget, and KPIs. The measurement agent uses this to set up tracking and returns any trackers (impression pixels, click URLs) that should be added to ad serving. Detailed behavioral understanding comes later from the exposure data flowing through the negotiated data transport.
+
+This task is idempotent. Calling it again with the same media buys updates their registration. Use `delete_missing` to deregister media buys that are no longer active.
+
+## Request parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account_id` | string | No | Advertiser account identifier. Optional if the agent has a single account. |
+| `media_buys` | array | Yes | Media buys to register (1-100 items) |
+| `data_transport` | DataTransport | No | Data transport for exposure data. Negotiated on first call; subsequent calls may omit. |
+| `results_delivery` | ResultsDelivery | No | Configuration for how results are delivered back |
+| `delete_missing` | boolean | No | When true, deregister media buys not included in this request (default: false) |
+| `dry_run` | boolean | No | Preview changes without applying them (default: false) |
+
+### Media buy object
+
+Each media buy requires either `media_buy_id` (AdCP identifier) or `buyer_ref` (buyer's own reference).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `media_buy_id` | string | Conditional | AdCP media buy identifier |
+| `buyer_ref` | string | Conditional | Buyer's own reference identifier (alternative to `media_buy_id`) |
+| `name` | string | No | Human-readable label |
+| `channel` | string | No | Advertising channel (`display`, `olv`, `social`, `search`, `ctv`, `linear_tv`, etc.) |
+| `flight` | object | No | Flight dates with `start` and `end` (YYYY-MM-DD) |
+| `budget` | object | No | Budget with `amount` (number) and `currency` (ISO 4217) |
+| `creative_ids` | string[] | No | Creative identifiers used in this media buy |
+| `kpis` | array | No | Key performance indicators (see KPI object below) |
+
+### KPI object
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `metric_type` | string | Yes | Metric type: `incremental_conversions`, `incremental_revenue`, `incremental_roas`, `roi`, `mroi`, `cpik`, `channel_contribution`, `brand_lift`, `search_lift`, `foot_traffic_lift`, `custom` |
+| `target` | number | No | Target value for this KPI |
+
+### Data transport types
+
+The `data_transport` field uses a discriminated union on the `type` field:
+
+| Type | Description | Key fields |
+|------|-------------|------------|
+| `snowflake_share` | Zero-copy data share | `account_locator`, `share_name`, `database` |
+| `cloud_bucket` | S3, GCS, or Azure Blob Storage | `provider`, `bucket`, `prefix`, `region` |
+| `direct_api` | Real-time or batch API delivery | `endpoint`, `authentication` |
+| `polling` | Agent-hosted endpoint for orchestrator to poll | `poll_endpoint`, `poll_interval_seconds` |
+
+## Response structure
+
+The response uses a discriminated union. Check for `errors` before accessing `media_buys`:
+
+- **Success**: Contains `media_buys` array with per-item results
+- **Error**: Contains `errors` array with operation-level failures
+
+### Per-item result fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `media_buy_id` | string | AdCP identifier (echoed from request) |
+| `buyer_ref` | string | Buyer reference (echoed from request) |
+| `external_id` | string | Measurement agent's internal identifier |
+| `action` | string | Action taken: `created`, `updated`, `unchanged`, `failed` |
+| `measurement_status` | string | Lifecycle status: `pending_data`, `modeling`, `reporting`, `completed`, `paused` |
+| `readiness` | Readiness | Whether the agent has sufficient data to produce results |
+| `trackers` | Tracker[] | Tracking URLs to add to ad serving |
+| `errors` | string[] | Per-item errors (only when `action` is `failed`) |
+| `warnings` | string[] | Non-fatal warnings |
+
+### Tracker object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Tracking event type: `impression`, `click`, `viewability` |
+| `url` | string (URI) | Tracking URL to fire on the corresponding event |
+
+## Example request
+
+```json
+{
+  "$schema": "/schemas/measurement/register-media-buys-request.json",
+  "account_id": "acme-corp-na",
+  "media_buys": [
+    {
+      "media_buy_id": "mb_acme_display_q1",
+      "name": "Acme Corp - Display Prospecting Q1",
+      "channel": "display",
+      "flight": {
+        "start": "2026-01-15",
+        "end": "2026-03-31"
+      },
+      "budget": {
+        "amount": 150000,
+        "currency": "USD"
+      },
+      "creative_ids": ["cr_acme_300x250_v1", "cr_acme_728x90_v1"],
+      "kpis": [
+        { "metric_type": "incremental_conversions", "target": 5000 },
+        { "metric_type": "incremental_roas", "target": 3.0 }
+      ]
+    },
+    {
+      "buyer_ref": "acme-olv-q1-2026",
+      "name": "Acme Corp - OLV Awareness Q1",
+      "channel": "olv",
+      "flight": {
+        "start": "2026-02-01",
+        "end": "2026-03-31"
+      },
+      "budget": {
+        "amount": 250000,
+        "currency": "USD"
+      },
+      "kpis": [
+        { "metric_type": "brand_lift" }
+      ]
+    }
+  ],
+  "data_transport": {
+    "type": "snowflake_share",
+    "account_locator": "xy12345.us-east-1",
+    "share_name": "acme_exposure_share"
+  },
+  "results_delivery": {
+    "polling_supported": true
+  }
+}
+```
+
+## Example response
+
+```json
+{
+  "$schema": "/schemas/measurement/register-media-buys-response.json",
+  "media_buys": [
+    {
+      "media_buy_id": "mb_acme_display_q1",
+      "external_id": "msr_00a1b2c3",
+      "action": "created",
+      "measurement_status": "pending_data",
+      "readiness": {
+        "ready": false,
+        "estimated_ready_date": "2026-02-12",
+        "blockers": [
+          {
+            "code": "insufficient_history",
+            "description": "Need at least 4 weeks of exposure data before modeling can begin"
+          }
+        ],
+        "data_coverage": {
+          "history_weeks": 0,
+          "required_weeks": 4
+        }
+      },
+      "trackers": [
+        {
+          "type": "impression",
+          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=imp"
+        },
+        {
+          "type": "click",
+          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=clk"
+        }
+      ]
+    },
+    {
+      "buyer_ref": "acme-olv-q1-2026",
+      "external_id": "msr_00d4e5f6",
+      "action": "created",
+      "measurement_status": "pending_data",
+      "readiness": {
+        "ready": false,
+        "estimated_ready_date": "2026-03-01",
+        "blockers": [
+          {
+            "code": "insufficient_history",
+            "description": "Need at least 4 weeks of exposure data before modeling can begin"
+          }
+        ],
+        "data_coverage": {
+          "history_weeks": 0,
+          "required_weeks": 4
+        }
+      },
+      "trackers": [
+        {
+          "type": "impression",
+          "url": "https://measure.example.com/pixel/acme/acme-olv-q1-2026?evt=imp"
+        }
+      ]
+    }
+  ],
+  "data_transport": {
+    "type": "snowflake_share",
+    "account_locator": "xy12345.us-east-1",
+    "share_name": "acme_exposure_share",
+    "database": "ACME_MEASUREMENT"
+  }
+}
+```
+
+## Error response
+
+When the operation fails entirely (for example, invalid account), the response contains `errors` instead of `media_buys`:
+
+```json
+{
+  "$schema": "/schemas/measurement/register-media-buys-response.json",
+  "errors": [
+    {
+      "code": "ACCOUNT_NOT_FOUND",
+      "message": "Account 'acme-corp-na' is not recognized by this measurement agent"
+    }
+  ]
+}
+```
+
+## Dry run
+
+Set `dry_run: true` to preview what actions would be taken without applying changes. The response includes `dry_run: true` and the same per-item results, but no trackers are issued and no state changes are persisted.
+
+## Updating registrations
+
+Calling `register_media_buys` again with a previously registered `media_buy_id` updates the registration. The response `action` field will be `updated` if fields changed, or `unchanged` if the registration was identical.
+
+To deregister media buys that are no longer active, set `delete_missing: true`. Any media buys previously registered but not included in the current request will be deregistered.
+
+## Usage notes
+
+1. **Idempotent**: Safe to call repeatedly with the same media buys
+2. **Transport negotiation**: The `data_transport` field is negotiated on the first call. Subsequent calls can omit it unless you need to change the transport.
+3. **Trackers**: Add returned tracker URLs to your ad serving for the corresponding events. The measurement agent uses these to collect exposure data.
+4. **Readiness**: Check the `readiness` field to understand when results will be available. The orchestrator can poll `get_measurement_results` after the `estimated_ready_date`.
+5. **Batch limits**: A single request supports 1-100 media buys
+
+## Related tasks
+
+- [get_measurement_results](./get_measurement_results) - Retrieve measurement results for registered media buys

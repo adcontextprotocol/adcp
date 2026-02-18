@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/channel-reallocation.json",
+  "title": "Channel Reallocation",
+  "description": "Budget reallocation recommendation from channel-level measurement (MMM). Provides actionable spend guidance based on marginal ROI and saturation analysis.",
+  "type": "object",
+  "properties": {
+    "channel": {
+      "$ref": "/schemas/enums/channels.json",
+      "description": "Advertising channel this recommendation applies to"
+    },
+    "current_weekly_spend": {
+      "type": "object",
+      "description": "Current weekly spend in this channel",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": true
+    },
+    "recommended_weekly_spend": {
+      "type": "object",
+      "description": "Recommended weekly spend based on marginal ROI optimization",
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": true
+    },
+    "marginal_roi_at_current": {
+      "type": "number",
+      "description": "Marginal ROI at current spend level — expected return from the next dollar"
+    },
+    "marginal_roi_at_recommended": {
+      "type": "number",
+      "description": "Marginal ROI at recommended spend level"
+    },
+    "saturation_index": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "How close this channel is to saturation (0 = no diminishing returns, 1 = fully saturated)"
+    },
+    "channel_contribution": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Channel's share of total measured outcome (0-1)"
+    },
+    "expected_kpi_impact": {
+      "type": "number",
+      "description": "Projected change in KPI if recommendation is followed (positive = improvement)"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Human-readable explanation of the recommendation"
+    }
+  },
+  "required": ["channel", "current_weekly_spend", "recommended_weekly_spend", "marginal_roi_at_current", "marginal_roi_at_recommended", "saturation_index"],
+  "additionalProperties": true
+}

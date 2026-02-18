@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/measurement/get-measurement-results-response.json",
+  "title": "Get Measurement Results Response",
+  "description": "Measurement results from a measurement agent. Returns either results (success) OR operation-level errors. Result shape depends on the requested scope (campaign or channel).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "GetMeasurementResultsSuccess",
+      "description": "Success response — measurement results available",
+      "type": "object",
+      "properties": {
+        "scope": {
+          "$ref": "/schemas/enums/measurement-scope.json",
+          "description": "Scope of these results (echoed from request)"
+        },
+        "results": {
+          "type": "array",
+          "description": "Measurement results. Each item includes a scope discriminator to determine its shape.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Campaign-level result for a specific media buy",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "const": "campaign",
+                    "description": "Discriminator — this is a campaign-level result"
+                  },
+                  "media_buy_id": {
+                    "type": "string",
+                    "description": "AdCP media buy identifier"
+                  },
+                  "buyer_ref": {
+                    "type": "string",
+                    "description": "Buyer's reference identifier"
+                  },
+                  "creative_id": {
+                    "type": "string",
+                    "description": "Creative identifier for creative-level results"
+                  },
+                  "measurement_period": {
+                    "type": "object",
+                    "description": "Time period these results cover",
+                    "properties": {
+                      "start": { "type": "string", "format": "date" },
+                      "end": { "type": "string", "format": "date" }
+                    },
+                    "required": ["start", "end"],
+                    "additionalProperties": true
+                  },
+                  "readiness": {
+                    "$ref": "/schemas/core/readiness.json",
+                    "description": "Readiness assessment for this media buy"
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "description": "Measurement metrics (omitted when readiness.ready is false)",
+                    "items": {
+                      "$ref": "/schemas/core/measurement-metric.json"
+                    }
+                  },
+                  "spend": {
+                    "type": "object",
+                    "description": "Total spend during this period",
+                    "properties": {
+                      "amount": { "type": "number", "minimum": 0 },
+                      "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+                    },
+                    "required": ["amount", "currency"],
+                    "additionalProperties": true
+                  },
+                  "baseline": {
+                    "type": "object",
+                    "description": "Baseline expectations without advertising",
+                    "properties": {
+                      "expected_conversions": {
+                        "type": "number",
+                        "description": "Expected conversions without ad exposure"
+                      },
+                      "expected_revenue": {
+                        "type": "number",
+                        "description": "Expected revenue without ad exposure"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "required": ["scope"],
+                "anyOf": [
+                  { "required": ["media_buy_id"] },
+                  { "required": ["buyer_ref"] }
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "description": "Channel-level result from MMM/portfolio measurement",
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "const": "channel",
+                    "description": "Discriminator — this is a channel-level result"
+                  },
+                  "channel": {
+                    "$ref": "/schemas/enums/channels.json",
+                    "description": "Advertising channel"
+                  },
+                  "measurement_period": {
+                    "type": "object",
+                    "description": "Time period these results cover",
+                    "properties": {
+                      "start": { "type": "string", "format": "date" },
+                      "end": { "type": "string", "format": "date" }
+                    },
+                    "required": ["start", "end"],
+                    "additionalProperties": true
+                  },
+                  "metrics": {
+                    "type": "array",
+                    "description": "Measurement metrics",
+                    "items": {
+                      "$ref": "/schemas/core/measurement-metric.json"
+                    }
+                  },
+                  "spend": {
+                    "type": "object",
+                    "description": "Total spend during this period",
+                    "properties": {
+                      "amount": { "type": "number", "minimum": 0 },
+                      "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+                    },
+                    "required": ["amount", "currency"],
+                    "additionalProperties": true
+                  },
+                  "saturation_index": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "How close this channel is to saturation (0-1)"
+                  },
+                  "response_curve": {
+                    "type": "array",
+                    "description": "Points on the response curve showing expected KPI at different spend levels",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "spend_multiplier": {
+                          "type": "number",
+                          "minimum": 0,
+                          "description": "Multiplier relative to current spend (1.0 = current level)"
+                        },
+                        "expected_kpi": {
+                          "type": "number",
+                          "description": "Expected KPI value at this spend level"
+                        }
+                      },
+                      "required": ["spend_multiplier", "expected_kpi"],
+                      "additionalProperties": true
+                    }
+                  },
+                  "recommendations": {
+                    "type": "array",
+                    "description": "Budget reallocation recommendations",
+                    "items": {
+                      "$ref": "/schemas/core/channel-reallocation.json"
+                    }
+                  }
+                },
+                "required": ["scope", "channel"],
+                "additionalProperties": true
+              }
+            ]
+          }
+        },
+        "pagination": {
+          "$ref": "/schemas/core/pagination-response.json",
+          "description": "Pagination details"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["scope", "results"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "GetMeasurementResultsError",
+      "description": "Error response — results retrieval failed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["results"] },
+          { "required": ["scope"] }
+        ]
+      }
+    }
+  ]
+}

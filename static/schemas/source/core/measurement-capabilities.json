@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/measurement-capabilities.json",
+  "title": "Measurement Capabilities",
+  "description": "Capabilities declared by a measurement agent in get_adcp_capabilities. Describes two independent capability scopes: campaign measurement (per media buy) and channel measurement (MMM/portfolio-level).",
+  "type": "object",
+  "properties": {
+    "campaign_measurement": {
+      "type": "object",
+      "description": "Campaign-level measurement capabilities — measures specific media buys using incrementality tests, MTA, or lift studies",
+      "properties": {
+        "methodologies": {
+          "type": "array",
+          "description": "Methodology profiles describing each supported approach",
+          "items": {
+            "$ref": "#/definitions/methodology_profile"
+          },
+          "minItems": 1
+        },
+        "metric_types": {
+          "type": "array",
+          "description": "Metric types this agent can produce for campaign measurement",
+          "items": {
+            "$ref": "/schemas/enums/measurement-metric-type.json"
+          },
+          "uniqueItems": true
+        },
+        "supported_channels": {
+          "type": "array",
+          "description": "Advertising channels this agent can measure at campaign level",
+          "items": {
+            "$ref": "/schemas/enums/channels.json"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": ["methodologies", "metric_types"],
+      "additionalProperties": true
+    },
+    "channel_measurement": {
+      "type": "object",
+      "description": "Channel-level measurement capabilities — MMM/marketing mix modeling across the marketing portfolio",
+      "properties": {
+        "methodologies": {
+          "type": "array",
+          "description": "Methodology profiles describing each supported approach",
+          "items": {
+            "$ref": "#/definitions/methodology_profile"
+          },
+          "minItems": 1
+        },
+        "metric_types": {
+          "type": "array",
+          "description": "Metric types this agent can produce for channel measurement",
+          "items": {
+            "$ref": "/schemas/enums/measurement-metric-type.json"
+          },
+          "uniqueItems": true
+        },
+        "supported_channels": {
+          "type": "array",
+          "description": "Advertising channels this agent can model",
+          "items": {
+            "$ref": "/schemas/enums/channels.json"
+          },
+          "uniqueItems": true
+        },
+        "minimum_history_weeks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum weeks of historical data required (e.g., 104 for Meridian's 2-year recommendation)",
+          "examples": [52, 104]
+        },
+        "maximum_channels": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of channels that can be modeled simultaneously",
+          "examples": [20]
+        }
+      },
+      "required": ["methodologies", "metric_types"],
+      "additionalProperties": true
+    },
+    "data_transports": {
+      "type": "array",
+      "description": "Supported data transport types for exposure data delivery",
+      "items": {
+        "$ref": "/schemas/enums/data-transport-type.json"
+      },
+      "uniqueItems": true
+    },
+    "results_delivery": {
+      "type": "array",
+      "description": "Supported results delivery mechanisms",
+      "items": {
+        "type": "string",
+        "enum": ["webhook", "polling"]
+      },
+      "uniqueItems": true
+    },
+    "reporting_cadence": {
+      "type": "array",
+      "description": "Supported reporting cadences",
+      "items": {
+        "$ref": "/schemas/enums/measurement-reporting-cadence.json"
+      },
+      "uniqueItems": true
+    },
+    "exposure_event_version": {
+      "type": "string",
+      "description": "Version of the exposure event schema this agent accepts",
+      "examples": ["1.0"]
+    }
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "methodology_profile": {
+      "type": "object",
+      "description": "Detailed profile of a measurement methodology, designed for AI assistants to recommend approaches",
+      "properties": {
+        "type": {
+          "$ref": "/schemas/enums/measurement-methodology.json",
+          "description": "Methodology type"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for the methodology",
+          "examples": ["Marketing Mix Modeling", "Geo-Based Incrementality"]
+        },
+        "description": {
+          "type": "string",
+          "description": "Plain-English explanation of the methodology"
+        },
+        "best_for": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Scenarios where this methodology excels",
+          "examples": [
+            ["Long-term budget allocation", "Cross-channel optimization"],
+            ["Proving causal impact", "New channel evaluation"]
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Known limitations of this methodology",
+          "examples": [
+            ["Requires 2+ years of data", "Cannot attribute at user level"],
+            ["Requires sufficient geographic coverage", "Higher cost due to holdout"]
+          ]
+        },
+        "minimum_requirements": {
+          "type": "object",
+          "description": "Minimum data requirements to use this methodology",
+          "properties": {
+            "history_weeks": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum weeks of historical data"
+            },
+            "minimum_spend": {
+              "type": "object",
+              "description": "Minimum spend required",
+              "properties": {
+                "amount": { "type": "number", "minimum": 0 },
+                "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+              },
+              "required": ["amount", "currency"],
+              "additionalProperties": true
+            },
+            "minimum_geos": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum number of geographic regions (for geo experiments)"
+            },
+            "minimum_conversions_per_week": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum weekly conversions for reliable modeling"
+            }
+          },
+          "additionalProperties": true
+        },
+        "time_to_insight_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Expected days from study start to first results"
+        },
+        "methodology_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to detailed methodology documentation"
+        }
+      },
+      "required": ["type", "name", "description"],
+      "additionalProperties": true
+    }
+  }
+}

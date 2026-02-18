@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/results-delivery.json",
+  "title": "Results Delivery",
+  "description": "Configuration for how measurement results are delivered back to the orchestrator",
+  "type": "object",
+  "properties": {
+    "webhook": {
+      "$ref": "/schemas/core/reporting-webhook.json",
+      "description": "Webhook configuration for push-based results delivery"
+    },
+    "polling_supported": {
+      "type": "boolean",
+      "description": "Whether the agent supports polling via get_measurement_results",
+      "default": true
+    }
+  },
+  "additionalProperties": true
+}

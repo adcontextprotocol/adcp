@@ -1,0 +1,415 @@
+---
+title: Implementing measurement agents
+sidebarTitle: For providers
+description: Guide for measurement providers building AdCP measurement agents
+---
+
+This guide explains how to implement a measurement agent that evaluates advertising effectiveness through the AdCP protocol. Measurement agents receive exposure data, run models, and return structured results that orchestrators use to optimize spend.
+
+## What is a measurement agent?
+
+A measurement agent is a service that:
+
+- **Measures campaign performance** -- evaluates specific media buys using incrementality tests, attribution, or lift studies
+- **Models channel effectiveness** -- runs marketing mix models across an advertiser's media portfolio
+- **Returns actionable results** -- structured metrics with confidence intervals and budget recommendations
+
+Measurement agents are independent of sales agents. A measurement provider implements one agent that can serve multiple advertisers and orchestrators.
+
+## Capabilities declaration
+
+Your agent declares its capabilities through the `measurement` section of the `get_adcp_capabilities` response. You must declare at least one of the two measurement scopes.
+
+### Campaign measurement
+
+Declare `campaign_measurement` if your agent measures specific media buys.
+
+```json
+{
+  "supported_protocols": ["measurement"],
+  "measurement": {
+    "campaign_measurement": {
+      "methodologies": [
+        {
+          "type": "incrementality_test",
+          "name": "Geo-Based Incrementality",
+          "description": "Measures causal lift by comparing treatment and control geographic regions",
+          "best_for": [
+            "Proving causal impact of specific campaigns",
+            "New channel evaluation"
+          ],
+          "limitations": [
+            "Requires sufficient geographic coverage",
+            "Revenue impact of holdout during test period"
+          ],
+          "minimum_requirements": {
+            "minimum_geos": 20,
+            "minimum_spend": { "amount": 50000, "currency": "USD" }
+          },
+          "time_to_insight_days": 28
+        },
+        {
+          "type": "brand_lift_study",
+          "name": "Brand Lift Survey",
+          "description": "Measures awareness and consideration lift via exposed vs. control survey panels",
+          "best_for": [
+            "Upper-funnel campaign evaluation",
+            "Awareness campaign measurement"
+          ],
+          "limitations": [
+            "Survey-based, not behavioral",
+            "Requires sufficient sample size"
+          ],
+          "minimum_requirements": {
+            "minimum_spend": { "amount": 25000, "currency": "USD" }
+          },
+          "time_to_insight_days": 21
+        }
+      ],
+      "metric_types": [
+        "incremental_conversions",
+        "incremental_revenue",
+        "incremental_roas",
+        "brand_lift"
+      ],
+      "supported_channels": ["display", "video", "social", "ctv"]
+    },
+    "data_transports": ["snowflake_share", "cloud_bucket"],
+    "results_delivery": ["webhook", "polling"],
+    "reporting_cadence": ["weekly", "on_model_refresh"],
+    "exposure_event_version": "1.0"
+  }
+}
+```
+
+### Channel measurement
+
+Declare `channel_measurement` if your agent runs marketing mix models across the advertiser's portfolio.
+
+```json
+{
+  "supported_protocols": ["measurement"],
+  "measurement": {
+    "channel_measurement": {
+      "methodologies": [
+        {
+          "type": "mmm",
+          "name": "Marketing Mix Modeling",
+          "description": "Bayesian regression model decomposing outcomes by channel spend over time",
+          "best_for": [
+            "Long-term budget allocation across channels",
+            "Understanding diminishing returns by channel"
+          ],
+          "limitations": [
+            "Requires 2+ years of weekly data",
+            "Cannot attribute at user level"
+          ],
+          "minimum_requirements": {
+            "history_weeks": 104,
+            "minimum_conversions_per_week": 50
+          },
+          "time_to_insight_days": 14,
+          "methodology_url": "https://measurement.example.com/methodology/mmm"
+        }
+      ],
+      "metric_types": [
+        "roi",
+        "mroi",
+        "cpik",
+        "channel_contribution"
+      ],
+      "supported_channels": ["display", "video", "social", "search", "ctv", "audio"],
+      "minimum_history_weeks": 104,
+      "maximum_channels": 20
+    },
+    "data_transports": ["snowflake_share", "cloud_bucket", "direct_api"],
+    "results_delivery": ["webhook", "polling"],
+    "reporting_cadence": ["weekly", "on_model_refresh"]
+  }
+}
+```
+
+An agent can declare both `campaign_measurement` and `channel_measurement` to support both scopes.
+
+## Authentication setup
+
+Measurement agents typically require advertiser-level credentials because they handle sensitive performance data. Use the `account` section in `get_adcp_capabilities` to declare your authentication requirements.
+
+### Requiring operator authentication
+
+Set `require_operator_auth: true` when each advertiser must authenticate independently with your platform (the common case for measurement providers).
+
+```json
+{
+  "account": {
+    "require_operator_auth": true,
+    "authorization_endpoint": "https://measurement.example.com/oauth/authorize",
+    "supported_billing": ["brand"],
+    "required_for_products": false
+  }
+}
+```
+
+When `authorization_endpoint` is provided, orchestrators direct the advertiser to your OAuth flow to obtain a bearer token. If you omit `authorization_endpoint`, credentials are exchanged out-of-band (portal login, API key provisioning).
+
+### Bearer token usage
+
+Once authenticated, the orchestrator includes the token in all subsequent calls.
+
+```
+Authorization: Bearer <advertiser_token>
+```
+
+Your agent validates the token and associates requests with the correct advertiser account.
+
+## Data transport configuration
+
+Exposure data delivery is negotiated during the first `register_media_buys` call. Your agent declares supported transports in capabilities, and the orchestrator picks one during registration.
+
+### Snowflake data share
+
+Zero-copy access to exposure data. The orchestrator grants your Snowflake account access to a share containing exposure events.
+
+```json
+{
+  "data_transport": {
+    "type": "snowflake_share",
+    "account_locator": "xy12345.us-east-1",
+    "share_name": "adcp_exposure_events",
+    "database": "measurement_ingest"
+  }
+}
+```
+
+### Cloud bucket
+
+File-based delivery to S3, GCS, or Azure Blob Storage. Suitable for batch processing workflows.
+
+```json
+{
+  "data_transport": {
+    "type": "cloud_bucket",
+    "provider": "s3",
+    "bucket": "measurement-ingest-prod",
+    "prefix": "exposure-events/",
+    "region": "us-east-1"
+  }
+}
+```
+
+### Direct API
+
+Real-time event delivery to an HTTPS endpoint your agent hosts.
+
+```json
+{
+  "data_transport": {
+    "type": "direct_api",
+    "endpoint": "https://measurement.example.com/api/v1/events"
+  }
+}
+```
+
+### Polling
+
+Your agent hosts an endpoint that the orchestrator polls for available data.
+
+```json
+{
+  "data_transport": {
+    "type": "polling",
+    "poll_endpoint": "https://measurement.example.com/api/v1/data/poll",
+    "poll_interval_seconds": 3600
+  }
+}
+```
+
+### Provider-managed
+
+Measurement providers who connect directly to advertising platforms can declare `provider_managed` transport. The provider handles data collection from the platform APIs directly.
+
+```json
+{
+  "data_transport": {
+    "type": "provider_managed"
+  }
+}
+```
+
+This is appropriate when your measurement agent has its own integrations with ad platforms and does not need the orchestrator to deliver exposure data.
+
+### Confirming transport
+
+In the `register_media_buys` response, echo back the confirmed transport configuration. This confirms that both sides agree on the delivery mechanism.
+
+## Tracker implementation
+
+When a media buy is registered, your agent may return tracking URLs that the orchestrator adds to ad serving. Trackers provide an independent signal of ad exposure.
+
+Return trackers in each media buy's registration response:
+
+```json
+{
+  "media_buys": [
+    {
+      "media_buy_id": "mb_001",
+      "action": "created",
+      "measurement_status": "pending_data",
+      "trackers": [
+        {
+          "type": "impression",
+          "url": "https://measurement.example.com/t/imp?mb=mb_001&cb=${CACHEBUSTER}"
+        },
+        {
+          "type": "click",
+          "url": "https://measurement.example.com/t/clk?mb=mb_001"
+        },
+        {
+          "type": "viewability",
+          "url": "https://measurement.example.com/t/view?mb=mb_001&vt=${VIEWABILITY_TIME}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Tracker types:
+
+| Type | Fires when |
+|------|-----------|
+| `impression` | Ad is rendered |
+| `click` | User clicks on the ad |
+| `viewability` | Ad meets the viewability threshold |
+
+The orchestrator is responsible for attaching these tracker URLs to the ad serving configuration of each media buy.
+
+## Readiness assessment
+
+Readiness is a lifecycle state, not an error. Your agent should return honest readiness assessments so orchestrators can plan accordingly.
+
+### When results are not yet available
+
+```json
+{
+  "readiness": {
+    "ready": false,
+    "estimated_ready_date": "2026-04-15",
+    "blockers": [
+      {
+        "code": "insufficient_history",
+        "description": "Need 12 more weeks of data. Currently have 40 of 52 required weeks."
+      }
+    ],
+    "data_coverage": {
+      "history_weeks": 40,
+      "required_weeks": 52
+    }
+  }
+}
+```
+
+### Blocker codes
+
+| Code | Meaning |
+|------|---------|
+| `insufficient_history` | Not enough weeks of historical data |
+| `insufficient_spend` | Spend level too low for reliable modeling |
+| `insufficient_geos` | Not enough geographic regions for geo experiments |
+| `insufficient_conversions` | Conversion volume too low |
+| `data_not_connected` | Data transport not yet configured or data feed interrupted |
+| `model_training` | Data received, model is currently training |
+
+### When results are available
+
+```json
+{
+  "readiness": {
+    "ready": true
+  }
+}
+```
+
+Readiness appears in both `register_media_buys` responses (per media buy) and `get_measurement_results` responses.
+
+## Methodology profiles
+
+Methodology profiles are the primary way your agent communicates what it can do. They appear in capabilities and are designed for both human decision-makers and AI assistants to evaluate.
+
+### Required fields
+
+Every methodology profile must include:
+
+```json
+{
+  "type": "incrementality_test",
+  "name": "Geo-Based Incrementality",
+  "description": "Measures causal lift by comparing treatment and control regions"
+}
+```
+
+### Recommended fields
+
+Include these fields to help orchestrators select the right methodology:
+
+```json
+{
+  "type": "geo_experiment",
+  "name": "Geographic Lift Test",
+  "description": "Statistically designed geographic holdout measuring causal impact",
+  "best_for": [
+    "Proving causal impact of a specific channel",
+    "Validating MMM results with an in-market experiment"
+  ],
+  "limitations": [
+    "Requires 20+ geographic regions",
+    "Revenue impact during holdout period",
+    "Results may not generalize to non-tested geos"
+  ],
+  "minimum_requirements": {
+    "minimum_geos": 20,
+    "minimum_spend": { "amount": 50000, "currency": "USD" },
+    "minimum_conversions_per_week": 100
+  },
+  "time_to_insight_days": 28,
+  "methodology_url": "https://measurement.example.com/methodology/geo-lift"
+}
+```
+
+### Methodology types
+
+| Type | Description | Typical scope |
+|------|-------------|---------------|
+| `mmm` | Marketing mix modeling | Channel |
+| `mta` | Multi-touch attribution | Campaign |
+| `incrementality_test` | Randomized experiment measuring causal lift | Campaign |
+| `brand_lift_study` | Survey-based awareness and intent measurement | Campaign |
+| `geo_experiment` | Geographic holdout comparing treatment and control regions | Campaign |
+| `unified` | Combined approach integrating multiple methodologies | Both |
+| `custom` | Provider-specific methodology | Either |
+
+## Deployment checklist
+
+Before launching your measurement agent:
+
+- [ ] `get_adcp_capabilities` returns valid `measurement` section with at least one scope
+- [ ] At least one methodology profile declared with `type`, `name`, and `description`
+- [ ] `metric_types` lists all metrics your agent can produce
+- [ ] `data_transports` lists at least one supported transport type
+- [ ] `results_delivery` declares supported delivery mechanisms
+- [ ] `register_media_buys` accepts media buy registrations and returns per-item results
+- [ ] `register_media_buys` returns trackers when applicable
+- [ ] `register_media_buys` handles `dry_run: true` and `delete_missing: true`
+- [ ] `get_measurement_results` returns results for campaign scope, channel scope, or both
+- [ ] `get_measurement_results` returns readiness objects when data is insufficient
+- [ ] Error responses use the discriminated union pattern (check for `errors` before accessing success fields)
+- [ ] Authentication is configured and documented
+- [ ] Exposure event ingestion pipeline handles deduplication via `event_id`
+- [ ] MCP and/or A2A endpoints are accessible
+
+## Related documentation
+
+- [Measurement Protocol overview](/docs/measurement/overview) -- Protocol concepts and architecture
+- [Choosing a methodology](/docs/measurement/choosing-methodology) -- Decision framework for methodology selection
+- [Quick reference](/docs/measurement/quick-reference) -- Compact task reference
+- [Authentication](/docs/building/integration/authentication) -- AdCP authentication patterns

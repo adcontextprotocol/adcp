@@ -1,0 +1,325 @@
+---
+title: Measurement quick reference
+sidebarTitle: Quick reference
+description: Compact reference for the AdCP measurement protocol
+---
+
+Use the `call_adcp_agent` tool to execute these tasks against any AdCP measurement agent.
+
+## Task overview
+
+| Task | Purpose | Response time |
+|------|---------|---------------|
+| `get_adcp_capabilities` | Discover measurement capabilities and methodologies | ~1s |
+| `register_media_buys` | Register media buys for tracking, get trackers, negotiate data transport | ~5s |
+| `get_measurement_results` | Retrieve campaign-level or channel-level measurement results | ~30s |
+
+## Campaign measurement workflow
+
+1. **Discover capabilities**: `get_adcp_capabilities` to see methodologies, metrics, and transports
+2. **Register media buys**: `register_media_buys` with media buy metadata and data transport config
+3. **Deploy trackers**: Attach returned tracker URLs to ad serving
+4. **Deliver exposure data**: Send events through the negotiated transport
+5. **Check readiness**: `get_measurement_results` -- inspect `readiness.ready` before using metrics
+6. **Retrieve results**: `get_measurement_results` with `scope: "campaign"` and measurement period
+
+## Channel measurement workflow
+
+1. **Discover capabilities**: `get_adcp_capabilities` to check `channel_measurement` and `minimum_history_weeks`
+2. **Register media buys**: `register_media_buys` with all media buys across channels
+3. **Deliver exposure data**: Send historical and ongoing exposure events
+4. **Check readiness**: `get_measurement_results` -- channel MMM typically requires 52-104 weeks of data
+5. **Retrieve results**: `get_measurement_results` with `scope: "channel"` for ROI, mROI, and reallocation recommendations
+
+---
+
+## Task reference
+
+### register_media_buys
+
+Register media buys with a measurement agent for tracking.
+
+```json
+{
+  "media_buys": [
+    {
+      "media_buy_id": "mb_001",
+      "name": "Summer Display Campaign",
+      "channel": "display",
+      "flight": {
+        "start": "2026-03-01",
+        "end": "2026-06-30"
+      },
+      "budget": { "amount": 50000, "currency": "USD" },
+      "kpis": [
+        { "metric_type": "incremental_conversions" }
+      ]
+    }
+  ],
+  "data_transport": {
+    "type": "snowflake_share",
+    "account_locator": "xy12345.us-east-1",
+    "share_name": "adcp_exposure_events"
+  }
+}
+```
+
+**Key fields:**
+- `media_buys` (array, required): Media buys to register (max 100). Each requires `media_buy_id` or `buyer_ref`.
+- `media_buys[].channel` (string): Advertising channel (`display`, `video`, `social`, etc.)
+- `media_buys[].flight` (object): Start and end dates (YYYY-MM-DD)
+- `media_buys[].budget` (object): Budget with `amount` and `currency`
+- `media_buys[].kpis` (array): Target metric types
+- `data_transport` (object): Transport config -- negotiated on first call, omit on subsequent calls
+- `results_delivery` (object): Webhook and/or polling config
+- `dry_run` (boolean): Preview changes without applying
+- `delete_missing` (boolean): Deregister media buys not in this request
+
+**Response contains:**
+- `media_buys`: Per-item results with `action`, `measurement_status`, `trackers`, and `readiness`
+- `data_transport`: Confirmed transport configuration
+
+---
+
+### get_measurement_results
+
+Retrieve measurement results for campaign or channel scope.
+
+**Campaign scope:**
+```json
+{
+  "scope": "campaign",
+  "media_buy_ids": ["mb_001"],
+  "measurement_period": {
+    "start": "2026-03-01",
+    "end": "2026-05-31"
+  }
+}
+```
+
+**Channel scope:**
+```json
+{
+  "scope": "channel",
+  "channels": ["display", "video", "social"],
+  "measurement_period": {
+    "start": "2025-01-01",
+    "end": "2026-05-31"
+  }
+}
+```
+
+**Key fields:**
+- `scope` (string, required): `"campaign"` or `"channel"`
+- `measurement_period` (object, required): Date range with `start` and `end` (YYYY-MM-DD)
+- `media_buy_ids` or `buyer_refs` (array): Filter to specific media buys (campaign scope)
+- `channels` (array): Filter to specific channels (channel scope)
+- `metric_types` (array): Filter to specific metrics
+
+**Campaign response contains:**
+- `results[].scope`: `"campaign"` discriminator
+- `results[].media_buy_id`: Media buy identifier
+- `results[].metrics`: Array of measurement metrics with values and confidence intervals
+- `results[].readiness`: Whether sufficient data exists for this media buy
+- `results[].baseline`: Expected performance without advertising
+
+**Channel response contains:**
+- `results[].scope`: `"channel"` discriminator
+- `results[].channel`: Advertising channel
+- `results[].metrics`: ROI, mROI, cpik, channel_contribution
+- `results[].saturation_index`: How close the channel is to saturation (0-1)
+- `results[].response_curve`: Expected KPI at different spend levels
+- `results[].recommendations`: Budget reallocation recommendations
+
+---
+
+## Key enums
+
+### Measurement methodology
+
+| Value | Description |
+|-------|-------------|
+| `mmm` | Marketing mix modeling -- channel-level regression analysis |
+| `mta` | Multi-touch attribution -- user-level credit assignment |
+| `incrementality_test` | Randomized experiment measuring causal lift |
+| `brand_lift_study` | Survey-based awareness and intent measurement |
+| `geo_experiment` | Geographic holdout comparing treatment and control regions |
+| `unified` | Combined methodology integrating multiple approaches |
+| `custom` | Provider-specific methodology |
+
+### Measurement metric type
+
+| Value | Description |
+|-------|-------------|
+| `incremental_conversions` | Conversions causally attributed to ad exposure |
+| `incremental_revenue` | Revenue causally attributed to ad exposure |
+| `incremental_roas` | Incremental return on ad spend |
+| `roi` | Return on investment: (revenue - cost) / cost |
+| `mroi` | Marginal ROI -- return from the next dollar of spend |
+| `cpik` | Cost per incremental KPI |
+| `channel_contribution` | Channel's share of total outcome (0-1) |
+| `brand_lift` | Change in awareness, consideration, or purchase intent |
+| `search_lift` | Incremental search volume from ad exposure |
+| `foot_traffic_lift` | Incremental store visits from ad exposure |
+| `custom` | Provider-specific metric |
+
+### Measurement status
+
+| Value | Description |
+|-------|-------------|
+| `pending_data` | Registered, waiting for exposure data |
+| `modeling` | Data received, model training |
+| `reporting` | Results available, updating on cadence |
+| `completed` | Final results available |
+| `paused` | Measurement paused |
+
+### Measurement scope
+
+| Value | Description |
+|-------|-------------|
+| `campaign` | Per-media-buy results |
+| `channel` | Portfolio-level channel results |
+
+### Data transport type
+
+| Value | Description |
+|-------|-------------|
+| `snowflake_share` | Snowflake data share |
+| `cloud_bucket` | S3, GCS, or Azure Blob Storage |
+| `direct_api` | HTTPS endpoint for event delivery |
+| `polling` | Agent-hosted poll endpoint |
+| `provider_managed` | Measurement provider connects directly to ad platforms |
+
+### Tracker type
+
+| Value | Description |
+|-------|-------------|
+| `impression` | Fired on ad render |
+| `click` | Fired on user click |
+| `viewability` | Fired when ad meets viewability threshold |
+
+### Reporting cadence
+
+| Value | Description |
+|-------|-------------|
+| `daily` | Results updated daily |
+| `weekly` | Results updated weekly |
+| `on_model_refresh` | Results updated on model retrain |
+
+---
+
+## Industry mapping
+
+| Industry concept | AdCP identifier | Notes |
+|-----------------|----------------|-------|
+| Campaign | `media_buy_id` / `buyer_ref` | Unit of execution being measured |
+| Creative | `creative_id` | Specific creative variant |
+| Advertiser | `account_id` | Advertiser account |
+| Channel | `channel` | Advertising channel (display, video, social, etc.) |
+| ROI | `roi` metric | (revenue - cost) / cost |
+| Marginal ROI | `mroi` metric | Aligns with Meridian's mROI concept |
+| CPIK | `cpik` metric | Cost per incremental KPI (Meridian terminology) |
+| Channel contribution | `channel_contribution` metric | Channel's share of measured outcome |
+
+---
+
+## Key schemas
+
+### Measurement metric
+
+```json
+{
+  "metric_type": "roi",
+  "value": 3.2,
+  "currency": "USD",
+  "confidence": {
+    "level": 0.9,
+    "lower_bound": 2.1,
+    "upper_bound": 4.5,
+    "method": "bayesian_credible"
+  },
+  "methodology": "mmm",
+  "interpretation": {
+    "summary": "For every $1 spent, this channel generated $3.20 in incremental revenue",
+    "action_suggestion": "Consider increasing spend -- marginal ROI remains above 2x"
+  }
+}
+```
+
+### Readiness
+
+```json
+{
+  "ready": false,
+  "estimated_ready_date": "2026-04-15",
+  "blockers": [
+    {
+      "code": "insufficient_history",
+      "description": "Need 12 more weeks of data. Currently have 40 of 52 required weeks."
+    }
+  ],
+  "data_coverage": {
+    "history_weeks": 40,
+    "required_weeks": 52
+  }
+}
+```
+
+### Channel reallocation
+
+```json
+{
+  "channel": "display",
+  "current_weekly_spend": { "amount": 10000, "currency": "USD" },
+  "recommended_weekly_spend": { "amount": 14000, "currency": "USD" },
+  "marginal_roi_at_current": 2.8,
+  "marginal_roi_at_recommended": 1.5,
+  "saturation_index": 0.35,
+  "channel_contribution": 0.22,
+  "rationale": "Display has room to grow -- mROI of 2.8x suggests the next dollar returns nearly 3x."
+}
+```
+
+### Exposure event
+
+```json
+{
+  "event_type": "impression",
+  "event_id": "evt_abc123",
+  "timestamp": "2026-03-15T14:22:00Z",
+  "media_buy_id": "mb_001",
+  "creative_id": "creative_summer_v2",
+  "channel": "display",
+  "cost": { "amount": 0.0045, "currency": "USD", "model": "cpm" },
+  "geo": { "country": "US", "region": "NY", "dma": "501" }
+}
+```
+
+**Conversion event fields:**
+- `conversion_value` (object): Conversion value with `amount` and `currency`
+- `order_id` (string): Order or transaction identifier
+- `customer_type` (string): `new` or `returning`
+
+**Identifier requirements:**
+- MUST include either `media_buy_id` or `buyer_ref` (not both required)
+
+---
+
+## Error handling
+
+Check for `errors` before accessing success fields:
+
+```javascript
+const result = await agent.registerMediaBuys({ media_buys: [...] });
+if (result.errors) {
+  console.error('Registration failed:', result.errors);
+} else {
+  for (const mb of result.media_buys) {
+    if (mb.errors) {
+      console.error(`Media buy ${mb.media_buy_id} failed:`, mb.errors);
+    } else {
+      console.log(`Registered: ${mb.media_buy_id}, status: ${mb.measurement_status}`);
+    }
+  }
+}
+```
