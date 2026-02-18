@@ -68,6 +68,28 @@ describe('isMultiPartyThread', () => {
     ];
     expect(isMultiPartyThread(messages, BOT)).toBe(false);
   });
+
+  it('should count currentUserId even if their message is not in the thread yet', () => {
+    // Race condition: U002 just posted but their message hasn't appeared in thread history
+    const messages = [
+      { user: 'U001' },
+      { user: BOT },
+    ];
+    expect(isMultiPartyThread(messages, BOT, 'U002')).toBe(true);
+  });
+
+  it('should not double-count currentUserId if already in messages', () => {
+    const messages = [
+      { user: 'U001' },
+      { user: BOT },
+    ];
+    expect(isMultiPartyThread(messages, BOT, 'U001')).toBe(false);
+  });
+
+  it('should not count the bot as currentUserId', () => {
+    const messages = [{ user: 'U001' }];
+    expect(isMultiPartyThread(messages, BOT, BOT)).toBe(false);
+  });
 });
 
 describe('isDirectedAtAddie', () => {
@@ -173,5 +195,43 @@ describe('isDirectedAtAddie', () => {
   it('should return false when current message is the only one', () => {
     const messages = [{ user: 'U001', ts: '1' }];
     expect(isDirectedAtAddie('hello', messages, '1', 'U001', BOT)).toBe(false);
+  });
+
+  // @mention detection tests
+
+  it('should return false when message starts with a Slack @mention of another user', () => {
+    // Brian says "@Ingmar that can be me" — clearly addressed to Ingmar, not Addie
+    // Using valid Slack ID format (uppercase alphanumeric only) to exercise the regex path
+    const messages = [
+      { user: 'UINGMAR1', ts: '1' },
+      { user: BOT, ts: '2' },
+      { user: 'UBRIAN01', ts: '3' },
+    ];
+    expect(isDirectedAtAddie('<@UINGMAR1> that can be me', messages, '3', 'UBRIAN01', BOT)).toBe(false);
+  });
+
+  it('should return false when message starts with @mention even if sender is last human', () => {
+    // U001 was the last human, and now sends a message starting with @U002
+    const messages = [
+      { user: 'U001', ts: '1' },
+      { user: BOT, ts: '2' },
+      { user: 'U001', ts: '3' },
+    ];
+    expect(isDirectedAtAddie('<@U002ABC> can you look into this?', messages, '3', 'U001', BOT)).toBe(false);
+  });
+
+  it('should return true when message starts with @mention but also mentions Addie by name', () => {
+    const messages = [{ user: 'U001', ts: '1' }, { user: BOT, ts: '2' }];
+    expect(isDirectedAtAddie('<@U002ABC> and Addie, can you both help?', messages, '3', 'U001', BOT)).toBe(true);
+  });
+
+  it('should not treat mid-message @mentions as disqualifying', () => {
+    // "sounds good, cc @Ingmar" — the sender is continuing with Addie, @mention is informational
+    const messages = [
+      { user: 'U001', ts: '1' },
+      { user: BOT, ts: '2' },
+      { user: 'U001', ts: '3' },
+    ];
+    expect(isDirectedAtAddie('sounds good, cc <@U002ABC>', messages, '3', 'U001', BOT)).toBe(true);
   });
 });

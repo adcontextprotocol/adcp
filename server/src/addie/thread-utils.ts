@@ -1,16 +1,23 @@
 /**
  * Check if a thread has multiple human participants.
  * Used to avoid auto-responding when humans are talking to each other.
+ *
+ * Pass currentUserId to count the current sender even if their message
+ * hasn't yet appeared in the thread history (race condition with Slack API).
  */
 export function isMultiPartyThread(
   messages: Array<{ user?: string }>,
-  botUserId: string
+  botUserId: string,
+  currentUserId?: string
 ): boolean {
   const uniqueHumans = new Set(
     messages
       .map(msg => msg.user)
       .filter((user): user is string => !!user && user !== botUserId)
   );
+  if (currentUserId && currentUserId !== botUserId) {
+    uniqueHumans.add(currentUserId);
+  }
   return uniqueHumans.size >= 2;
 }
 
@@ -23,6 +30,10 @@ export function isMultiPartyThread(
  *   human message (skipping Addie's messages) is also from the same sender.
  *   This check is NOT self-reinforcing because Addie's own responses don't
  *   change who the last human speaker was.
+ *
+ * Returns false if:
+ * - The message starts with a Slack @mention of another user (not the bot),
+ *   indicating it is addressed to them, not to Addie.
  */
 export function isDirectedAtAddie(
   messageText: string,
@@ -33,6 +44,12 @@ export function isDirectedAtAddie(
 ): boolean {
   if (/\baddie\b/i.test(messageText)) {
     return true;
+  }
+
+  // If the message starts with a Slack @mention of another user, it's addressed to them.
+  const startsWithMention = /^<@(U[A-Z0-9]+)>/.exec(messageText.trim());
+  if (startsWithMention && startsWithMention[1] !== botUserId) {
+    return false;
   }
 
   // Find the most recent human message before the current one (skip bot messages).
