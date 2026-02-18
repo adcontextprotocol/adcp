@@ -17,7 +17,7 @@ Property Governance addresses five distinct concerns:
 |---------|----------|-------|-----------|
 | **Property Identity** | What properties exist? | Publishers | `adagents.json` properties array |
 | **Sales Authorization** | Who can sell this property? | Publishers | `adagents.json` authorized_agents |
-| **Property Data** | What do we know about this property? | Data providers | Governance agents via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) |
+| **Property Data** | What do we know about this property? | Data providers | Governance agents via [`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) |
 | **Property Selection** | Which properties meet my requirements? | Buyers | Property lists with filters |
 
 The first three are **publisher-side declarations** via adagents.json. The last two are **buyer-side operations** that consume property data from governance agents.
@@ -80,13 +80,13 @@ Without `property_features`, buyers would need to query every possible governanc
 
 Buyers read `property_features` from adagents.json, then query only the relevant governance agents for detailed data.
 
-See the [adagents.json Tech Spec](/docs/governance/property/adagents) for complete documentation including examples and the discovery workflow.
+See the [adagents.json Tech Spec](/dist/docs/3.0.0-beta.3/governance/property/adagents) for complete documentation including examples and the discovery workflow.
 
 ## Buyer Side: Property Data and Selection
 
 ### Property Data Providers
 
-Governance agents provide data about properties - compliance scores, brand suitability ratings, sustainability metrics, consumer experience scores, etc. They advertise their capabilities via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) in the `governance.property_features` section:
+Governance agents provide data about properties - compliance scores, brand suitability ratings, sustainability metrics, consumer experience scores, etc. They advertise their capabilities via [`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) in the `governance.property_features` section:
 
 ```json
 {
@@ -249,14 +249,14 @@ Both protocols operate on properties but serve different purposes:
 
 ### Discovery
 
-- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: Discover governance capabilities including property features (protocol-level task)
+- **[`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities)**: Discover governance capabilities including property features (protocol-level task)
 
 ### Property List Management
 
-- **[create_property_list](/docs/governance/property/tasks/property_lists#create_property_list)**: Create a new property list on a governance agent
-- **[get_property_list](/docs/governance/property/tasks/property_lists#get_property_list)**: Retrieve resolved properties (with caching guidance)
-- **[update_property_list](/docs/governance/property/tasks/property_lists#update_property_list)**: Modify filters or base properties
-- **[delete_property_list](/docs/governance/property/tasks/property_lists#delete_property_list)**: Remove a property list
+- **[create_property_list](/dist/docs/3.0.0-beta.3/governance/property/tasks/property_lists#create_property_list)**: Create a new property list on a governance agent
+- **[get_property_list](/dist/docs/3.0.0-beta.3/governance/property/tasks/property_lists#get_property_list)**: Retrieve resolved properties (with caching guidance)
+- **[update_property_list](/dist/docs/3.0.0-beta.3/governance/property/tasks/property_lists#update_property_list)**: Modify filters or base properties
+- **[delete_property_list](/dist/docs/3.0.0-beta.3/governance/property/tasks/property_lists#delete_property_list)**: Remove a property list
 
 ## Getting Started
 
@@ -273,10 +273,10 @@ Both protocols operate on properties but serve different purposes:
 5. Share property list references with sellers (with auth tokens)
 
 **Governance Agent Implementers:**
-1. Implement [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to advertise your capabilities in `governance.property_features`
+1. Implement [`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) to advertise your capabilities in `governance.property_features`
 2. Implement property list CRUD operations
 3. Support webhooks to notify buyers when evaluations change
 4. Work with publishers to get listed in their `property_features`
-5. See the [Protocol Specification](/docs/governance/property/specification) for implementation details
+5. See the [Protocol Specification](/dist/docs/3.0.0-beta.3/governance/property/specification) for implementation details
 
-See the [Protocol Specification](/docs/governance/property/specification) for detailed implementation guidance.
+See the [Protocol Specification](/dist/docs/3.0.0-beta.3/governance/property/specification) for detailed implementation guidance.

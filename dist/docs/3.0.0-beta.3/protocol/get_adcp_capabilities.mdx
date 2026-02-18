@@ -104,7 +104,7 @@ Technical execution capabilities:
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 
-Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) for exclusion semantics.
 
 **geo_metros** specifies which metro classification systems are supported:
 
@@ -166,7 +166,7 @@ Array of property features this governance agent can evaluate:
 
 ```json
 {
-  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/protocol/get-adcp-capabilities-response.json",
   "adcp": { "major_versions": [1] },
   "supported_protocols": ["governance"],
   "governance": {
@@ -188,7 +188,7 @@ Array of extension namespaces this agent supports. Buyers can expect meaningful 
 |-------|------|-------------|
 | `extensions_supported` | string[] | Extension namespaces (e.g., `["scope3", "garm"]`) |
 
-Extension schemas are published in the [AdCP extension registry](/docs/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
+Extension schemas are published in the [AdCP extension registry](/dist/docs/3.0.0-beta.3/building/integration/context-sessions#extensions). When an agent declares support for an extension, buyers know to look for and process `ext.{namespace}` data in responses.
 
 **Example:**
 ```json
@@ -420,7 +420,7 @@ const buy = await client.createMediaBuy({
 
 ```json
 {
-  "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [1]
   },
@@ -540,12 +540,12 @@ Route requests to appropriate API versions based on `adcp.major_versions`.
 
 After discovering capabilities:
 
-1. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
+1. **Filter products**: Use [`get_products`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_products) with capability-aware filters
 2. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
-3. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
+3. **Create buys**: Use [`create_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/create_media_buy) with supported features
 
 ## Learn More
 
-- [adagents.json Specification](/docs/governance/property/adagents) - Publisher authorization files
-- [Product Filters](/docs/media-buy/task-reference/get_products#filters) - Capability-aware filtering
-- [Content Standards](/docs/governance/content-standards) - Brand safety configuration
+- [adagents.json Specification](/dist/docs/3.0.0-beta.3/governance/property/adagents) - Publisher authorization files
+- [Product Filters](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_products#filters) - Capability-aware filtering
+- [Content Standards](/dist/docs/3.0.0-beta.3/governance/content-standards) - Brand safety configuration

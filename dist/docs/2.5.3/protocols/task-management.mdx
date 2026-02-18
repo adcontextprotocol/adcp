@@ -438,7 +438,7 @@ await a2a.send({
 
 ## Webhook Integration
 
-For async operations, you can configure webhooks instead of polling. See [Protocol Comparison - Push Notifications](/docs/building/understanding/protocol-comparison#push-notification-architecture) for protocol differences and [Core Concepts - Webhook Reliability](/docs/building/implementation/task-lifecycle#webhook-reliability) for implementation patterns.
+For async operations, you can configure webhooks instead of polling. See [Protocol Comparison - Push Notifications](/dist/docs/2.5.3/building/understanding/protocol-comparison#push-notification-architecture) for protocol differences and [Core Concepts - Webhook Reliability](/dist/docs/2.5.3/building/implementation/task-lifecycle#webhook-reliability) for implementation patterns.
 
 **Webhook trigger conditions:**
 Webhooks fire when the task type supports async, `pushNotificationConfig` is provided, and the task actually runs asynchronously (initial response is `working` or `submitted`).
@@ -495,8 +495,8 @@ Webhooks fire when the task type supports async, `pushNotificationConfig` is pro
 
 ## Related Documentation
 
-- **[Core Concepts](/docs/building/implementation/task-lifecycle)** - Protocol fundamentals and design principles
-- **[MCP Guide](/docs/building/integration/mcp-guide)** - MCP-specific implementation patterns
-- **[A2A Guide](/docs/building/integration/a2a-guide)** - A2A-specific integration examples
-- **[Media Buy Reference](/docs/media-buy/task-reference/)** - Domain-specific task documentation
-- **[Signals Reference](/docs/signals/overview)** - Signal-specific task documentation
+- **[Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle)** - Protocol fundamentals and design principles
+- **[MCP Guide](/dist/docs/2.5.3/building/integration/mcp-guide)** - MCP-specific implementation patterns
+- **[A2A Guide](/dist/docs/2.5.3/building/integration/a2a-guide)** - A2A-specific integration examples
+- **[Media Buy Reference](/dist/docs/2.5.3/media-buy/task-reference/)** - Domain-specific task documentation
+- **[Signals Reference](/dist/docs/2.5.3/signals/overview)** - Signal-specific task documentation

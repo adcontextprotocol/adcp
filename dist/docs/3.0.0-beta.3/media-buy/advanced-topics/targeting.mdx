@@ -37,7 +37,7 @@ Publishers then return products that include the targeting capabilities to reach
 
 ## Real-Time Decisioning with AXE
 
-For targeting decisions that must happen at impression time, buyers can use the **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)**. AXE is the real-time execution layer between orchestrators and decisioning platforms.
+For targeting decisions that must happen at impression time, buyers can use the **[Agentic eXecution Engine (AXE)](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine)**. AXE is the real-time execution layer between orchestrators and decisioning platforms.
 
 **Key capabilities:**
 - **Dynamic audience targeting**: Bring your own DMP/CDP segments to publisher inventory
@@ -51,7 +51,7 @@ For targeting decisions that must happen at impression time, buyers can use the 
 - Real-time brand suitability beyond static rules
 - High-cardinality targeting (millions of segment members)
 
-See the [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for implementation details.
+See the [AXE documentation](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine) for implementation details.
 
 ## How Publishers Include Targeting
 
@@ -169,7 +169,7 @@ Use for **legal compliance** requirements:
 
 ```json
 {
-  "$schema": "/schemas/core/targeting.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/targeting.json",
   "age_restriction": {
     "min": 21,
     "verification_required": true,
@@ -194,7 +194,7 @@ Use for **technical requirements**:
 
 ```json
 {
-  "$schema": "/schemas/core/targeting.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/targeting.json",
   "device_platform": ["ios", "android"]
 }
 ```
@@ -211,7 +211,7 @@ Use for **localization requirements**:
 
 ```json
 {
-  "$schema": "/schemas/core/targeting.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/targeting.json",
   "language": ["es", "en"]
 }
 ```
@@ -222,7 +222,7 @@ Use for **localization requirements**:
 Basic impression suppression controls:
 ```json
 {
-  "$schema": "/schemas/core/targeting.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/targeting.json",
   "frequency_cap": {
     "suppress_minutes": 60
   }
@@ -384,14 +384,14 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Format**: String segment identifier from your AXE platform
 - **Examples**: `"seg_auto_intenders_q1"`, `"audience_lapsed_buyers_30d"`
 - **Use cases**: Dynamic audience targeting, first-party data activation
-- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+- **Details**: See [AXE documentation](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine)
 
 ### axe_exclude_segment
 - **Description**: AXE segment ID for exclusion targeting
 - **Format**: String segment identifier from your AXE platform
 - **Examples**: `"seg_existing_customers"`, `"audience_past_converters"`
 - **Use cases**: Customer suppression, frequency management
-- **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+- **Details**: See [AXE documentation](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine)
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per user
@@ -447,7 +447,7 @@ Orchestrators can provide **real-time targeting signals** to publishers for dyna
 - **Audience targeting** - Dynamic audience segments updated in real-time
 - **Contextual targeting** - Page-level or moment-level targeting decisions
 
-Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals/overview), which allows orchestrators to supply targeting data at impression time.
+Real-time signals are provided through the [AdCP Signals Protocol](/dist/docs/3.0.0-beta.3/signals/overview), which allows orchestrators to supply targeting data at impression time.
 
 ### Key Differences: Signals vs Overlays
 
@@ -501,8 +501,8 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 
 ## Related Documentation
 
-- **[Agentic eXecution Engine (AXE)](/docs/media-buy/advanced-topics/agentic-execution-engine)** - Real-time execution layer for dynamic targeting
-- **[Signals Protocol](/docs/signals/overview)** - Real-time targeting signals for brand suitability and contextual targeting
-- **[Product Discovery](/docs/media-buy/product-discovery/)** - How briefs lead to targeted product recommendations
-- **[Example Briefs](/docs/media-buy/product-discovery/example-briefs)** - Real examples of effective targeting briefs
-- **[Policy Compliance](/docs/media-buy/media-buys/policy-compliance)** - Automated compliance checking and enforcement
+- **[Agentic eXecution Engine (AXE)](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine)** - Real-time execution layer for dynamic targeting
+- **[Signals Protocol](/dist/docs/3.0.0-beta.3/signals/overview)** - Real-time targeting signals for brand suitability and contextual targeting
+- **[Product Discovery](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/)** - How briefs lead to targeted product recommendations
+- **[Example Briefs](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/example-briefs)** - Real examples of effective targeting briefs
+- **[Policy Compliance](/dist/docs/3.0.0-beta.3/media-buy/media-buys/policy-compliance)** - Automated compliance checking and enforcement

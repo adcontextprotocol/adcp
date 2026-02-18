@@ -11,14 +11,14 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
-| [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory using natural language briefs | ~60s | Discovery |
-| [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
-| [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
-| [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
+| [`get_products`](/dist/docs/2.5.3/media-buy/task-reference/get_products) | Discover inventory using natural language briefs | ~60s | Discovery |
+| [`create_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
+| [`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
+| [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
 | [`list_authorized_properties`](/dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties) | See available publisher properties | ~1s | Capability |
-| [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
-| [`list_creatives`](/docs/media-buy/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
-| [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
+| [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
+| [`list_creatives`](/dist/docs/2.5.3/media-buy/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
+| [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
 
 ## Response Time Categories
 
@@ -26,46 +26,46 @@ AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
 **Simple database lookups**
-- [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Format specifications
+- [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats) - Format specifications
 - [`list_authorized_properties`](/dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties) - Available properties  
-- [`list_creatives`](/docs/media-buy/task-reference/list_creatives) - Creative library queries
+- [`list_creatives`](/dist/docs/2.5.3/media-buy/task-reference/list_creatives) - Creative library queries
 
 ### 🟡 Processing (~60 seconds)  
 **AI/LLM inference with backend systems**
-- [`get_products`](/docs/media-buy/task-reference/get_products) - Natural language product discovery
-- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Performance data aggregation
+- [`get_products`](/dist/docs/2.5.3/media-buy/task-reference/get_products) - Natural language product discovery
+- [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery) - Performance data aggregation
 
 ### 🟠 Asynchronous (Minutes to Days)
 **Complex operations with potential human approval**
-- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) - Campaign creation and validation
-- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) - Campaign modifications
-- [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) - Creative asset processing
+- [`create_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy) - Campaign creation and validation
+- [`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy) - Campaign modifications
+- [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) - Creative asset processing
 
 ## Task Categories by Workflow
 
 ### Discovery & Planning
 Start here to understand what's available and plan your campaign.
 
-- **[`get_products`](/docs/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
-- **[`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats)** - Understand creative requirements
+- **[`get_products`](/dist/docs/2.5.3/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
+- **[`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats)** - Understand creative requirements
 - **[`list_authorized_properties`](/dist/docs/2.5.3/media-buy/task-reference/list_authorized_properties)** - See available placements
 
 ### Media Buy Management  
 Create and manage your advertising campaigns.
 
-- **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)** - Create campaigns from discovered products
-- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Modify budgets, targeting, and settings
+- **[`create_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy)** - Create campaigns from discovered products
+- **[`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy)** - Modify budgets, targeting, and settings
 
 ### Creative Management
 Handle creative assets throughout their lifecycle.
 
-- **[`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)** - Upload assets to centralized library
-- **[`list_creatives`](/docs/media-buy/task-reference/list_creatives)** - Search and manage your creative library
+- **[`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives)** - Upload assets to centralized library
+- **[`list_creatives`](/dist/docs/2.5.3/media-buy/task-reference/list_creatives)** - Search and manage your creative library
 
 ### Performance & Optimization
 Monitor and optimize campaign performance.
 
-- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics
+- **[`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics
 
 
 ## Schema Reference
@@ -75,7 +75,7 @@ All tasks include JSON schema definitions for requests and responses:
 - **Request Schemas**: `/schemas/v2/media-buy/[task-name]-request.json`
 - **Response Schemas**: `/schemas/v2/media-buy/[task-name]-response.json`
 
-**Task Management**: For tracking async operations across all AdCP domains, see [Task Management](/docs/building/implementation/task-lifecycle) in the protocols section.
+**Task Management**: For tracking async operations across all AdCP domains, see [Task Management](/dist/docs/2.5.3/building/implementation/task-lifecycle) in the protocols section.
 
 Schemas are accessible at runtime via the documentation server for validation and tooling.
 
@@ -101,15 +101,15 @@ Long-running tasks provide:
 
 ## Getting Started
 
-1. **Start with Discovery**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
-2. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements  
-3. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
-4. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
-5. **Monitor Performance**: Track results with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+1. **Start with Discovery**: Use [`get_products`](/dist/docs/2.5.3/media-buy/task-reference/get_products) to find relevant inventory
+2. **Understand Formats**: Check [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats) for requirements  
+3. **Create Campaign**: Use [`create_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy) with selected products
+4. **Upload Creatives**: Use [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) for asset management
+5. **Monitor Performance**: Track results with [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery)
 
 ## Related Documentation
 
-- **[Product Discovery](/docs/media-buy/product-discovery/)** - Natural language inventory discovery
-- **[Media Buys](/docs/media-buy/media-buys/)** - Campaign lifecycle management  
-- **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
-- **[Advanced Topics](/docs/media-buy/advanced-topics/)** - Targeting, security, and architecture
+- **[Product Discovery](/dist/docs/2.5.3/media-buy/product-discovery/)** - Natural language inventory discovery
+- **[Media Buys](/dist/docs/2.5.3/media-buy/media-buys/)** - Campaign lifecycle management  
+- **[Creatives](/dist/docs/2.5.3/media-buy/creatives/)** - Creative asset management
+- **[Advanced Topics](/dist/docs/2.5.3/media-buy/advanced-topics/)** - Targeting, security, and architecture

@@ -7,7 +7,7 @@ AdCP distinguishes three entities in every billable operation:
 
 | Entity | Question | How Identified |
 |--------|----------|----------------|
-| **Brand** | Whose products are advertised? | House domain + brand_id ([brand.json](/docs/brand-protocol/brand-json)) |
+| **Brand** | Whose products are advertised? | House domain + brand_id ([brand.json](/dist/docs/3.0.0-beta.3/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | `account_id` |
 | **Operator** | Who operates the seat? | Domain (e.g., `groupm.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session (see [Trust Model](#trust-model)) |
@@ -22,7 +22,7 @@ For example, Dove is identified as `house: "unilever.com"` + `brand_id: "dove"`.
 
 For single-brand houses like Acme Corp, the house domain alone (`house: "acme-corp.com"`) identifies the brand — no `brand_id` is needed.
 
-Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
+Every billable operation requires a [brand manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest) that identifies the brand and provides context for ad serving.
 
 ### Account
 
@@ -670,7 +670,7 @@ Authorization: Bearer <token>
 
 The protocol does not mandate how operator credentials are obtained. If the seller provides an `authorization_endpoint`, agents can initiate OAuth programmatically. Otherwise, operators obtain credentials out-of-band (seller portal, direct API key issuance).
 
-See [Authentication](/docs/building/integration/authentication) for details.
+See [Authentication](/dist/docs/3.0.0-beta.3/building/integration/authentication) for details.
 
 ## Design Notes
 

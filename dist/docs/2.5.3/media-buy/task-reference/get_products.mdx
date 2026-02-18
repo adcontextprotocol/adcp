@@ -126,7 +126,7 @@ asyncio.run(discover_with_filters())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements |
-| `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
+| `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/dist/docs/2.5.3/creative/brand-manifest) |
 | `filters` | Filters | No | Structured filters (see below) |
 
 ### Filters Object
@@ -570,7 +570,7 @@ asyncio.run(compare_auth())
 - **Without credentials**: Returns limited catalog (standard catalog products), no pricing, no custom offerings
 - **With credentials**: Returns complete catalog with pricing and custom products
 
-See [Authentication Guide](/docs/building/integration/authentication) for details.
+See [Authentication Guide](/dist/docs/2.5.3/building/integration/authentication) for details.
 
 ## Asynchronous Operations
 
@@ -889,7 +889,7 @@ Response (200 OK):
 | `submitted` | Custom curation queued | Wait for webhook notification |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
-**Note:** For the complete status list see [Core Concepts - Task Status System](/docs/building/implementation/task-lifecycle#task-status-system).
+**Note:** For the complete status list see [Core Concepts - Task Status System](/dist/docs/2.5.3/building/implementation/task-lifecycle#task-status-system).
 
 **Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
 
@@ -898,13 +898,13 @@ Response (200 OK):
 After discovering products:
 
 1. **Review Options**: Compare products, pricing, and targeting capabilities
-2. **Create Media Buy**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to execute campaign
-3. **Prepare Creatives**: Use [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) to see format requirements
-4. **Upload Assets**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to provide creative assets
+2. **Create Media Buy**: Use [`create_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy) to execute campaign
+3. **Prepare Creatives**: Use [`list_creative_formats`](/dist/docs/2.5.3/media-buy/task-reference/list_creative_formats) to see format requirements
+4. **Upload Assets**: Use [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) to provide creative assets
 
 ## Learn More
 
-- [Product Discovery Guide](/docs/media-buy/product-discovery/) - Understanding briefs and products
-- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
-- [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations) - How to write effective briefs
-- [Media Products](/docs/media-buy/product-discovery/media-products) - Product structure and fields
+- [Product Discovery Guide](/dist/docs/2.5.3/media-buy/product-discovery/) - Understanding briefs and products
+- [Pricing Models](/dist/docs/2.5.3/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
+- [Brief Expectations](/dist/docs/2.5.3/media-buy/product-discovery/brief-expectations) - How to write effective briefs
+- [Media Products](/dist/docs/2.5.3/media-buy/product-discovery/media-products) - Product structure and fields

@@ -79,13 +79,13 @@ Sales Agent (validates & delivers)
 
 Buyers call `list_creative_formats` on sales or creative agents to discover available formats and their full specifications. Each format includes an `agent_url` identifying the creative agent that is authoritative for that format.
 
-See [Creative Formats](/docs/creative/formats) for format discovery details.
+See [Creative Formats](/dist/docs/3.0.0-beta.3/creative/formats) for format discovery details.
 
 ### 2. **Assembly** - "Here are my assets"
 
 Buyers create manifests that provide assets fulfilling the selected format's requirements. Manifests pair format specifications with actual asset URLs, text, and tracking data.
 
-See [Creative Manifests](/docs/creative/creative-manifests) for manifest structure details.
+See [Creative Manifests](/dist/docs/3.0.0-beta.3/creative/creative-manifests) for manifest structure details.
 
 ### 3. **Validation** - "Does this match the requirements?"
 
@@ -111,7 +111,7 @@ Assets are the raw materials of a creative. Each asset has a type that defines i
 - **javascript**: JavaScript tags
 - **url**: Tracking pixels, clickthrough URLs, webhooks
 
-See [Asset Types](/docs/creative/asset-types) for detailed specifications.
+See [Asset Types](/dist/docs/3.0.0-beta.3/creative/asset-types) for detailed specifications.
 
 ### Formats & Format Authority
 
@@ -126,13 +126,13 @@ Each format has an authoritative source—the creative agent that defines it (in
 - **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
 - Technically, both work the same way—the `agent_url` field identifies which agent is authoritative for each format
 
-See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
+See the [Channel Guides](/dist/docs/3.0.0-beta.3/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
 
 ### Manifests
 
 Manifests are JSON structures that pair format-defined asset IDs with actual asset content. They supply the URLs, text values, and tracking endpoints required to assemble a complete creative.
 
-See [Creative Manifests](/docs/creative/creative-manifests) for detailed documentation.
+See [Creative Manifests](/dist/docs/3.0.0-beta.3/creative/creative-manifests) for detailed documentation.
 
 ### Universal Macros
 
@@ -141,7 +141,7 @@ AdCP defines universal macros that work across platforms. Sales agents translate
 - **For impression tracking**: Sales agents translate AdCP macros into the ad server's native macro format before serving the impression tracking URL.
 - **For click tracking**: In addition to macro translation, sales agents replace `{REDIRECT_URL}` with the final destination click URL and serve the click tracking URL as the destination URL in the ad server, ensuring proper redirection after the click is recorded.
 
-See [Universal Macros](/docs/creative/universal-macros) for complete reference.
+See [Universal Macros](/dist/docs/3.0.0-beta.3/creative/universal-macros) for complete reference.
 
 ## Common Patterns
 
@@ -151,7 +151,7 @@ Some formats support creatives that are served by third-party systems rather tha
 
 In this pattern, the creative is provided as an HTML tag or a JavaScript tag. The format definition specifies the required element type and any applicable constraints (such as sandboxing or tracking expectations). Rendering, asset loading, and interaction logic are handled externally by the third-party system.
 
-This pattern is most commonly used with Display formats. See the [Display Channel Guide](/docs/creative/channels/display) for third-party tag examples.
+This pattern is most commonly used with Display formats. See the [Display Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/display) for third-party tag examples.
 
 ### Repeatable Asset Groups
 
@@ -159,7 +159,7 @@ Some formats allow or require repeated sets of creative elements under a common 
 
 Each repetition contains the same logical element roles (for example: image, text, and URL), with the number of repetitions defined or constrained by the format. Repeatable element groups describe structural patterns, not formats or layout guarantees, and may be used across Display, Native, or other compatible formats.
 
-See the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for detailed documentation.
+See the [Carousel & Multi-Asset Formats](/dist/docs/3.0.0-beta.3/creative/channels/carousels) guide for detailed documentation.
 
 ### DOOH Impression Tracking
 
@@ -170,11 +170,11 @@ In this pattern:
 - Device-based identifiers are not used
 - Tracking relies on environment-specific macros
 
-This affects measurement and reporting only and does not change creative format classification or asset requirements. See the [DOOH Channel Guide](/docs/creative/channels/dooh) for DOOH-specific macro details.
+This affects measurement and reporting only and does not change creative format classification or asset requirements. See the [DOOH Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/dooh) for DOOH-specific macro details.
 
 ## Channel-Specific Information
 
-For detailed information on creatives by channel and format family, see [Creative Manifests](/docs/creative/creative-manifests), including:
+For detailed information on creatives by channel and format family, see [Creative Manifests](/dist/docs/3.0.0-beta.3/creative/creative-manifests), including:
 
 - **Video Ads** - In-stream and outstream video formats (including CTV environments)
 - **Display Ads** - Standard display formats (e.g., banners and interstitials)
@@ -192,5 +192,5 @@ For detailed information on creatives by channel and format family, see [Creativ
 
 ## Additional Resources
 
-- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
-- [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide
+- [Creative Task Reference](/dist/docs/3.0.0-beta.3/creative/task-reference/list_creative_formats) - API documentation for creative tasks
+- [Generative Creative](/dist/docs/3.0.0-beta.3/creative/generative-creative) - AI-powered creative generation guide
