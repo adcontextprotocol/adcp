@@ -570,7 +570,7 @@ asyncio.run(compare_auth())
 - **Without credentials**: Returns limited catalog (standard catalog products), no pricing, no custom offerings
 - **With credentials**: Returns complete catalog with pricing and custom products
 
-See [Authentication Guide](/dist/docs/2.5.3/building/integration/authentication) for details.
+See [Authentication Guide](/dist/docs/2.5.3/reference/authentication) for details.
 
 ## Asynchronous Operations
 
@@ -889,7 +889,7 @@ Response (200 OK):
 | `submitted` | Custom curation queued | Wait for webhook notification |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
-**Note:** For the complete status list see [Core Concepts - Task Status System](/dist/docs/2.5.3/building/implementation/task-lifecycle#task-status-system).
+**Note:** For the complete status list see [Core Concepts - Task Status System](/dist/docs/2.5.3/protocols/task-management#task-status-system).
 
 **Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
 

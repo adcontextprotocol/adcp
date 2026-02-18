@@ -45,7 +45,7 @@ Every response includes a status field that tells you exactly what to do:
 | `failed` | Error occurred | Show error, handle gracefully |
 | `auth-required` | Need auth | Prompt for credentials |
 
-See [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle) for complete status handling guide.
+See [Core Concepts](/dist/docs/2.5.3/protocols/task-management) for complete status handling guide.
 
 ## Transport Format Differences
 
@@ -169,8 +169,8 @@ Both MCP and A2A use HTTP webhooks for async task updates. AdCP keeps the **enve
 - **Unified configuration**: Both use `pushNotificationConfig` with the same authentication structure
 
 **For protocol-specific examples and implementation details:**
-- MCP webhooks: See [MCP Guide - Async Operations](/dist/docs/2.5.3/building/integration/mcp-guide#async-operations-mcp-specific)
-- A2A webhooks: See [A2A Guide - Push Notifications](/dist/docs/2.5.3/building/integration/a2a-guide#push-notifications-a2a-specific)
+- MCP webhooks: See [MCP Guide - Async Operations](/dist/docs/2.5.3/protocols/mcp-guide#async-operations-mcp-specific)
+- A2A webhooks: See [A2A Guide - Push Notifications](/dist/docs/2.5.3/protocols/a2a-guide#push-notifications-a2a-specific)
 
 ### Task Management
 
@@ -425,7 +425,7 @@ class UnifiedAdcpClient {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle) for status handling patterns
-- **MCP Guide**: See [MCP Guide](/dist/docs/2.5.3/building/integration/mcp-guide) for tool calls and context management
-- **A2A Guide**: See [A2A Guide](/dist/docs/2.5.3/building/integration/a2a-guide) for artifacts and streaming
+- **Core Concepts**: Read [Core Concepts](/dist/docs/2.5.3/protocols/task-management) for status handling patterns
+- **MCP Guide**: See [MCP Guide](/dist/docs/2.5.3/protocols/mcp-guide) for tool calls and context management
+- **A2A Guide**: See [A2A Guide](/dist/docs/2.5.3/protocols/a2a-guide) for artifacts and streaming
 - **Migration**: Both protocols provide the same capabilities with unified status handling

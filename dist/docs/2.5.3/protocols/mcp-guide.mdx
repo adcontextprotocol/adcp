@@ -5,7 +5,7 @@ keywords: [MCP integration, Model Context Protocol, tool calls, context manageme
 ---
 
 
-Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle).
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Core Concepts](/dist/docs/2.5.3/protocols/task-management).
 
 ## Testing AdCP via MCP
 
@@ -85,7 +85,7 @@ MCP responses use a **flat structure** where task-specific fields are at the top
 - **status**: Same values as A2A protocol for consistency
 - Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
 
-**Status Handling**: See [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle) for complete status handling patterns.
+**Status Handling**: See [Core Concepts](/dist/docs/2.5.3/protocols/task-management) for complete status handling patterns.
 
 ## Available Tools
 
@@ -117,7 +117,7 @@ await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 
 **Task Parameters**: See individual task documentation in [Media Buy](/dist/docs/2.5.3/media-buy) and [Signals](/dist/docs/2.5.3/signals/overview) sections.
 
-**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](/dist/docs/2.5.3/building/implementation/task-lifecycle).
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Task Management](/dist/docs/2.5.3/protocols/task-management).
 
 ## Context Management (MCP-Specific)
 
@@ -540,7 +540,7 @@ const response = await session.call('create_media_buy',
 // You don't need to poll - just wait for the webhook
 ```
 
-See [Task Management](/dist/docs/2.5.3/building/implementation/task-lifecycle) for webhook payload formats and handling examples.
+See [Task Management](/dist/docs/2.5.3/protocols/task-management) for webhook payload formats and handling examples.
 
 ### Handling Different Statuses
 
@@ -677,9 +677,9 @@ try {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle) for status handling and workflows
+- **Core Concepts**: Read [Core Concepts](/dist/docs/2.5.3/protocols/task-management) for status handling and workflows
 - **Task Reference**: See [Media Buy Tasks](/dist/docs/2.5.3/media-buy) and [Signals](/dist/docs/2.5.3/signals/overview)
-- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/2.5.3/building/integration/a2a-guide)
+- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/2.5.3/protocols/a2a-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Core Concepts](/dist/docs/2.5.3/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Core Concepts](/dist/docs/2.5.3/protocols/task-management) - this guide focuses on MCP transport specifics only.**
