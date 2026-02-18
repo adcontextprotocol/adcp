@@ -116,6 +116,7 @@ asyncio.run(main())
 |-------|------|----------|-------------|
 | `audience_id` | string | Yes | Buyer's identifier for this audience. Used to reference the audience in targeting overlays. |
 | `name` | string | No | Human-readable name |
+| `delete` | boolean | No | When true, delete this audience from the account entirely. All other fields are ignored. |
 | `add` | [AudienceMember](#audience-member)[] | No | Members to add to this audience |
 | `remove` | [AudienceMember](#audience-member)[] | No | Members to remove from this audience. If the same identifier appears in both `add` and `remove`, behavior is seller-defined. |
 | `consent_basis` | string | No | GDPR lawful basis: `consent`, `legitimate_interest`, `contract`, or `legal_obligation`. Required by some sellers in regulated markets. |
@@ -367,6 +368,58 @@ asyncio.run(main())
 ```
 
 </CodeGroup>
+
+### Deleting an Audience
+
+Remove a specific audience from the account without affecting others. Set `delete: true` on the audience object:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAudiences({
+  account_id: "acct_12345",
+  audiences: [
+    { audience_id: "old_campaign_list", delete: true },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("audiences" in validated) {
+  const audience = validated.audiences.find(a => a.audience_id === "old_campaign_list");
+  console.log(`${audience.audience_id}: ${audience.action}`); // "deleted"
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_audiences(
+        account_id='acct_12345',
+        audiences=[{'audience_id': 'old_campaign_list', 'delete': True}]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    audience = next(a for a in result.audiences if a.audience_id == 'old_campaign_list')
+    print(f"{audience.audience_id}: {audience.action}")  # "deleted"
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+To delete multiple audiences in one call, include each with `delete: true`. To delete all buyer-managed audiences at once, use `delete_missing: true` with an empty `audiences` array — but be careful, this removes everything.
 
 ### Using Audiences in a Media Buy
 

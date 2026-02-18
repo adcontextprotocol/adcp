@@ -40,6 +40,10 @@
             },
             "minItems": 1
           },
+          "delete": {
+            "type": "boolean",
+            "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
+          },
           "consent_basis": {
             "type": "string",
             "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"],
