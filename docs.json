@@ -219,7 +219,8 @@
                   "docs/media-buy/task-reference/update_media_buy",
                   "docs/media-buy/task-reference/provide_performance_feedback",
                   "docs/media-buy/task-reference/sync_event_sources",
-                  "docs/media-buy/task-reference/log_event"
+                  "docs/media-buy/task-reference/log_event",
+                  "docs/media-buy/task-reference/sync_audiences"
                 ]
               },
               {
@@ -693,7 +694,8 @@
                   "docs/media-buy/task-reference/update_media_buy",
                   "docs/media-buy/task-reference/provide_performance_feedback",
                   "docs/media-buy/task-reference/sync_event_sources",
-                  "docs/media-buy/task-reference/log_event"
+                  "docs/media-buy/task-reference/log_event",
+                  "docs/media-buy/task-reference/sync_audiences"
                 ]
               },
               {
