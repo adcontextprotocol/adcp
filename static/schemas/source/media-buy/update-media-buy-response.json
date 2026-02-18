@@ -33,6 +33,10 @@
             "$ref": "/schemas/core/package.json"
           }
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -90,6 +94,11 @@
           {
             "required": [
               "affected_packages"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
             ]
           }
         ]

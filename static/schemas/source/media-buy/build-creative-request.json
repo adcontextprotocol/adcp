@@ -25,6 +25,11 @@
       "$ref": "/schemas/core/creative-brief-ref.json",
       "description": "Campaign-level creative brief with objective, audience, messaging, and reference assets. Can be an inline brief object or a URL to a hosted brief. Supplements the natural language message with structured creative direction."
     },
+    "sandbox": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

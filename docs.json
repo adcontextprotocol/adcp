@@ -257,7 +257,7 @@
                   "docs/media-buy/advanced-topics/targeting",
                   "docs/media-buy/advanced-topics/agentic-execution-engine",
                   "docs/media-buy/advanced-topics/accounts-and-security",
-                  "docs/media-buy/advanced-topics/testing",
+                  "docs/media-buy/advanced-topics/sandbox",
                   "docs/media-buy/advanced-topics/orchestrator-design"
                 ]
               }
@@ -723,7 +723,7 @@
                   "docs/media-buy/advanced-topics/targeting",
                   "docs/media-buy/advanced-topics/agentic-execution-engine",
                   "docs/media-buy/advanced-topics/accounts-and-security",
-                  "docs/media-buy/advanced-topics/testing",
+                  "docs/media-buy/advanced-topics/sandbox",
                   "docs/media-buy/advanced-topics/orchestrator-design"
                 ]
               }

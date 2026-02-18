@@ -20,6 +20,10 @@
     "conversion_tracking": {
       "type": "boolean",
       "description": "Supports sync_event_sources and log_event tasks for conversion event tracking"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Supports sandbox mode for operations without real platform calls or spend"
     }
   },
   "additionalProperties": {

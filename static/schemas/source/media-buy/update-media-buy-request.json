@@ -41,6 +41,11 @@
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
     },
+    "sandbox": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

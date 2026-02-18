@@ -50,6 +50,11 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
       "description": "End date for reporting period (YYYY-MM-DD). When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
+    "sandbox": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

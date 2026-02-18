@@ -114,6 +114,10 @@
             "additionalProperties": true
           }
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -152,7 +156,8 @@
       "not": {
         "anyOf": [
           { "required": ["accounts"] },
-          { "required": ["dry_run"] }
+          { "required": ["dry_run"] },
+          { "required": ["sandbox"] }
         ]
       }
     }

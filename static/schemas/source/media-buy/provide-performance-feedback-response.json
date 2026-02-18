@@ -15,6 +15,10 @@
           "description": "Whether the performance feedback was successfully received",
           "const": true
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -57,8 +61,17 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "success"
+        "anyOf": [
+          {
+            "required": [
+              "success"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }

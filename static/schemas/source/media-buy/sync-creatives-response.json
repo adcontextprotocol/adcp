@@ -93,6 +93,10 @@
             "additionalProperties": true
           }
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -144,6 +148,11 @@
           {
             "required": [
               "dry_run"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
             ]
           }
         ]
