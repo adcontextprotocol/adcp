@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses build-time versioning. This directory contains schemas for AdCP 3.0.0-beta.3. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest release: /schemas/v3/ → /schemas/3.0.0-beta.3/."
   },
-  "lastUpdated": "2026-02-18",
+  "lastUpdated": "2026-02-12",
   "baseUrl": "/schemas/3.0.0-beta.3",
   "schemas": {
     "core": {
@@ -98,17 +98,13 @@
           "$ref": "/schemas/3.0.0-beta.3/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
         },
-        "creative-brief": {
-          "$ref": "/schemas/3.0.0-beta.3/core/creative-brief.json",
-          "description": "Campaign-level creative context for AI-powered creative generation"
+        "brand-manifest": {
+          "$ref": "/schemas/3.0.0-beta.3/core/brand-manifest.json",
+          "description": "Standardized brand information manifest for creative generation and media buying"
         },
-        "creative-brief-ref": {
-          "$ref": "/schemas/3.0.0-beta.3/core/creative-brief-ref.json",
-          "description": "Creative brief reference (inline object or URL)"
-        },
-        "reference-asset": {
-          "$ref": "/schemas/3.0.0-beta.3/core/reference-asset.json",
-          "description": "A reference asset with semantic role for creative context"
+        "brand-manifest-ref": {
+          "$ref": "/schemas/3.0.0-beta.3/core/brand-manifest-ref.json",
+          "description": "Brand manifest reference (inline object or URL)"
         },
         "promoted-products": {
           "$ref": "/schemas/3.0.0-beta.3/core/promoted-products.json",
@@ -136,7 +132,7 @@
         },
         "promoted-offerings": {
           "$ref": "/schemas/3.0.0-beta.3/core/promoted-offerings.json",
-          "description": "Complete offering specification combining brand reference, product selectors, and asset filters"
+          "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
         },
         "offering": {
           "$ref": "/schemas/3.0.0-beta.3/core/offering.json",
@@ -571,10 +567,6 @@
         "wcag-level": {
           "$ref": "/schemas/3.0.0-beta.3/enums/wcag-level.json",
           "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
-        },
-        "promoted-offerings-requirement": {
-          "$ref": "/schemas/3.0.0-beta.3/enums/promoted-offerings-requirement.json",
-          "description": "Content requirements that a creative format can impose on promoted offerings"
         }
       }
     },

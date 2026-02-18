@@ -13,14 +13,16 @@ A brief in AdCP is a natural language description of campaign requirements that 
 
 Every `get_products` and `create_media_buy` request MUST include:
 
-### Brand
+### Brand Manifest
 
-The `brand` field is **required** in all requests. It identifies the advertiser brand:
+The `brand_manifest` field is **required** in all requests. It identifies the advertiser brand:
 
 ```json
 {
-  "brand": {
-    "domain": "acmecorp.com"
+  "brand_manifest": {
+    "name": "Nike",
+    "url": "https://nike.com",
+    "category": "athletic_apparel"
   }
 }
 ```
@@ -60,8 +62,9 @@ When buyers want to see what's available without targeting:
 ### Example: Standard Catalog Request
 ```json
 {
-  "brand": {
-    "domain": "acmecorp.com"
+  "brand_manifest": {
+    "name": "Nike",
+    "url": "https://nike.com"
   },
   "brief": null,  // No brief = standard catalog
   "filters": {
@@ -211,7 +214,7 @@ Publishers should handle briefs at different completeness levels:
 ### No Brief (Standard Catalog)
 ```json
 {
-  "brand": {"domain": "acmecorp.com"},
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
   "brief": null,  // Signals standard catalog request
   "filters": {
     "delivery_type": "non_guaranteed",
@@ -224,7 +227,7 @@ Publishers should handle briefs at different completeness levels:
 ### Minimal Brief
 ```json
 {
-  "brand": {"domain": "acmecorp.com"},
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
   "brief": "Reach business decision makers"
 }
 ```
@@ -233,7 +236,7 @@ Publishers should handle briefs at different completeness levels:
 ### Standard Brief
 ```json
 {
-  "brand": {"domain": "acmecorp.com"},
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
   "brief": "Acme Corp project management software - cloud-based solution for remote teams. Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
 }
 ```
@@ -242,7 +245,7 @@ Publishers should handle briefs at different completeness levels:
 ### Comprehensive Brief
 ```json
 {
-  "brand": {"domain": "acmecorp.com"},
+  "brand_manifest": {"name": "Acme Corp", "url": "https://acmecorp.com"},
   "brief": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation. Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
 }
 ```
@@ -316,7 +319,7 @@ Publishers should implement NLP to extract:
 ## Best Practices
 
 ### DO:
-- ✅ Include both advertiser and product in brand and brief
+- ✅ Include both advertiser and product in brand_manifest and brief
 - ✅ Specify measurable success criteria
 - ✅ Provide clear timing requirements
 - ✅ Describe target audience in detail
@@ -328,7 +331,7 @@ Publishers should implement NLP to extract:
 - ❌ Provide vague objectives like "good performance"
 - ❌ Omit timing without expecting clarification requests
 - ❌ Use undefined abbreviations or jargon
-- ❌ Contradict between brief and brand
+- ❌ Contradict between brief and brand_manifest
 - ❌ Include sensitive or confidential information
 - ❌ Assume publisher knowledge of your business
 
@@ -337,7 +340,7 @@ Publishers should implement NLP to extract:
 ### Standard Catalog (No Brief)
 ```json
 {
-  "brand": {"domain": "acmecorp.com"},
+  "brand_manifest": {"name": "Ford", "url": "https://ford.com"},
   "brief": null,
   "filters": {
     "delivery_type": "non_guaranteed",

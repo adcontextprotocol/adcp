@@ -493,27 +493,16 @@
           "$ref": "/schemas/3.0.0-beta.3/sponsored-intelligence/si-capabilities.json",
           "description": "Modalities, components, and commerce capabilities"
         },
-        "brand_url": {
+        "brand_manifest_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to brand.json with colors, fonts, logos, tone"
+          "description": "URL to brand manifest with colors, fonts, logos, tone"
         }
       },
       "required": [
         "endpoint",
         "capabilities"
       ]
-    },
-    "creative": {
-      "type": "object",
-      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
-      "properties": {
-        "supports_brief": {
-          "type": "boolean",
-          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
-        }
-      },
-      "additionalProperties": true
     },
     "extensions_supported": {
       "type": "array",

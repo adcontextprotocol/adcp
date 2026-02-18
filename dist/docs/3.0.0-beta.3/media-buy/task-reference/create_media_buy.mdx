@@ -34,8 +34,9 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'summer_campaign_' + Date.now(),
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
   },
   packages: [
     {
@@ -101,8 +102,9 @@ async def create_campaign():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'summer_campaign_{int(time.time() * 1000)}',
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
         },
         packages=[
             {
@@ -151,7 +153,7 @@ asyncio.run(create_campaign())
 npx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   create_media_buy \
-  '{"buyer_ref":"summer_campaign_2025","brand":{"domain":"acmecorp.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"buyer_ref":"summer_campaign_2025","brand_manifest":{"name":"Nike","url":"https://nike.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -166,7 +168,7 @@ npx adcp \
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
-| `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
+| `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/docs/creative/brand-manifest) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `po_number` | string | No | Purchase order number |
@@ -194,7 +196,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when pricing option has no `fixed_price`) |
-| `optimization_goal` | [OptimizationGoal](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
+| `optimization_goal` | OptimizationGoal | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models). |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
@@ -236,8 +238,9 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'regional_campaign_' + Date.now(),
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Regional Retailer',
+    url: 'https://example-retailer.com'
   },
   packages: [{
     buyer_ref: 'ctv_regional',
@@ -287,8 +290,9 @@ async def create_targeted_campaign():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'regional_campaign_{int(time.time() * 1000)}',
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Regional Retailer',
+            'url': 'https://example-retailer.com'
         },
         packages=[{
             'buyer_ref': 'ctv_regional',
@@ -337,8 +341,9 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'performance_campaign_' + Date.now(),
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Acme Retailer',
+    url: 'https://example-retailer.com'
   },
   packages: [{
     buyer_ref: 'roas_package',
@@ -381,8 +386,9 @@ async def create_optimized_campaign():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'performance_campaign_{int(time.time() * 1000)}',
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Acme Retailer',
+            'url': 'https://example-retailer.com'
         },
         packages=[{
             'buyer_ref': 'roas_package',
@@ -426,8 +432,9 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'campaign_with_creatives_' + Date.now(),
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
   },
   packages: [{
     buyer_ref: 'ctv_package',
@@ -485,8 +492,9 @@ async def create_with_creatives():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'campaign_with_creatives_{int(time.time() * 1000)}',
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
         },
         packages=[{
             'buyer_ref': 'ctv_package',
@@ -544,8 +552,9 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'campaign_with_reporting_' + Date.now(),
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
   },
   packages: [{
     buyer_ref: 'ctv_package',
@@ -597,8 +606,9 @@ async def create_with_reporting():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'campaign_with_reporting_{int(time.time() * 1000)}',
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
         },
         packages=[{
             'buyer_ref': 'ctv_package',
@@ -650,13 +660,14 @@ endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
   buyer_ref: 'swiss_campaign_' + Date.now(),
-  proposal_id: 'swiss_balanced_v1',  // From get_products response
+  proposal_id: 'swiss_balanced_v2',  // From get_products response
   total_budget: {
     amount: 50000,
     currency: 'USD'
   },
-  brand: {
-    domain: 'acmecorp.com'
+  brand_manifest: {
+    name: 'Swiss Brand',
+    url: 'https://example-swiss.com'
   },
   start_time: 'asap',
   end_time: endDate.toISOString()
@@ -690,13 +701,14 @@ async def execute_proposal():
 
     result = await test_agent.simple.create_media_buy(
         buyer_ref=f'swiss_campaign_{int(time.time() * 1000)}',
-        proposal_id='swiss_balanced_v1',  # From get_products response
+        proposal_id='swiss_balanced_v2',  # From get_products response
         total_budget={
             'amount': 50000,
             'currency': 'USD'
         },
-        brand={
-            'domain': 'acmecorp.com'
+        brand_manifest={
+            'name': 'Swiss Brand',
+            'url': 'https://example-swiss.com'
         },
         start_time='asap',
         end_time=end_date.isoformat().replace('+00:00', 'Z')
@@ -717,9 +729,9 @@ asyncio.run(execute_proposal())
 When executing a proposal:
 - The publisher converts allocation percentages to actual budgets using `total_budget`
 - Packages are created automatically based on the proposal's allocations
-- All other fields (brand, start_time, end_time, etc.) work the same as manual mode
+- All other fields (brand_manifest, start_time, end_time, etc.) work the same as manual mode
 
-See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for the complete workflow.
+See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for the complete workflow including conversational refinement.
 
 ## Error Handling
 
@@ -760,19 +772,22 @@ Format IDs are **required** for each package because:
 
 See [Format Workflow](#format-workflow) below for complete details.
 
-### Brand reference
+### Brand Manifest
 
-The `brand` field identifies the advertiser for policy compliance and business purposes.
+The `brand_manifest` field identifies the advertiser for policy compliance and business purposes.
+
+**Minimal manifests are acceptable** for sales agents:
 
 ```json
 {
-  "brand": {
-    "domain": "acmecorp.com"
+  "brand_manifest": {
+    "name": "ACME Corporation",
+    "url": "https://acmecorp.com"
   }
 }
 ```
 
-Full brand identity data (colors, fonts, product catalog) is resolved from brand.json at execution time. See [brand.json](/docs/brand-protocol/brand-json).
+Full manifests with colors, fonts, and product catalogs are only needed for creative generation. See [Brand Manifest](/docs/creative/brand-manifest).
 
 ### Pricing & Currency
 
@@ -867,7 +882,7 @@ The task completed synchronously. No async handling needed.
 ```javascript test=false
 const response = await session.call('create_media_buy', {
   buyer_ref: 'summer_campaign_2025',
-  brand: { domain: 'acmecorp.com' },
+  brand_manifest: { name: 'Nike', url: 'https://nike.com' },
   packages: [
     {
       buyer_ref: 'ctv_package',
@@ -905,7 +920,7 @@ The task is queued for manual approval. Configure a webhook to receive updates.
 const response = await session.call('create_media_buy',
   {
     buyer_ref: 'enterprise_campaign',
-    brand: { domain: 'acmecorp.com' },
+    brand_manifest: { name: 'Nike', url: 'https://nike.com' },
     packages: [
       {
         buyer_ref: 'premium_package',
@@ -990,7 +1005,7 @@ const response = await a2a.send({
         skill: 'create_media_buy',
         parameters: {
           buyer_ref: 'summer_campaign_2025',
-          brand: { domain: 'acmecorp.com' },
+          brand_manifest: { name: 'Nike', url: 'https://nike.com' },
           packages: [
             {
               buyer_ref: 'ctv_package',
@@ -1217,7 +1232,7 @@ Brand and products are validated during creation. Policy violations return error
   "errors": [{
     "code": "POLICY_VIOLATION",
     "message": "Brand or product category not permitted on this publisher",
-    "field": "brand",
+    "field": "brand_manifest",
     "suggestion": "Contact publisher for category approval process"
   }]
 }

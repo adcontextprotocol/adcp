@@ -273,16 +273,11 @@ async function runTests() {
   log('');
 
   // Test 5: Bundled schemas (no $ref resolution needed)
-  // Prefer latest/ (dev build) over versioned directories (releases)
+  // Only test against latest/ — versioned dirs in dist/ may be from a prior release
+  // and are not updated on every source change.
   const BUNDLED_DIR = path.join(__dirname, '../dist/schemas');
   const latestBundledPath = path.join(BUNDLED_DIR, 'latest', 'bundled');
-  const bundledVersionDirs = fs.existsSync(BUNDLED_DIR)
-    ? fs.readdirSync(BUNDLED_DIR).filter(d => /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(d))
-    : [];
-
-  const bundledPath = fs.existsSync(latestBundledPath) ? latestBundledPath
-    : bundledVersionDirs.length > 0 ? path.join(BUNDLED_DIR, bundledVersionDirs.sort().pop(), 'bundled')
-    : null;
+  const bundledPath = fs.existsSync(latestBundledPath) ? latestBundledPath : null;
 
   if (bundledPath && fs.existsSync(bundledPath)) {
       log('Bundled Schemas (no $ref resolution needed):', 'info');

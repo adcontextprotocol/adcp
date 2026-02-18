@@ -241,9 +241,9 @@ All the ad server knows is: "AXE says serve" or "AXE says don't serve."
 
 ### For Publishers
 
-Publishers don't implement AXE directly — the orchestrator handles integration (see [How AXE Reaches the Page](#how-axe-reaches-the-page)). Publisher responsibilities:
+Publishers don't implement AXE directly. To support AXE targeting:
 
-1. **Enable the orchestrator's integration** - Add RTD module (Prebid) or enable platform integration
+1. **Integrate with Prebid** or similar real-time data module
 2. **Accept key-value targeting** - Pass `axei`, `axex` values to ad server
 3. **Configure line items** - Target on AXE segment key-values
 4. **Declare support** - Indicate AXE compatibility in `adagents.json`
@@ -256,92 +256,7 @@ Orchestrators operate the AXE layer:
 2. **Real-time lookups** - Sub-10ms segment membership checks
 3. **Signal integration** - Apply brand suitability and contextual signals
 4. **Frequency state** - Maintain cross-campaign exposure tracking
-5. **Ad platform integration** - Expose segments via Prebid RTD module, platform container, or server-side endpoint
-
-## How AXE Reaches the Page
-
-AXE is a protocol-level concept. **Orchestrators implement AXE** and integrate it into ad serving environments. The integration path depends on the ad platform:
-
-| Integration Path | How It Works | Example |
-|------------------|-------------|---------|
-| **Prebid RTD module** | Orchestrator distributes a Prebid module that calls the AXE endpoint during auction | Scope3's `scope3RtdProvider` |
-| **Proprietary ad platform** | AXE runs as a container or secure enclave within the platform's infrastructure | Platform-native integration |
-| **Server-side** | AXE endpoint called server-to-server by the ad platform before decisioning | Custom ad server integration |
-
-The common thread: whatever the integration path, AXE evaluates segments and returns `axei`/`axex`/`axem` decisions that the ad platform uses for targeting.
-
-### The Chain: Orchestrator → AXE Endpoint → Segment Targeting
-
-```
-Ad platform calls orchestrator's AXE endpoint
-  → AXE evaluates segments and returns axei/axex/axem values
-  → Values used for targeting decisions (key-values, container logic, etc.)
-  → Matching campaigns serve
-```
-
-The `axe_integrations` URL in a seller's [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response tells buyers which orchestrator's AXE endpoint the seller connects to:
-
-```json
-{
-  "media_buy": {
-    "execution": {
-      "axe_integrations": ["https://agentic.scope3.com"]
-    }
-  }
-}
-```
-
-### Prebid Integration (Web)
-
-For web publishers using Prebid, AXE integrates via the orchestrator's RTD module. The module name in Prebid matches the orchestrator, not "AXE":
-
-```javascript
-// Prebid build includes: rtdModule, scope3RtdProvider, ...other modules
-
-pbjs.setConfig({
-  realTimeData: {
-    auctionDelay: 100,
-    dataProviders: [{
-      name: 'scope3',        // Orchestrator's module name
-      waitForIt: true,
-      params: {
-        // Orchestrator-specific configuration
-      }
-    }]
-  }
-});
-```
-
-The orchestrator's RTD module:
-1. Intercepts the auction before bids are requested
-2. Sends an OpenRTB-style request to the AXE endpoint
-3. Receives segment decisions (axei/axex/axem)
-4. Sets targeting key-values on the ad server request
-
-Publishers don't need to know AXE internals — the orchestrator's module handles everything.
-
-### Proprietary Platform Integration
-
-AXE can also run within proprietary ad platforms as a container or secure enclave. In this model:
-- The orchestrator deploys AXE logic into the platform's infrastructure
-- Segment evaluation happens within the platform's decisioning pipeline
-- No external network call is needed at impression time — reducing latency
-- The platform calls AXE as part of its native ad selection process
-
-This is particularly relevant for platforms that don't use Prebid or where latency requirements are stricter than what an external RTD call allows.
-
-### Identifying AXE Support
-
-The definitive check is the seller's `get_adcp_capabilities` response. For Prebid-based integrations, you can also inspect the page directly. Using Scope3 as an example:
-
-| What to look for | Where | Meaning |
-|-------------------|-------|---------|
-| `axe_integrations` in capabilities | `get_adcp_capabilities` response | Seller supports AXE |
-| `axei`/`axex`/`axem` key-values | Ad server request (network tab) | AXE segments flowing to ad server |
-| `scope3RtdProvider` in Prebid build | Page source or `pbjs.installedModules` | Scope3 AXE via Prebid |
-| `name: 'scope3'` in `realTimeData.dataProviders` | `pbjs.getConfig('realTimeData')` | Scope3 AXE is active |
-
-Different orchestrators may implement AXE through different integration paths — the segment protocol (axei/axex/axem) is the same regardless of how AXE is deployed.
+5. **RTD module** - Expose segments via Prebid or OpenRTB
 
 ## Universal Macro: {AXEM}
 

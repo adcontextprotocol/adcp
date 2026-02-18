@@ -88,8 +88,9 @@ A property list contains:
       { "feature_id": "mfa_score", "min_value": 90, "max_value": 100 }
     ]
   },
-  "brand": {
-    "domain": "acmecorp.com"
+  "brand_manifest": {
+    "industry": "retail",
+    "target_audience": "general"
   },
   "created_at": "2026-01-03T10:00:00Z",
   "updated_at": "2026-01-03T10:00:00Z",
@@ -97,24 +98,27 @@ A property list contains:
 }
 ```
 
-## Brand
+## Brand Manifest
 
-Instead of manually specifying all filters, provide a brand reference and let the governance agent apply appropriate rules based on who you are:
+Instead of manually specifying all filters, provide a brand manifest and let the governance agent apply appropriate rules based on who you are:
 
 ```json
 {
-  "brand": {
-    "domain": "toybrand.com"
+  "brand_manifest": {
+    "name": "ToyBrand",
+    "industry": "toys",
+    "target_audience": "children under 13",
+    "tone": "playful and safe"
   }
 }
 ```
 
-The agent resolves the brand identity and applies rules based on its domain expertise:
-- A consent agent applies COPPA requirements based on the brand's target audience
-- A brand safety agent infers content categories from the brand's industry
+The agent interprets the manifest based on its domain expertise:
+- A consent agent applies COPPA requirements based on `target_audience`
+- A brand safety agent infers content categories from `industry`
 - A sustainability agent applies requirements from the brand's profile
 
-The brand reference uses the standard [core/brand-ref](https://adcontextprotocol.org/schemas/v2/core/brand-ref.json) schema. The governance agent resolves the domain to discover the brand's identity via its `brand.json` file.
+The brand manifest uses the standard [core/brand-manifest](https://adcontextprotocol.org/schemas/v2/core/brand-manifest.json) schema which includes fields for `industry`, `target_audience`, `tone`, and other brand identity information.
 
 ## Webhooks
 

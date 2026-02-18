@@ -4,7 +4,7 @@
   "title": "AdCP Asset Type Registry",
   "description": "Registry of asset types used in AdCP creative manifests. Each asset type defines the structure of actual content payloads (what you send), not requirements or constraints (which belong in format specifications).",
   "version": "1.0.0",
-  "lastUpdated": "2026-02-18",
+  "lastUpdated": "2026-02-12",
   "asset_types": {
     "image": {
       "description": "Static image asset (JPG, PNG, GIF, WebP, SVG)",

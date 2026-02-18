@@ -16,8 +16,6 @@ For information about format IDs and how to reference formats, see [Creative For
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. |
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets (e.g., `promoted_offerings` for generative formats). For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
-| `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
-| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
 
 **Important**: Required inputs like `promoted_offerings` should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires.
 
@@ -42,8 +40,10 @@ For pure generation, provide a minimal source manifest with the required input a
     },
     "assets": {
       "promoted_offerings": {
-        "brand": {
-          "domain": "mybrand.com"
+        "brand_manifest": {
+          "url": "https://mybrand.com",
+          "name": "My Brand",
+          "colors": {"primary": "#FF0000"}
         },
         "offerings": [
           {
@@ -168,7 +168,7 @@ The response contains the transformed or generated creative manifest:
     "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
     "assets": {
       "promoted_offerings": {
-        "brand": { "domain": "mybrand.com" },
+        "brand_manifest": { /* brand data */ },
         "inline_offerings": [ /* products */ ]
       }
     }
@@ -213,8 +213,13 @@ Generate a creative from scratch using a generative format that requires `promot
     },
     "assets": {
       "promoted_offerings": {
-        "brand": {
-          "domain": "mybrand.com"
+        "brand_manifest": {
+          "url": "https://mybrand.com",
+          "name": "My Brand",
+          "colors": {
+            "primary": "#FF5733",
+            "secondary": "#C70039"
+          }
         },
         "inline_offerings": [
           {
@@ -391,119 +396,7 @@ Adapt a creative for mobile with specific design changes:
   }
 }
 ```
-
-### Example 4: Generation with Creative Brief
-
-Generate a creative using structured campaign context via `brand` and `creative_brief`:
-
-```json
-{
-  "$schema": "/schemas/media-buy/build-creative-request.json",
-  "message": "Create a display banner for the holiday campaign targeting gift shoppers",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
-  "brand": {
-    "domain": "acmecorp.com"
-  },
-  "creative_brief": {
-    "name": "Holiday Sale 2025",
-    "objective": "conversion",
-    "audience": "Holiday gift shoppers aged 25-55",
-    "territory": "festive savings",
-    "messaging": {
-      "headline": "Holiday Deals Are Here",
-      "cta": "Shop Now",
-      "key_messages": [
-        "Up to 50% off select items",
-        "Free shipping on orders over $50"
-      ]
-    },
-    "reference_assets": [
-      {
-        "url": "https://cdn.acmecorp.com/holiday-mood-board.pdf",
-        "role": "mood_board",
-        "description": "Holiday campaign mood board with festive color palette"
-      }
-    ]
-  },
-  "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
-    "assets": {
-      "promoted_offerings": {
-        "brand": {
-          "domain": "acmecorp.com"
-        },
-        "inline_offerings": [
-          {
-            "name": "Holiday Sale Collection",
-            "description": "Up to 50% off select holiday items"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-### Example 5: URL-Referenced Brief
-
-When reusing the same brief across multiple creatives, reference it by URL:
-
-```json
-{
-  "$schema": "/schemas/media-buy/build-creative-request.json",
-  "message": "Weekend brunch version with lighter, morning energy",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
-  "brand": {
-    "domain": "acmecorp.com"
-  },
-  "creative_brief": "https://cdn.acmecorp.com/briefs/holiday-2025.json",
-  "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
-    "assets": {
-      "promoted_offerings": {
-        "brand": {
-          "domain": "acmecorp.com"
-        },
-        "inline_offerings": [
-          {
-            "name": "Weekend Brunch Menu",
-            "description": "Fresh brunch items every Saturday and Sunday"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
 ## Key Concepts
-
-### Brand vs Creative Brief
-
-| | Brand | Creative Brief |
-|---|---|---|
-| **Scope** | Brand identity | Campaign context |
-| **Lifespan** | Stable across campaigns | Specific to a campaign or flight |
-| **Contains** | Colors, logos, fonts, tone | Audience, territory, messaging, reference assets |
-| **Source** | Brand registry / `/.well-known/brand.json` | Agency or brand team |
-
-Both are optional. `brand` provides stable brand identity (colors, logos, tone) resolved via the domain's `/.well-known/brand.json`. `creative_brief` provides campaign-specific direction (audience, messaging, tone, visual references). The `message` field provides per-request natural language instructions. Creative agents that support briefs declare `supports_brief: true` in their `get_adcp_capabilities` response.
-
-**Precedence**: When `brand` appears both at the top level and inside `creative_manifest.assets.promoted_offerings`, the top-level `brand` is the authoritative source for creative rendering context. The one inside `promoted_offerings` identifies the brand for the offering.
-
-**Layering**: `creative_brief` provides structured direction; `message` provides per-request natural language overrides. When both provide conflicting direction, `message` takes precedence as the most specific instruction.
 
 ### Transformation Model
 

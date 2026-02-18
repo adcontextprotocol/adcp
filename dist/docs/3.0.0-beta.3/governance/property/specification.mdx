@@ -35,7 +35,7 @@ Property data and selection use a **stateful** model:
 
 - **Feature discovery**: Agents advertise what they can evaluate via `get_adcp_capabilities`
 - **Property list management**: CRUD operations for managed property lists with filters
-- **Brand references**: Let agents automatically apply rules based on brand identity
+- **Brand manifests**: Let agents automatically apply rules based on brand characteristics
 - **Webhook notifications**: Real-time updates when resolved lists change
 - **Marketplace architecture**: Multiple specialized agents as subscription services
 
@@ -192,7 +192,7 @@ Discover what features a governance agent can evaluate.
 
 #### create_property_list
 
-Create a new property list with filters and optional brand reference.
+Create a new property list with filters and optional brand manifest.
 
 **Required Parameters**:
 - At least one country in `countries_all` (ISO 3166-1 alpha-2 code)
@@ -213,7 +213,7 @@ See the [base-property-source schema](https://adcontextprotocol.org/schemas/v2/p
 
 **Use Cases**:
 - Define compliant property sets with filters (country, channel, feature thresholds)
-- Provide brand reference for automatic rule application
+- Provide brand manifest for automatic rule application
 - Register webhook URL for change notifications
 
 #### update_property_list
@@ -539,7 +539,7 @@ A buyer agent can distribute a master property list to multiple specialized agen
 consent_list = consent_agent.create_property_list(
     name="Q1 Campaign - Consent",
     base_properties=master_list,
-    brand=brand
+    brand_manifest=brand_manifest
 )
 # Configure webhook for updates
 consent_agent.update_property_list(
@@ -550,7 +550,7 @@ consent_agent.update_property_list(
 scope3_list = scope3_agent.create_property_list(
     name="Q1 Campaign - Sustainability",
     base_properties=master_list,
-    brand=brand
+    brand_manifest=brand_manifest
 )
 scope3_agent.update_property_list(
     list_id=scope3_list.list_id,
@@ -569,21 +569,25 @@ def on_list_changed(event):
     update_compliant_list(compliant_props)
 ```
 
-### Brand
+### Brand Manifest
 
-Instead of specifying complex filters, buyers provide a brand reference:
+Instead of specifying complex filters, buyers provide a brand manifest:
 
 ```json
 {
-  "brand": {
-    "domain": "toybrand.com"
+  "brand_manifest": {
+    "brand_name": "ToyBrand",
+    "industry": "toys",
+    "target_audience": "children_under_13",
+    "content_adjacency": ["kids_family", "education"],
+    "excluded_content": ["violence", "adult"]
   }
 }
 ```
 
-Each governance agent resolves the brand identity and applies rules according to their domain expertise:
-- **Consent agent**: Applies COPPA requirements for children's brands
-- **Brand safety agent**: Filters to appropriate content, excludes violence/adult
+Each governance agent interprets the manifest according to their domain expertise:
+- **Consent agent**: Applies COPPA requirements for children_under_13
+- **Brand safety agent**: Filters to kids_family content, excludes violence/adult
 - **Sustainability agent**: Applies any green media requirements
 
 The buyer doesn't need to know the specific rules - they declare who they are, and agents figure out what applies.

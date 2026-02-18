@@ -26,7 +26,7 @@
     "standards_id"
   ],
   "_bundled": {
-    "generatedAt": "2026-02-18T07:46:11.693Z",
+    "generatedAt": "2026-02-12T12:28:49.078Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

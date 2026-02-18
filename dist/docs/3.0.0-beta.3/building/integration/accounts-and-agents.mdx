@@ -22,7 +22,7 @@ For example, Dove is identified as `house: "unilever.com"` + `brand_id: "dove"`.
 
 For single-brand houses like Acme Corp, the house domain alone (`house: "acme-corp.com"`) identifies the brand — no `brand_id` is needed.
 
-Every billable operation requires a [brand](/docs/brand-protocol/brand-json) reference that identifies the brand and provides context for ad serving.
+Every billable operation requires a [brand manifest](/docs/creative/brand-manifest) that identifies the brand and provides context for ad serving.
 
 ### Account
 
@@ -361,15 +361,25 @@ Returns accounts the authenticated agent can operate.
 
 ## Request Context
 
-### Required: Brand
+### Required: Brand Manifest
 
-Every billable operation must include the brand reference:
+Every billable operation must include the brand manifest, either inline or as a URL reference:
 
 ```json
 {
-  "brand": {
-    "domain": "acme-corp.com"
+  "brand_manifest": {
+    "url": "https://acme-corp.com",
+    "name": "Acme Corp",
+    "colors": { "primary": "#F40009" }
   }
+}
+```
+
+Or as a URL to a hosted manifest:
+
+```json
+{
+  "brand_manifest": "https://cdn.acme-corp.com/brand-manifest.json"
 }
 ```
 
@@ -380,11 +390,11 @@ Agents with multiple accounts must pass `account_id` on billable operations. Sin
 ```json
 {
   "account_id": "acc_acme_pinnacle",
-  "brand": { "domain": "acme-corp.com" }
+  "brand_manifest": "https://cdn.acme-corp.com/brand-manifest.json"
 }
 ```
 
-The `account_id` is the seller's identifier for the billing relationship. The agent's natural key is `(house, brand_id, operator)` -- but the seller maps that to an `account_id` during account setup, and the agent uses that ID on all subsequent operations.
+The `account_id` is the seller's identifier for the billing relationship. The agent's natural key is `(house, brand_id, operator)` — but the seller maps that to an `account_id` during account setup, and the agent uses that ID on all subsequent operations.
 
 For `get_products`, whether `account_id` is required depends on the seller's capabilities (`account.required_for_products`). When required, the seller uses the account to determine rate-card-specific pricing and available inventory.
 
@@ -456,16 +466,16 @@ The account exists but is not in good standing:
 }
 ```
 
-### BRAND_REQUIRED
+### BRAND_MANIFEST_REQUIRED
 
-Billable operation attempted without brand reference:
+Billable operation attempted without brand manifest:
 
 ```json
 {
   "errors": [
     {
-      "code": "BRAND_REQUIRED",
-      "message": "Brand is required for this operation"
+      "code": "BRAND_MANIFEST_REQUIRED",
+      "message": "Brand manifest is required for this operation"
     }
   ]
 }
@@ -511,7 +521,7 @@ Acme Corp wants to buy inventory on a premium publisher. Their in-house team ope
 ```json
 {
   "account_id": "acc_acme_001",
-  "brand": { "domain": "acme-corp.com" },
+  "brand_manifest": { "..." : "..." },
   "campaign": { "..." : "..." }
 }
 ```

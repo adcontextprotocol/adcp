@@ -750,25 +750,20 @@ See [Webhooks](/docs/building/implementation/webhooks) for detailed implementati
 
 ## Optimization Strategies
 
-### Conversion optimization
+### Budget Optimization
+- **Reallocation** between high and low performing packages
+- **Pacing adjustments** for improved delivery
+- **Spend efficiency** analysis and improvements
 
-Set optimization goals on media buy packages to optimize delivery toward specific conversion outcomes — maximum conversions, target ROAS, or target CPA. This requires configured event sources and conversion event data.
+### Creative Optimization
+- **Performance analysis** by creative asset
+- **A/B testing** different creative approaches
+- **Refresh strategies** to prevent creative fatigue
 
-See [Conversion Tracking](/docs/media-buy/conversion-tracking/) for the complete setup flow, and [Optimization Goals](/docs/media-buy/conversion-tracking/#optimization-goals) for the `optimization_goal` object reference.
-
-### Budget optimization
-- **Reallocation** between high and low performing packages via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)
-- **Pacing adjustments** — switch between `even`, `asap`, or `front_loaded` delivery
-- **Spend efficiency** — compare cost per acquisition across packages and shift budget to the best performers
-
-### Creative optimization
-- **Performance analysis** by creative asset via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with by-creative breakdowns
-- **A/B testing** — assign multiple creatives with weights via `creative_assignments`
-- **Refresh strategies** — swap creatives via [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to prevent fatigue
-
-### Targeting refinement
-- **Geographic optimization** — adjust `targeting_overlay` based on delivery data by region
-- **Frequency management** — tune `frequency_cap.suppress_minutes` based on performance
+### Targeting Refinement
+- **Audience performance** analysis
+- **Geographic optimization** based on delivery data
+- **Temporal adjustments** for optimal timing
 
 ## Performance Feedback Loop
 The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for detailed API documentation.

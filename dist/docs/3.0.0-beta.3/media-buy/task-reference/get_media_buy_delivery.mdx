@@ -19,19 +19,8 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
-| `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
-| `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
-
-> **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00`). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
-
-**Date Range Examples**:
-
-| start_date | end_date | Data Returned |
-|------------|----------|---------------|
-| `2026-01-01` | `2026-01-02` | January 1st only (1 day) |
-| `2026-01-01` | `2026-01-08` | January 1st through 7th (7 days) |
-| `2026-01-01` | `2026-02-01` | Full month of January (31 days) |
-| `2026-01-15` | `2026-01-16` | January 15th only (1 day) |
+| `start_date` | string | No | Report start date (YYYY-MM-DD). Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
+| `end_date` | string | No | Report end date (YYYY-MM-DD). Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 
 *Either `media_buy_ids` or `buyer_refs` can be provided. If neither provided, returns all media buys in current session context.
 
@@ -511,7 +500,6 @@ asyncio.run(main())
 - If dates not specified, returns campaign lifetime delivery data
 - Both `start_date` and `end_date` must be provided together — partial date ranges are invalid
 - Date format: `YYYY-MM-DD`
-- **Start-inclusive, end-exclusive**: `start_date` is included, `end_date` is excluded. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns data for January 1st only.
 - Products declare date range support in `reporting_capabilities.date_range_support`
 - Products with `date_range_support: "lifetime_only"` reject requests that include `start_date`/`end_date` with a `DATE_RANGE_NOT_SUPPORTED` error
 - Products with `date_range_support: "date_range"` accept date parameters and filter delivery data accordingly

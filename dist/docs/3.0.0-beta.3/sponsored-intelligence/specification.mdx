@@ -48,7 +48,7 @@ Brand agents declare supported transports via `get_adcp_capabilities`:
       "preferred": "mcp"
     },
     "capabilities": { ... },
-    "brand": { "domain": "brand.example" }
+    "brand_manifest_url": "https://brand.example/.well-known/brand-manifest.json"
   }
 }
 ```
@@ -68,7 +68,7 @@ Brand agents MUST implement the `get_adcp_capabilities` task to declare SI suppo
 
 The response SHOULD include:
 
-- `brand` - Brand reference (domain-based identity)
+- `brand_manifest_url` - Reference to brand identity assets
 
 ## Get Offering
 

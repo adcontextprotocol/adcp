@@ -2,18 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/3.0.0-beta.3/core/requirements/promoted-offerings-asset-requirements.json",
   "title": "Promoted Offerings Asset Requirements",
-  "description": "Requirements for promoted offerings creative assets. Allows formats to declare what content the promoted offerings must provide.",
+  "description": "Requirements for promoted offerings creative assets.",
   "type": "object",
-  "properties": {
-    "requires": {
-      "type": "array",
-      "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand.* paths, the validating agent resolves the brand reference first.",
-      "items": {
-        "$ref": "/schemas/3.0.0-beta.3/enums/promoted-offerings-requirement.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true
-    }
-  },
+  "properties": {},
   "additionalProperties": true
 }

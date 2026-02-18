@@ -18,8 +18,9 @@ You can test AdCP tasks using the reference implementation at [testing.adcontext
 ```javascript
 // Standard MCP tool call
 const response = await mcp.call('get_products', {
-  brand: {
-    domain: "premiumpetfoods.com"
+  brand_manifest: {
+    name: "Premium Pet Foods",
+    url: "https://premiumpetfoods.com"
   },
   brief: "Video campaign for pet owners"
 });
@@ -34,8 +35,9 @@ console.log(response.message);  // Human-readable summary
 ```javascript
 // Structured parameters
 const response = await mcp.call('get_products', {
-  brand: {
-    domain: "betnow.com"
+  brand_manifest: {
+    name: "BetNow",
+    url: "https://betnow.com"
   },
   brief: "Sports betting app for March Madness",
   filters: {

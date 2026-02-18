@@ -34,7 +34,10 @@ endDate.setDate(endDate.getDate() + 37); // End 5 weeks from now
 
 const createResult = await testAgent.createMediaBuy({
   buyer_ref: uniqueRef,
-  brand: { domain: 'acmecorp.com' },
+  brand_manifest: {
+    name: 'Nike',
+    url: 'https://nike.com'
+  },
   packages: [{
     buyer_ref: 'display_pkg',
     product_id: 'prod_d979b543',
@@ -95,7 +98,10 @@ async def create_and_pause_campaign():
 
     create_result = await test_agent.simple.create_media_buy(
         buyer_ref=unique_ref,
-        brand={'domain': 'acmecorp.com'},
+        brand_manifest={
+            'name': 'Nike',
+            'url': 'https://nike.com'
+        },
         packages=[{
             'buyer_ref': 'display_pkg',
             'product_id': 'prod_d979b543',
@@ -533,7 +539,7 @@ asyncio.run(update_multiple_packages())
 ❌ **Cannot update:**
 - Media buy ID
 - Buyer reference
-- Brand reference
+- Brand manifest
 - Original package product IDs
 
 ### Package-Level Updates

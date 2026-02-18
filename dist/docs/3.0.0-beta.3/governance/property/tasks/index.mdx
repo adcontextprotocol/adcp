@@ -9,7 +9,7 @@ sidebarTitle: Task Reference
 **AdCP 3.0 Proposal** - These tasks are under development for AdCP 3.0.
 </Info>
 
-Property governance uses a **stateful** model where all evaluation happens through property list management. Create lists with filters and brand references, then resolve them to get compliant properties.
+Property governance uses a **stateful** model where all evaluation happens through property list management. Create lists with filters and brand manifests, then resolve them to get compliant properties.
 
 ## Discovery
 
@@ -43,7 +43,7 @@ See [validate_property_delivery](./validate_property_delivery) for post-campaign
 
 ### Creating a Property List
 
-Use `create_property_list` with filters and brand reference:
+Use `create_property_list` with filters and brand manifest:
 
 ```json
 {
@@ -72,8 +72,10 @@ Use `create_property_list` with filters and brand reference:
         }
       ]
     },
-    "brand": {
-      "domain": "toybrand.com"
+    "brand_manifest": {
+      "name": "ToyBrand",
+      "industry": "toys",
+      "target_audience": "children_under_13"
     }
   }
 }
@@ -132,7 +134,7 @@ Create the same property list on multiple governance agents, then configure webh
 consent_list = consent_agent.create_property_list(
     name="Q1 - Consent",
     base_properties=master_list,
-    brand=brand
+    brand_manifest=brand_manifest
 )
 consent_agent.update_property_list(
     list_id=consent_list.list_id,
@@ -142,7 +144,7 @@ consent_agent.update_property_list(
 scope3_list = scope3_agent.create_property_list(
     name="Q1 - Sustainability",
     base_properties=master_list,
-    brand=brand
+    brand_manifest=brand_manifest
 )
 scope3_agent.update_property_list(
     list_id=scope3_list.list_id,

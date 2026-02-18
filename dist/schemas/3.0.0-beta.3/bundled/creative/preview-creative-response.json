@@ -2116,48 +2116,734 @@
                     },
                     {
                       "title": "Promoted Offerings",
-                      "description": "Complete offering specification combining brand reference, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
+                      "description": "Complete offering specification combining brand manifest, product selectors, and optional SI agent endpoint. Provides all context needed for creative generation and/or conversational experiences about what is being promoted. When si_agent_url is present, hosts can connect users to conversational experiences about any of the offerings.",
                       "type": "object",
                       "properties": {
-                        "brand": {
-                          "title": "Brand Reference",
-                          "description": "Brand reference. Resolved to full brand identity (logos, colors, tone, assets) at execution time for creative generation.",
-                          "type": "object",
-                          "properties": {
-                            "domain": {
-                              "type": "string",
-                              "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
-                              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-                            },
-                            "brand_id": {
-                              "title": "Brand ID",
-                              "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
-                              "type": "string",
-                              "pattern": "^[a-z0-9_]+$",
+                        "brand_manifest": {
+                          "title": "Brand Manifest Reference",
+                          "description": "Brand information manifest containing assets, themes, and guidelines. Can be provided inline or as a URL reference to a hosted manifest.",
+                          "oneOf": [
+                            {
+                              "title": "Brand Manifest",
+                              "description": "Inline brand manifest object",
+                              "type": "object",
+                              "properties": {
+                                "url": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "description": "Primary brand URL for context and asset discovery. Creative agents can infer brand information from this URL."
+                                },
+                                "privacy_policy_url": {
+                                  "type": "string",
+                                  "format": "uri",
+                                  "description": "URL to the brand's privacy policy. Used for consumer consent flows when personal data may be shared with the advertiser. AI platforms can use this to present explicit privacy choices to users before data handoff."
+                                },
+                                "name": {
+                                  "type": "string",
+                                  "description": "Brand or business name"
+                                },
+                                "logos": {
+                                  "type": "array",
+                                  "description": "Brand logo assets with structured fields for orientation, background compatibility, and variant type. Use the orientation, background, and variant enum fields for reliable filtering by creative agents.",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "url": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "description": "URL to the logo asset"
+                                      },
+                                      "orientation": {
+                                        "type": "string",
+                                        "enum": [
+                                          "square",
+                                          "horizontal",
+                                          "vertical",
+                                          "stacked"
+                                        ],
+                                        "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
+                                      },
+                                      "background": {
+                                        "type": "string",
+                                        "enum": [
+                                          "dark-bg",
+                                          "light-bg",
+                                          "transparent-bg"
+                                        ],
+                                        "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
+                                      },
+                                      "variant": {
+                                        "type": "string",
+                                        "enum": [
+                                          "primary",
+                                          "secondary",
+                                          "icon",
+                                          "wordmark",
+                                          "full-lockup"
+                                        ],
+                                        "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields.",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "usage": {
+                                        "type": "string",
+                                        "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds', 'Icon-only variant for small formats')"
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "description": "Logo width in pixels"
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "description": "Logo height in pixels"
+                                      }
+                                    },
+                                    "required": [
+                                      "url"
+                                    ]
+                                  }
+                                },
+                                "colors": {
+                                  "type": "object",
+                                  "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role.",
+                                  "properties": {
+                                    "primary": {
+                                      "description": "Primary brand color(s)",
+                                      "oneOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^#[0-9A-Fa-f]{6}$"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9A-Fa-f]{6}$"
+                                          },
+                                          "minItems": 1
+                                        }
+                                      ]
+                                    },
+                                    "secondary": {
+                                      "description": "Secondary brand color(s)",
+                                      "oneOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^#[0-9A-Fa-f]{6}$"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9A-Fa-f]{6}$"
+                                          },
+                                          "minItems": 1
+                                        }
+                                      ]
+                                    },
+                                    "accent": {
+                                      "description": "Accent color(s)",
+                                      "oneOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^#[0-9A-Fa-f]{6}$"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9A-Fa-f]{6}$"
+                                          },
+                                          "minItems": 1
+                                        }
+                                      ]
+                                    },
+                                    "background": {
+                                      "description": "Background color(s)",
+                                      "oneOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^#[0-9A-Fa-f]{6}$"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9A-Fa-f]{6}$"
+                                          },
+                                          "minItems": 1
+                                        }
+                                      ]
+                                    },
+                                    "text": {
+                                      "description": "Text color(s)",
+                                      "oneOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^#[0-9A-Fa-f]{6}$"
+                                        },
+                                        {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "pattern": "^#[0-9A-Fa-f]{6}$"
+                                          },
+                                          "minItems": 1
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "fonts": {
+                                  "type": "object",
+                                  "description": "Brand typography guidelines",
+                                  "properties": {
+                                    "primary": {
+                                      "type": "string",
+                                      "description": "Primary font family name"
+                                    },
+                                    "secondary": {
+                                      "type": "string",
+                                      "description": "Secondary font family name"
+                                    },
+                                    "font_urls": {
+                                      "type": "array",
+                                      "description": "URLs to web font files if using custom fonts",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uri"
+                                      }
+                                    }
+                                  }
+                                },
+                                "tone": {
+                                  "description": "Brand voice and messaging tone guidelines for creative agents.",
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                      "description": "Simple tone descriptors for backwards compatibility"
+                                    },
+                                    {
+                                      "type": "object",
+                                      "description": "Structured brand voice guidelines",
+                                      "properties": {
+                                        "voice": {
+                                          "type": "string",
+                                          "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')"
+                                        },
+                                        "attributes": {
+                                          "type": "array",
+                                          "description": "Personality traits that characterize the brand voice",
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "examples": [
+                                            [
+                                              "friendly",
+                                              "optimistic",
+                                              "conversational",
+                                              "authentic"
+                                            ]
+                                          ]
+                                        },
+                                        "dos": {
+                                          "type": "array",
+                                          "description": "Specific guidance for copy generation - what TO do",
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "examples": [
+                                            [
+                                              "Use simple, everyday language",
+                                              "Address the reader directly",
+                                              "Keep sentences short and punchy"
+                                            ]
+                                          ]
+                                        },
+                                        "donts": {
+                                          "type": "array",
+                                          "description": "Guardrails to avoid brand violations - what NOT to do",
+                                          "items": {
+                                            "type": "string"
+                                          },
+                                          "examples": [
+                                            [
+                                              "Avoid corporate jargon",
+                                              "Don't be overly formal",
+                                              "Don't make exaggerated claims"
+                                            ]
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                "voice": {
+                                  "type": "object",
+                                  "description": "Brand voice configuration for audio/conversational experiences",
+                                  "properties": {
+                                    "provider": {
+                                      "type": "string",
+                                      "description": "TTS provider (e.g., 'elevenlabs', 'openai', 'amazon_polly')"
+                                    },
+                                    "voice_id": {
+                                      "type": "string",
+                                      "description": "Provider-specific voice identifier"
+                                    },
+                                    "settings": {
+                                      "type": "object",
+                                      "description": "Provider-specific voice settings (speed, pitch, etc.)",
+                                      "additionalProperties": true
+                                    }
+                                  }
+                                },
+                                "avatar": {
+                                  "type": "object",
+                                  "description": "Brand avatar configuration for visual conversational experiences",
+                                  "properties": {
+                                    "provider": {
+                                      "type": "string",
+                                      "description": "Avatar provider (e.g., 'd-id', 'heygen', 'synthesia')"
+                                    },
+                                    "avatar_id": {
+                                      "type": "string",
+                                      "description": "Provider-specific avatar identifier"
+                                    },
+                                    "settings": {
+                                      "type": "object",
+                                      "description": "Provider-specific avatar settings",
+                                      "additionalProperties": true
+                                    }
+                                  }
+                                },
+                                "tagline": {
+                                  "type": "string",
+                                  "description": "Brand tagline or slogan"
+                                },
+                                "assets": {
+                                  "type": "array",
+                                  "description": "Brand asset library with explicit assets and tags. Assets are referenced inline with URLs pointing to CDN-hosted files.",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "asset_id": {
+                                        "type": "string",
+                                        "description": "Unique identifier for this asset"
+                                      },
+                                      "asset_type": {
+                                        "title": "Asset Content Type",
+                                        "description": "Type of asset. Note: Brand manifests typically contain basic media assets (image, video, audio, text). Code assets (html, javascript, css) and ad markup (vast, daast) are usually not part of brand asset libraries.",
+                                        "type": "string",
+                                        "enum": [
+                                          "image",
+                                          "video",
+                                          "audio",
+                                          "text",
+                                          "markdown",
+                                          "html",
+                                          "css",
+                                          "javascript",
+                                          "vast",
+                                          "daast",
+                                          "promoted_offerings",
+                                          "url",
+                                          "webhook"
+                                        ]
+                                      },
+                                      "url": {
+                                        "type": "string",
+                                        "format": "uri",
+                                        "description": "URL to CDN-hosted asset file"
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "description": "Tags for asset discovery (e.g., 'holiday', 'lifestyle', 'product_shot')",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "name": {
+                                        "type": "string",
+                                        "description": "Human-readable asset name"
+                                      },
+                                      "description": {
+                                        "type": "string",
+                                        "description": "Asset description or usage notes"
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "description": "Image/video width in pixels"
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "description": "Image/video height in pixels"
+                                      },
+                                      "duration_seconds": {
+                                        "type": "number",
+                                        "description": "Video/audio duration in seconds"
+                                      },
+                                      "file_size_bytes": {
+                                        "type": "integer",
+                                        "description": "File size in bytes"
+                                      },
+                                      "format": {
+                                        "type": "string",
+                                        "description": "File format (e.g., 'jpg', 'mp4', 'mp3')"
+                                      },
+                                      "metadata": {
+                                        "type": "object",
+                                        "description": "Additional asset-specific metadata",
+                                        "additionalProperties": true
+                                      }
+                                    },
+                                    "required": [
+                                      "asset_id",
+                                      "asset_type",
+                                      "url"
+                                    ],
+                                    "additionalProperties": true
+                                  }
+                                },
+                                "product_catalog": {
+                                  "type": "object",
+                                  "description": "Product catalog information for e-commerce advertisers. Enables SKU-level creative generation and product selection.",
+                                  "properties": {
+                                    "feed_url": {
+                                      "type": "string",
+                                      "format": "uri",
+                                      "description": "URL to product catalog feed"
+                                    },
+                                    "feed_format": {
+                                      "type": "string",
+                                      "enum": [
+                                        "google_merchant_center",
+                                        "facebook_catalog",
+                                        "openai_product_feed",
+                                        "custom"
+                                      ],
+                                      "default": "google_merchant_center",
+                                      "description": "Format of the product feed. Use 'openai_product_feed' for feeds conforming to the OpenAI Commerce Product Feed specification."
+                                    },
+                                    "categories": {
+                                      "type": "array",
+                                      "description": "Product categories available in the catalog (for filtering)",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "last_updated": {
+                                      "type": "string",
+                                      "format": "date-time",
+                                      "description": "When the product catalog was last updated"
+                                    },
+                                    "update_frequency": {
+                                      "type": "string",
+                                      "enum": [
+                                        "realtime",
+                                        "hourly",
+                                        "daily",
+                                        "weekly"
+                                      ],
+                                      "description": "How frequently the product catalog is updated"
+                                    },
+                                    "agentic_checkout": {
+                                      "type": "object",
+                                      "description": "Agentic checkout endpoint configuration. Enables AI agents to complete purchases on behalf of users through a structured checkout API.",
+                                      "properties": {
+                                        "endpoint": {
+                                          "type": "string",
+                                          "format": "uri",
+                                          "description": "Base URL for checkout session API (e.g., https://merchant.com/api/checkout_sessions)"
+                                        },
+                                        "spec": {
+                                          "type": "string",
+                                          "enum": [
+                                            "openai_agentic_checkout_v1"
+                                          ],
+                                          "description": "Checkout API specification implemented by the endpoint"
+                                        },
+                                        "supported_payment_providers": {
+                                          "type": "array",
+                                          "description": "Payment providers supported by this checkout endpoint",
+                                          "items": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "endpoint",
+                                        "spec"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "feed_url"
+                                  ],
+                                  "additionalProperties": true
+                                },
+                                "disclaimers": {
+                                  "type": "array",
+                                  "description": "Legal disclaimers or required text that must appear in creatives",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "text": {
+                                        "type": "string",
+                                        "description": "Disclaimer text"
+                                      },
+                                      "context": {
+                                        "type": "string",
+                                        "description": "When this disclaimer applies (e.g., 'financial_products', 'health_claims', 'all')"
+                                      },
+                                      "required": {
+                                        "type": "boolean",
+                                        "description": "Whether this disclaimer must appear",
+                                        "default": true
+                                      }
+                                    },
+                                    "required": [
+                                      "text"
+                                    ]
+                                  }
+                                },
+                                "industry": {
+                                  "type": "string",
+                                  "description": "Industry or vertical (e.g., 'retail', 'automotive', 'finance', 'healthcare')"
+                                },
+                                "target_audience": {
+                                  "type": "string",
+                                  "description": "Primary target audience description"
+                                },
+                                "contact": {
+                                  "type": "object",
+                                  "description": "Brand contact information",
+                                  "properties": {
+                                    "email": {
+                                      "type": "string",
+                                      "format": "email",
+                                      "description": "Contact email"
+                                    },
+                                    "phone": {
+                                      "type": "string",
+                                      "description": "Contact phone number"
+                                    }
+                                  }
+                                },
+                                "metadata": {
+                                  "type": "object",
+                                  "description": "Additional brand metadata",
+                                  "properties": {
+                                    "created_date": {
+                                      "type": "string",
+                                      "format": "date-time",
+                                      "description": "When this brand manifest was created"
+                                    },
+                                    "updated_date": {
+                                      "type": "string",
+                                      "format": "date-time",
+                                      "description": "When this brand manifest was last updated"
+                                    },
+                                    "version": {
+                                      "type": "string",
+                                      "description": "Brand card version number"
+                                    }
+                                  }
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "additionalProperties": true,
                               "examples": [
-                                "tide",
-                                "cheerios",
-                                "air_jordan",
-                                "nike",
-                                "pampers"
+                                {
+                                  "description": "Example with both URL and name",
+                                  "data": {
+                                    "url": "https://bobsfunburgers.com",
+                                    "name": "Bob's Fun Burgers"
+                                  }
+                                },
+                                {
+                                  "description": "Example: white-label brand without dedicated URL",
+                                  "data": {
+                                    "name": "Great Value",
+                                    "colors": {
+                                      "primary": "#0071CE",
+                                      "secondary": "#FFC220"
+                                    },
+                                    "tone": {
+                                      "voice": "affordable and trustworthy"
+                                    }
+                                  }
+                                },
+                                {
+                                  "description": "Full brand manifest with all fields",
+                                  "data": {
+                                    "url": "https://acmecorp.com",
+                                    "privacy_policy_url": "https://acmecorp.com/privacy",
+                                    "name": "ACME Corporation",
+                                    "logos": [
+                                      {
+                                        "url": "https://cdn.acmecorp.com/logo-on-light.png",
+                                        "orientation": "horizontal",
+                                        "background": "light-bg",
+                                        "variant": "primary",
+                                        "usage": "Primary logo for use on light backgrounds",
+                                        "width": 1200,
+                                        "height": 400
+                                      },
+                                      {
+                                        "url": "https://cdn.acmecorp.com/logo-on-dark.png",
+                                        "orientation": "horizontal",
+                                        "background": "dark-bg",
+                                        "variant": "primary",
+                                        "usage": "Primary logo for use on dark backgrounds",
+                                        "width": 1200,
+                                        "height": 400
+                                      },
+                                      {
+                                        "url": "https://cdn.acmecorp.com/icon.png",
+                                        "orientation": "square",
+                                        "background": "transparent-bg",
+                                        "variant": "icon",
+                                        "usage": "Icon-only variant for small formats",
+                                        "width": 512,
+                                        "height": 512
+                                      }
+                                    ],
+                                    "colors": {
+                                      "primary": "#FF6B35",
+                                      "secondary": "#004E89",
+                                      "accent": "#F7931E",
+                                      "background": "#FFFFFF",
+                                      "text": "#1A1A1A"
+                                    },
+                                    "fonts": {
+                                      "primary": "Helvetica Neue",
+                                      "secondary": "Georgia"
+                                    },
+                                    "tone": {
+                                      "voice": "professional and trustworthy",
+                                      "attributes": [
+                                        "confident",
+                                        "innovative",
+                                        "approachable",
+                                        "expert"
+                                      ],
+                                      "dos": [
+                                        "Use clear, direct language",
+                                        "Highlight innovation and reliability",
+                                        "Back claims with specifics",
+                                        "Address decision-makers directly"
+                                      ],
+                                      "donts": [
+                                        "Avoid hyperbole or exaggeration",
+                                        "Don't use overly casual language",
+                                        "Avoid technical jargon without explanation",
+                                        "Don't make unsubstantiated claims"
+                                      ]
+                                    },
+                                    "tagline": "Innovation You Can Trust",
+                                    "assets": [
+                                      {
+                                        "asset_id": "hero_winter_2024",
+                                        "asset_type": "image",
+                                        "url": "https://cdn.acmecorp.com/hero-winter-2024.jpg",
+                                        "tags": [
+                                          "hero",
+                                          "winter",
+                                          "holiday",
+                                          "lifestyle"
+                                        ],
+                                        "name": "Winter Campaign Hero",
+                                        "width": 1920,
+                                        "height": 1080,
+                                        "format": "jpg"
+                                      },
+                                      {
+                                        "asset_id": "product_video_30s",
+                                        "asset_type": "video",
+                                        "url": "https://cdn.acmecorp.com/product-demo-30s.mp4",
+                                        "tags": [
+                                          "product",
+                                          "demo",
+                                          "30s"
+                                        ],
+                                        "name": "Product Demo 30 Second",
+                                        "width": 1920,
+                                        "height": 1080,
+                                        "duration_seconds": 30,
+                                        "format": "mp4"
+                                      }
+                                    ],
+                                    "product_catalog": {
+                                      "feed_url": "https://acmecorp.com/products.xml",
+                                      "feed_format": "google_merchant_center",
+                                      "categories": [
+                                        "electronics/computers",
+                                        "electronics/accessories"
+                                      ],
+                                      "last_updated": "2024-03-15T10:00:00Z",
+                                      "update_frequency": "hourly"
+                                    },
+                                    "disclaimers": [
+                                      {
+                                        "text": "Results may vary. Consult a professional before use.",
+                                        "context": "health_claims",
+                                        "required": true
+                                      }
+                                    ],
+                                    "industry": "technology",
+                                    "target_audience": "business decision-makers aged 35-55"
+                                  }
+                                },
+                                {
+                                  "description": "E-commerce brand with OpenAI product feed and agentic checkout",
+                                  "data": {
+                                    "url": "https://shopexample.com",
+                                    "privacy_policy_url": "https://shopexample.com/privacy",
+                                    "name": "Shop Example",
+                                    "product_catalog": {
+                                      "feed_url": "https://shopexample.com/products.jsonl.gz",
+                                      "feed_format": "openai_product_feed",
+                                      "update_frequency": "daily",
+                                      "agentic_checkout": {
+                                        "endpoint": "https://api.shopexample.com/checkout_sessions",
+                                        "spec": "openai_agentic_checkout_v1",
+                                        "supported_payment_providers": [
+                                          "stripe",
+                                          "adyen"
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
                               ]
+                            },
+                            {
+                              "type": "string",
+                              "format": "uri",
+                              "description": "URL to a hosted brand manifest JSON file. The manifest at this URL must conform to the brand-manifest.json schema."
                             }
-                          },
-                          "required": [
-                            "domain"
                           ],
-                          "additionalProperties": false,
                           "examples": [
                             {
-                              "domain": "pg.com",
-                              "brand_id": "tide"
+                              "description": "Inline brand manifest",
+                              "data": {
+                                "url": "https://acmecorp.com",
+                                "name": "ACME Corporation",
+                                "colors": {
+                                  "primary": "#FF6B35"
+                                }
+                              }
                             },
                             {
-                              "domain": "nikeinc.com",
-                              "brand_id": "air_jordan"
-                            },
-                            {
-                              "domain": "bobsburgers.com"
+                              "description": "URL string reference to hosted manifest",
+                              "data": "https://cdn.acmecorp.com/brand-manifest.json"
                             }
                           ]
                         },
@@ -2168,7 +2854,7 @@
                         },
                         "product_selectors": {
                           "title": "Promoted Products",
-                          "description": "Selectors to choose which products/offerings from the brand's product catalog to promote",
+                          "description": "Selectors to choose which products/offerings from the brand manifest product catalog to promote",
                           "type": "object",
                           "properties": {
                             "manifest_gtins": {
@@ -2181,25 +2867,25 @@
                             },
                             "manifest_skus": {
                               "type": "array",
-                              "description": "Direct product SKU references from the brand's product catalog",
+                              "description": "Direct product SKU references from the brand manifest product catalog",
                               "items": {
                                 "type": "string"
                               }
                             },
                             "manifest_tags": {
                               "type": "array",
-                              "description": "Select products by tags from the brand's product catalog (e.g., 'organic', 'sauces', 'holiday')",
+                              "description": "Select products by tags from the brand manifest product catalog (e.g., 'organic', 'sauces', 'holiday')",
                               "items": {
                                 "type": "string"
                               }
                             },
                             "manifest_category": {
                               "type": "string",
-                              "description": "Select products from a specific category in the brand's product catalog (e.g., 'beverages/soft-drinks', 'food/sauces')"
+                              "description": "Select products from a specific category in the brand manifest product catalog (e.g., 'beverages/soft-drinks', 'food/sauces')"
                             },
                             "manifest_query": {
                               "type": "string",
-                              "description": "Natural language query to select products from the brand's catalog (e.g., 'all pasta sauces', 'organic products under $20')"
+                              "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
                             }
                           },
                           "minProperties": 1,
@@ -2215,7 +2901,7 @@
                               }
                             },
                             {
-                              "description": "Direct SKU selection for specific products from brand catalog",
+                              "description": "Direct SKU selection for specific products from brand manifest",
                               "data": {
                                 "manifest_skus": [
                                   "SKU-12345",
@@ -2224,7 +2910,7 @@
                               }
                             },
                             {
-                              "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand catalog",
+                              "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest",
                               "data": {
                                 "manifest_tags": [
                                   "organic",
@@ -2234,7 +2920,7 @@
                               }
                             },
                             {
-                              "description": "Natural language product selection from brand catalog",
+                              "description": "Natural language product selection from brand manifest",
                               "data": {
                                 "manifest_query": "all Kraft Heinz pasta sauces under $5"
                               }
@@ -2407,7 +3093,7 @@
                         },
                         "asset_selectors": {
                           "type": "object",
-                          "description": "Selectors to choose specific assets from the brand's asset library",
+                          "description": "Selectors to choose specific assets from the brand manifest",
                           "properties": {
                             "tags": {
                               "type": "array",
@@ -2448,15 +3134,16 @@
                         }
                       },
                       "required": [
-                        "brand"
+                        "brand_manifest"
                       ],
                       "additionalProperties": true,
                       "examples": [
                         {
                           "description": "Traditional creative offering (no SI)",
                           "data": {
-                            "brand": {
-                              "domain": "acmecorp.com"
+                            "brand_manifest": {
+                              "name": "Brand Name",
+                              "url": "https://brand.com"
                             },
                             "product_selectors": {
                               "manifest_skus": [
@@ -2478,10 +3165,8 @@
                         {
                           "description": "Offerings with SI agent for conversational experiences",
                           "data": {
-                            "brand": {
-                              "domain": "acmecorp.com"
-                            },
-                            "si_agent_url": "https://agent.acmecorp.com/mcp",
+                            "brand_manifest": "https://brand.com/manifest.json",
+                            "si_agent_url": "https://agent.brand.com/mcp",
                             "offerings": [
                               {
                                 "offering_id": "q1-2025-trial",
@@ -2489,13 +3174,13 @@
                                 "description": "Try our platform free for 30 days",
                                 "valid_from": "2025-01-01T00:00:00Z",
                                 "valid_to": "2025-03-31T23:59:59Z",
-                                "checkout_url": "https://acmecorp.com/signup"
+                                "checkout_url": "https://brand.com/signup"
                               },
                               {
                                 "offering_id": "standard-product",
                                 "name": "Enterprise Platform",
                                 "description": "Our flagship enterprise solution",
-                                "landing_url": "https://acmecorp.com/enterprise"
+                                "landing_url": "https://brand.com/enterprise"
                               }
                             ]
                           }
@@ -2503,18 +3188,15 @@
                         {
                           "description": "Offerings with both creatives and SI",
                           "data": {
-                            "brand": {
-                              "domain": "pg.com",
-                              "brand_id": "tide"
-                            },
-                            "si_agent_url": "https://agent.tide.com/mcp",
+                            "brand_manifest": "https://brand.com/manifest.json",
+                            "si_agent_url": "https://agent.brand.com/mcp",
                             "offerings": [
                               {
                                 "offering_id": "summer-campaign",
                                 "name": "Summer Sale",
                                 "description": "Up to 50% off summer collection",
-                                "landing_url": "https://tide.com/summer",
-                                "portfolio_ref": "https://tide.com/portfolios/summer-2025.json"
+                                "landing_url": "https://brand.com/summer",
+                                "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
                               }
                             ]
                           }
@@ -2566,7 +3248,7 @@
     }
   ],
   "_bundled": {
-    "generatedAt": "2026-02-18T07:46:11.709Z",
+    "generatedAt": "2026-02-12T12:28:49.107Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }
