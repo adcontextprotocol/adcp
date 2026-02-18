@@ -1461,16 +1461,18 @@ async function handleAppMention({
     try {
       const threadMessages = await getThreadReplies(channelId, event.thread_ts);
       if (threadMessages.length > 0) {
-        // Filter out Addie's own messages and format the thread history
+        // Include all messages (including Addie's) for full context
         const filteredMessages = threadMessages
-          .filter(msg => msg.user !== context.botUserId) // Exclude Addie's own messages
           .filter(msg => msg.ts !== event.ts) // Exclude the current mention message
           .filter(msg => (msg.text || '').trim().length > 0) // Filter out empty messages
           .slice(-MAX_THREAD_CONTEXT_MESSAGES);
 
-        // Collect all unique user IDs mentioned in the thread
+        // Collect all unique user IDs in the thread (senders and @mentions)
         const mentionedUserIds = new Set<string>();
         for (const msg of filteredMessages) {
+          if (msg.user && msg.user !== context.botUserId) {
+            mentionedUserIds.add(msg.user);
+          }
           const mentions = (msg.text || '').matchAll(/<@(U[A-Z0-9]+)>/gi);
           for (const match of mentions) {
             if (match[1] !== context.botUserId) {
@@ -1495,9 +1497,11 @@ async function handleAppMention({
           }
         }
 
-        // Format messages, replacing user IDs with display names
+        // Format messages with speaker identification
         const contextMessages = filteredMessages.map(msg => {
           let text = msg.text || '';
+          const isAddie = msg.user === context.botUserId;
+          const speaker = isAddie ? 'Addie' : (userNameMap.get(msg.user || '') || 'User');
           // Strip Addie's mentions entirely (they're noise)
           if (context.botUserId) {
             text = text.replace(new RegExp(`<@${context.botUserId}>\\s*`, 'gi'), '').trim();
@@ -1507,7 +1511,7 @@ async function handleAppMention({
             const name = userNameMap.get(uid);
             return name ? `@${name}` : '[someone]';
           });
-          return `- ${text}`;
+          return `- ${speaker}: ${text}`;
         });
 
         if (contextMessages.length > 0) {
