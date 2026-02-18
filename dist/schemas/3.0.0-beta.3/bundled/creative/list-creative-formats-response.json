@@ -842,9 +842,30 @@
                     },
                     "requirements": {
                       "title": "Promoted Offerings Asset Requirements",
-                      "description": "Requirements for promoted offerings creative assets.",
+                      "description": "Requirements for promoted offerings creative assets. Allows formats to declare what content the promoted offerings must provide.",
                       "type": "object",
-                      "properties": {},
+                      "properties": {
+                        "requires": {
+                          "type": "array",
+                          "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand.* paths, the validating agent resolves the brand reference first.",
+                          "items": {
+                            "title": "Promoted Offerings Requirement",
+                            "description": "Content requirements that a creative format can impose on promoted offerings. Each value asserts that the referenced content must be present and non-empty. Top-level values (si_agent_url, offerings) are checked directly on the PromotedOfferings object. For brand.* paths, the brand reference must be resolved (looked up from brand.json or registry) before checking the nested field. If the reference cannot be resolved, all brand.* requirements are considered unmet. Paths are limited to two segments.",
+                            "type": "string",
+                            "enum": [
+                              "si_agent_url",
+                              "offerings",
+                              "brand.logos",
+                              "brand.colors",
+                              "brand.tone",
+                              "brand.assets",
+                              "brand.product_catalog"
+                            ]
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        }
+                      },
                       "additionalProperties": true
                     }
                   }
@@ -1536,9 +1557,30 @@
                               },
                               "requirements": {
                                 "title": "Promoted Offerings Asset Requirements",
-                                "description": "Requirements for promoted offerings creative assets.",
+                                "description": "Requirements for promoted offerings creative assets. Allows formats to declare what content the promoted offerings must provide.",
                                 "type": "object",
-                                "properties": {},
+                                "properties": {
+                                  "requires": {
+                                    "type": "array",
+                                    "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand.* paths, the validating agent resolves the brand reference first.",
+                                    "items": {
+                                      "title": "Promoted Offerings Requirement",
+                                      "description": "Content requirements that a creative format can impose on promoted offerings. Each value asserts that the referenced content must be present and non-empty. Top-level values (si_agent_url, offerings) are checked directly on the PromotedOfferings object. For brand.* paths, the brand reference must be resolved (looked up from brand.json or registry) before checking the nested field. If the reference cannot be resolved, all brand.* requirements are considered unmet. Paths are limited to two segments.",
+                                      "type": "string",
+                                      "enum": [
+                                        "si_agent_url",
+                                        "offerings",
+                                        "brand.logos",
+                                        "brand.colors",
+                                        "brand.tone",
+                                        "brand.assets",
+                                        "brand.product_catalog"
+                                      ]
+                                    },
+                                    "minItems": 1,
+                                    "uniqueItems": true
+                                  }
+                                },
                                 "additionalProperties": true
                               }
                             }
@@ -1788,7 +1830,7 @@
           },
           "output_format_ids": {
             "type": "array",
-            "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand_manifest and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
+            "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand context and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
             "items": {
               "title": "Format ID",
               "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
@@ -2149,7 +2191,7 @@
   ],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-02-12T12:28:49.098Z",
+    "generatedAt": "2026-02-18T07:46:11.704Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

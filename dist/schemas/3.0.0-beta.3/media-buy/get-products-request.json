@@ -7,19 +7,15 @@
   "properties": {
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. When refining a proposal, can include instructions like 'focus more on German speakers' or 'increase mobile allocation'."
+      "description": "Natural language description of campaign requirements."
     },
-    "proposal_id": {
-      "type": "string",
-      "description": "Optional proposal ID to refine. When provided with a brief, the publisher will use the brief as refinement instructions for the specified proposal and return an updated version."
-    },
-    "brand_manifest": {
-      "$ref": "/schemas/3.0.0-beta.3/core/brand-manifest-ref.json",
-      "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
+    "brand": {
+      "$ref": "/schemas/3.0.0-beta.3/core/brand-ref.json",
+      "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
     "product_selectors": {
       "$ref": "/schemas/3.0.0-beta.3/core/promoted-products.json",
-      "description": "Selectors to filter the brand manifest product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+      "description": "Selectors to filter the brand's product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
     },
     "account_id": {
       "type": "string",
@@ -44,7 +40,7 @@
   },
   "required": [],
   "dependencies": {
-    "product_selectors": ["brand_manifest"]
+    "product_selectors": ["brand"]
   },
   "additionalProperties": true
 }

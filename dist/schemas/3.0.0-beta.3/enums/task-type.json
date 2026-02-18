@@ -26,7 +26,7 @@
     "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
     "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
     "get_signals": "Signals domain: Discover available audience signals based on natural language description",
-    "create_property_list": "Property domain: Create a new property list with filters and brand manifest",
+    "create_property_list": "Property domain: Create a new property list with filters and brand reference",
     "update_property_list": "Property domain: Update an existing property list",
     "get_property_list": "Property domain: Retrieve a property list with resolved properties",
     "list_property_lists": "Property domain: List all accessible property lists",

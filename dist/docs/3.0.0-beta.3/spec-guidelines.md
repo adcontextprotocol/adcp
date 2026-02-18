@@ -69,7 +69,7 @@ When the same concept appears in multiple places with different subsets:
   "enum": ["image", "video", "audio", "text", "html", "javascript", ...]
 }
 
-// brand-manifest.json - References full enum
+// brand.json - References full enum
 {
   "asset_type": {
     "$ref": "/schemas/v2/enums/asset-content-type.json",

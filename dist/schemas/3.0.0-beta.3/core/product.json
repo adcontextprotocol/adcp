@@ -59,10 +59,9 @@
       },
       "minItems": 1
     },
-    "estimated_exposures": {
-      "type": "integer",
-      "description": "Estimated exposures/impressions for guaranteed products",
-      "minimum": 0
+    "forecast": {
+      "$ref": "/schemas/3.0.0-beta.3/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
     "measurement": {
       "$ref": "/schemas/3.0.0-beta.3/core/measurement.json"
@@ -141,7 +140,7 @@
     },
     "catalog_match": {
       "type": "object",
-      "description": "When the buyer provides a brand_manifest with product_catalog, indicates which of the buyer's catalog items are eligible for this product. Enables buyers to make informed product_selector choices in create_media_buy. Only present for products where catalog matching is relevant (e.g. sponsored product listings on retail media). Sellers SHOULD include at least one of matched_gtins or matched_skus.",
+      "description": "When the buyer provides a brand with product_catalog, indicates which of the buyer's catalog items are eligible for this product. Enables buyers to make informed product_selector choices in create_media_buy. Only present for products where catalog matching is relevant (e.g. sponsored product listings on retail media). Sellers SHOULD include at least one of matched_gtins or matched_skus.",
       "properties": {
         "matched_gtins": {
           "type": "array",

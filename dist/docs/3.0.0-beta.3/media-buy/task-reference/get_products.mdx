@@ -24,9 +24,8 @@ import { GetProductsResponseSchema } from '@adcp/client';
 
 const result = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   }
 });
 
@@ -52,9 +51,8 @@ from adcp.testing import test_agent
 async def discover_products():
     result = await test_agent.simple.get_products(
         brief='Premium athletic footwear with innovative cushioning',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         }
     )
     print(f"Found {len(result.products)} products")
@@ -66,7 +64,7 @@ asyncio.run(discover_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brief":"Premium athletic footwear with innovative cushioning","brand_manifest":{"name":"Nike","url":"https://nike.com"}}' \
+  '{"brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -82,9 +80,8 @@ You can also use structured filters instead of (or in addition to) a brief:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     format_types: ['video'],
@@ -104,9 +101,8 @@ from adcp.testing import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'format_types': ['video'],
@@ -125,10 +121,9 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `brief` | string | No | Natural language description of campaign requirements. When refining a proposal, can include instructions like "focus more on German speakers". |
-| `proposal_id` | string | No | Proposal ID to refine. When provided with a brief, the publisher uses the brief as refinement instructions and returns an updated proposal. |
-| `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
-| `product_selectors` | ProductSelectors | No | Selectors to filter the brand manifest product catalog. Requires `brand_manifest`. See [Product Selectors](#product-selectors) below. |
+| `brief` | string | No | Natural language description of campaign requirements. |
+| `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
+| `product_selectors` | ProductSelectors | No | Selectors to filter the brand's product catalog. Requires `brand`. See [Product Selectors](#product-selectors) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
@@ -161,12 +156,12 @@ asyncio.run(discover_with_filters())
 
 ### Product Selectors
 
-Filter which items from the brand manifest product catalog to evaluate for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches (e.g., a retailer carries the specified GTINs). Selectors combine with OR logic — items matching any criteria are included.
+Filter which items from the brand's product catalog to evaluate for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches (e.g., a retailer carries the specified GTINs). Selectors combine with OR logic — items matching any criteria are included.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `manifest_gtins` | string[] | GTIN identifiers for cross-retailer catalog matching (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14) |
-| `manifest_skus` | string[] | Direct SKU references from the brand manifest |
+| `manifest_skus` | string[] | Direct SKU references from the brand's product catalog |
 | `manifest_tags` | string[] | Select by tags (e.g., `["organic", "ketchup"]`) |
 | `manifest_category` | string | Select from a specific category (e.g., `"food/condiments"`) |
 | `manifest_query` | string | Natural language query (e.g., `"all pasta sauces under $5"`) |
@@ -195,7 +190,7 @@ Publishers may return proposals alongside products - structured media plans with
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `proposal_id` | string | Unique identifier for executing or refining this proposal |
+| `proposal_id` | string | Unique identifier for executing this proposal via `create_media_buy` |
 | `name` | string | Human-readable name for the media plan |
 | `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100) |
 | `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
@@ -240,9 +235,8 @@ import { testAgent } from '@adcp/client/testing';
 
 // No brief = standard catalog products for maximum reach
 const result = await testAgent.getProducts({
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     delivery_type: 'non_guaranteed'
@@ -261,9 +255,8 @@ from adcp.testing import test_agent
 async def discover_standard_catalog():
     # No brief = standard catalog products for maximum reach
     result = await test_agent.simple.get_products(
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'delivery_type': 'non_guaranteed'
@@ -286,9 +279,8 @@ import { testAgent } from '@adcp/client/testing';
 // Find products supporting both video and display
 const result = await testAgent.getProducts({
   brief: 'Brand awareness campaign with video and display',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     format_types: ['video', 'display']
@@ -308,9 +300,8 @@ async def discover_multi_format():
     # Find products supporting both video and display
     result = await test_agent.simple.get_products(
         brief='Brand awareness campaign with video and display',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'format_types': ['video', 'display']
@@ -333,9 +324,8 @@ import { testAgent } from '@adcp/client/testing';
 // Find products within budget and date range for specific countries and channels
 const result = await testAgent.getProducts({
   brief: 'Q2 campaign for athletic footwear in North America',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     start_date: '2025-04-01',
@@ -364,9 +354,8 @@ async def discover_with_budget_and_dates():
     # Find products within budget and date range for specific countries and channels
     result = await test_agent.simple.get_products(
         brief='Q2 campaign for athletic footwear in North America',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'start_date': '2025-04-01',
@@ -398,9 +387,8 @@ import { testAgent } from '@adcp/client/testing';
 // Get products with property tags
 const result = await testAgent.getProducts({
   brief: 'Sports content',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   }
 });
 
@@ -422,9 +410,8 @@ async def discover_property_tags():
     # Get products with property tags
     result = await test_agent.simple.get_products(
         brief='Sports content',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         }
     )
 
@@ -449,9 +436,8 @@ import { testAgent } from '@adcp/client/testing';
 // Find guaranteed delivery products for measurement
 const result = await testAgent.getProducts({
   brief: 'Guaranteed delivery for lift study',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     delivery_type: 'guaranteed',
@@ -472,9 +458,8 @@ async def discover_guaranteed():
     # Find guaranteed delivery products for measurement
     result = await test_agent.simple.get_products(
         brief='Guaranteed delivery for lift study',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'delivery_type': 'guaranteed',
@@ -497,9 +482,8 @@ import { testAgent } from '@adcp/client/testing';
 
 // Find products that only accept IAB standard formats
 const result = await testAgent.getProducts({
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   filters: {
     standard_formats_only: true
@@ -518,9 +502,8 @@ from adcp.testing import test_agent
 async def discover_standard_formats():
     # Find products that only accept IAB standard formats
     result = await test_agent.simple.get_products(
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         filters={
             'standard_formats_only': True
@@ -535,7 +518,7 @@ asyncio.run(discover_standard_formats())
 
 ### Commerce Product Discovery
 
-Use `product_selectors` with a brand manifest to discover advertising products where your catalog items have matches at specific retailers:
+Use `product_selectors` with a brand to discover advertising products where your catalog items have matches at specific retailers:
 
 <CodeGroup>
 
@@ -544,13 +527,8 @@ import { testAgent } from '@adcp/client/testing';
 
 // Discover retail media products for specific catalog items
 const result = await testAgent.getProducts({
-  brand_manifest: {
-    name: 'Kraft Heinz',
-    url: 'https://kraftheinz.com',
-    product_catalog: {
-      feed_url: 'https://kraftheinz.com/products.xml',
-      feed_format: 'google_merchant_center'
-    }
+  brand: {
+    domain: 'acmecorp.com'
   },
   product_selectors: {
     manifest_tags: ['ketchup', 'organic'],
@@ -577,13 +555,8 @@ from adcp.testing import test_agent
 async def discover_commerce_products():
     # Discover retail media products for specific catalog items
     result = await test_agent.simple.get_products(
-        brand_manifest={
-            'name': 'Kraft Heinz',
-            'url': 'https://kraftheinz.com',
-            'product_catalog': {
-                'feed_url': 'https://kraftheinz.com/products.xml',
-                'feed_format': 'google_merchant_center'
-            }
+        brand={
+            'domain': 'acmecorp.com'
         },
         product_selectors={
             'manifest_tags': ['ketchup', 'organic'],
@@ -605,7 +578,7 @@ asyncio.run(discover_commerce_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brand_manifest":{"name":"Kraft Heinz","url":"https://kraftheinz.com","product_catalog":{"feed_url":"https://kraftheinz.com/products.xml","feed_format":"google_merchant_center"}},"product_selectors":{"manifest_tags":["ketchup","organic"],"manifest_category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  '{"brand":{"domain":"acmecorp.com"},"product_selectors":{"manifest_tags":["ketchup","organic"],"manifest_category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -637,9 +610,8 @@ import { testAgent } from '@adcp/client/testing';
 // Filter products by property list from governance agent
 const result = await testAgent.getProducts({
   brief: 'Brand-safe inventory for family brand',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   },
   property_list: {
     agent_url: 'https://governance.example.com',
@@ -666,9 +638,8 @@ async def discover_with_property_list():
     # Filter products by property list from governance agent
     result = await test_agent.simple.get_products(
         brief='Brand-safe inventory for family brand',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         },
         property_list={
             'agent_url': 'https://governance.example.com',
@@ -724,9 +695,8 @@ import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
 // WITH authentication - full catalog with pricing
 const fullCatalog = await testAgent.getProducts({
   brief: 'Premium CTV inventory for brand awareness',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   }
 });
 
@@ -740,9 +710,8 @@ console.log(`First product pricing: ${fullCatalog.data.products[0].pricing_optio
 // WITHOUT authentication - limited public catalog
 const publicCatalog = await testAgentNoAuth.getProducts({
   brief: 'Premium CTV inventory for brand awareness',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'acmecorp.com'
   }
 });
 
@@ -762,9 +731,8 @@ async def compare_auth():
     # WITH authentication - full catalog with pricing
     full_catalog = await test_agent.simple.get_products(
         brief='Premium CTV inventory for brand awareness',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         }
     )
 
@@ -774,9 +742,8 @@ async def compare_auth():
     # WITHOUT authentication - limited public catalog
     public_catalog = await test_agent_no_auth.simple.get_products(
         brief='Premium CTV inventory for brand awareness',
-        brand_manifest={
-            'name': 'Nike',
-            'url': 'https://nike.com'
+        brand={
+            'domain': 'acmecorp.com'
         }
     )
 
@@ -827,7 +794,7 @@ POST /api/mcp/call_tool
   "name": "get_products",
   "arguments": {
     "brief": "CTV inventory for sports audience",
-    "brand_manifest": { "name": "Nike", "url": "https://nike.com" }
+    "brand": { "domain": "acmecorp.com" }
   }
 }
 
@@ -891,7 +858,7 @@ POST /api/mcp/call_tool
   "name": "get_products",
   "arguments": {
     "brief": "Premium inventory across all formats for luxury automotive brand",
-    "brand_manifest": { "name": "Porsche", "url": "https://porsche.com" },
+    "brand": { "domain": "acmecorp.com" },
     "pushNotificationConfig": {
       "url": "https://buyer.com/webhooks/adcp/get_products",
       "authentication": {
@@ -944,7 +911,7 @@ POST /api/a2a
         "skill": "get_products",
         "parameters": {
           "brief": "CTV inventory for sports audience",
-          "brand_manifest": { "name": "Nike", "url": "https://nike.com" }
+          "brand": { "domain": "acmecorp.com" }
         }
       }
     }]
@@ -1042,7 +1009,7 @@ POST /api/a2a
         "skill": "get_products",
         "parameters": {
           "brief": "Premium inventory across all formats for luxury automotive brand",
-          "brand_manifest": { "name": "Porsche", "url": "https://porsche.com" }
+          "brand": { "domain": "acmecorp.com" }
         }
       }
     }]

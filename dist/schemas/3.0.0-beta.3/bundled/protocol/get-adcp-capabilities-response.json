@@ -898,16 +898,27 @@
           },
           "additionalProperties": true
         },
-        "brand_manifest_url": {
+        "brand_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to brand manifest with colors, fonts, logos, tone"
+          "description": "URL to brand.json with colors, fonts, logos, tone"
         }
       },
       "required": [
         "endpoint",
         "capabilities"
       ]
+    },
+    "creative": {
+      "type": "object",
+      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
+      "properties": {
+        "supports_brief": {
+          "type": "boolean",
+          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
+        }
+      },
+      "additionalProperties": true
     },
     "extensions_supported": {
       "type": "array",
@@ -985,7 +996,7 @@
   ],
   "additionalProperties": true,
   "_bundled": {
-    "generatedAt": "2026-02-12T12:28:49.146Z",
+    "generatedAt": "2026-02-18T07:46:11.738Z",
     "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
   }
 }

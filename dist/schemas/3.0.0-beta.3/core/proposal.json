@@ -7,7 +7,7 @@
   "properties": {
     "proposal_id": {
       "type": "string",
-      "description": "Unique identifier for this proposal. Used to refine the proposal in subsequent get_products calls or to execute it via create_media_buy."
+      "description": "Unique identifier for this proposal. Used to execute it via create_media_buy."
     },
     "name": {
       "type": "string",

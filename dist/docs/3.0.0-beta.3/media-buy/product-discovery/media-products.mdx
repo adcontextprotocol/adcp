@@ -496,7 +496,7 @@ This ensures a consistent user experience regardless of what product metadata is
 
 ## Proposals
 
-Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can refine conversationally and execute directly.
+Publishers can return **proposals** alongside products - structured media plans with budget allocations that buyers can execute directly.
 
 ### What Are Proposals?
 
@@ -504,7 +504,6 @@ A proposal is a recommended buying strategy that groups products with suggested 
 
 Key characteristics:
 - **Actionable**: Buyers execute proposals directly via `create_media_buy` with a `proposal_id`
-- **Refinable**: Buyers can request changes via natural language in subsequent `get_products` calls
 - **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
 - **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
@@ -577,9 +576,9 @@ The `tags` field enables grouping allocations by dimension:
 - **By channel**: desktop (50%) + mobile (20%) + in-app (30%) = 100%
 - **By language**: German (40%) + French (60%) = 100%
 
-### Conversational Refinement
+### Iterating on Proposals
 
-Proposals support iterative refinement through natural language:
+Proposals can be refined through session continuity. Within the same session (`context_id` in MCP, `contextId` in A2A), subsequent `get_products` calls carry conversation history, so the publisher can interpret follow-up briefs in context:
 
 ```
 // Initial request
@@ -589,16 +588,15 @@ get_products({
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Refinement request
+// Follow-up within the same session
 get_products({
-  proposal_id: "swiss_balanced_v1",
   brief: "focus more on German speakers - try 60/40 instead of 40/60"
 })
 
-// Response includes updated proposal "swiss_balanced_v2" with adjusted allocations
+// Publisher remembers the conversation and returns an updated proposal
 ```
 
-The publisher interprets the natural language instructions and returns an updated proposal. This mimics the back-and-forth of traditional media planning conversations.
+See [Context & Sessions](/docs/building/integration/context-sessions) for how session continuity works across protocols.
 
 ### Executing a Proposal
 
@@ -607,12 +605,12 @@ To execute a proposal, provide the `proposal_id` and `total_budget` in `create_m
 ```json
 {
   "buyer_ref": "swiss_q1_campaign",
-  "proposal_id": "swiss_balanced_v2",
+  "proposal_id": "swiss_balanced_v1",
   "total_budget": {
     "amount": 50000,
     "currency": "USD"
   },
-  "brand_manifest": { ... },
+  "brand": { "domain": "acmecorp.com" },
   "start_time": "2025-04-01T00:00:00Z",
   "end_time": "2025-04-30T23:59:59Z"
 }

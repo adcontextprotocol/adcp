@@ -45,9 +45,9 @@
       },
       "minItems": 1
     },
-    "brand_manifest": {
-      "$ref": "/schemas/3.0.0-beta.3/core/brand-manifest-ref.json",
-      "description": "Brand information manifest serving as the namespace and identity for this media buy. Provides brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest. Can be cached and reused across multiple requests."
+    "brand": {
+      "$ref": "/schemas/3.0.0-beta.3/core/brand-ref.json",
+      "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
     },
     "po_number": {
       "type": "string",
@@ -144,7 +144,7 @@
   },
   "required": [
     "buyer_ref",
-    "brand_manifest",
+    "brand",
     "start_time",
     "end_time"
   ],

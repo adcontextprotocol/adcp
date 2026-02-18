@@ -277,7 +277,7 @@ async function runTests() {
   const BUNDLED_DIR = path.join(__dirname, '../dist/schemas');
   const latestBundledPath = path.join(BUNDLED_DIR, 'latest', 'bundled');
   const bundledVersionDirs = fs.existsSync(BUNDLED_DIR)
-    ? fs.readdirSync(BUNDLED_DIR).filter(d => /^\d+\.\d+\.\d+$/.test(d))
+    ? fs.readdirSync(BUNDLED_DIR).filter(d => /^\d+\.\d+\.\d+(-[\w.]+)?$/.test(d))
     : [];
 
   const bundledPath = fs.existsSync(latestBundledPath) ? latestBundledPath

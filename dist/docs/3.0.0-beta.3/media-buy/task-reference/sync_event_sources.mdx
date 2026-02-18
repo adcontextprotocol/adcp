@@ -89,7 +89,7 @@ asyncio.run(main())
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account_id` | string | Yes | Account to configure event sources for |
-| `event_sources` | EventSource[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
+| `event_sources` | [EventSource](/docs/media-buy/conversion-tracking/#event-source)[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed event sources on the account not in this request are removed (default: false) |
 
 ### Event Source Object
@@ -98,7 +98,7 @@ asyncio.run(main())
 |-------|------|----------|-------------|
 | `event_source_id` | string | Yes | Unique identifier for this event source |
 | `name` | string | No | Human-readable name |
-| `event_types` | EventType[] | No | Event types this source handles. If omitted, accepts all event types. |
+| `event_types` | [EventType](/docs/media-buy/conversion-tracking/#event-types)[] | No | Event types this source handles. If omitted, accepts all event types. |
 | `allowed_domains` | string[] | No | Domains authorized to send events for this source |
 
 ## Response
@@ -394,6 +394,7 @@ The response includes setup details for each event source. The `setup` object te
 
 ## Next Steps
 
+- [Conversion Tracking](/docs/media-buy/conversion-tracking/) - Data model, optimization goals, and the end-to-end flow
 - [log_event](/docs/media-buy/task-reference/log_event) - Send marketing events to configured event sources
+- [create_media_buy](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization) - Set optimization goals on packages referencing event sources
 - [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor conversion metrics in delivery reports
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Set optimization goals on packages referencing event sources

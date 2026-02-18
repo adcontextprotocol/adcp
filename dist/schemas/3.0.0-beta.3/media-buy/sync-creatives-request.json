@@ -118,12 +118,8 @@
             },
             "assets": {
               "promoted_offerings": {
-                "brand_manifest": {
-                  "url": "https://retailer.com",
-                  "colors": {
-                    "primary": "#C41E3A",
-                    "secondary": "#165B33"
-                  }
+                "brand": {
+                  "domain": "acmeretailer.com"
                 }
               },
               "generation_prompt": {

@@ -25,9 +25,9 @@
       "$ref": "/schemas/3.0.0-beta.3/property/property-list-filters.json",
       "description": "Dynamic filters to apply when resolving the list"
     },
-    "brand_manifest": {
-      "$ref": "/schemas/3.0.0-beta.3/core/brand-manifest.json",
-      "description": "Brand identity and requirements. When provided, the agent automatically applies appropriate rules based on brand characteristics (industry, target_audience, etc.)."
+    "brand": {
+      "$ref": "/schemas/3.0.0-beta.3/core/brand-ref.json",
+      "description": "Brand reference. When provided, the agent automatically applies appropriate rules based on brand characteristics (industry, target_audience, etc.). Resolved at execution time."
     },
     "context": {
       "$ref": "/schemas/3.0.0-beta.3/core/context.json"
