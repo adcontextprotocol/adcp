@@ -632,12 +632,12 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'search_members',
     description:
-      'Search for member organizations that can help with specific needs. Searches member names, descriptions, taglines, offerings, and tags using natural language. Use this when users ask about finding vendors, consultants, implementation partners, managed services, or anyone who can help them with AdCP adoption. Returns public member profiles with contact info.',
-    usage_hints: 'use for "find someone to run a sales agent", "who can help me implement AdCP", "find a CTV partner", "looking for managed services", "need a consultant"',
+      'Search for member ORGANIZATIONS (companies) that offer specific capabilities or services. Searches member names, descriptions, taglines, offerings, and tags. Use this when users want to find vendors, consultants, implementation partners, or managed services. The query should reflect what the user actually needs (e.g., "CTV measurement", "sales agent implementation") — not a generic term like "partner". Returns public member profiles with contact info.',
+    usage_hints: 'use for "find someone to run a sales agent", "who can help me implement AdCP", "find a CTV partner", "looking for managed services", "need a consultant". Do NOT use for finding individual people or contacts at specific companies.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Natural language search query' },
+        query: { type: 'string', description: 'What the user is looking for — use their specific need (e.g., "CTV measurement partner", "sales agent implementation"). Never use "partner" alone as the query.' },
         offerings: { type: 'array', items: { type: 'string', enum: ['buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent', 'si_agent', 'governance_agent', 'publisher', 'consulting', 'other'] }, description: 'Filter by offerings' },
         limit: { type: 'number', description: 'Max results (default 5)' },
       },

@@ -2639,7 +2639,7 @@ async function handleChannelMessage({
     if (participated) {
       // When multiple humans are in the thread, only respond if the message
       // is clearly directed at Addie (mentions her name, or replies to her).
-      if (isMultiPartyThread(slackThreadMessages, context.botUserId)
+      if (isMultiPartyThread(slackThreadMessages, context.botUserId, userId)
           && !isDirectedAtAddie(messageText, slackThreadMessages, event.ts, userId, context.botUserId)) {
         const uniqueHumans = new Set(
           slackThreadMessages.map(msg => msg.user).filter(u => u && u !== context.botUserId)
