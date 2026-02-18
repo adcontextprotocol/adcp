@@ -1,0 +1,158 @@
+---
+title: "Migrating channels"
+description: Step-by-step guide to migrating from v2's 9 channels to v3's 19 planning-oriented media channels
+testable: true
+---
+
+# Migrating channels
+
+AdCP v3 replaces v2's 9 channels with 19 planning-oriented channels that reflect how buyers allocate budgets. Five channels carry over unchanged, while the rest are split, removed, or renamed.
+
+## Why the channel model changed
+
+v2 mixed format-oriented channels (`video`, `audio`, `native`) with planning-oriented ones (`social`, `ctv`, `dooh`). Buyers don't plan budgets around rendering technology — they plan around media types. A video budget gets split between OLV, CTV, and cinema. An audio budget spans radio, streaming, and podcasts.
+
+v3 channels consistently match how agencies structure media plans.
+
+## Channel mapping
+
+| v2 channel | v3 channel(s) | Notes |
+|------------|---------------|-------|
+| `display` | `display` | Unchanged |
+| `video` | `olv`, `linear_tv`, `cinema` | Split by distribution (`ctv` was already separate in v2) |
+| `audio` | `radio`, `streaming_audio` | Split by distribution (`podcast` was already separate in v2) |
+| `native` | Removed | Use format-level properties instead |
+| `social` | `social` | Unchanged |
+| `ctv` | `ctv` | Unchanged |
+| `podcast` | `podcast` | Unchanged |
+| `dooh` | `dooh` | Unchanged |
+| `retail` | `retail_media` | Renamed for clarity |
+
+## Complete v3 channel enum
+
+All 19 values from the `channels.json` schema:
+
+```
+display, olv, social, search, ctv, linear_tv,
+radio, streaming_audio, podcast, dooh, ooh,
+print, cinema, email, gaming, retail_media,
+influencer, affiliate, product_placement
+```
+
+| Channel | Description |
+|---------|-------------|
+| `display` | Digital display advertising (banners, native, rich media) across web and app |
+| `olv` | Online video advertising outside CTV (pre-roll, outstream, in-app video) |
+| `social` | Social media platforms |
+| `search` | Search engine advertising and search networks |
+| `ctv` | Connected TV and streaming on television screens |
+| `linear_tv` | Traditional broadcast and cable television |
+| `radio` | Traditional AM/FM radio broadcast |
+| `streaming_audio` | Digital audio streaming services |
+| `podcast` | Podcast advertising (host-read or dynamically inserted) |
+| `dooh` | Digital out-of-home screens in public spaces |
+| `ooh` | Classic out-of-home (physical billboards, transit, etc.) |
+| `print` | Newspapers, magazines, and other print publications |
+| `cinema` | Movie theater advertising |
+| `email` | Email advertising and sponsored newsletter content |
+| `gaming` | In-game advertising across platforms (intrinsic in-game, rewarded video, playable ads) |
+| `retail_media` | Retail media networks and commerce marketplaces |
+| `influencer` | Creator and influencer marketing partnerships |
+| `affiliate` | Affiliate networks, comparison sites, and performance-based partnerships |
+| `product_placement` | Product placement, branded content, and sponsorship integrations |
+
+<Note>
+The `gaming` channel covers all in-game advertising. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget, `olv` when it comes from a video budget.
+</Note>
+
+## Migrating `video` products
+
+The v2 `video` channel must be split across 3 v3 channels based on distribution (`ctv` was already a separate v2 channel):
+
+- **`olv`** — Online video (web, mobile app, social): pre-roll, outstream, in-app video
+- **`linear_tv`** — Traditional broadcast and cable television
+- **`cinema`** — Movie theater pre-show advertising
+
+A single publisher may support multiple channels. A streaming service might declare both `olv` and `ctv` if their inventory serves both mobile and TV.
+
+## Migrating `audio` products
+
+The v2 `audio` channel splits into 2 v3 channels (`podcast` was already a separate v2 channel):
+
+- **`radio`** — Traditional AM/FM radio broadcast
+- **`streaming_audio`** — Digital audio streaming services (music platforms)
+
+## Migrating `native` products
+
+v3 removes `native` as a channel. Native is a rendering style, not a budget category.
+
+If you have products tagged `native` in v2, assign the appropriate v3 channel based on how the budget is planned:
+- Native display ads -> `display`
+- Native social ads -> `social`
+- Native content recommendations -> `display` or `affiliate` depending on model
+
+## Migrating `retail` products
+
+Simple rename from `retail` to `retail_media`.
+
+## Multi-channel products
+
+v3 products declare an array of channels, so a single product can span multiple channels. Here's a capabilities response showing a seller that supports multiple channels:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3]
+  },
+  "supported_protocols": ["media_buy"],
+  "media_buy": {
+    "portfolio": {
+      "primary_channels": ["display", "olv", "ctv"],
+      "publisher_domains": ["pinnaclemedia.example.com"],
+      "primary_countries": ["US"]
+    }
+  }
+}
+```
+
+When products are returned from `get_products`, each product's `channels` array declares which channels that product is sold as:
+
+```json
+{
+  "channels": ["olv", "ctv"]
+}
+```
+
+## Declaring channel support in capabilities
+
+Buyers should call `get_adcp_capabilities` to discover which channels a seller supports before filtering `get_products` requests. The `portfolio.primary_channels` field lists the seller's main channels.
+
+## Migration steps
+
+<Steps>
+  <Step title="Audit channel usage">
+    Find all places your code reads or writes channel values.
+  </Step>
+  <Step title="Map old to new">
+    Use the mapping table above to convert each value. Note that `display`, `social`, `ctv`, `podcast`, and `dooh` are unchanged.
+  </Step>
+  <Step title="Handle multi-mapping">
+    Where v2 `video` or `audio` maps to multiple v3 channels, classify each product by its distribution context.
+  </Step>
+  <Step title="Update filters">
+    If your buyer agent filters by channel, update to the new values.
+  </Step>
+  <Step title="Update capabilities">
+    Implement `get_adcp_capabilities` with correct channel declarations.
+  </Step>
+  <Step title="Test validation">
+    v3 schema validation will reject old channel values like `video`, `audio`, `native`, and `retail`.
+  </Step>
+</Steps>
+
+See the [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) for full definitions and design rationale.
+
+---
+
+**Related:** [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)

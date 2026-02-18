@@ -1,0 +1,394 @@
+---
+title: AdCP v3
+description: "Overview of AdCP v3: new capabilities, breaking changes, and migration guides"
+---
+
+# AdCP v3
+
+AdCP v3 expands the protocol beyond media buying into brand identity, governance, media planning, and conversational brand experiences.
+
+## At a glance
+
+| Area | v2.x | v3.x |
+|------|------|------|
+| **Protocol scope** | Media Buy, Signals, Creative | + Governance, Sponsored Intelligence, Brand Protocol |
+| **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
+| **Accounts** | No formal account model | `sync_accounts` with billing models and trust levels |
+| **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
+| **Channel model** | 9 channels | 19 planning-oriented channels |
+| **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
+| **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
+| **Geo targeting** | Implicit US-centric | Explicit named systems (global) |
+
+---
+
+## New capabilities
+
+### Brand Protocol
+
+Buy-side identity through `/.well-known/brand.json`. Just as publishers use `adagents.json` to declare properties and authorized agents, brands use `brand.json` to declare their identity, brand hierarchy, and authorized operators.
+
+| Sell side | Buy side |
+|-----------|----------|
+| Publisher | **House** (corporate entity) |
+| Property | **Brand** (advertising identity) |
+| `adagents.json` | **`brand.json`** |
+
+Four variants: **House Portfolio** (full brand hierarchy inline), **Brand Agent** (dynamic via MCP), **House Redirect** (sub-brand to house domain), and **Authoritative Location** (hosted URL).
+
+Given any domain, the protocol resolves to a canonical brand:
+
+```
+shoes.novabrands.example.com
+  -> fetch /.well-known/brand.json
+  -> { "house": "novabrands.example.com" }
+  -> fetch novabrands.example.com/.well-known/brand.json
+  -> search brands[] for property matching "shoes.novabrands.example.com"
+  -> Result: { house: "novabrands.example.com", brand_id: "nova_athletics" }
+```
+
+**Use cases:** creative generation (resolve domain to brand manifest), brand verification (check `authorized_operators`), reporting roll-up (group campaigns by house).
+
+<Card title="Brand Protocol" icon="arrow-right" href="/docs/brand-protocol">
+  Full specification including brand.json variants, resolution flow, and brand manifests.
+</Card>
+
+---
+
+### Registry API
+
+The AgenticAdvertising.org registry provides a public REST API for resolving brands and properties, discovering agents, and validating authorization. Most endpoints require no authentication.
+
+| Capability | Endpoint | Description |
+|------------|----------|-------------|
+| Brand resolution | `/api/brands/resolve` | Resolve domain to canonical brand |
+| Property resolution | `/api/properties/resolve` | Resolve publisher domain to property info |
+| Agent discovery | `/api/registry/agents` | List registered agents with capabilities |
+| Authorization check | `/api/registry/validate/property-authorization` | Real-time authorization validation |
+| Search | `/api/search` | Search across brands, publishers, and properties |
+| Community brands | `/api/brands/save` | Contribute brand data (auth required) |
+
+The registry complements the protocol: resolve entities via the REST API, then transact via MCP/A2A tasks.
+
+<Card title="Registry API" icon="arrow-right" href="/docs/registry">
+  Complete endpoint reference with authentication and rate limits.
+</Card>
+
+---
+
+### Proposals and delivery forecasts
+
+Publishers can return **proposals** alongside products — structured media plans with percentage-based budget allocations that buyers can execute directly via `create_media_buy`. Proposals encode publisher expertise, replacing ad-hoc product lists with actionable buying strategies. They can be refined through session continuity — subsequent `get_products` calls within the same session carry conversation history.
+
+**Delivery forecasts** attach to proposals and allocations. Each forecast contains budget points with metric ranges (low/mid/high), showing how delivery scales with spend. Three forecast methods: **`estimate`** (rough approximation), **`modeled`** (predictive models), **`guaranteed`** (contractually committed). Forecasts can predict delivery metrics (impressions, reach, GRPs) and outcomes (purchases, leads, app installs). TV and radio forecasts use `demographic_system` and `demographic` for GRP-based planning.
+
+<Card title="Proposals and forecasting" icon="arrow-right" href="/docs/media-buy/product-discovery/media-products#proposals">
+  Complete documentation including budget curves, CTV, retail media, and broadcast audio examples.
+</Card>
+
+---
+
+### Accounts
+
+Formal billing relationships between buyers and sellers via `sync_accounts`.
+
+**Four entities:**
+
+| Entity | Question | How identified |
+|--------|----------|----------------|
+| **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
+| **Account** | Who gets billed? | `account_id` from `sync_accounts` |
+| **Operator** | Who operates the seat? | Domain (e.g., `acmeagency.example.com`) |
+| **Agent** | What software places buys? | Authenticated session |
+
+**Three billing models:** `brand` (brand invoiced directly), `operator` (agency invoiced), `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
+
+**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account_id` -> `create_media_buy` with `account_id`.
+
+<Card title="Accounts and agents" icon="arrow-right" href="/docs/building/integration/accounts-and-agents">
+  Complete documentation including operator authorization via brand.json.
+</Card>
+
+---
+
+### Capability discovery
+
+`get_adcp_capabilities` replaces static agent card extensions with runtime capability discovery. It returns supported protocols, account billing models, portfolio information, targeting systems, and governance features — all schema-validated.
+
+| Agent card extension | get_adcp_capabilities |
+|---------------------|----------------------|
+| Static JSON file | Runtime discovery |
+| Single file location | Works with any transport |
+| Limited schema | Rich capability declaration |
+| No validation | Schema-validated responses |
+
+<Card title="get_adcp_capabilities" icon="arrow-right" href="/docs/protocol/get_adcp_capabilities">
+  Full task reference with request/response schemas.
+</Card>
+
+---
+
+### Governance Protocol
+
+Brand suitability and inventory curation. Governance agents manage **property lists** (curated sets of properties for targeting or exclusion) and **content standards** (brand suitability policies with per-category block/allow rules). Buyers pass property lists to `get_products` for filtered inventory discovery, and use `calibrate_content` for collaborative alignment between brand and governance agent.
+
+<Card title="Governance Protocol" icon="arrow-right" href="/docs/governance/overview">
+  Full specification including property lists, content standards, and calibration.
+</Card>
+
+---
+
+### Sponsored Intelligence Protocol
+
+Conversational brand experiences in AI assistants. SI defines how AI assistants invoke brand agents for rich engagement (text, voice, UI components) without breaking the conversational flow. Sessions follow a consent-first model: user expresses interest, grants consent, then the brand agent engages conversationally with optional transaction handoff.
+
+<Card title="Sponsored Intelligence" icon="arrow-right" href="/docs/sponsored-intelligence/overview">
+  Full specification including session lifecycle, implementing agents, and implementing hosts.
+</Card>
+
+---
+
+### Signal catalogs for data providers
+
+Data providers can publish signal catalogs via `adagents.json`, following the same pattern as publishers declaring properties.
+
+| Publishers | Data providers |
+|------------|----------------|
+| Declare **properties** | Declare **signals** |
+| Use `property_ids` / `property_tags` | Use `signal_ids` / `signal_tags` |
+| Buyers verify via `publisher_domain` | Buyers verify via `data_provider_domain` |
+
+Signals now have explicit `value_type` (binary, categorical, numeric) with typed targeting, and structured `signal_id` objects that reference the data provider's catalog.
+
+<Card title="Data provider guide" icon="arrow-right" href="/docs/signals/data-providers">
+  Complete implementation guide for publishing signal catalogs.
+</Card>
+
+---
+
+## Breaking changes
+
+### Media channel taxonomy
+
+v2's 9 channels are replaced by 19 planning-oriented channels. Five channels carried over unchanged (`display`, `social`, `ctv`, `podcast`, `dooh`). The remaining four are split, removed, or renamed.
+
+<Warning>
+All code that reads or writes channel values must be updated.
+</Warning>
+
+| v2 channel | v3 channel(s) | Notes |
+|------------|---------------|-------|
+| `display` | `display` | Unchanged |
+| `video` | `olv`, `linear_tv`, `cinema` | Split by distribution context (`ctv` was already separate in v2) |
+| `audio` | `radio`, `streaming_audio` | Split by distribution (`podcast` was already separate in v2) |
+| `native` | Removed | Use format-level properties instead |
+| `social` | `social` | Unchanged |
+| `ctv` | `ctv` | Unchanged |
+| `podcast` | `podcast` | Unchanged |
+| `dooh` | `dooh` | Unchanged |
+| `retail` | `retail_media` | Renamed for clarity |
+
+New channels in v3 (no v2 equivalent): `search`, `linear_tv`, `radio`, `streaming_audio`, `ooh`, `print`, `cinema`, `email`, `gaming`, `retail_media`, `influencer`, `affiliate`, `product_placement`.
+
+<Note>
+The `gaming` channel covers intrinsic in-game ads, rewarded video, and playable ads. Rewarded video in gaming apps could also be classified as `olv` — use `gaming` when the inventory comes from a gaming budget.
+</Note>
+
+<Card title="Channels deep dive" icon="arrow-right" href="/docs/reference/migration/channels">
+  Complete mapping guide with examples for each v2 channel, multi-channel products, and capability discovery.
+</Card>
+
+---
+
+### Pricing option field renames
+
+v3 separates **hard constraints** (publisher-enforced prices) from **soft hints** (historical percentiles). `fixed_rate` becomes `fixed_price`, and `price_guidance.floor` moves to top-level `floor_price`.
+
+| v2 field | v3 field | Notes |
+|----------|----------|-------|
+| `fixed_rate` | `fixed_price` | Renamed for clarity (it's a price, not a rate) |
+| `price_guidance.floor` | `floor_price` | Moved to top level as hard constraint |
+
+These fields map to standard deal types: `fixed_price` corresponds to Programmatic Guaranteed (PG) and Preferred Deals, while `floor_price` corresponds to Private Marketplace (PMP) auctions. Open auction inventory omits both fields.
+
+<Card title="Pricing deep dive" icon="arrow-right" href="/docs/reference/migration/pricing">
+  Fixed-price vs auction examples, price guidance schema, flat-rate pricing, minimum spend, and transition period handling.
+</Card>
+
+---
+
+### Creative assignments with weighting
+
+`creative_ids` string arrays are replaced by `creative_assignments` objects that support delivery weighting and placement targeting.
+
+| v2 field | v3 field |
+|----------|----------|
+| `creative_ids` (string array) | `creative_assignments` (object array with `creative_id`, `weight`, `placement_ids`) |
+
+<Card title="Creatives deep dive" icon="arrow-right" href="/docs/reference/migration/creatives">
+  Weighted assignments, placement targeting, asset discovery with the unified `assets` array, repeatable groups, and format cards.
+</Card>
+
+---
+
+### Geo targeting with named systems
+
+Metro and postal targeting now require explicit system specification, supporting global markets. Values are grouped by system using `{ "system": "...", "values": [...] }` objects.
+
+| v2 field | v3 field |
+|----------|----------|
+| `geo_metros` (string array) | `geo_metros` (system/values objects) |
+| `geo_postal_codes` (string array) | `geo_postal_areas` (system/values objects) |
+
+v3 also adds `geo_metros_exclude` and `geo_postal_areas_exclude` for negative targeting (e.g., target the US except the New York DMA).
+
+<Card title="Geo targeting deep dive" icon="arrow-right" href="/docs/reference/migration/geo-targeting">
+  Metro and postal system reference tables, exclusion targeting, capability discovery, and a full targeting example.
+</Card>
+
+---
+
+### Other targeting changes
+
+v3 adds several targeting fields beyond geo:
+
+| Field | Description |
+|-------|-------------|
+| `daypart_targets` | Time-of-day and day-of-week targeting windows |
+| `age_restriction` | Age-gating for restricted content |
+| `device_platform` | Device type targeting (desktop, mobile, tablet, ctv) |
+| `language` | Content language targeting |
+
+These fields are optional additions — they don't replace any v2 fields.
+
+---
+
+### Unified asset discovery
+
+Formats now use an `assets` array with `required` boolean instead of `assets_required`. See the [creatives deep dive](/docs/reference/migration/creatives#asset-discovery).
+
+---
+
+### Privacy and consent
+
+AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, US Privacy String) should be passed via the brief's `ext` field or through transport-level headers. Sellers that require consent signals should declare this in `get_adcp_capabilities` using the extension mechanism.
+
+---
+
+## Removed in v3
+
+| Removed | Replacement |
+|---------|-------------|
+| `adcp-extension.json` agent card | `get_adcp_capabilities` task |
+| `list_authorized_properties` task | `get_adcp_capabilities` portfolio section |
+| `assets_required` in formats | `assets` array with `required` boolean |
+| `preview_image` in formats | `format_card` object |
+| `creative_ids` in packages | `creative_assignments` array |
+| `geo_postal_codes` | `geo_postal_areas` |
+| `fixed_rate` in pricing | `fixed_price` |
+| `price_guidance.floor` | `floor_price` (top-level) |
+
+---
+
+## Migration checklists
+
+<AccordionGroup>
+  <Accordion title="All implementations" defaultOpen>
+    These breaking changes affect anyone reading or writing AdCP data:
+
+    - [ ] Update channel enum values to [new taxonomy](/docs/reference/migration/channels)
+    - [ ] Rename `fixed_rate` -> `fixed_price` in [pricing options](/docs/reference/migration/pricing)
+    - [ ] Move `price_guidance.floor` -> `floor_price` ([pricing details](/docs/reference/migration/pricing))
+    - [ ] Replace `creative_ids` with [`creative_assignments`](/docs/reference/migration/creatives)
+    - [ ] Add system specification to [metro/postal targeting](/docs/reference/migration/geo-targeting)
+    - [ ] Rename `geo_postal_codes` -> `geo_postal_areas`
+    - [ ] Handle new `geo_metros_exclude` and `geo_postal_areas_exclude` fields
+    - [ ] Update format parsing to use [`assets` array](/docs/reference/migration/creatives#asset-discovery)
+    - [ ] Replace `preview_image` reads with [`format_card`](/docs/reference/migration/creatives#format-cards-replacing-preview_image) rendering
+    - [ ] Replace `list_authorized_properties` calls with `get_adcp_capabilities` portfolio
+    - [ ] Validate all requests/responses against v3 schemas
+  </Accordion>
+
+  <Accordion title="Seller agents (publishers, SSPs, networks)">
+    Update all data structures to v3 format (channels, pricing, geo targeting), then implement new capabilities:
+
+    - [ ] Implement `get_adcp_capabilities` task (including `account` capabilities)
+    - [ ] Remove `adcp-extension.json` from agent card
+    - [ ] Implement `sync_accounts` for account provisioning
+    - [ ] Return proposals with delivery forecasts from `get_products` when applicable
+    - [ ] Support property list filtering in `get_products` if integrating with governance agents
+  </Accordion>
+
+  <Accordion title="Buyer agents and orchestrators (DSPs, agencies, brands)">
+    Update all requests and response handling to v3 format, then integrate new capabilities:
+
+    - [ ] Resolve brands via [`brand.json`](/docs/brand-protocol) before placing buys
+    - [ ] Call `sync_accounts` to establish billing relationships
+    - [ ] Update to call `get_adcp_capabilities` for runtime discovery
+    - [ ] Evaluate proposals and delivery forecasts when returned by sellers
+    - [ ] Use the [Registry API](/docs/registry) for brand/property resolution and agent discovery
+    - [ ] Pass property lists to filter inventory when working with governance agents
+    - [ ] Invoke SI sessions when connecting users with brand agents
+  </Accordion>
+
+  <Accordion title="Signals agents (data providers, measurement vendors)">
+    Update schema references from v2 to v3. Signals Protocol doesn't use media channels in its core model.
+
+    - [ ] Update schema references from v2 to v3
+    - [ ] Ensure `get_adcp_capabilities` returns `major_versions: [3]`
+    - [ ] Return structured `signal_id` objects in `get_signals` responses
+    - [ ] Include `value_type` field in signal responses
+    - [ ] Support `signal_ids` parameter in `get_signals` requests for ID-based lookup
+  </Accordion>
+
+  <Accordion title="Data providers (new in v3)">
+    Publish signal catalogs via `adagents.json`. See [Data Provider Guide](/docs/signals/data-providers).
+
+    - [ ] Create signal catalog in `/.well-known/adagents.json`
+    - [ ] Define signals with `id`, `name`, `value_type`, and optional metadata
+    - [ ] Add `signal_tags` for grouping and efficient authorization
+    - [ ] Authorize signals agents using `signal_ids` or `signal_tags` authorization types
+    - [ ] Validate catalog using AdAgents.json Builder
+  </Accordion>
+
+  <Accordion title="Creative agents (creative management, DCO providers)">
+    Support new asset discovery and integrate brand manifests. Format `type` field (video, display, audio) is IAB creative classification, not media channels.
+
+    - [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
+    - [ ] Replace `preview_image` with `format_card` rendering
+    - [ ] Resolve brand manifests via `brand.json` for on-brand creative generation
+    - [ ] Update schema references from v2 to v3
+  </Accordion>
+
+  <Accordion title="Brands (new in v3)">
+    Establish buy-side identity. See [brand.json specification](/docs/brand-protocol/brand-json).
+
+    - [ ] Host `/.well-known/brand.json` on your domain
+    - [ ] Declare brand portfolio, properties, and authorized operators
+    - [ ] Optionally provide brand manifest data (logos, colors, fonts, tone) inline or via brand agent
+    - [ ] Register in the [community brand registry](/docs/registry) if not hosting `brand.json`
+  </Accordion>
+
+  <Accordion title="Governance agents (new in v3)">
+    Implement brand suitability capabilities. See [Governance Protocol](/docs/governance).
+
+    - [ ] Implement property list tasks (`create_property_list`, `get_property_list`, etc.)
+    - [ ] Implement content standards tasks (`create_content_standards`, `calibrate_content`, etc.)
+    - [ ] Implement `get_adcp_capabilities` with `governance` in `supported_protocols`
+  </Accordion>
+
+  <Accordion title="Sponsored Intelligence agents (new in v3)">
+    Implement conversational brand experiences. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+
+    - [ ] Implement SI session tasks (`si_initiate_session`, `si_send_message`, `si_terminate_session`)
+    - [ ] Implement `get_adcp_capabilities` with `sponsored_intelligence` in `supported_protocols`
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Getting help
+
+- **Community**: [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/adcp/issues)
+- **Support**: support@adcontextprotocol.org

@@ -60,7 +60,16 @@
             "pages": [
               "docs/intro",
               "docs/quickstart",
-              "docs/reference/migrating-to-v3"
+              {
+                "group": "AdCP v3",
+                "pages": [
+                  "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/channels",
+                  "docs/reference/migration/pricing",
+                  "docs/reference/migration/geo-targeting",
+                  "docs/reference/migration/creatives"
+                ]
+              }
             ]
           },
           {
@@ -526,7 +535,16 @@
             "pages": [
               "docs/intro",
               "docs/quickstart",
-              "docs/reference/migrating-to-v3"
+              {
+                "group": "AdCP v3",
+                "pages": [
+                  "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/channels",
+                  "docs/reference/migration/pricing",
+                  "docs/reference/migration/geo-targeting",
+                  "docs/reference/migration/creatives"
+                ]
+              }
             ]
           },
           {
