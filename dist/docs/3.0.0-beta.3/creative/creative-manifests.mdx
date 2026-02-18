@@ -7,7 +7,7 @@ Creative manifests define a creative preset: a reusable configuration of brand c
 
 A manifest does not define structure, layout, or rendering behavior. Instead, it supplies concrete asset values that satisfy the requirements defined by a creative format. When combined with a format definition, a manifest produces a renderable creative instance.
 
-For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/docs/creative).
+For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/dist/docs/3.0.0-beta.3/creative).
 
 
 ## Manifest Structure
@@ -100,7 +100,7 @@ Here's a complete creative manifest showing the current structure without redund
 
 ```json
 {
-  "$schema": "/schemas/core/creative-manifest.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
@@ -138,7 +138,7 @@ Static manifests contain all assets ready for immediate rendering. These are pro
 
 ```json
 {
-  "$schema": "/schemas/core/creative-manifest.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -180,7 +180,7 @@ Dynamic manifests include endpoints or code for real-time generation. These are 
 
 ```json
 {
-  "$schema": "/schemas/core/creative-manifest.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_dynamic_300x250"
@@ -241,7 +241,7 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
 }
 ```
 
-**DOOH-Specific Macros** (see [Universal Macros](/docs/creative/universal-macros) for complete list):
+**DOOH-Specific Macros** (see [Universal Macros](/dist/docs/3.0.0-beta.3/creative/universal-macros) for complete list):
 - `{SCREEN_ID}` - Unique identifier for the physical screen
 - `{VENUE_TYPE}` - Venue category (airport, mall, transit, highway, retail)
 - `{VENUE_LAT}` / `{VENUE_LONG}` - Physical location coordinates
@@ -262,7 +262,7 @@ Construct manifests directly by pairing format requirements with your assets:
 
 ```json
 {
-  "$schema": "/schemas/core/creative-manifest.json",
+  "$schema": "/schemas/3.0.0-beta.3/core/creative-manifest.json",
   "format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
@@ -283,7 +283,7 @@ Construct manifests directly by pairing format requirements with your assets:
 
 **2. AI-Generated (Optional)**
 
-Use `build_creative` to have a creative agent generate manifests from natural language briefs. See [Generative Creative](/docs/creative/generative-creative) for details.
+Use `build_creative` to have a creative agent generate manifests from natural language briefs. See [Generative Creative](/dist/docs/3.0.0-beta.3/creative/generative-creative) for details.
 
 ### Validating Manifests
 
@@ -399,7 +399,7 @@ Then reference in media buys by `creative_id`. Each manifest is for a single for
 
 Manifests support macro placeholders for dynamic values. AdCP uses universal macros that work consistently across all publishers.
 
-See [Universal Macros](/docs/creative/universal-macros) for complete documentation on available macros, macro substitution process, and format-specific macro support.
+See [Universal Macros](/dist/docs/3.0.0-beta.3/creative/universal-macros) for complete documentation on available macros, macro substitution process, and format-specific macro support.
 
 
 ## Best Practices
@@ -432,7 +432,7 @@ See [Universal Macros](/docs/creative/universal-macros) for complete documentati
 
 ### Repeatable Asset Groups
 
-For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
+For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asset Formats](/dist/docs/3.0.0-beta.3/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
 
 ## Schema Reference
 
@@ -442,7 +442,7 @@ For carousel, slideshow, and multi-asset formats, see the [Carousel & Multi-Asse
 
 ## Related Documentation
 
-- [Creative Formats](/docs/creative/formats) - Understanding format specifications and discovery
-- [Channel Guides](/docs/creative/channels/video) - Format examples across video, display, audio, DOOH, and carousels
-- [build_creative Task](/docs/creative/task-reference/build_creative)
-- [preview_creative Task](/docs/creative/task-reference/preview_creative)
+- [Creative Formats](/dist/docs/3.0.0-beta.3/creative/formats) - Understanding format specifications and discovery
+- [Channel Guides](/dist/docs/3.0.0-beta.3/creative/channels/video) - Format examples across video, display, audio, DOOH, and carousels
+- [build_creative Task](/dist/docs/3.0.0-beta.3/creative/task-reference/build_creative)
+- [preview_creative Task](/dist/docs/3.0.0-beta.3/creative/task-reference/preview_creative)

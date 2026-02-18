@@ -1,0 +1,61 @@
+name: Check Dist Docs Links
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dist/docs/**'
+      - 'scripts/rewrite-dist-links.sh'
+
+jobs:
+  check-dist-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for unversioned links in dist docs
+        run: |
+          ERRORS=0
+
+          if [ -z "$(ls -A dist/docs/ 2>/dev/null)" ]; then
+            echo "No dist/docs versions found — nothing to check."
+            exit 0
+          fi
+
+          for version_dir in dist/docs/*/; do
+            VERSION=$(basename "$version_dir")
+
+            # Markdown links pointing to unversioned /docs/
+            MARKDOWN_LINKS=$(grep -rl --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$MARKDOWN_LINKS" -gt 0 ]; then
+              echo "::error::$VERSION: $MARKDOWN_LINKS file(s) contain unversioned markdown links (](/docs/). Run: bash scripts/rewrite-dist-links.sh $VERSION"
+              grep -rn --include="*.md" --include="*.mdx" '](/docs/' "$version_dir" | head -5
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # JSX/HTML href links pointing to unversioned /docs/
+            HREF_LINKS=$(grep -rl --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$HREF_LINKS" -gt 0 ]; then
+              echo "::error::$VERSION: $HREF_LINKS file(s) contain unversioned href links (href=\"/docs/\"). Run: bash scripts/rewrite-dist-links.sh $VERSION"
+              grep -rn --include="*.md" --include="*.mdx" 'href="/docs/' "$version_dir" | head -5
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # JSON $schema refs without a version segment
+            # A versioned ref looks like /schemas/3.0.0-beta.3/... or /schemas/2.5.3/...
+            SCHEMA_REFS=$(grep -rn --include="*.md" --include="*.mdx" '"$schema": "/schemas/' "$version_dir" 2>/dev/null \
+              | grep -v '"/schemas/[0-9]' | wc -l | tr -d ' ')
+            if [ "$SCHEMA_REFS" -gt 0 ]; then
+              echo "::error::$VERSION: $SCHEMA_REFS unversioned \$schema ref(s) found. Run: bash scripts/rewrite-dist-links.sh $VERSION"
+              grep -rn --include="*.md" --include="*.mdx" '"$schema": "/schemas/' "$version_dir" | grep -v '"/schemas/[0-9]' | head -5
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "Fix by running: bash scripts/rewrite-dist-links.sh <version>"
+            exit 1
+          fi
+
+          echo "All dist/docs versions have correctly versioned links."

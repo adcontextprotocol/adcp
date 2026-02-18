@@ -7,7 +7,7 @@ Transform or generate a creative manifest for a specific format. This task takes
 
 **Key concept**: `build_creative` is fundamentally a **transformation** - it takes a creative manifest as input and produces a creative manifest as output. For pure generation (creating from scratch), the source manifest is minimal (just format and seed assets). For transformation (e.g., resizing, reformatting), the source is a complete creative.
 
-For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats.mdx#referencing-formats).
+For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/dist/docs/2.5.3/creative/formats.mdx#referencing-formats).
 
 ## Request Parameters
 
@@ -151,7 +151,7 @@ The response contains the transformed or generated creative manifest:
 ### Typical Generation Workflow
 
 1. **Build**: Use `build_creative` to generate/transform the manifest
-2. **Preview**: Use `preview_creative` to see how it renders (see [preview_creative](/docs/creative/task-reference/preview_creative))
+2. **Preview**: Use `preview_creative` to see how it renders (see [preview_creative](/dist/docs/2.5.3/creative/task-reference/preview_creative))
 3. **Sync**: Use `sync_creatives` to traffic the finalized creative
 
 ```json
@@ -402,7 +402,7 @@ Adapt a creative for mobile with specific design changes:
 ### Integration with Other Tasks
 
 1. **build_creative** → Generates manifest
-2. **preview_creative** → Renders the manifest (see [preview_creative](/docs/creative/task-reference/preview_creative))
+2. **preview_creative** → Renders the manifest (see [preview_creative](/dist/docs/2.5.3/creative/task-reference/preview_creative))
 3. **sync_creatives** → Traffics the finalized manifest
 
 This separation allows you to:

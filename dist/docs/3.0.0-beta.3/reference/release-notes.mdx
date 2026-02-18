@@ -11,7 +11,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ## Version 3.0.0-beta.3
 
-**Status:** Beta | [Migration Guide](/docs/reference/migrating-to-v3)
+**Status:** Beta | [Migration Guide](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3)
 
 ### What's New
 
@@ -21,7 +21,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Three-party billing model (brand, operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
 
-4. **Commerce Media** - `product_selectors` on `get_products` for commerce product discovery. `manifest_gtins` on promoted products for cross-retailer GTIN matching. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response aggregated totals and daily breakdown. See the [Commerce Media Guide](/docs/guides/commerce-media).
+4. **Commerce Media** - `product_selectors` on `get_products` for commerce product discovery. `manifest_gtins` on promoted products for cross-retailer GTIN matching. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response aggregated totals and daily breakdown. See the [Commerce Media Guide](/dist/docs/3.0.0-beta.3/guides/commerce-media).
 
 5. **Creative Delivery Reporting** - Per-creative metrics breakdown within `by_package` in delivery responses. New `get_creative_delivery` task on creative agents for variant-level delivery data with manifests. Three variant tiers: standard (1:1), asset group optimization, and generative creative. Format-level `reported_metrics` declare which metrics each format can provide.
 
@@ -67,7 +67,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ## Version 3.0.0-beta.2
 
-**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta2) | [Migration Guide](/docs/reference/migrating-to-v3)
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta2) | [Migration Guide](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3)
 
 Building on beta.1, this release adds account-level billing, property targeting controls, CTV technical specs, and agent-driven UI rendering for Sponsored Intelligence.
 
@@ -105,7 +105,7 @@ Building on beta.1, this release adds account-level billing, property targeting 
 
 ## Version 3.0.0-beta.1
 
-**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/docs/reference/migrating-to-v3)
+**Status:** Beta | [Full Changelog](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#300-beta1) | [Migration Guide](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3)
 
 <Warning>
 **This is a beta release.** While the API is stable for testing, breaking changes may occur before the final 3.0.0 release. We encourage early adopters to test and provide feedback.
@@ -113,15 +113,15 @@ Building on beta.1, this release adds account-level billing, property targeting 
 
 ### What's New
 
-Version 3.0.0 is a **major release** that expands AdCP beyond media buying into governance, brand suitability, and conversational commerce. See the [Migration Guide](/docs/reference/migrating-to-v3) for detailed upgrade instructions.
+Version 3.0.0 is a **major release** that expands AdCP beyond media buying into governance, brand suitability, and conversational commerce. See the [Migration Guide](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3) for detailed upgrade instructions.
 
 **🎯 Key Themes:**
 
-1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy).
 
 2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand suitability evaluation with collaborative calibration workflows.
 
-3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+3. **Sponsored Intelligence Protocol** - Conversational brand experiences in AI assistants. Defines how hosts invoke brand agent endpoints for rich engagement without breaking conversational flow. See [Sponsored Intelligence](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview).
 
 4. **Protocol-Level Capability Discovery** - `get_adcp_capabilities` task replaces agent card extensions, providing runtime discovery of capabilities, supported protocols, and geo targeting systems.
 
@@ -139,7 +139,7 @@ Version 3.0.0 is a **major release** that expands AdCP beyond media buying into 
 | Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
 | Asset discovery | `assets_required: [...]` | `assets: [{ asset_id, required }]` |
 
-See [Migration Guide](/docs/reference/migrating-to-v3) for detailed before/after examples and migration steps.
+See [Migration Guide](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3) for detailed before/after examples and migration steps.
 
 ### New Protocol Domains
 
@@ -159,7 +159,7 @@ Conversational brand experiences:
 - **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
 - **Commerce Handoff** - Seamless transition to ACP for transactions
 
-See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+See [Sponsored Intelligence Overview](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview) for complete documentation.
 
 ### New Features
 
@@ -182,13 +182,13 @@ See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for
 
 ### Quick Migration Checklist
 
-- [ ] Update channel enum values ([taxonomy guide](/docs/reference/media-channel-taxonomy))
+- [ ] Update channel enum values ([taxonomy guide](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy))
 - [ ] Replace `creative_ids` with `creative_assignments`
 - [ ] Add system specification to metro/postal targeting
 - [ ] Implement `get_adcp_capabilities` task
 - [ ] Update format parsing to use `assets` array
 
-**[View Complete Migration Guide →](/docs/reference/migrating-to-v3)**
+**[View Complete Migration Guide →](/dist/docs/3.0.0-beta.3/reference/migrating-to-v3)**
 
 ---
 

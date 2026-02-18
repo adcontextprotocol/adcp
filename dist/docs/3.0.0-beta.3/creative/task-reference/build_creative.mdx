@@ -7,7 +7,7 @@ Transform or generate a creative manifest for a specific format. This task takes
 
 **Key concept**: `build_creative` is fundamentally a **transformation** - it takes a creative manifest as input and produces a creative manifest as output. For pure generation (creating from scratch), the source manifest is minimal (just format and seed assets). For transformation (e.g., resizing, reformatting), the source is a complete creative.
 
-For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats.mdx#referencing-formats).
+For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/dist/docs/3.0.0-beta.3/creative/formats.mdx#referencing-formats).
 
 ## Request Parameters
 
@@ -27,7 +27,7 @@ For pure generation, provide a minimal source manifest with the required input a
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-request.json",
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
@@ -64,7 +64,7 @@ For transformation, provide the complete source manifest:
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-request.json",
   "message": "Adapt this creative for mobile, making the text larger and CTA more prominent",
   "creative_manifest": {
     "format_id": {
@@ -117,7 +117,7 @@ The response contains the transformed or generated creative manifest:
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -156,7 +156,7 @@ The response contains the transformed or generated creative manifest:
 ### Typical Generation Workflow
 
 1. **Build**: Use `build_creative` to generate/transform the manifest
-2. **Preview**: Use `preview_creative` to see how it renders (see [preview_creative](/docs/creative/task-reference/preview_creative))
+2. **Preview**: Use `preview_creative` to see how it renders (see [preview_creative](/dist/docs/3.0.0-beta.3/creative/task-reference/preview_creative))
 3. **Sync**: Use `sync_creatives` to traffic the finalized creative
 
 ```json
@@ -200,7 +200,7 @@ Generate a creative from scratch using a generative format that requires `promot
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-request.json",
   "message": "Create a display banner for our winter sale. Use warm colors and emphasize the 50% discount",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
@@ -236,7 +236,7 @@ Generate a creative from scratch using a generative format that requires `promot
 **Response**:
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -265,7 +265,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-request.json",
   "message": "Adapt this leaderboard creative to a 300x250 banner format",
   "creative_manifest": {
     "format_id": {
@@ -300,7 +300,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 **Response**:
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -333,7 +333,7 @@ Adapt a creative for mobile with specific design changes:
 
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-request.json",
   "message": "Make this mobile-friendly: increase text size, simplify the layout, and make the CTA button more prominent",
   "creative_manifest": {
     "format_id": {
@@ -371,7 +371,7 @@ Adapt a creative for mobile with specific design changes:
 **Response**:
 ```json
 {
-  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/build-creative-response.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -413,7 +413,7 @@ Adapt a creative for mobile with specific design changes:
 ### Integration with Other Tasks
 
 1. **build_creative** → Generates manifest
-2. **preview_creative** → Renders the manifest (see [preview_creative](/docs/creative/task-reference/preview_creative))
+2. **preview_creative** → Renders the manifest (see [preview_creative](/dist/docs/3.0.0-beta.3/creative/task-reference/preview_creative))
 3. **sync_creatives** → Traffics the finalized manifest
 
 This separation allows you to:

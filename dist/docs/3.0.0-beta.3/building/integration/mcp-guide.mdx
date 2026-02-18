@@ -5,7 +5,7 @@ keywords: [MCP integration, Model Context Protocol, tool calls, context manageme
 ---
 
 
-Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle).
 
 ## Testing AdCP via MCP
 
@@ -85,7 +85,7 @@ MCP responses use a **flat structure** where task-specific fields are at the top
 - **status**: Same values as A2A protocol for consistency
 - Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
 
-**Status Handling**: See [Task Lifecycle](/docs/building/implementation/task-lifecycle) for complete status handling patterns.
+**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle) for complete status handling patterns.
 
 ## Available Tools
 
@@ -119,9 +119,9 @@ await mcp.call('get_signals', {...});      // Discover audience signals
 await mcp.call('activate_signal', {...});  // Deploy signals to platforms
 ```
 
-**Task Parameters**: See individual task documentation in [Media Buy](/docs/media-buy) and [Signals](/docs/signals/overview) sections.
+**Task Parameters**: See individual task documentation in [Media Buy](/dist/docs/3.0.0-beta.3/media-buy) and [Signals](/dist/docs/3.0.0-beta.3/signals/overview) sections.
 
-**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Webhooks](/docs/building/implementation/webhooks).
+**Task Management**: For comprehensive guidance on tracking async operations, polling patterns, and webhook integration, see [Webhooks](/dist/docs/3.0.0-beta.3/building/implementation/webhooks).
 
 ## Context Management (MCP-Specific)
 
@@ -544,7 +544,7 @@ const response = await session.call('create_media_buy',
 // You don't need to poll - just wait for the webhook
 ```
 
-See [Webhooks](/docs/building/implementation/webhooks) for webhook payload formats and handling examples.
+See [Webhooks](/dist/docs/3.0.0-beta.3/building/implementation/webhooks) for webhook payload formats and handling examples.
 
 ### Handling Different Statuses
 
@@ -638,7 +638,7 @@ const adcpTools = tools.filter(t => t.name.startsWith('adcp_') ||
 ### AdCP Extension via MCP Server Card
 
 <Note>
-**Recommended**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The server card extension provides static metadata for tool catalogs and registries.
+**Recommended**: Use [`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) for runtime capability discovery. The server card extension provides static metadata for tool catalogs and registries.
 </Note>
 
 MCP servers can declare AdCP support via a server card at `/.well-known/mcp.json` (or `/.well-known/server.json`). AdCP-specific metadata goes in the `_meta` field using the `adcontextprotocol.org` namespace.
@@ -689,7 +689,7 @@ if (adcpMeta) {
 **Benefits:**
 - Clients can discover AdCP capabilities without making test calls
 - Declare which protocol domains you implement (media_buy, creative, signals)
-- Declare which typed extensions you support (see [Context & Sessions](/docs/building/integration/context-sessions#extension-fields-ext))
+- Declare which typed extensions you support (see [Context & Sessions](/dist/docs/3.0.0-beta.3/building/integration/context-sessions#extension-fields-ext))
 - Enable compatibility checks based on version
 
 **Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.
@@ -723,9 +723,9 @@ try {
 
 ## Next Steps
 
-- **Core Concepts**: Read [Task Lifecycle](/docs/building/implementation/task-lifecycle) for status handling and workflows
-- **Task Reference**: See [Media Buy Tasks](/docs/media-buy) and [Signals](/docs/signals/overview)
-- **Protocol Comparison**: Compare with [A2A integration](/docs/building/integration/a2a-guide)
+- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle) for status handling and workflows
+- **Task Reference**: See [Media Buy Tasks](/dist/docs/3.0.0-beta.3/media-buy) and [Signals](/dist/docs/3.0.0-beta.3/signals/overview)
+- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/3.0.0-beta.3/building/integration/a2a-guide)
 - **Examples**: Find complete workflow examples in Core Concepts
 
-**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/docs/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**
+**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**

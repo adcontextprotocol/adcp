@@ -676,7 +676,7 @@ AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handle
 - **Updates**: Protocol-specific mechanisms
 - **Long-running tasks**: Different timeout and notification patterns
 
-See [Async Operations](/docs/building/implementation/async-operations) for protocol-specific async patterns and examples.
+See [Async Operations](/dist/docs/3.0.0-beta.3/building/implementation/async-operations) for protocol-specific async patterns and examples.
 
 ## Best Practices
 
@@ -705,20 +705,20 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
 
 ## Next Steps
 
 After updating a media buy:
 
-1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative assignments changed
+1. **Verify Changes**: Use [`get_media_buy_delivery`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) to confirm updates
+2. **Upload New Creatives**: Use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives) if creative assignments changed
 3. **Monitor Performance**: Track impact of changes on campaign metrics
-4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
+4. **Optimize Further**: Use [`provide_performance_feedback`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 
 ## Learn More
 
-- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
-- [Async Operations](/docs/building/implementation/async-operations) - Async patterns and status checking
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Initial campaign creation
+- [Media Buy Lifecycle](/dist/docs/3.0.0-beta.3/media-buy/media-buys/) - Complete campaign workflow
+- [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
+- [Async Operations](/dist/docs/3.0.0-beta.3/building/implementation/async-operations) - Async patterns and status checking
+- [create_media_buy](/dist/docs/3.0.0-beta.3/media-buy/task-reference/create_media_buy) - Initial campaign creation
