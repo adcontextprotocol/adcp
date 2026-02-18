@@ -190,13 +190,15 @@ Retrieve measurement results for campaign or channel scope.
 | `polling` | Agent-hosted poll endpoint |
 | `provider_managed` | Measurement provider connects directly to ad platforms |
 
-### Tracker type
+### URL asset type (trackers)
+
+Measurement trackers reuse the shared URL asset type enum from the creative domain.
 
 | Value | Description |
 |-------|-------------|
-| `impression` | Fired on ad render |
-| `click` | Fired on user click |
-| `viewability` | Fired when ad meets viewability threshold |
+| `tracker_pixel` | Fires GET request on event, expects pixel/204 response |
+| `tracker_script` | Measurement SDK loaded as `<script>` tag (OMID verification, native event trackers) |
+| `clickthrough` | User click destination (landing page) |
 
 ### Reporting cadence
 

@@ -85,10 +85,13 @@ The response uses a discriminated union. Check for `errors` before accessing `me
 
 ### Tracker object
 
+Trackers reuse the shared `url-asset.json` schema from the creative domain.
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `type` | string | Tracking event type: `impression`, `click`, `viewability` |
 | `url` | string (URI) | Tracking URL to fire on the corresponding event |
+| `url_type` | string | URL asset type: `tracker_pixel` (fires GET, expects pixel/204) or `tracker_script` (measurement SDK loaded as `<script>`) |
+| `description` | string | What this tracker measures (e.g., "Impression tracker") |
 
 ## Example request
 
@@ -170,12 +173,14 @@ The response uses a discriminated union. Check for `errors` before accessing `me
       },
       "trackers": [
         {
-          "type": "impression",
-          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=imp"
+          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=imp",
+          "url_type": "tracker_pixel",
+          "description": "Impression tracker"
         },
         {
-          "type": "click",
-          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=clk"
+          "url": "https://measure.example.com/pixel/acme/mb_acme_display_q1?evt=clk",
+          "url_type": "tracker_pixel",
+          "description": "Click tracker"
         }
       ]
     },
@@ -200,8 +205,9 @@ The response uses a discriminated union. Check for `errors` before accessing `me
       },
       "trackers": [
         {
-          "type": "impression",
-          "url": "https://measure.example.com/pixel/acme/acme-olv-q1-2026?evt=imp"
+          "url": "https://measure.example.com/pixel/acme/acme-olv-q1-2026?evt=imp",
+          "url_type": "tracker_pixel",
+          "description": "Impression tracker"
         }
       ]
     }

@@ -48,7 +48,7 @@
                 "type": "array",
                 "description": "Tracking URLs to add to ad serving for this media buy",
                 "items": {
-                  "$ref": "/schemas/core/tracker.json"
+                  "$ref": "/schemas/core/assets/url-asset.json"
                 }
               },
               "errors": {

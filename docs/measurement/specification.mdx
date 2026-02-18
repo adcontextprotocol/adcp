@@ -170,7 +170,7 @@ Exposure events are the raw material for measurement. The protocol defines a sta
 
 ### Schema
 
-**Schema**: [`core/exposure-event.json`](/schemas/core/exposure-event.json)
+**Schema**: `core/exposure-event.json`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -225,7 +225,7 @@ Readiness is a first-class concept in the protocol. When a measurement agent doe
 
 ### Readiness object
 
-**Schema**: [`core/readiness.json`](/schemas/core/readiness.json)
+**Schema**: `core/readiness.json`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -281,7 +281,7 @@ Readiness objects appear in two places:
 
 Measurement agents declare capabilities in the `measurement` section of `get_adcp_capabilities`. This structure enables orchestrators to select agents and methodologies programmatically.
 
-**Schema**: [`core/measurement-capabilities.json`](/schemas/core/measurement-capabilities.json)
+**Schema**: `core/measurement-capabilities.json`
 
 ### Capability structure
 
@@ -435,7 +435,7 @@ The Measurement Protocol defines two tasks.
 
 ### register_media_buys
 
-**Schema**: [`measurement/register-media-buys-request.json`](/schemas/measurement/register-media-buys-request.json) / [`measurement/register-media-buys-response.json`](/schemas/measurement/register-media-buys-response.json)
+**Schema**: `measurement/register-media-buys-request.json` / `measurement/register-media-buys-response.json`
 
 Register media buys with a measurement agent and negotiate data transport.
 
@@ -444,13 +444,13 @@ Register media buys with a measurement agent and negotiate data transport.
 - Orchestrators SHOULD include `data_transport` on the first call to negotiate transport
 - Measurement agents MUST return an `action` for each media buy (`created`, `updated`, `unchanged`, or `failed`)
 - Measurement agents MUST return `readiness` for each successfully registered media buy
-- Measurement agents MAY return `trackers` (impression, click, or viewability URLs) for the orchestrator to attach to ad serving
+- Measurement agents MAY return `trackers` (URL assets with `tracker_pixel` or `tracker_script` type) for the orchestrator to attach to ad serving
 - When `delete_missing` is `true`, measurement agents MUST deregister media buys not included in the request
 - When `dry_run` is `true`, measurement agents MUST preview changes without applying them
 
 ### get_measurement_results
 
-**Schema**: [`measurement/get-measurement-results-request.json`](/schemas/measurement/get-measurement-results-request.json) / [`measurement/get-measurement-results-response.json`](/schemas/measurement/get-measurement-results-response.json)
+**Schema**: `measurement/get-measurement-results-request.json` / `measurement/get-measurement-results-response.json`
 
 Retrieve measurement results for campaign-level or channel-level analysis.
 
@@ -593,14 +593,14 @@ Each registered media buy transitions through a measurement lifecycle:
 
 | Schema | Description |
 |--------|-------------|
-| [`measurement/register-media-buys-request.json`](/schemas/measurement/register-media-buys-request.json) | register_media_buys request |
-| [`measurement/register-media-buys-response.json`](/schemas/measurement/register-media-buys-response.json) | register_media_buys response |
-| [`measurement/get-measurement-results-request.json`](/schemas/measurement/get-measurement-results-request.json) | get_measurement_results request |
-| [`measurement/get-measurement-results-response.json`](/schemas/measurement/get-measurement-results-response.json) | get_measurement_results response |
-| [`core/exposure-event.json`](/schemas/core/exposure-event.json) | Exposure event |
-| [`core/measurement-capabilities.json`](/schemas/core/measurement-capabilities.json) | Measurement capabilities |
-| [`core/readiness.json`](/schemas/core/readiness.json) | Readiness assessment |
-| [`core/measurement-metric.json`](/schemas/core/measurement-metric.json) | Measurement metric |
-| [`core/data-transport.json`](/schemas/core/data-transport.json) | Data transport configuration |
-| [`core/channel-reallocation.json`](/schemas/core/channel-reallocation.json) | Channel reallocation recommendation |
-| [`core/tracker.json`](/schemas/core/tracker.json) | Tracking URL |
+| `measurement/register-media-buys-request.json` | register_media_buys request |
+| `measurement/register-media-buys-response.json` | register_media_buys response |
+| `measurement/get-measurement-results-request.json` | get_measurement_results request |
+| `measurement/get-measurement-results-response.json` | get_measurement_results response |
+| `core/exposure-event.json` | Exposure event |
+| `core/measurement-capabilities.json` | Measurement capabilities |
+| `core/readiness.json` | Readiness assessment |
+| `core/measurement-metric.json` | Measurement metric |
+| `core/data-transport.json` | Data transport configuration |
+| `core/channel-reallocation.json` | Channel reallocation recommendation |
+| `core/assets/url-asset.json` | Tracking URL (reuses creative URL asset schema) |

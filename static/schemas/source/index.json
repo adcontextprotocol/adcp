@@ -266,10 +266,6 @@
           "$ref": "/schemas/core/confidence-interval.json",
           "description": "Statistical confidence interval for measurement results (Bayesian credible or frequentist)"
         },
-        "tracker": {
-          "$ref": "/schemas/core/tracker.json",
-          "description": "Tracking URL provided by a measurement agent"
-        },
         "results-delivery": {
           "$ref": "/schemas/core/results-delivery.json",
           "description": "Configuration for measurement results delivery (webhook and/or polling)"
@@ -635,10 +631,6 @@
         "measurement-reporting-cadence": {
           "$ref": "/schemas/enums/measurement-reporting-cadence.json",
           "description": "Reporting frequency for measurement agents (daily, weekly, on_model_refresh)"
-        },
-        "tracker-type": {
-          "$ref": "/schemas/enums/tracker-type.json",
-          "description": "Types of tracking pixels or URLs (click, impression, viewability)"
         },
         "media-buy-sync-action": {
           "$ref": "/schemas/enums/media-buy-sync-action.json",

@@ -257,16 +257,19 @@ Return trackers in each media buy's registration response:
       "measurement_status": "pending_data",
       "trackers": [
         {
-          "type": "impression",
-          "url": "https://measurement.example.com/t/imp?mb=mb_001&cb=${CACHEBUSTER}"
+          "url": "https://measurement.example.com/t/imp?mb=mb_001&cb=${CACHEBUSTER}",
+          "url_type": "tracker_pixel",
+          "description": "Impression tracker"
         },
         {
-          "type": "click",
-          "url": "https://measurement.example.com/t/clk?mb=mb_001"
+          "url": "https://measurement.example.com/t/clk?mb=mb_001",
+          "url_type": "tracker_pixel",
+          "description": "Click tracker"
         },
         {
-          "type": "viewability",
-          "url": "https://measurement.example.com/t/view?mb=mb_001&vt=${VIEWABILITY_TIME}"
+          "url": "https://measurement.example.com/t/view?mb=mb_001&vt=${VIEWABILITY_TIME}",
+          "url_type": "tracker_script",
+          "description": "Viewability tracker"
         }
       ]
     }
@@ -274,13 +277,7 @@ Return trackers in each media buy's registration response:
 }
 ```
 
-Tracker types:
-
-| Type | Fires when |
-|------|-----------|
-| `impression` | Ad is rendered |
-| `click` | User clicks on the ad |
-| `viewability` | Ad meets the viewability threshold |
+Trackers reuse the shared `url-asset.json` schema from the creative domain. Use `url_type` to distinguish between pixel trackers (`tracker_pixel`) and script-based measurement SDKs (`tracker_script`).
 
 The orchestrator is responsible for attaching these tracker URLs to the ad serving configuration of each media buy.
 
