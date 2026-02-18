@@ -109,6 +109,8 @@ asyncio.run(main())
 | `account_id` | string | Yes | Account to manage audiences for |
 | `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
+| `callback_url` | string | No | HTTPS URL to receive a webhook POST when audience matching completes or fails. Seller must declare support in `get_adcp_capabilities`. Use polling if you cannot expose a public endpoint. |
+| `callback_secret` | string | No | If provided, the seller includes this as the `X-AdCP-Callback-Secret` header on webhook POSTs for verification. |
 
 ### Audience Object
 
@@ -458,9 +460,48 @@ Platform matching is asynchronous. The `status` field reflects the current state
 
 `status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
 
-**Polling guidance**: Matching typically completes within 1–48 hours. Poll no more frequently than every 15 minutes. Use discovery-only calls (omit `audiences`) to check status without modifying data.
+**Preferred**: Pass `callback_url` to receive a webhook POST when matching completes. See [Completion Webhooks](#completion-webhooks).
+
+**Polling fallback**: If webhooks are not available, poll no more frequently than every 15 minutes. Use discovery-only calls (omit `audiences`) to check status without modifying data. Matching typically completes within 1–48 hours.
 
 **Agent workflow**: Upload returns `status: "processing"`. The agent must externalize the `audience_id` and `account_id` before the session ends. Resume in a future session by calling `sync_audiences` with no `audiences` array and filter the response by `audience_id`. When `status: "ready"`, proceed to `create_media_buy`.
+
+## Completion Webhooks
+
+If you can expose a public HTTPS endpoint, pass `callback_url` to receive a POST when matching completes instead of polling. The seller POSTs once per audience when its status changes.
+
+**Webhook payload:**
+
+```json test=false
+{
+  "event_type": "audience_status_changed",
+  "account_id": "acct_12345",
+  "audience_id": "existing_customers",
+  "seller_id": "cust_abc123",
+  "status": "ready",
+  "matched_count": 48200,
+  "last_synced_at": "2026-02-18T12:00:00Z"
+}
+```
+
+The payload mirrors the per-audience object from the success response with an additional `event_type` field. For `status: "too_small"`, `minimum_size` is included.
+
+**Verifying the request:**
+
+Pass `callback_secret` in the request and check the `X-AdCP-Callback-Secret` header on incoming POSTs:
+
+```javascript test=false
+app.post("/webhooks/audience-ready", (req, res) => {
+  if (req.headers["x-adcp-callback-secret"] !== process.env.AUDIENCE_WEBHOOK_SECRET) {
+    return res.status(401).end();
+  }
+  const { audience_id, status, matched_count } = req.body;
+  // proceed to create_media_buy if status === "ready"
+  res.status(200).end();
+});
+```
+
+Sellers must declare webhook support in `get_adcp_capabilities`. When `callback_url` is provided but the seller does not support webhooks, the sync proceeds normally and the buyer must poll for status.
 
 ## Hashing Requirements
 

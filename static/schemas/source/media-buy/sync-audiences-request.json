@@ -59,6 +59,15 @@
       "default": false,
       "description": "When true, buyer-managed audiences on the account not included in this sync will be removed. Does not affect seller-managed audiences. Do not combine with an omitted audiences array or all buyer-managed audiences will be deleted."
     },
+    "callback_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "HTTPS URL the seller will POST to when audience matching completes or fails. The payload mirrors the per-audience object from the success response, with an additional 'account_id' field and 'event_type: audience_status_changed'. Seller must declare support in get_adcp_capabilities. Optional — buyers without server infrastructure should use polling instead."
+    },
+    "callback_secret": {
+      "type": "string",
+      "description": "If provided, the seller includes this value as the X-AdCP-Callback-Secret header on all webhook POSTs, allowing the buyer to verify the request came from the seller."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
