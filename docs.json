@@ -854,6 +854,12 @@
       "apiKey": ""
     }
   },
+  "redirects": [
+    {
+      "source": "/docs/reference/migrating-to-v3",
+      "destination": "/docs/reference/whats-new-in-v3"
+    }
+  ],
   "modeToggle": {
     "default": "light",
     "isHidden": false
