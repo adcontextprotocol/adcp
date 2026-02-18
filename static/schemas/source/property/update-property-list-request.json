@@ -28,9 +28,9 @@
       "$ref": "/schemas/property/property-list-filters.json",
       "description": "Complete replacement for the filters (not a patch)"
     },
-    "brand_manifest": {
-      "$ref": "/schemas/core/brand-manifest.json",
-      "description": "Update brand identity and requirements"
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Update brand reference. Resolved to full brand identity at execution time."
     },
     "webhook_url": {
       "type": "string",

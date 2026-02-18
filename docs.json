@@ -280,7 +280,6 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
-              "docs/creative/brand-manifest",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
@@ -755,7 +754,6 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
-              "docs/creative/brand-manifest",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
@@ -863,5 +861,11 @@
   "modeToggle": {
     "default": "light",
     "isHidden": false
-  }
+  },
+  "redirects": [
+    {
+      "source": "/docs/creative/brand-manifest",
+      "destination": "/docs/brand-protocol/brand-json"
+    }
+  ]
 }

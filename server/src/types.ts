@@ -370,6 +370,7 @@ export interface HostedBrand {
 export interface DiscoveredBrand {
   id: string;
   domain: string;
+  brand_id?: string;
   canonical_domain?: string;
   house_domain?: string;
   brand_name?: string;

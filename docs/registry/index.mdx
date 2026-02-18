@@ -84,6 +84,16 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
 
 ### Brand Resolution
 
+These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
+
+| Source | Meaning |
+|--------|---------|
+| `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
+| `enriched` | Enriched via Brandfetch API |
+| `community` | Submitted by a community member |
+
+All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
@@ -187,7 +197,7 @@ Save or update a community brand in the registry. For existing brands, creates a
 }
 ```
 
-`domain` and `brand_name` are required. `brand_manifest` is optional. The brand's `source` is set to `"community"` by the server. Domains are normalized (protocol stripped, lowercased).
+`domain` and `brand_name` are required. `brand_manifest` (brand identity data) is optional. The brand's `source` is set to `"community"` by the server. Domains are normalized (protocol stripped, lowercased).
 
 <CodeGroup>
 

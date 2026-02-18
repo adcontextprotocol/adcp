@@ -39,9 +39,8 @@ import { testAgent } from '@adcp/client/testing';
 
 const products = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
-  brand_manifest: {
-    name: 'Nike',
-    url: 'https://nike.com'
+  brand: {
+    domain: 'nike.com'
   }
 });
 

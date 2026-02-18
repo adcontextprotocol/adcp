@@ -4,7 +4,11 @@ title: brand.json Specification
 
 The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports four mutually exclusive variants to accommodate different use cases.
 
-## File Location
+<Info>
+`brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/docs/registry/index).
+</Info>
+
+## File location
 
 Brands host the `brand.json` file at:
 
@@ -73,7 +77,7 @@ Designates an MCP agent that provides brand information:
 Optional fields:
 - `contact`: Contact information
 
-When a brand has an agent, the agent is the authoritative source for brand information. Agents implement `get_brand_manifest({ house, brand_id })` to return brand manifest data.
+When a brand has an agent, the agent is the authoritative source for brand identity data.
 
 ### 4. House Portfolio
 
@@ -101,7 +105,7 @@ Contains the full brand hierarchy with all brands and properties:
 }
 ```
 
-## House Definition
+## House definition
 
 The house object represents the corporate entity:
 
@@ -112,7 +116,7 @@ The house object represents the corporate entity:
 | `names` | array | No | Localized names |
 | `architecture` | enum | No | `branded_house`, `house_of_brands`, or `hybrid` |
 
-## Brand Definition
+## Brand definition
 
 Each brand in the `brands` array:
 
@@ -123,10 +127,10 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
-| `brand_agent` | object | No | Agent providing brand manifest data `{ url, id }` |
-| `logos` | array | No | Brand logo assets (inline manifest data) |
-| `colors` | object | No | Brand color palette (inline manifest data) |
-| `fonts` | object | No | Brand typography (inline manifest data) |
+| `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
+| `logos` | array | No | Brand logo assets |
+| `colors` | object | No | Brand color palette |
+| `fonts` | object | No | Brand typography |
 | `tone` | string | No | Brand voice and messaging tone |
 | `tagline` | string | No | Brand tagline or slogan |
 
@@ -158,7 +162,7 @@ Brand architecture classifications from marketing theory:
 | `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately from house | Converse |
 
-## Property Definition
+## Property definition
 
 Properties are digital touchpoints owned by brands:
 
@@ -182,7 +186,7 @@ Matches AdCP property-type enum:
 - `radio`
 - `streaming_audio`
 
-## Resolution Algorithm
+## Resolution algorithm
 
 To resolve a domain to a canonical brand:
 
@@ -197,7 +201,7 @@ To resolve a domain to a canonical brand:
 
 Maximum redirect depth: 3 hops.
 
-## Complete Examples
+## Complete examples
 
 ### Small Business
 
@@ -217,11 +221,10 @@ Maximum redirect depth: 3 hops.
       "properties": [
         {"type": "website", "identifier": "bobsburgers.com", "primary": true}
       ],
-      "brand_manifest": {
-        "name": "Bob's Burgers",
-        "url": "https://bobsburgers.com",
-        "colors": {"primary": "#FF6B35"}
-      }
+      "logos": [
+        { "url": "https://bobsburgers.com/logo.svg", "tags": ["icon"] }
+      ],
+      "colors": { "primary": "#FF6B35" }
     }
   ]
 }
@@ -312,7 +315,7 @@ Recommended cache TTLs:
 - Redirect files: 24 hours
 - Failed lookups: 1 hour
 
-## Best Practices
+## Best practices
 
 1. **Start simple**: Begin with minimal brand.json and add complexity as needed
 2. **Use redirects for subsidiaries**: Point brand domains to house domain

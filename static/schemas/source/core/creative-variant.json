@@ -16,7 +16,7 @@
         },
         "manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
-          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. Contains format_id and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand manifest. Pass to preview_creative to re-render."
+          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. Contains format_id and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand identity. Pass to preview_creative to re-render."
         },
         "generation_context": {
           "type": "object",

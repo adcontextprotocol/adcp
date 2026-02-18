@@ -15,7 +15,7 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 |---|---|---|
 | Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/docs/media-buy/advanced-topics/accounts-and-security) |
 | Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
-| Brand's product catalog | `brand_manifest.product_catalog` | [Brand Manifest](/docs/creative/brand-manifest) |
+| Brand's product catalog | `brand.product_catalog` | [Brand identity](/docs/brand-protocol/brand-json) |
 | GTIN / SKU selection for promotion | `product_selectors` (`manifest_gtins`, `manifest_skus`) | [Promoted Offerings](/docs/creative/promoted-offerings) |
 | Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
 | On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
@@ -26,7 +26,7 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 | ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 
-Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand manifest carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
 
 ## The Product Spectrum
 
@@ -269,9 +269,9 @@ Digital screens in physical retail locations — checkout lanes, end-caps, and e
 
 <Steps>
 
-### Brand Manifest with Product Catalog
+### Brand with product catalog
 
-The buyer provides a brand manifest that includes their product catalog feed. This enables SKU-level targeting and catalog-rendered creatives:
+The buyer provides a brand reference that includes their product catalog feed. This enables SKU-level targeting and catalog-rendered creatives:
 
 ```json
 {
@@ -290,18 +290,13 @@ The feed contains GTINs, titles, prices, and images — everything needed to ren
 
 ### Find Products
 
-Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand manifest enables the seller to filter by catalog eligibility:
+Query `get_products` with `channels: ["retail_media"]` to find commerce media products. The brand identity enables the seller to filter by catalog eligibility:
 
 ```json
 {
   "brief": "Promote our organic ketchup line across grocery retailers. Focus on high-intent shoppers.",
-  "brand_manifest": {
-    "name": "Kraft Heinz",
-    "url": "https://kraftheinz.com",
-    "product_catalog": {
-      "feed_url": "https://kraftheinz.com/products.xml",
-      "feed_format": "google_merchant_center"
-    }
+  "brand": {
+    "domain": "kraftheinz.com"
   },
   "filters": {
     "channels": ["retail_media"]
@@ -337,13 +332,8 @@ A single media buy can span multiple product types and retailers. Each package t
 {
   "buyer_ref": "kraft_ketchup_q2",
   "account_id": "kraft_grocery_acct_001",
-  "brand_manifest": {
-    "name": "Kraft Heinz",
-    "url": "https://kraftheinz.com",
-    "product_catalog": {
-      "feed_url": "https://kraftheinz.com/products.xml",
-      "feed_format": "google_merchant_center"
-    }
+  "brand": {
+    "domain": "kraftheinz.com"
   },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-04-30T23:59:59Z",
@@ -356,7 +346,7 @@ A single media buy can span multiple product types and retailers. Each package t
       "bid_price": 1.10,
       "pacing": "even",
       "promoted_offerings": {
-        "brand_manifest": "https://kraftheinz.com/manifest.json",
+        "brand": { "domain": "kraftheinz.com" },
         "product_selectors": {
           "manifest_gtins": ["00013000006408", "00013000006415", "00013000006422"],
           "manifest_tags": ["ketchup", "organic"]
@@ -531,7 +521,7 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 - [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) — `retail_media` channel definition
 - [Media Products](/docs/media-buy/product-discovery/media-products) — Product model reference
 - [Promoted Offerings](/docs/creative/promoted-offerings) — SKU selection and catalog-rendered creatives
-- [Brand Manifest](/docs/creative/brand-manifest) — Product catalog and brand identity
+- [Brand identity](/docs/brand-protocol/brand-json) — Product catalog and brand identity
 - [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) — CPC, CPM, flat rate details
 - [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goal` and conversion optimization
 - [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) — Commerce attribution metrics

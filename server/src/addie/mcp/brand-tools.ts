@@ -68,7 +68,7 @@ export const BRAND_TOOLS: AddieTool[] = [
         },
         brand_manifest: {
           type: 'object',
-          description: 'Brand manifest data (logo, colors, etc.)',
+          description: 'Brand identity data (logo, colors, etc.) stored in the registry',
         },
         source_type: {
           type: 'string',

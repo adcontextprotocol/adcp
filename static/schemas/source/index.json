@@ -98,14 +98,6 @@
           "$ref": "/schemas/core/property.json",
           "description": "An advertising property that can be validated via adagents.json"
         },
-        "brand-manifest": {
-          "$ref": "/schemas/core/brand-manifest.json",
-          "description": "Standardized brand information manifest for creative generation and media buying"
-        },
-        "brand-manifest-ref": {
-          "$ref": "/schemas/core/brand-manifest-ref.json",
-          "description": "Brand manifest reference (inline object or URL)"
-        },
         "creative-brief": {
           "$ref": "/schemas/core/creative-brief.json",
           "description": "Campaign-level creative context for AI-powered creative generation"
@@ -144,7 +136,7 @@
         },
         "promoted-offerings": {
           "$ref": "/schemas/core/promoted-offerings.json",
-          "description": "Complete offering specification combining brand manifest, product selectors, and asset filters"
+          "description": "Complete offering specification combining brand reference, product selectors, and asset filters"
         },
         "offering": {
           "$ref": "/schemas/core/offering.json",

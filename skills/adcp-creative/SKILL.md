@@ -73,10 +73,8 @@ Generate a creative from scratch or transform an existing creative to a differen
     },
     "assets": {
       "promoted_offerings": {
-        "brand_manifest": {
-          "url": "https://mybrand.com",
-          "name": "My Brand",
-          "colors": { "primary": "#FF5733" }
+        "brand": {
+          "domain": "mybrand.com"
         },
         "inline_offerings": [
           {
@@ -245,18 +243,18 @@ Common asset types:
 - `javascript`: JavaScript tags
 - `url`: Tracking pixels, clickthrough URLs
 
-### Brand Manifest
+### Brand identity
 
-For generative creatives, provide brand context:
+For generative creatives, provide brand context by domain:
 ```json
 {
-  "brand_manifest": {
-    "url": "https://brand.com",
-    "name": "Brand Name",
-    "colors": { "primary": "#FF0000", "secondary": "#0000FF" }
+  "brand": {
+    "domain": "acmecorp.com"
   }
 }
 ```
+
+The agent resolves the domain to retrieve the brand's identity (name, colors, guidelines, etc.) from its `brand.json` file.
 
 ### Generative vs Transformation
 
