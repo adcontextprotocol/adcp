@@ -460,11 +460,11 @@ Platform matching is asynchronous. The `status` field reflects the current state
 
 `status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
 
-**Async completion**: When the seller returns `status: "processing"`, the protocol assigns a `task_id`. Configure `push_notification_config` at the protocol level to receive a webhook when matching completes — the payload will include the full `sync_audiences` result. See the protocol task tracking documentation for details.
+**Upload confirmation**: The upload is accepted synchronously (1–2s). Configure `push_notification_config` at the protocol level to receive a webhook confirming the upload was accepted and the `task_id` assigned. This fires at upload time, not when matching completes.
 
-**Polling fallback**: Poll no more frequently than every 15 minutes using discovery-only calls (omit `audiences`). Matching typically completes within 1–48 hours.
+**Audience readiness**: Platform matching is independent of task completion and takes 1–48 hours. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to know when to start polling. Poll no more frequently than every 15 minutes using discovery-only calls (omit `audiences`).
 
-**Agent workflow**: Upload returns `status: "processing"`. The agent must externalize the `audience_id`, `account_id`, and `task_id` before the session ends. Resume in a future session — either via the webhook notification or by polling `sync_audiences` with no `audiences` array and filtering the response by `audience_id`. When `status: "ready"`, proceed to `create_media_buy`.
+**Agent workflow**: Upload, capture the `audience_id`, `account_id`, and initial status before the session ends. Resume in a future session: call `sync_audiences` with no `audiences` array, filter by `audience_id`, and check status. When `status: "ready"`, proceed to `create_media_buy`.
 
 ## Hashing Requirements
 
