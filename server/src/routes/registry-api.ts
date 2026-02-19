@@ -2003,8 +2003,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // If the community has already built out approved brand data, adopt it directly.
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
-        if (discovered?.brand_manifest && discovered.review_status !== 'pending') {
-          brandJson = discovered.brand_manifest;
+        const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+          brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
           const brandEntry: Record<string, unknown> = {
@@ -2022,11 +2023,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
         const existing = await brandDb.getHostedBrandByDomain(domain);
         if (existing) {
-          // Only lock once domain_verified=true — unverified claims can be overwritten
-          if (existing.domain_verified && existing.workos_organization_id && existing.workos_organization_id !== orgId) {
+          // Only lock once domain_verified=true — unverified claims can be overwritten.
+          // A verified domain with no org (e.g. crawler-verified before setup) is also locked.
+          if (existing.domain_verified && existing.workos_organization_id !== orgId) {
             return res.status(403).json({ error: 'This domain is managed by another organization' });
           }
-          await brandDb.updateHostedBrand(existing.id, { brand_json: brandJson });
+          // Update org attribution alongside brand data — keeps ownership current when
+          // an unverified entry is overwritten. WorkOS organization_domains uniqueness
+          // ensures only one org can hold a given domain, so this is safe.
+          await brandDb.updateHostedBrand(existing.id, {
+            brand_json: brandJson,
+            workos_organization_id: orgId || undefined,
+          });
         } else {
           await brandDb.createHostedBrand({
             workos_organization_id: orgId || undefined,
