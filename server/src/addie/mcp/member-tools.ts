@@ -63,7 +63,7 @@ const KNOWN_OPEN_SOURCE_AGENTS: Record<string, { org: string; repo: string; name
 /**
  * Public test agent credentials.
  * These are intentionally public and documented for testing purposes.
- * See: https://docs.adcontextprotocol.org/docs/media-buy/advanced-topics/testing
+ * See: https://docs.adcontextprotocol.org/docs/media-buy/advanced-topics/sandbox
  *
  * The token can be overridden via PUBLIC_TEST_AGENT_TOKEN env var if needed,
  * but defaults to the documented public token.

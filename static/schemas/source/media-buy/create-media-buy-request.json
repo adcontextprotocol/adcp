@@ -149,7 +149,9 @@
     "end_time"
   ],
   "dependencies": {
-    "proposal_id": ["total_budget"]
+    "proposal_id": [
+      "total_budget"
+    ]
   },
   "additionalProperties": true
 }

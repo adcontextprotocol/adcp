@@ -24,6 +24,10 @@
     "audience_targeting": {
       "type": "boolean",
       "description": "Supports sync_audiences task and audience_include/audience_exclude in targeting overlays for first-party CRM audience management"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Supports sandbox mode for operations without real platform calls or spend"
     }
   },
   "additionalProperties": {

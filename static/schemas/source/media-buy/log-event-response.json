@@ -56,6 +56,10 @@
           "minimum": 0,
           "maximum": 1
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -94,7 +98,8 @@
       "not": {
         "anyOf": [
           { "required": ["events_received"] },
-          { "required": ["events_processed"] }
+          { "required": ["events_processed"] },
+          { "required": ["sandbox"] }
         ]
       }
     }

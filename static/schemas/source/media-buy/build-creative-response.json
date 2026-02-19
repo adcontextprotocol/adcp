@@ -14,6 +14,10 @@
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "The generated or transformed creative manifest"
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -56,8 +60,17 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "creative_manifest"
+        "anyOf": [
+          {
+            "required": [
+              "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }

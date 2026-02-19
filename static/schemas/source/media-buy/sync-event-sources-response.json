@@ -81,6 +81,10 @@
             "additionalProperties": true
           }
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -117,7 +121,10 @@
       "required": ["errors"],
       "additionalProperties": true,
       "not": {
-        "required": ["event_sources"]
+        "anyOf": [
+          { "required": ["event_sources"] },
+          { "required": ["sandbox"] }
+        ]
       }
     }
   ]
