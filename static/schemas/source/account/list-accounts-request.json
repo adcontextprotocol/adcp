@@ -19,15 +19,15 @@
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
-    },
-    "sandbox": {
-      "type": "boolean",
-      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts."
     }
   },
   "required": [],
