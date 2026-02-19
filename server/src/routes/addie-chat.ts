@@ -10,7 +10,7 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { validate as uuidValidate } from "uuid";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import cors from "cors";
 import { createLogger } from "../logger.js";
 import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
@@ -292,14 +292,7 @@ const anonymousDailyLimiter = rateLimit({
   max: 50, // 50 messages per day for anonymous users
   store: new PostgresStore('anon-daily:'),
   skip: (req) => !!(req as any).user?.id, // Authenticated users bypass
-  keyGenerator: (req) => {
-    const ip = req.ip || 'unknown';
-    // Mask IPv6 to /64 subnet to prevent bypass
-    if (ip.includes(':')) {
-      return ip.split(':').slice(0, 4).join(':') + '::/64';
-    }
-    return ip;
-  },
+  keyGenerator: (req) => ipKeyGenerator(req.ip || ''),
   message: {
     error: "Daily limit reached",
     message: "You've reached today's free message limit. Sign in for unlimited access.",

@@ -1437,8 +1437,8 @@
 
       content.innerHTML = `
         <div class="detail-header">
-          ${member.logo_url
-            ? `<img src="${member.logo_url}" alt="${member.display_name}" class="detail-logo">`
+          ${(member.resolved_brand?.logo_url || member.logo_url)
+            ? `<img src="${member.resolved_brand?.logo_url || member.logo_url}" alt="${member.display_name}" class="detail-logo">`
             : `<div class="detail-logo-placeholder">${member.display_name.charAt(0)}</div>`
           }
           <div class="detail-title">

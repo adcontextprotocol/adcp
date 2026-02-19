@@ -24,21 +24,22 @@ async function main() {
     }
   }
 
-  // Initialize Addie (AAO Community Agent) with Bolt SDK
-  // The router is stored in the Bolt app and retrieved via getAddieBoltRouter()
-  try {
-    const result = await initializeAddieBolt();
-    if (result) {
-      console.log('Addie Bolt initialized successfully');
-    }
-  } catch (error) {
-    console.warn('Addie Bolt initialization failed (non-fatal):', error);
-    // Don't exit - Addie is optional
-  }
-
+  // Start HTTP server first, then initialize Addie in the background.
+  // initializeAddieBolt uses execSync (git clone) which blocks the event loop,
+  // so it must not run before the server starts listening.
   const httpServer = new HTTPServer();
   const port = parseInt(process.env.PORT || process.env.CONDUCTOR_PORT || "3000", 10);
   await httpServer.start(port);
+
+  // Addie (AAO Community Agent) with Bolt SDK — initialized after server is running.
+  // The router is stored in the Bolt app and retrieved via getAddieBoltRouter().
+  initializeAddieBolt().then((result) => {
+    if (result) {
+      console.log('Addie Bolt initialized successfully');
+    }
+  }).catch((error) => {
+    console.warn('Addie Bolt initialization failed (non-fatal):', error);
+  });
 }
 
 main().catch((error) => {

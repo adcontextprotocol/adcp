@@ -80,8 +80,8 @@ function renderMemberCard(member, options = {}) {
   return `
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
-        ${member.logo_url
-          ? `<img src="${member.logo_url}" alt="${member.display_name}" class="member-logo">`
+        ${member.resolved_brand?.logo_url
+          ? `<img src="${member.resolved_brand.logo_url}" alt="${member.display_name}" class="member-logo">`
           : `<div class="member-logo-placeholder">${member.display_name.charAt(0)}</div>`
         }
         <div class="member-info">

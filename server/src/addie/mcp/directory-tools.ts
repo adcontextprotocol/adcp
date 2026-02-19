@@ -205,7 +205,7 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
       headquarters: member.headquarters,
       markets: member.markets,
       website: member.contact_website,
-      logo: member.logo_url,
+      logo: member.resolved_brand?.logo_url,
       agents: member.agents.filter((a) => a.is_public).map((a) => ({
         name: a.name,
         type: a.type,

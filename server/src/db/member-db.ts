@@ -33,12 +33,12 @@ export class MemberDatabase {
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
         workos_organization_id, display_name, slug, tagline, description,
-        logo_url, logo_light_url, logo_dark_url, brand_color,
+        primary_brand_domain,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
         offerings, agents, publishers, data_providers, headquarters, markets, metadata, tags,
         is_public, show_in_carousel, is_founding_member
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW() < '2026-04-01'::timestamptz)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW() < '2026-04-01'::timestamptz)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -46,10 +46,7 @@ export class MemberDatabase {
         input.slug,
         input.tagline || null,
         input.description || null,
-        input.logo_url || null,
-        input.logo_light_url || null,
-        input.logo_dark_url || null,
-        input.brand_color || null,
+        input.primary_brand_domain || null,
         input.contact_email || null,
         input.contact_website || null,
         input.contact_phone || null,
@@ -119,10 +116,7 @@ export class MemberDatabase {
       display_name: 'display_name',
       tagline: 'tagline',
       description: 'description',
-      logo_url: 'logo_url',
-      logo_light_url: 'logo_light_url',
-      logo_dark_url: 'logo_dark_url',
-      brand_color: 'brand_color',
+      primary_brand_domain: 'primary_brand_domain',
       contact_email: 'contact_email',
       contact_website: 'contact_website',
       contact_phone: 'contact_phone',
