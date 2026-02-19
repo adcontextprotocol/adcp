@@ -124,10 +124,10 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
   // We use a custom parser that peeks at the body without consuming it for non-verification requests
   // Also handles interactive payloads which come as URL-encoded form data
   addieRouter.post('/events', (req, res, next) => {
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk: string) => { body += chunk; });
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => { chunks.push(chunk); });
     req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
       try {
         let parsed: Record<string, unknown>;
 
@@ -155,6 +155,7 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
         // We need to "replay" the body for Bolt since we consumed it
         // Store raw body and parsed body on request
         (req as any).rawBody = body;
+        (req as any)._body = true; // Tell body-parser the body is already parsed
         req.body = parsed;
         next();
       } catch (err) {
