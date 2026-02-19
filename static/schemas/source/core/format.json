@@ -474,9 +474,16 @@
         ]
       }
     },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Array of format IDs this format accepts as input creative manifests. When present, indicates this format can take existing creatives in these formats as input. Omit for formats that work from raw assets (images, text, etc.) rather than existing creatives.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
     "output_format_ids": {
       "type": "array",
-      "description": "For generative formats: array of format IDs that this format can generate. When a format accepts inputs like brand context and message, this specifies what concrete output formats can be produced (e.g., a generative banner format might output standard image banner formats).",
+      "description": "Array of format IDs that this format can produce as output. When present, indicates this format can build creatives in these output formats (e.g., a multi-publisher template format might produce standard display formats across many publishers). Omit for formats that produce a single fixed output (the format itself).",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
