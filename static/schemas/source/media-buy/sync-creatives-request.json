@@ -51,11 +51,6 @@
       "default": false,
       "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
     },
-    "sandbox": {
-      "type": "boolean",
-      "default": false,
-      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
-    },
     "validation_mode": {
       "$ref": "/schemas/enums/validation-mode.json",
       "default": "strict",

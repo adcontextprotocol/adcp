@@ -4,7 +4,9 @@ title: Sandbox mode
 
 ## Overview
 
-Every AdCP task supports sandbox mode. Pass `sandbox: true` on any request to run operations without making real platform calls or spending real money. Responses contain simulated but realistic data, letting you test the full media buying lifecycle risk-free.
+Sandbox mode lets buyers test the full media buying lifecycle — discovery, campaign creation, creatives, and delivery — without real platform calls or spending real money. Responses contain simulated but realistic data.
+
+Sandbox is **account-level**, not per-request. The seller provisions a dedicated sandbox account, and every request using that `account_id` is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
 
 ## Capabilities discovery
 
@@ -20,21 +22,25 @@ Sellers declare sandbox support in `get_adcp_capabilities`:
 }
 ```
 
-Check this before sending sandbox requests. If `sandbox` is not declared or is `false`, the seller may reject sandbox requests or ignore the flag.
+Check this before requesting a sandbox account. If `sandbox` is not declared or is `false`, the seller does not support sandbox mode.
+
+## Setting up a sandbox account
+
+Contact the seller to provision a sandbox account for your brand. The seller returns a sandbox `account_id` that you use in place of your production account ID. From the protocol's perspective, a sandbox account behaves identically to a real account — the seller internally flags it as test and suppresses real platform calls and billing.
 
 ## Usage
 
-Add `sandbox: true` to any task request:
+Pass your sandbox `account_id` in requests exactly as you would a production account. No additional flags are needed:
 
 ```json
+// get_products
 {
-  "brief": "Premium video inventory for Q2 campaign",
-  "brand_manifest": "https://acme-corp.com",
-  "sandbox": true
+  "account_id": "acct_sandbox_acme_001",
+  "brief": "Premium CTV inventory for Q2 campaign"
 }
 ```
 
-The response echoes the flag:
+The seller detects the sandbox account and returns simulated data. Success responses include `sandbox: true` to confirm:
 
 ```json
 {
@@ -50,8 +56,8 @@ The response echoes the flag:
 ```json
 // get_products
 {
-  "brief": "CTV inventory for brand awareness",
-  "sandbox": true
+  "account_id": "acct_sandbox_acme_001",
+  "brief": "CTV inventory for brand awareness"
 }
 ```
 
@@ -61,22 +67,23 @@ The response echoes the flag:
 // create_media_buy
 {
   "buyer_ref": "sandbox_test_001",
+  "account_id": "acct_sandbox_acme_001",
   "proposal_id": "prop_abc",
   "total_budget": { "amount": 50000, "currency": "USD" },
-  "brand_manifest": { "url": "https://acme-corp.com" },
+  "brand_manifest": "https://acme-corp.com",
   "start_time": { "start_type": "asap" },
-  "end_time": "2026-04-01T00:00:00Z",
-  "sandbox": true
+  "end_time": "2026-04-01T00:00:00Z"
 }
 ```
 
-The seller returns a simulated media buy with realistic IDs, packages, and creative deadlines - but nothing is booked on any real platform.
+The seller returns a simulated media buy with realistic IDs, packages, and creative deadlines — nothing is booked on any real platform.
 
 ### 3. Upload creatives
 
 ```json
 // sync_creatives
 {
+  "account_id": "acct_sandbox_acme_001",
   "creatives": [{
     "creative_id": "hero_video_30s",
     "name": "Brand Hero Video 30s",
@@ -95,8 +102,7 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
   }],
   "assignments": {
     "hero_video_30s": ["pkg_001"]
-  },
-  "sandbox": true
+  }
 }
 ```
 
@@ -105,44 +111,42 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
 ```json
 // get_media_buy_delivery
 {
-  "media_buy_ids": ["mb_sandbox_123"],
-  "sandbox": true
+  "account_id": "acct_sandbox_acme_001",
+  "media_buy_ids": ["mb_sandbox_123"]
 }
 ```
 
-The seller returns simulated delivery metrics - impressions, spend, pacing - as if the campaign were running.
+The seller returns simulated delivery metrics — impressions, spend, pacing — as if the campaign were running.
 
 ## Sandbox vs dry run
 
 Some tasks (`sync_creatives`, `sync_accounts`) also support a `dry_run` parameter. These serve different purposes:
 
-| | `sandbox` | `dry_run` |
+| | Sandbox account | `dry_run` |
 |---|---|---|
 | **Meaning** | Nothing is real | Preview changes without applying |
 | **Scope** | All tasks | sync_creatives, sync_accounts only |
 | **Side effects** | None (simulated) | None (preview only) |
 | **Use case** | Test the full lifecycle | Check what a sync would change |
 
-You can use both together. `sandbox: true, dry_run: true` previews what a sandbox sync would change without applying it.
-
 ## Seller implementation
 
-When `sandbox: true`:
+When a request arrives with a sandbox `account_id`:
 
-- **Do not** make real ad platform API calls (no Google Ad Manager orders, no DSP line items, etc.)
+- **Do not** make real ad platform API calls (no real orders, line items, etc.)
 - **Do not** charge real money or create real billing records
 - **Do** validate inputs the same way as production (reject invalid budgets, bad dates, etc.)
 - **Do** return realistic response shapes with simulated data
-- **Should** echo `sandbox: true` in success responses
+- **Should** include `sandbox: true` in success responses
 
-Sandbox errors are real validation errors. If a buyer sends an invalid budget in sandbox mode, return a real error response - don't simulate fake errors.
+Sandbox errors are real validation errors. If a buyer sends an invalid budget using a sandbox account, return a real error — don't simulate fake errors.
 
 ## Protocol compliance
 
 Sellers that declare `features.sandbox: true` in capabilities MUST:
 
-- Accept `sandbox: true` on all task requests
-- Return simulated responses without real side effects
-- Apply normal input validation (sandbox doesn't bypass validation)
+- Support provisioning sandbox accounts on request
+- Apply sandbox semantics to all requests using a sandbox account ID
+- Apply normal input validation (sandbox does not bypass validation)
 
-Sellers SHOULD echo `sandbox: true` in success responses.
+Sellers SHOULD include `sandbox: true` in success responses when processing a sandbox account request.

@@ -52,11 +52,6 @@
       "default": false,
       "description": "When true, event sources not included in this sync will be removed"
     },
-    "sandbox": {
-      "type": "boolean",
-      "default": false,
-      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

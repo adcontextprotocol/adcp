@@ -29,11 +29,17 @@
           },
           "billing": {
             "type": "string",
-            "enum": ["brand", "operator", "agent"],
+            "enum": [
+              "brand",
+              "operator",
+              "agent"
+            ],
             "description": "Who should be invoiced. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing across brands. Omit to accept the seller's default."
           }
         },
-        "required": ["house"],
+        "required": [
+          "house"
+        ],
         "additionalProperties": true
       },
       "maxItems": 1000
@@ -52,11 +58,6 @@
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Optional webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
     },
-    "sandbox": {
-      "type": "boolean",
-      "default": false,
-      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -64,7 +65,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["accounts"],
+  "required": [
+    "accounts"
+  ],
   "additionalProperties": true,
   "examples": [
     {

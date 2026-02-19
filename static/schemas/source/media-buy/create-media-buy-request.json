@@ -135,11 +135,6 @@
       ],
       "additionalProperties": true
     },
-    "sandbox": {
-      "type": "boolean",
-      "default": false,
-      "description": "When true, run in sandbox mode. No real platform calls, no real money spent. Responses contain simulated but realistic data."
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -154,7 +149,9 @@
     "end_time"
   ],
   "dependencies": {
-    "proposal_id": ["total_budget"]
+    "proposal_id": [
+      "total_budget"
+    ]
   },
   "additionalProperties": true
 }
