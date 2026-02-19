@@ -43,7 +43,7 @@ const cleanupTimer = setInterval(() => mcpOAuthStateDb.cleanupExpired(), CLEANUP
 cleanupTimer.unref();
 
 // ---------------------------------------------------------------------------
-// JWT verification (unchanged from previous implementation)
+// JWT verification
 // ---------------------------------------------------------------------------
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -79,7 +79,7 @@ async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
     payload = result.payload;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Token verification failed';
-    logger.warn({ err: message }, 'MCP OAuth: Token verification failed');
+    logger.warn({ err }, 'MCP OAuth: Token verification failed');
     throw new InvalidTokenError(message);
   }
 
