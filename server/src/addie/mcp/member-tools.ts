@@ -2554,7 +2554,7 @@ export function createMemberToolHandlers(
             ? profile.description.substring(0, 200) + '...'
             : profile.description
           : null,
-        logo_url: profile.logo_url || profile.logo_light_url || null,
+        logo_url: profile.resolved_brand?.logo_url || null,
         offerings: profile.offerings || [],
         headquarters: profile.headquarters || null,
         contact_website: profile.contact_website || null,

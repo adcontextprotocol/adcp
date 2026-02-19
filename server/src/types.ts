@@ -495,6 +495,13 @@ export interface DataProviderConfig {
   last_validated?: string;
 }
 
+export interface MemberBrandInfo {
+  domain: string;
+  logo_url?: string;
+  brand_color?: string;
+  verified: boolean;
+}
+
 export interface MemberProfile {
   id: string;
   workos_organization_id: string;
@@ -502,10 +509,8 @@ export interface MemberProfile {
   slug: string;
   tagline?: string;
   description?: string;
-  logo_url?: string;
-  logo_light_url?: string;
-  logo_dark_url?: string;
-  brand_color?: string;
+  primary_brand_domain?: string;
+  resolved_brand?: MemberBrandInfo;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -514,7 +519,7 @@ export interface MemberProfile {
   offerings: MemberOffering[];
   agents: AgentConfig[];
   publishers: PublisherConfig[]; // Publishers with adagents.json
-  brands: BrandConfig[]; // Brands owned by this member
+  brands: BrandConfig[]; // Brands managed by this member
   data_providers: DataProviderConfig[]; // Data providers with signal catalogs
   headquarters?: string; // City, Country (e.g., "Singapore", "New York, USA")
   markets: string[]; // Regions/markets served (e.g., ["APAC", "North America"])
@@ -534,10 +539,7 @@ export interface CreateMemberProfileInput {
   slug: string;
   tagline?: string;
   description?: string;
-  logo_url?: string;
-  logo_light_url?: string;
-  logo_dark_url?: string;
-  brand_color?: string;
+  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -560,10 +562,7 @@ export interface UpdateMemberProfileInput {
   display_name?: string;
   tagline?: string;
   description?: string;
-  logo_url?: string;
-  logo_light_url?: string;
-  logo_dark_url?: string;
-  brand_color?: string;
+  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;

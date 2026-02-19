@@ -27,6 +27,7 @@ export interface UpdateHostedBrandInput {
   domain_verified?: boolean;
   verification_token?: string;
   is_public?: boolean;
+  workos_organization_id?: string;
 }
 
 /**
@@ -157,6 +158,10 @@ export class BrandDatabase {
       updates.push(`is_public = $${paramIndex++}`);
       values.push(input.is_public);
     }
+    if (input.workos_organization_id !== undefined) {
+      updates.push(`workos_organization_id = $${paramIndex++}`);
+      values.push(input.workos_organization_id);
+    }
 
     if (updates.length === 0) {
       return this.getHostedBrandById(id);
@@ -188,6 +193,17 @@ export class BrandDatabase {
       [token, id]
     );
     return result.rows[0] ? token : null;
+  }
+
+  /**
+   * List all hosted brand domains (used by crawler for brand.json scanning).
+   */
+  async listAllHostedBrandDomains(): Promise<string[]> {
+    const result = await query<{ brand_domain: string }>(
+      'SELECT brand_domain FROM hosted_brands',
+      []
+    );
+    return result.rows.map(r => r.brand_domain);
   }
 
   // ========== Discovered Brands ==========

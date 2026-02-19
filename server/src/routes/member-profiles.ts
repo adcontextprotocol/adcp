@@ -14,9 +14,14 @@ import {
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
+import { query } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
+import { BrandDatabase } from "../db/brand-db.js";
+import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
+import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
+import type { MemberBrandInfo } from "../types.js";
 
 const logger = createLogger("member-profile-routes");
 
@@ -34,8 +39,46 @@ function isValidSlug(slug: string): boolean {
 export interface MemberProfileRoutesConfig {
   workos: WorkOS | null;
   memberDb: MemberDatabase;
+  brandDb: BrandDatabase;
   orgDb: OrganizationDatabase;
   invalidateMemberContextCache: () => void;
+}
+
+/**
+ * Resolve brand identity from the brand registry for a given domain.
+ * Checks hosted_brands first, then discovered_brands.
+ */
+async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
+  const hosted = await brandDb.getHostedBrandByDomain(domain);
+  if (hosted) {
+    const bj = hosted.brand_json as Record<string, unknown>;
+    // house_portfolio: read from brands[0]
+    const brands = bj.brands as Array<Record<string, unknown>> | undefined;
+    const primaryBrand = brands?.[0];
+    const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
+    const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+    return {
+      domain,
+      logo_url: logos?.[0]?.url as string | undefined,
+      brand_color: colors?.primary as string | undefined,
+      verified: hosted.domain_verified,
+    };
+  }
+
+  const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+  if (discovered) {
+    const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+    const logos = manifest?.logos as Array<Record<string, unknown>> | undefined;
+    const colors = manifest?.colors as Record<string, unknown> | undefined;
+    return {
+      domain,
+      logo_url: logos?.[0]?.url as string | undefined,
+      brand_color: colors?.primary as string | undefined,
+      verified: true, // discovered brands have live brand.json
+    };
+  }
+
+  return undefined;
 }
 
 /**
@@ -43,7 +86,7 @@ export interface MemberProfileRoutesConfig {
  * Returns a router for user profile routes (/api/me/member-profile)
  */
 export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Router {
-  const { workos, memberDb, orgDb, invalidateMemberContextCache } = config;
+  const { workos, memberDb, brandDb, orgDb, invalidateMemberContextCache } = config;
   const router = Router();
 
   // GET /api/me/member-profile - Get current user's organization's member profile
@@ -65,6 +108,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(requestedOrgId!);
+        if (profile?.primary_brand_domain) {
+          profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+        }
         logger.info({ userId: user.id, orgId: requestedOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
           profile: profile || null,
@@ -105,6 +151,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
+      if (profile?.primary_brand_domain) {
+        profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+      }
 
       // Get org name from WorkOS
       const org = await workos!.organizations.getOrganization(targetOrgId);
@@ -136,10 +185,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        logo_url,
-        logo_light_url,
-        logo_dark_url,
-        brand_color,
+        primary_brand_domain,
         contact_email,
         contact_website,
         contact_phone,
@@ -255,10 +301,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        logo_url,
-        logo_light_url,
-        logo_dark_url,
-        brand_color,
+        primary_brand_domain: primary_brand_domain || null,
         contact_email,
         contact_website,
         contact_phone,
@@ -384,6 +427,60 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         error: 'Failed to update member profile',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
+    }
+  });
+
+  // POST /api/me/member-profile/verify-brand - Check if member's domain pointer is live and mark verified
+  router.post('/verify-brand', requireAuth, async (req, res) => {
+    try {
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+      if (!orgId) {
+        return res.status(400).json({ error: 'No organization associated with this account' });
+      }
+
+      const profile = await memberDb.getProfileByOrgId(orgId);
+      if (!profile?.primary_brand_domain) {
+        return res.status(400).json({ error: 'No brand domain configured' });
+      }
+
+      const domain = profile.primary_brand_domain;
+      const brandManager = new BrandManager();
+      const result = await brandManager.validateDomain(domain, { skipCache: true });
+
+      if (result.valid && result.variant === 'authoritative_location') {
+        const data = result.raw_data as { authoritative_location: string };
+        try {
+          const url = new URL(data.authoritative_location);
+          if (url.hostname === AAO_HOST &&
+              url.pathname === `/brands/${domain}/brand.json`) {
+            const hosted = await brandDb.getHostedBrandByDomain(domain);
+            if (!hosted) {
+              return res.json({ domain, verified: false, reason: 'no_hosted_brand' });
+            }
+            // Block if another org already holds a verified claim on this domain
+            if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
+              return res.status(403).json({ error: 'This domain is verified by another organization' });
+            }
+            // Proof of domain control: transfer ownership and mark verified
+            await brandDb.updateHostedBrand(hosted.id, {
+              domain_verified: true,
+              workos_organization_id: orgId,
+            });
+            return res.json({ domain, verified: true });
+          }
+        } catch {
+          // Invalid URL in authoritative_location
+        }
+      }
+
+      return res.json({ domain, verified: false, variant: result.variant ?? null });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to verify brand domain');
+      return res.status(500).json({ error: 'Failed to verify brand domain' });
     }
   });
 
