@@ -148,7 +148,8 @@ export class MoltbookApiError extends Error {
   }
 
   get isSuspended(): boolean {
-    return this.status === 401 && this.body.includes('Account suspended');
+    return (this.status === 401 && this.body.includes('Account suspended')) ||
+           (this.status === 403 && this.body.includes('suspended until'));
   }
 }
 
@@ -177,13 +178,21 @@ export function isAccountSuspended(): boolean {
  * Parse suspension duration from error message and cache it
  */
 function handleSuspension(body: string): void {
-  // Parse "Suspension ends in N days" from error body
-  const match = body.match(/Suspension ends in (\d+) days?/i);
-  const days = match ? parseInt(match[1], 10) : 1; // Default to 1 day if unparseable
   const alreadyKnown = isAccountSuspended();
-  suspendedUntil = Date.now() + days * 24 * 60 * 60 * 1000;
+
+  // Try to parse ISO date: "suspended until 2026-02-20T12:06:09.333Z"
+  const isoMatch = body.match(/suspended until (\d{4}-\d{2}-\d{2}T[\d:.]+Z)/i);
+  if (isoMatch) {
+    suspendedUntil = new Date(isoMatch[1]).getTime();
+  } else {
+    // Fall back to "Suspension ends in N days"
+    const daysMatch = body.match(/Suspension ends in (\d+) days?/i);
+    const days = daysMatch ? parseInt(daysMatch[1], 10) : 1;
+    suspendedUntil = Date.now() + days * 24 * 60 * 60 * 1000;
+  }
+
   if (!alreadyKnown) {
-    logger.warn({ suspendedUntilDate: new Date(suspendedUntil).toISOString(), days }, 'Moltbook account is suspended');
+    logger.warn({ suspendedUntilDate: new Date(suspendedUntil).toISOString() }, 'Moltbook account is suspended');
   }
 }
 
@@ -200,6 +209,7 @@ async function moltbookRequest<T>(
   }
 
   if (!bypassSuspensionCheck && isAccountSuspended()) {
+    // 'Account suspended' substring intentionally matches isSuspended getter
     throw new MoltbookApiError(401, 'Account is suspended (cached)', endpoint);
   }
 
@@ -219,7 +229,8 @@ async function moltbookRequest<T>(
     const errorText = await response.text();
 
     // Detect and cache suspension (not an unexpected error, so skip error logging)
-    if (response.status === 401 && errorText.includes('Account suspended')) {
+    if ((response.status === 401 && errorText.includes('Account suspended')) ||
+        (response.status === 403 && errorText.includes('suspended until'))) {
       handleSuspension(errorText);
     } else {
       logger.error({ status: response.status, endpoint }, 'Moltbook API error');
@@ -257,7 +268,7 @@ export async function getSubmolts(): Promise<MoltbookSubmolt[]> {
     logger.debug({ count: result.submolts.length }, 'Refreshed submolts cache');
     return result.submolts;
   } catch (err) {
-    if (err instanceof MoltbookApiError && err.status === 401) {
+    if (err instanceof MoltbookApiError && err.isSuspended) {
       logger.debug('Cannot fetch submolts - account suspended');
     } else {
       logger.error({ err }, 'Failed to fetch submolts');
@@ -303,7 +314,8 @@ export async function searchPosts(query: string, limit = 10): Promise<MoltbookSe
  * Get a single post with its comments
  */
 export async function getPost(postId: string): Promise<{ post: MoltbookPost; comments: MoltbookComment[] }> {
-  return moltbookRequest<{ post: MoltbookPost; comments: MoltbookComment[] }>(`/posts/${postId}`);
+  const result = await moltbookRequest<{ post: MoltbookPost; comments?: MoltbookComment[] }>(`/posts/${postId}`);
+  return { post: result.post, comments: result.comments ?? [] };
 }
 
 // ============== Posting & Engagement ==============
@@ -328,7 +340,7 @@ export async function createPost(
   try {
     const body: Record<string, string> = { title };
     if (content) body.content = content;
-    if (submolt) body.submolt = submolt;
+    if (submolt) body.submolt_name = submolt;
     if (url) body.url = url;
 
     const result = await moltbookRequest<{ success: boolean; post: MoltbookPost }>('/posts', {
@@ -340,7 +352,7 @@ export async function createPost(
     return { success: true, post: result.post };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
-    if (err instanceof MoltbookApiError && err.status === 401) {
+    if (err instanceof MoltbookApiError && err.isSuspended) {
       logger.debug({ title }, 'Cannot create Moltbook post - account suspended');
     } else {
       logger.error({ err, title }, 'Failed to create Moltbook post');
@@ -380,7 +392,7 @@ export async function createComment(
     return { success: true, comment: result.comment };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
-    if (err instanceof MoltbookApiError && err.status === 401) {
+    if (err instanceof MoltbookApiError && err.isSuspended) {
       logger.debug({ postId }, 'Cannot create Moltbook comment - account suspended');
     } else {
       logger.error({ err, postId }, 'Failed to create Moltbook comment');
