@@ -8,7 +8,7 @@ Manage first-party CRM audiences on a seller account. Upload hashed customer lis
 
 Audiences are distinct from [signals](/docs/signals/): signals are third-party data products you discover and activate; audiences are data you own and upload. Use `audience_include` to target only members of an uploaded list. `audience_include` is a hard constraint — only users on the list are eligible. To find new users *similar to* an audience (lookalike expansion), describe that intent in your campaign brief — the seller handles expansion strategy. Note: lookalike intent expressed in the brief cannot be verified through the protocol; confirm via seller-side reporting.
 
-**Response Time**: ~1–2s (synchronous acceptance; matching is asynchronous on the platform)
+**Response Time**: Upload accepted in ~1–2s. The task remains active until matching completes (1–48 hours depending on the seller). Configure `push_notification_config` to receive a webhook when the audience is ready.
 
 **Request Schema**: [`/schemas/v2/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-request.json)
 **Response Schema**: [`/schemas/v2/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-response.json)
@@ -460,11 +460,11 @@ Platform matching is asynchronous. The `status` field reflects the current state
 
 `status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
 
-**Upload confirmation**: The upload is accepted synchronously (1–2s). Configure `push_notification_config` at the protocol level to receive a webhook confirming the upload was accepted and the `task_id` assigned. This fires at upload time, not when matching completes.
+**Webhook (recommended)**: Configure `push_notification_config` at the protocol level before uploading. The task stays active while the seller's platform matches members. When matching completes, the task completes and the webhook fires with the final result — `status: "ready"` or `status: "too_small"`. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to set realistic expectations (typically 1–48 hours).
 
-**Audience readiness**: Platform matching is independent of task completion and takes 1–48 hours. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to know when to start polling. Poll no more frequently than every 15 minutes using discovery-only calls (omit `audiences`).
+**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. Use `tasks/get` with the `task_id` to check task status, or call `sync_audiences` directly and filter by `audience_id`.
 
-**Agent workflow**: Upload, capture the `audience_id`, `account_id`, and initial status before the session ends. Resume in a future session: call `sync_audiences` with no `audiences` array, filter by `audience_id`, and check status. When `status: "ready"`, proceed to `create_media_buy`.
+**Agent workflow**: Upload with `push_notification_config` set. Externalize the `audience_id` and `account_id` before the session ends. When the webhook fires with `status: "ready"`, resume and proceed to `create_media_buy`.
 
 ## Hashing Requirements
 
