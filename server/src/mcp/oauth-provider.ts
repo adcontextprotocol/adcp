@@ -15,6 +15,7 @@ import type { OAuthServerProvider, AuthorizationParams } from '@modelcontextprot
 import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/server/auth/clients.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { createLogger } from '../logger.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
@@ -42,7 +43,7 @@ const cleanupTimer = setInterval(() => mcpOAuthStateDb.cleanupExpired(), CLEANUP
 cleanupTimer.unref();
 
 // ---------------------------------------------------------------------------
-// JWT verification (unchanged from previous implementation)
+// JWT verification
 // ---------------------------------------------------------------------------
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -72,7 +73,15 @@ async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
     verifyOptions.audience = WORKOS_CLIENT_ID;
   }
 
-  const { payload } = await jwtVerify(token, jwksInstance, verifyOptions);
+  let payload: Awaited<ReturnType<typeof jwtVerify>>['payload'];
+  try {
+    const result = await jwtVerify(token, jwksInstance, verifyOptions);
+    payload = result.payload;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Token verification failed';
+    logger.warn({ err }, 'MCP OAuth: Token verification failed');
+    throw new InvalidTokenError(message);
+  }
 
   const isM2M =
     payload.grant_type === 'client_credentials' ||
