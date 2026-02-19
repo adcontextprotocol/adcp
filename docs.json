@@ -167,6 +167,7 @@
             "pages": [
               "docs/signals/overview",
               "docs/signals/specification",
+              "docs/signals/data-providers",
               {
                 "group": "Tasks",
                 "pages": [
@@ -641,6 +642,7 @@
             "pages": [
               "docs/signals/overview",
               "docs/signals/specification",
+              "docs/signals/data-providers",
               {
                 "group": "Tasks",
                 "pages": [
@@ -856,16 +858,14 @@
     {
       "source": "/docs/reference/migrating-to-v3",
       "destination": "/docs/reference/whats-new-in-v3"
+    },
+    {
+      "source": "/docs/creative/brand-manifest",
+      "destination": "/docs/brand-protocol/brand-json"
     }
   ],
   "modeToggle": {
     "default": "light",
     "isHidden": false
-  },
-  "redirects": [
-    {
-      "source": "/docs/creative/brand-manifest",
-      "destination": "/docs/brand-protocol/brand-json"
-    }
-  ]
+  }
 }
