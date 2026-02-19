@@ -462,7 +462,7 @@ Platform matching is asynchronous. The `status` field reflects the current state
 
 **Webhook (recommended)**: Configure `push_notification_config` at the protocol level before uploading. The task stays active while the seller's platform matches members. When matching completes, the task completes and the webhook fires with the final result — `status: "ready"` or `status: "too_small"`. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to set realistic expectations (typically 1–48 hours).
 
-**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. Use `tasks/get` with the `task_id` to check task status, or call `sync_audiences` directly and filter by `audience_id`.
+**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. Use `tasks/get` with the `task_id` to check task status — the task will be `submitted` while matching is in progress and `completed` when the audience is ready or too small.
 
 **Agent workflow**: Upload with `push_notification_config` set. Externalize the `audience_id` and `account_id` before the session ends. When the webhook fires with `status: "ready"`, resume and proceed to `create_media_buy`.
 
@@ -485,6 +485,14 @@ const hashEmail = (email) =>
 const hashPhone = (e164Phone) =>
   createHash("sha256").update(e164Phone).digest("hex");
 ```
+
+## Privacy Considerations
+
+All PII is hashed by the buyer before transmission — the protocol never carries cleartext personal data. SHA-256 hashes are one-way and cannot be reversed to recover the original email or phone number. The seller matches by independently hashing its own user data with the same algorithm.
+
+**Buyer obligations**: The buyer is responsible for having a lawful basis to process and share audience data, regardless of jurisdiction. Include `consent_basis` on each audience to communicate the GDPR lawful basis to sellers operating in regulated markets — some sellers require this field for EU audiences.
+
+**Data handling**: Once uploaded, data processing and retention are governed by your agreement with the seller. Review the seller's data processing terms before uploading audience data.
 
 ## Error Handling
 

@@ -264,7 +264,7 @@
             },
             "matching_latency_hours": {
               "type": "object",
-              "description": "Expected matching latency range after sync. Use as polling guidance.",
+              "description": "Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring push_notification_config.",
               "properties": {
                 "min": { "type": "integer", "minimum": 0 },
                 "max": { "type": "integer", "minimum": 0 }
