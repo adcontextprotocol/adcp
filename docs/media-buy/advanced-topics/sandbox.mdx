@@ -26,7 +26,42 @@ Check this before requesting a sandbox account. If `sandbox` is not declared or 
 
 ## Setting up a sandbox account
 
-Contact the seller to provision a sandbox account for your brand. The seller returns a sandbox `account_id` that you use in place of your production account ID. From the protocol's perspective, a sandbox account behaves identically to a real account — the seller internally flags it as test and suppresses real platform calls and billing.
+Request a sandbox account via `sync_accounts` using `"sandbox": true` on the account object:
+
+```json
+// sync_accounts
+{
+  "accounts": [{
+    "house": "acme-corp.com",
+    "sandbox": true
+  }]
+}
+```
+
+The seller provisions a sandbox account and returns its `account_id`. From the protocol's perspective, a sandbox account behaves identically to a real account — the seller suppresses real platform calls and billing for any request using that ID.
+
+## Identifying sandbox accounts
+
+Sandbox accounts appear in `list_accounts` with `sandbox: true`. Use the `sandbox` filter to list only sandbox or only production accounts:
+
+```json
+// list_accounts - sandbox only
+{
+  "sandbox": true
+}
+```
+
+Response:
+```json
+{
+  "accounts": [{
+    "account_id": "acct_sandbox_acme_001",
+    "name": "Acme (sandbox)",
+    "status": "active",
+    "sandbox": true
+  }]
+}
+```
 
 ## Usage
 

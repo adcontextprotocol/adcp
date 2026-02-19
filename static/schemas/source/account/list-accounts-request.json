@@ -7,7 +7,13 @@
   "properties": {
     "status": {
       "type": "string",
-      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
+      "enum": [
+        "active",
+        "pending_approval",
+        "payment_required",
+        "suspended",
+        "closed"
+      ],
       "description": "Filter accounts by status. Omit to return accounts in all statuses."
     },
     "pagination": {
@@ -18,6 +24,10 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts."
     }
   },
   "required": [],
