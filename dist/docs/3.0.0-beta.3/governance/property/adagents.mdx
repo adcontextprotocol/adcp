@@ -67,7 +67,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`privacy_policy_url`** *(optional)*: URL to entity's privacy policy for consumer consent flows
 
 **`properties`** *(optional)*: Array of properties covered by this file (canonical property definitions)
-  - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+  - **`supported_channels`** *(optional)*: Advertising channels this property supports (e.g., `["display", "olv", "social"]`). See [Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy).
 
 **`tags`** *(optional)*: Tag metadata providing human-readable context and enabling efficient grouping
 
@@ -581,7 +581,7 @@ sequenceDiagram
 
 ### Vendor Extensions
 
-Governance agents can include vendor-specific data in feature definitions via an `ext` block. See [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) for details.
+Governance agents can include vendor-specific data in feature definitions via an `ext` block. See [get_adcp_capabilities](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) for details.
 
 ## Fetching and Validating
 
@@ -745,14 +745,14 @@ The Python library handles validation automatically when fetching - if the adage
 
 After implementing adagents.json validation:
 
-1. **Integrate with Product Discovery**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to discover inventory
-2. **Validate at Purchase**: Check authorization before calling [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)
+1. **Integrate with Product Discovery**: Use [`get_products`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_products) to discover inventory
+2. **Validate at Purchase**: Check authorization before calling [`create_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/create_media_buy)
 3. **Cache Property Mappings**: Store resolved properties for efficient validation
 4. **Monitor Authorization**: Track validation success rates and unauthorized attempts
 
 ## Learn More
 
 - [AdCP Basics: Authorized Properties](https://bokonads.com/p/adcp-basics-authorized-properties) - Accessible introduction to AdCP authorization
-- [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) - Discover agent capabilities and portfolio
+- [get_adcp_capabilities](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) - Discover agent capabilities and portfolio
 - [Property Schema](https://adcontextprotocol.org/schemas/v2/core/property.json) - Property definition structure
 - [AdAgents.json Builder](https://adcontextprotocol.org/adagents) - Web-based validator and creator

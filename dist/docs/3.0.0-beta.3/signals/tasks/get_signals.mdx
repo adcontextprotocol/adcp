@@ -180,7 +180,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
   "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
   "context_id": "ctx-signals-123",
   "signals": [
@@ -250,7 +250,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
   "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
   "context_id": "ctx-signals-123",
   "signals": [
@@ -402,7 +402,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
   "deliver_to": {
     "deployments": [
@@ -426,7 +426,7 @@ Discover all available deployments across platforms:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
   "signals": [{
     "signal_agent_segment_id": "peer39_luxury_auto",
     "name": "Luxury Automotive Context",
@@ -562,7 +562,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
   "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
   "context_id": "ctx-signals-abc123",
   "signals": [
@@ -618,7 +618,7 @@ Discover all available deployments across platforms:
 
 ```json
 {
-  "$schema": "/schemas/signals/get-signals-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/get-signals-response.json",
   "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
   "context_id": "ctx-signals-abc123",
   "signals": []

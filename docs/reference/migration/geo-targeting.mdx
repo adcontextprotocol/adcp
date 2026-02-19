@@ -1,0 +1,193 @@
+---
+title: "Migrating geo targeting"
+description: Step-by-step guide to migrating from v2's implicit US-centric geo targeting to v3's named systems with global market support
+testable: true
+---
+
+# Migrating geo targeting
+
+AdCP v3 replaces implicit US-centric geo targeting with named systems that support global markets. Metro and postal targeting now require explicit system specification, and codes are grouped by system.
+
+## What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `geo_metros` (string array) | `geo_metros` (system/values objects) | Restructured |
+| `geo_postal_codes` (string array) | `geo_postal_areas` (system/values objects) | Renamed and restructured |
+
+Fields that didn't change: `geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude` all remain simple string arrays using ISO codes.
+
+## Metro targeting
+
+**v2** — flat array of codes, assumed to be Nielsen DMAs:
+```json
+{
+  "targeting": {
+    "geo_metros": ["501", "602"]
+  }
+}
+```
+
+**v3** — codes grouped by system:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "geo_metros": [
+    { "system": "nielsen_dma", "values": ["501", "602"] }
+  ]
+}
+```
+
+Each entry specifies a system and the codes within that system. Multiple systems can coexist:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "geo_metros": [
+    { "system": "nielsen_dma", "values": ["501", "602"] },
+    { "system": "uk_itl2", "values": ["UKC1", "UKD3"] }
+  ]
+}
+```
+
+### Metro systems
+
+| System | Coverage | Example codes |
+|--------|----------|---------------|
+| `nielsen_dma` | US designated market areas | `501` (New York), `602` (Chicago) |
+| `uk_itl1` | UK regions | `UKC` (North East), `UKD` (North West) |
+| `uk_itl2` | UK sub-regions | `UKC1` (Tees Valley), `UKD3` (Greater Manchester) |
+| `eurostat_nuts2` | EU statistical regions | `DE11` (Stuttgart), `FR10` (Ile-de-France) |
+| `custom` | Publisher-defined areas | Publisher-specific codes |
+
+Supported systems are defined in the `metro-system.json` enum: `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts2`, `custom`.
+
+## Postal targeting
+
+**v2** — flat array of codes, assumed to be US ZIP codes:
+```json
+{
+  "targeting": {
+    "geo_postal_codes": ["10001", "90210"]
+  }
+}
+```
+
+**v3** — renamed to `geo_postal_areas`, codes grouped by system:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "geo_postal_areas": [
+    { "system": "us_zip", "values": ["10001", "90210"] }
+  ]
+}
+```
+
+### Postal systems
+
+| System | Coverage | Precision | Example codes |
+|--------|----------|-----------|---------------|
+| `us_zip` | US | 5-digit ZIP | `10001`, `90210` |
+| `us_zip_plus_four` | US | ZIP+4 | `10001-1234` |
+| `gb_outward` | UK | Area-level | `SW1`, `EC2` |
+| `gb_full` | UK | Full postcode | `SW1A 1AA` |
+| `ca_fsa` | Canada | Forward sortation area | `M5V`, `V6B` |
+| `ca_full` | Canada | Full postal code | `M5V 2T6` |
+| `de_plz` | Germany | Postleitzahl | `10115`, `80331` |
+| `fr_code_postal` | France | Code postal | `75001`, `13001` |
+| `au_postcode` | Australia | Postcode | `2000`, `3000` |
+
+Supported systems are defined in the `postal-system.json` enum: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`.
+
+## Exclusion targeting
+
+v3 adds `_exclude` variants for metro and postal targeting:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "geo_countries": ["US"],
+  "geo_metros_exclude": [
+    { "system": "nielsen_dma", "values": ["501"] }
+  ]
+}
+```
+
+This targets the entire US except the New York DMA.
+
+## Discovering seller capabilities
+
+Before sending geo targeting, buyers should verify the seller supports the requested systems. Use `get_adcp_capabilities`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-response.json",
+  "adcp": {
+    "major_versions": [3]
+  },
+  "supported_protocols": ["media_buy"],
+  "media_buy": {
+    "execution": {
+      "targeting": {
+        "geo_countries": true,
+        "geo_regions": true,
+        "geo_metros": {
+          "nielsen_dma": true
+        },
+        "geo_postal_areas": {
+          "us_zip": true
+        }
+      }
+    }
+  }
+}
+```
+
+The `geo_metros` and `geo_postal_areas` objects use boolean properties to indicate which systems are supported. If you request a system the seller doesn't declare, expect a validation error.
+
+## Full targeting example
+
+A v3 targeting overlay combining geo restrictions:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "geo_countries": ["US", "CA"],
+  "geo_regions": ["US-NY", "US-CA"],
+  "geo_metros": [
+    { "system": "nielsen_dma", "values": ["501", "803"] }
+  ],
+  "geo_postal_areas": [
+    { "system": "us_zip", "values": ["10001", "10002", "90210"] }
+  ]
+}
+```
+
+Inclusion fields are combined with AND logic — delivery must match all specified constraints. Exclusion fields (`_exclude` variants) act as AND NOT — delivery must match inclusions and must not match any exclusion.
+
+## Migration steps
+
+<Steps>
+  <Step title="Identify geo targeting">
+    Find all uses of `geo_metros` and `geo_postal_codes`.
+  </Step>
+  <Step title="Rename field">
+    `geo_postal_codes` becomes `geo_postal_areas`.
+  </Step>
+  <Step title="Restructure values">
+    Wrap flat arrays into `{ "system": "...", "values": [...] }` objects.
+  </Step>
+  <Step title="Choose systems">
+    For US-only code, use `nielsen_dma` and `us_zip`. For international, add the appropriate systems.
+  </Step>
+  <Step title="Verify capabilities">
+    Call `get_adcp_capabilities` to check what systems each seller supports.
+  </Step>
+  <Step title="Add exclusions">
+    If needed, use the new `_exclude` variants for negative targeting.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Creatives](/docs/reference/migration/creatives) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)

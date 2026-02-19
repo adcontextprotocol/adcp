@@ -58,13 +58,13 @@ Sales Agent (validates & delivers)
 
 Buyers call `list_creative_formats` on sales or creative agents to discover available formats with full specifications. The `agent_url` field identifies the creative agent authoritative for each format.
 
-See [Creative Formats](/docs/creative/formats) for format discovery details.
+See [Creative Formats](/dist/docs/2.5.3/creative/formats) for format discovery details.
 
 ### 2. **Assembly** - "Here are my assets"
 
 Buyers create manifests providing assets that fulfill format requirements. Manifests pair format specifications with actual asset URLs and content.
 
-See [Creative Manifests](/docs/creative/creative-manifests) for manifest structure details.
+See [Creative Manifests](/dist/docs/2.5.3/creative/creative-manifests) for manifest structure details.
 
 ### 3. **Validation** - "Does this match the requirements?"
 
@@ -89,7 +89,7 @@ Assets are the raw materials. Each has a type that determines its purpose:
 - **javascript**: JavaScript tags
 - **url**: Tracking pixels, clickthrough URLs, webhooks
 
-See [Asset Types](/docs/creative/asset-types) for detailed specifications.
+See [Asset Types](/dist/docs/2.5.3/creative/asset-types) for detailed specifications.
 
 ### Formats & Format Authority
 Each format has an authoritative source - the creative agent that defines it (indicated by `agent_url`). That agent:
@@ -103,32 +103,32 @@ Each format has an authoritative source - the creative agent that defines it (in
 - **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
 - Technically, both work the same way - the `agent_url` field identifies which agent is authoritative for each format
 
-See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
+See the [Channel Guides](/dist/docs/2.5.3/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
 
 ### Manifests
 Manifests are JSON structures pairing asset IDs from the format with actual asset content. They provide the URLs, text, and tracking pixels needed to assemble a complete creative.
 
-See [Creative Manifests](/docs/creative/creative-manifests) for detailed documentation.
+See [Creative Manifests](/dist/docs/2.5.3/creative/creative-manifests) for detailed documentation.
 
 ### Universal Macros
 Macros are placeholders in tracking URLs that get replaced with actual values at impression time (e.g., `{MEDIA_BUY_ID}`, `{DEVICE_ID}`, `{CACHEBUSTER}`). AdCP defines universal macros that work across all platforms - sales agents translate them to their ad server's syntax.
 
-See [Universal Macros](/docs/creative/universal-macros) for complete reference.
+See [Universal Macros](/dist/docs/2.5.3/creative/universal-macros) for complete reference.
 
 ## Common Patterns
 
 ### Third-Party Tags
-For third-party served ads, formats specify HTML or JavaScript asset requirements. See the [Display Channel Guide](/docs/creative/channels/display) for third-party tag format examples.
+For third-party served ads, formats specify HTML or JavaScript asset requirements. See the [Display Channel Guide](/dist/docs/2.5.3/creative/channels/display) for third-party tag format examples.
 
 ### Repeatable Asset Groups
-For carousels, slideshows, stories, playlists - anything with multiple repetitions of the same structure. See the [Carousel & Multi-Asset Formats](/docs/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
+For carousels, slideshows, stories, playlists - anything with multiple repetitions of the same structure. See the [Carousel & Multi-Asset Formats](/dist/docs/2.5.3/creative/channels/carousels) guide for complete documentation on repeatable asset groups.
 
 ### DOOH Impression Tracking
-Digital Out-of-Home formats use impression tracking with venue-specific macros instead of device identifiers. See the [DOOH Channel Guide](/docs/creative/channels/dooh) for DOOH-specific macro details.
+Digital Out-of-Home formats use impression tracking with venue-specific macros instead of device identifiers. See the [DOOH Channel Guide](/dist/docs/2.5.3/creative/channels/dooh) for DOOH-specific macro details.
 
 ## Channel-Specific Information
 
-For detailed information on specific ad formats and channels, see the [Creative Manifests](/docs/creative/creative-manifests) documentation which covers:
+For detailed information on specific ad formats and channels, see the [Creative Manifests](/dist/docs/2.5.3/creative/creative-manifests) documentation which covers:
 
 - **Video Ads** - VAST, hosted video, CTV formats
 - **Display Ads** - Banners, third-party tags, responsive formats
@@ -147,5 +147,5 @@ For detailed information on specific ad formats and channels, see the [Creative 
 
 ## Additional Resources
 
-- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
-- [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide
+- [Creative Task Reference](/dist/docs/2.5.3/creative/task-reference/list_creative_formats) - API documentation for creative tasks
+- [Generative Creative](/dist/docs/2.5.3/creative/generative-creative) - AI-powered creative generation guide

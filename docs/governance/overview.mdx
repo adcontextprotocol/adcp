@@ -34,7 +34,7 @@ The AAO Governance Working Group is developing standards across six areas that i
 | Area | Focus | Protocol Impact |
 |------|-------|-----------------|
 | Brand Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering, adagents.json |
-| Brand Manifest & Standards Library | Machine-readable brand policies | [Brand Manifest](/docs/creative/brand-manifest), Content Standards |
+| Brand Identity & Standards Library | Machine-readable brand policies | [Brand identity](/docs/brand-protocol/brand-json), Content Standards |
 | Creative Standards & Validation | Technical and ethical creative criteria | Creative Governance |
 | Process & Human Oversight | Human-in-the-loop checkpoints | All protocols |
 | Regulatory & Compliance | Legal and regional frameworks | All protocols |
@@ -100,21 +100,19 @@ Response (governance section):
 }
 ```
 
-### Brand Manifest
+### Brand identity
 
 Buyers declare their brand identity, and governance agents automatically apply appropriate rules:
 
 ```json
 {
-  "brand_manifest": {
-    "brand_name": "ToyBrand",
-    "industry": "toys",
-    "target_audience": "children_under_13"
+  "brand": {
+    "domain": "toybrand.com"
   }
 }
 ```
 
-When a governance agent sees this manifest, it automatically applies COPPA requirements, content filtering for children's brands, and other industry-specific rules.
+When a governance agent resolves this brand reference, it automatically applies COPPA requirements, content filtering for children's brands, and other industry-specific rules.
 
 ### Prompt-Based Policies
 
@@ -166,7 +164,7 @@ The Media Buy Protocol consumes governance data at multiple stages:
 
 **Buyers:**
 1. Subscribe to governance agents for property data and brand suitability
-2. Create property lists with filters and brand manifests
+2. Create property lists with filters and brand references
 3. Aggregate results into final compliant lists
 4. Share references with sellers (with auth tokens)
 

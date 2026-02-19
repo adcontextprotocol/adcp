@@ -13,20 +13,20 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 
 | Retail Media Concept | AdCP Equivalent | Reference |
 |---|---|---|
-| Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/docs/media-buy/advanced-topics/accounts-and-security) |
-| Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/docs/building/integration/accounts-and-agents) |
-| Brand's product catalog | `brand_manifest.product_catalog` | [Brand Manifest](/docs/creative/brand-manifest) |
-| GTIN / SKU selection for promotion | `product_selectors` (`manifest_gtins`, `manifest_skus`) | [Promoted Offerings](/docs/creative/promoted-offerings) |
-| Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
-| On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
-| Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
-| ROAS target / max conversions | `optimization_goal` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
-| Closed-loop measurement | `measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
-| Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
-| ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
-| In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| Retailer / retail media network | Sales agent (MCP server) | [`adagents.json`](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/accounts-and-security) |
+| Advertiser account with retailer | `account_id` + `list_accounts` | [Accounts & Agents](/dist/docs/3.0.0-beta.3/building/integration/accounts-and-agents) |
+| Brand's product catalog | `brand_manifest.product_catalog` | [Brand Manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest) |
+| GTIN / SKU selection for promotion | `product_selectors` (`manifest_gtins`, `manifest_skus`) | [Promoted Offerings](/dist/docs/3.0.0-beta.3/creative/promoted-offerings) |
+| Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/dist/docs/3.0.0-beta.3/creative/formats) |
+| On-site display / video | Product with standard `format_ids` | [Media Products](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products) |
+| Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) |
+| ROAS target / max conversions | `optimization_goal` on package | [Optimization & Reporting](/dist/docs/3.0.0-beta.3/media-buy/media-buys/optimization-reporting) |
+| Closed-loop measurement | `measurement` + `conversion_tracking` on product | [Delivery Reporting](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) |
+| Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) |
+| ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) |
+| In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) |
 
-Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand manifest carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand manifest carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/dist/docs/3.0.0-beta.3/building/integration/accounts-and-agents).
 
 ## The Product Spectrum
 
@@ -326,7 +326,7 @@ For sponsored product listings, sellers include `catalog_match` on each product 
 This tells the buyer which GTINs are eligible on this retailer and how many of their total catalog items were evaluated. Buyers use `matched_gtins` values in `product_selectors.manifest_gtins` when creating media buys — or use broader selectors like `manifest_tags` and `manifest_category` knowing the catalog coverage.
 
 <Tip>
-Sellers can also return [proposals](/docs/media-buy/product-discovery/media-products#proposals) with recommended budget allocations across product types — encoding media planning expertise that traditionally required human sales reps.
+Sellers can also return [proposals](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#proposals) with recommended budget allocations across product types — encoding media planning expertise that traditionally required human sales reps.
 </Tip>
 
 ### Create Media Buy
@@ -527,12 +527,12 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 
 ## Related Documentation
 
-- [Accounts & Agents](/docs/building/integration/accounts-and-agents) — Account setup and billing relationships
-- [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) — `retail_media` channel definition
-- [Media Products](/docs/media-buy/product-discovery/media-products) — Product model reference
-- [Promoted Offerings](/docs/creative/promoted-offerings) — SKU selection and catalog-rendered creatives
-- [Brand Manifest](/docs/creative/brand-manifest) — Product catalog and brand identity
-- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) — CPC, CPM, flat rate details
-- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goal` and conversion optimization
-- [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) — Commerce attribution metrics
-- [Targeting](/docs/media-buy/advanced-topics/targeting) — Brief-based targeting approach
+- [Accounts & Agents](/dist/docs/3.0.0-beta.3/building/integration/accounts-and-agents) — Account setup and billing relationships
+- [Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy) — `retail_media` channel definition
+- [Media Products](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products) — Product model reference
+- [Promoted Offerings](/dist/docs/3.0.0-beta.3/creative/promoted-offerings) — SKU selection and catalog-rendered creatives
+- [Brand Manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest) — Product catalog and brand identity
+- [Pricing Models](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/pricing-models) — CPC, CPM, flat rate details
+- [Optimization & Reporting](/dist/docs/3.0.0-beta.3/media-buy/media-buys/optimization-reporting) — `optimization_goal` and conversion optimization
+- [Delivery Reporting](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) — Commerce attribution metrics
+- [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) — Brief-based targeting approach

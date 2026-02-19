@@ -31,7 +31,6 @@ const COMMON_SCHEMAS = [
   'core/product.json',
   'core/media-buy.json',
   'core/creative-manifest.json',
-  'core/brand-manifest.json',
   'core/property.json',
   'core/targeting.json',
   'core/pricing-option.json',

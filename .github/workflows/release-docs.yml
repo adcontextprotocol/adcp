@@ -20,9 +20,11 @@ jobs:
     steps:
       - name: Determine version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+            VERSION="$INPUT_VERSION"
           else
             # Extract version from tag (v3.0.0-beta.1 -> 3.0.0-beta.1)
             VERSION="${GITHUB_REF_NAME#v}"
@@ -81,6 +83,9 @@ jobs:
 
           echo "Created docs snapshot at dist/docs/$VERSION"
           ls -la "dist/docs/$VERSION" | head -10
+
+      - name: Rewrite versioned links in snapshot
+        run: bash scripts/rewrite-dist-links.sh "${{ steps.version.outputs.version }}"
 
       - name: Update docs.json
         run: |

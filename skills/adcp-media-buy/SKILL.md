@@ -42,8 +42,8 @@ Discover advertising products using natural language briefs.
 ```json
 {
   "brief": "Looking for premium video inventory for a tech brand targeting developers",
-  "brand_manifest": {
-    "url": "https://example.com"
+  "brand": {
+    "domain": "example.com"
   },
   "filters": {
     "channels": ["video", "ctv"],
@@ -54,7 +54,7 @@ Discover advertising products using natural language briefs.
 
 **Key fields:**
 - `brief` (string): Natural language description of campaign requirements
-- `brand_manifest` (object): Brand context - can be `{ "url": "https://..." }` or inline manifest
+- `brand` (object): Brand identity - `{ "domain": "acmecorp.com" }`
 - `filters` (object, optional): Filter by channels, budget, delivery_type, format_types
 
 **Response contains:**
@@ -106,9 +106,8 @@ Create an advertising campaign from selected products.
 ```json
 {
   "buyer_ref": "campaign-2024-q1-001",
-  "brand_manifest": {
-    "url": "https://acme.com",
-    "name": "Acme Corporation"
+  "brand": {
+    "domain": "acme.com"
   },
   "packages": [
     {
@@ -127,7 +126,7 @@ Create an advertising campaign from selected products.
 
 **Key fields:**
 - `buyer_ref` (string, required): Your unique identifier for this campaign
-- `brand_manifest` (object, required): Brand identity - URL or inline manifest
+- `brand` (object, required): Brand identity - `{ "domain": "acmecorp.com" }`
 - `packages` (array, required): Products to purchase, each with:
   - `buyer_ref`: Your identifier for this package
   - `product_id`: From `get_products` response
@@ -252,30 +251,19 @@ Retrieve performance metrics for a campaign.
 
 ## Key Concepts
 
-### Brand Manifest
+### Brand identity
 
-Brand context can be provided in two ways:
+Brand context is provided by domain reference:
 
-1. **URL reference** (recommended):
 ```json
 {
-  "brand_manifest": {
-    "url": "https://brand.com"
+  "brand": {
+    "domain": "acmecorp.com"
   }
 }
 ```
 
-2. **Inline manifest**:
-```json
-{
-  "brand_manifest": {
-    "name": "Brand Name",
-    "url": "https://brand.com",
-    "tagline": "Brand tagline",
-    "colors": { "primary": "#FF0000" }
-  }
-}
-```
+The agent resolves the domain to retrieve the brand's identity (name, colors, guidelines, etc.) from its `brand.json` file.
 
 ### Format IDs
 

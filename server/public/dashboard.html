@@ -1656,7 +1656,7 @@
         const isPersonalAccount = org.is_personal || org.billing?.is_personal;
 
         // Check for missing logo (only for company accounts - individuals don't need logos)
-        if (!isPersonalAccount && !profile.logo_url && !dismissedAlerts.includes('missing-logo')) {
+        if (!isPersonalAccount && !profile.resolved_brand?.logo_url && !dismissedAlerts.includes('missing-logo')) {
           alerts.push({
             id: 'missing-logo',
             icon: '🖼️',
@@ -2631,8 +2631,8 @@
           window.currentMemberProfile = profile;
 
           // Compact profile preview for sidebar card
-          const logoHtml = profile.logo_url
-            ? `<img src="${escapeHtml(profile.logo_url)}" alt="" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover;">`
+          const logoHtml = profile.resolved_brand?.logo_url
+            ? `<img src="${escapeHtml(profile.resolved_brand.logo_url)}" alt="" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover;">`
             : `<div style="width: 48px; height: 48px; border-radius: 8px; background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; font-size: 20px;">🏢</div>`;
 
           const statusBadge = profile.is_public

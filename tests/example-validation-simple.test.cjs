@@ -124,9 +124,9 @@ async function runTests() {
   // Test request/response examples
   await validateExample(
     {
-      "brand_manifest": {
-        "name": "Nike",
-        "url": "https://brand.nike.com/manifest.json"
+      "brand": {
+        "domain": "nikeinc.com",
+        "brand_id": "nike"
       },
       "brief": "Premium video inventory"
     },

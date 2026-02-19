@@ -417,7 +417,7 @@ export const TOOL_DEFINITIONS = [
         },
         brand_manifest: {
           type: "object",
-          description: "Brand manifest data (logo, colors, company info)",
+          description: "Brand identity data (logo, colors, company info) stored in the registry",
         },
         edit_summary: {
           type: "string",
@@ -586,7 +586,7 @@ export class MCPToolHandler {
           slug: m.slug,
           display_name: m.display_name,
           tagline: m.tagline,
-          logo_url: m.logo_url,
+          logo_url: m.resolved_brand?.logo_url,
           offerings: m.offerings,
           headquarters: m.headquarters,
           markets: m.markets,
@@ -638,8 +638,8 @@ export class MCPToolHandler {
           display_name: member.display_name,
           tagline: member.tagline,
           description: member.description,
-          logo_url: member.logo_url,
-          brand_color: member.brand_color,
+          logo_url: member.resolved_brand?.logo_url,
+          brand_color: member.resolved_brand?.brand_color,
           offerings: member.offerings,
           headquarters: member.headquarters,
           markets: member.markets,

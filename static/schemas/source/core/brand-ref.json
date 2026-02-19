@@ -2,33 +2,32 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/brand-ref.json",
   "title": "Brand Reference",
-  "description": "Reference to a brand within a house portfolio. Similar to property references (publisher + property_id), brands are identified by house domain + brand_id.",
+  "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand.",
   "type": "object",
   "properties": {
-    "house": {
+    "domain": {
       "type": "string",
-      "description": "Domain where the house's brand.json is hosted (e.g., 'pg.com', 'nikeinc.com')",
+      "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
     },
     "brand_id": {
       "$ref": "/schemas/core/brand-id.json",
-      "description": "Brand identifier within the house portfolio"
+      "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
     }
   },
-  "required": ["house", "brand_id"],
+  "required": ["domain"],
   "additionalProperties": false,
   "examples": [
     {
-      "house": "pg.com",
+      "domain": "pg.com",
       "brand_id": "tide"
     },
     {
-      "house": "nikeinc.com",
+      "domain": "nikeinc.com",
       "brand_id": "air_jordan"
     },
     {
-      "house": "generalmills.com",
-      "brand_id": "cheerios"
+      "domain": "bobsburgers.com"
     }
   ]
 }

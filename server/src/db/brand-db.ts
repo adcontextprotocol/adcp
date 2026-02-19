@@ -27,6 +27,7 @@ export interface UpdateHostedBrandInput {
   domain_verified?: boolean;
   verification_token?: string;
   is_public?: boolean;
+  workos_organization_id?: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export interface UpdateHostedBrandInput {
  */
 export interface UpsertDiscoveredBrandInput {
   domain: string;
+  brand_id?: string;
   canonical_domain?: string;
   house_domain?: string;
   brand_name?: string;
@@ -156,6 +158,10 @@ export class BrandDatabase {
       updates.push(`is_public = $${paramIndex++}`);
       values.push(input.is_public);
     }
+    if (input.workos_organization_id !== undefined) {
+      updates.push(`workos_organization_id = $${paramIndex++}`);
+      values.push(input.workos_organization_id);
+    }
 
     if (updates.length === 0) {
       return this.getHostedBrandById(id);
@@ -189,6 +195,17 @@ export class BrandDatabase {
     return result.rows[0] ? token : null;
   }
 
+  /**
+   * List all hosted brand domains (used by crawler for brand.json scanning).
+   */
+  async listAllHostedBrandDomains(): Promise<string[]> {
+    const result = await query<{ brand_domain: string }>(
+      'SELECT brand_domain FROM hosted_brands',
+      []
+    );
+    return result.rows.map(r => r.brand_domain);
+  }
+
   // ========== Discovered Brands ==========
 
   /**
@@ -197,11 +214,12 @@ export class BrandDatabase {
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
     const result = await query<DiscoveredBrand>(
       `INSERT INTO discovered_brands (
-        domain, canonical_domain, house_domain, brand_name, brand_names,
+        domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
         keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
         has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
       ON CONFLICT (domain) DO UPDATE SET
+        brand_id = COALESCE(EXCLUDED.brand_id, discovered_brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
         house_domain = EXCLUDED.house_domain,
         brand_name = EXCLUDED.brand_name,
@@ -218,6 +236,7 @@ export class BrandDatabase {
       RETURNING *`,
       [
         input.domain.toLowerCase(),
+        input.brand_id || null,
         input.canonical_domain || null,
         input.house_domain || null,
         input.brand_name || null,
@@ -244,6 +263,30 @@ export class BrandDatabase {
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * Get discovered brand by domain + optional brand_id (brand reference lookup).
+   * If brand_id is provided, looks for a brand with that brand_id under the domain.
+   * If no brand_id, falls back to getDiscoveredBrandByDomain.
+   */
+  async getDiscoveredBrandByRef(domain: string, brandId?: string): Promise<DiscoveredBrand | null> {
+    if (!brandId) {
+      return this.getDiscoveredBrandByDomain(domain);
+    }
+    const result = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    if (result.rows[0]) {
+      return this.deserializeDiscoveredBrand(result.rows[0]);
+    }
+    // Fall back to house domain lookup (brand_id might be under the house)
+    const houseResult = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE house_domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    return houseResult.rows[0] ? this.deserializeDiscoveredBrand(houseResult.rows[0]) : null;
   }
 
   /**

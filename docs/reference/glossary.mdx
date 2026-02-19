@@ -11,6 +11,12 @@ A billing relationship between a buyer and a seller. The account determines rate
 **Account Type**
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
 
+**Audience** (AdCP context)
+A named group of users uploaded by a buyer for targeted advertising. Distinct from signals: audiences are buyer-owned first-party CRM data uploaded via `sync_audiences`; signals are third-party data discovered via `get_signals`. Audiences are account-scoped — an `audience_id` cannot be used across sellers. Reference audiences in `targeting_overlay.audience_include` or `audience_exclude` in `create_media_buy`. See also [Audience Member](#audience-member) and [Hashed Identifier](#hashed-identifier).
+
+**Audience Member**
+A hashed identifier record representing one person in a CRM audience. Contains at least one of: `hashed_email`, `hashed_phone`, or `uids`. All PII is normalized and hashed (SHA-256) by the buyer before transmission — the protocol never carries cleartext personal data. Providing multiple identifiers for the same person improves match rates. See [Hashed Identifier](#hashed-identifier) and [UID](#uid-universal-id).
+
 **Action Source**
 Where an event physically occurred: `website`, `app`, `in_store`, `phone_call`, `chat`, `email`, `offline`, `system_generated`, or `other`. Set on each event in `log_event` and declared at the product level in `conversion_tracking.action_sources`.
 
@@ -126,6 +132,9 @@ The average number of times an individual is exposed to an advertisement during 
 A unit of measurement for television and radio advertising representing 1% of the target audience. Used in CPP pricing models. Total GRPs = Reach % × Average Frequency. Measured by third-party providers such as Nielsen, Comscore, iSpot.tv, or Triton Digital.
 
 ## H
+
+**Hashed Identifier**
+Buyer-normalized personally identifiable information (PII) hashed with SHA-256 before transmission. Used in audience uploads (`sync_audiences`) and event attribution (`log_event`). Normalization: emails to lowercase+trim, phone numbers to E.164 format. The seller matches by independently hashing its own user data with the same algorithm — neither party shares raw PII. Distinct from [UIDs](#uid-universal-id), which are already-resolved privacy-preserving tokens from identity graphs.
 
 **Households**
 Size unit representing unique household addresses, useful for geographic and family-based targeting.
@@ -294,7 +303,7 @@ Pricing structure based on duration (hourly, daily, or daypart) rather than impr
 ## U
 
 **UID (Universal ID)**
-A user identifier used for cross-platform attribution matching. AdCP supports standard UID types: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), `pairid` (Publisher Advertiser Identity Reconciliation), and `maid` (Mobile Advertising ID — IDFA/GAID). Passed in `user_match.uids` on events logged via `log_event`.
+An already-resolved, privacy-preserving user token from an identity graph. Used for cross-platform user matching. Distinct from [Hashed Identifiers](#hashed-identifier): UIDs are pre-resolved tokens (not raw PII); hashed identifiers are buyer-normalized PII hashed before sending. AdCP supports: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), `pairid` (IAB Tech Lab PAIR), `maid` (Mobile Advertising ID — IDFA/GAID), and `external_id`. UIDs are accepted in audience uploads (`sync_audiences` → `audience_member.uids`) and event attribution (`log_event` → `user_match.uids`). Supported types vary by seller — check `get_adcp_capabilities` → `audience_targeting.supported_uid_types`.
 
 **Universal Commerce Protocol (UCP)**
 An open standard developed by Google with Shopify, Walmart, Target, and others for commerce in AI assistants. UCP defines primitives for checkout, payments, and fulfillment. Along with ACP (Agentic Commerce Protocol), UCP represents the commerce layer that complements AdCP's advertising layer.

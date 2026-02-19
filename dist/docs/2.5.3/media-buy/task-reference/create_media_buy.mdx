@@ -161,7 +161,7 @@ npx adcp \
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Your reference identifier for this media buy |
 | `packages` | Package[] | Yes | Array of package configurations (see below) |
-| `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/docs/creative/brand-manifest) |
+| `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/dist/docs/2.5.3/creative/brand-manifest) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `po_number` | string | No | Purchase order number |
@@ -180,7 +180,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when `is_fixed` is false) |
-| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
+| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting)) |
 | `creative_ids` | string[] | No | Existing library creative IDs to assign |
 | `creatives` | CreativeAsset[] | No | Full creative objects to upload and assign |
 
@@ -590,7 +590,7 @@ The `brand_manifest` field identifies the advertiser for policy compliance and b
 }
 ```
 
-Full manifests with colors, fonts, and product catalogs are only needed for creative generation. See [Brand Manifest](/docs/creative/brand-manifest).
+Full manifests with colors, fonts, and product catalogs are only needed for creative generation. See [Brand Manifest](/dist/docs/2.5.3/creative/brand-manifest).
 
 ### Pricing & Currency
 
@@ -599,7 +599,7 @@ Each package specifies its `pricing_option_id`, which determines:
 - Pricing model (CPM, CPCV, CPP, etc.)
 - Rate and whether it's fixed or auction-based
 
-Packages can use different currencies when sellers support it. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
+Packages can use different currencies when sellers support it. See [Pricing Models](/dist/docs/2.5.3/media-buy/advanced-topics/pricing-models).
 
 ### Targeting Overlays
 
@@ -610,7 +610,7 @@ Use overlays only for:
 - Frequency capping
 - AXE segment inclusion/exclusion
 
-See [Targeting](/docs/media-buy/advanced-topics/targeting) for details.
+See [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) for details.
 
 ## Format Workflow
 
@@ -672,7 +672,7 @@ This task can complete instantly or take days depending on complexity and approv
 | `input-required` | Needs your input | Read message, respond with info |
 | `failed` | Error occurred | Handle the error |
 
-**Note:** For the complete status list see [Core Concepts - Task Status System](/docs/building/implementation/task-lifecycle#task-status-system).
+**Note:** For the complete status list see [Core Concepts - Task Status System](/dist/docs/2.5.3/protocols/task-management#task-status-system).
 
 <Tabs>
   <Tab title="MCP">
@@ -1014,7 +1014,7 @@ await a2a.send({
   </Tab>
 </Tabs>
 
-For complete async handling patterns, see [Task Management](/docs/building/implementation/task-lifecycle).
+For complete async handling patterns, see [Task Management](/dist/docs/2.5.3/protocols/task-management).
 
 ## Usage Notes
 
@@ -1049,14 +1049,14 @@ Publishers should ensure:
 
 After creating a media buy:
 
-1. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) before deadline
-2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
-4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
+1. **Upload Creatives**: Use [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) before deadline
+2. **Monitor Status**: Use [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery)
+3. **Optimize**: Use [`provide_performance_feedback`](/dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback)
+4. **Update**: Use [`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy) to modify campaign
 
 ## Learn More
 
-- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
-- [get_products](/docs/media-buy/task-reference/get_products) - Discover inventory
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting strategies
-- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) - Currency and pricing
+- [Media Buy Lifecycle](/dist/docs/2.5.3/media-buy/media-buys/) - Complete campaign workflow
+- [get_products](/dist/docs/2.5.3/media-buy/task-reference/get_products) - Discover inventory
+- [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) - Targeting strategies
+- [Pricing Models](/dist/docs/2.5.3/media-buy/advanced-topics/pricing-models) - Currency and pricing

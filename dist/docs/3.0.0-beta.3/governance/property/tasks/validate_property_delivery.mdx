@@ -23,7 +23,7 @@ Validates delivery records against a property list to determine compliance. Answ
 
 ```json
 {
-  "$schema": "/schemas/property/validate-property-delivery-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/property/validate-property-delivery-request.json",
   "list_id": "pl_abc123",
   "records": [
     {
@@ -59,7 +59,7 @@ Validates delivery records against a property list to determine compliance. Answ
 
 ```json
 {
-  "$schema": "/schemas/property/validate-property-delivery-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/property/validate-property-delivery-response.json",
   "list_id": "pl_abc123",
   "summary": {
     "total_records": 4,
@@ -398,4 +398,4 @@ def analyze_validation(response):
 
 - [create_property_list](./property_lists#create_property_list) - Create the list to validate against
 - [get_property_list](./property_lists#get_property_list) - Retrieve current list membership
-- [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) - Discover available filter features
+- [get_adcp_capabilities](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities) - Discover available filter features

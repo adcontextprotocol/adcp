@@ -168,7 +168,7 @@ npx adcp \
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
-| `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/docs/creative/brand-manifest) |
+| `brand_manifest` | BrandManifestRef | Yes | Brand identity - minimal (name/URL) acceptable for sales agents. See [Brand Manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest) |
 | `start_time` | string | Yes | `"asap"` or ISO 8601 date-time |
 | `end_time` | string | Yes | ISO 8601 date-time (UTC unless timezone specified) |
 | `po_number` | string | No | Purchase order number |
@@ -196,8 +196,8 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing (required when pricing option has no `fixed_price`) |
-| `optimization_goal` | OptimizationGoal | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models). |
-| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
+| `optimization_goal` | OptimizationGoal | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. See [Pricing Models](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/pricing-models). |
+| `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
 
@@ -731,7 +731,7 @@ When executing a proposal:
 - Packages are created automatically based on the proposal's allocations
 - All other fields (brand_manifest, start_time, end_time, etc.) work the same as manual mode
 
-See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for the complete workflow including conversational refinement.
+See [Proposals](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#proposals) for the complete workflow including conversational refinement.
 
 ## Error Handling
 
@@ -787,7 +787,7 @@ The `brand_manifest` field identifies the advertiser for policy compliance and b
 }
 ```
 
-Full manifests with colors, fonts, and product catalogs are only needed for creative generation. See [Brand Manifest](/docs/creative/brand-manifest).
+Full manifests with colors, fonts, and product catalogs are only needed for creative generation. See [Brand Manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest).
 
 ### Pricing & Currency
 
@@ -796,7 +796,7 @@ Each package specifies its `pricing_option_id`, which determines:
 - Pricing model (CPM, CPCV, CPP, etc.)
 - Rate and whether it's fixed or auction-based
 
-Packages can use different currencies when sellers support it. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models).
+Packages can use different currencies when sellers support it. See [Pricing Models](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/pricing-models).
 
 ### Targeting Overlays
 
@@ -807,7 +807,7 @@ Use overlays only for:
 - Frequency capping
 - AXE segment inclusion/exclusion
 
-See [Targeting](/docs/media-buy/advanced-topics/targeting) for details.
+See [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) for details.
 
 ## Format Workflow
 
@@ -869,7 +869,7 @@ This task can complete instantly or take days depending on complexity and approv
 | `input-required` | Needs your input | Read message, respond with info |
 | `failed` | Error occurred | Handle the error |
 
-**Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle).
 
 <Tabs>
   <Tab title="MCP">
@@ -1211,7 +1211,7 @@ await a2a.send({
   </Tab>
 </Tabs>
 
-For complete async handling patterns, see [Async Operations](/docs/building/implementation/async-operations).
+For complete async handling patterns, see [Async Operations](/dist/docs/3.0.0-beta.3/building/implementation/async-operations).
 
 ## Usage Notes
 
@@ -1221,7 +1221,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - AXE segments enable advanced audience targeting
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
 
 ## Policy Compliance
 
@@ -1247,14 +1247,14 @@ Publishers should ensure:
 
 After creating a media buy:
 
-1. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) before deadline
-2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
-4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
+1. **Upload Creatives**: Use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives) before deadline
+2. **Monitor Status**: Use [`get_media_buy_delivery`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery)
+3. **Optimize**: Use [`provide_performance_feedback`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/provide_performance_feedback)
+4. **Update**: Use [`update_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/update_media_buy) to modify campaign
 
 ## Learn More
 
-- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
-- [get_products](/docs/media-buy/task-reference/get_products) - Discover inventory
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting strategies
-- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) - Currency and pricing
+- [Media Buy Lifecycle](/dist/docs/3.0.0-beta.3/media-buy/media-buys/) - Complete campaign workflow
+- [get_products](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_products) - Discover inventory
+- [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) - Targeting strategies
+- [Pricing Models](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/pricing-models) - Currency and pricing

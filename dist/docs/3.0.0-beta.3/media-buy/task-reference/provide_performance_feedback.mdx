@@ -148,7 +148,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "gam_1234567890",
   "measurement_period": {
     "start": "2024-01-01T00:00:00Z",
@@ -166,7 +166,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Performance feedback processed successfully. Optimization algorithms updated."
 }
@@ -177,7 +177,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "meta_9876543210",
   "package_id": "pkg_social_feed",
   "measurement_period": {
@@ -196,7 +196,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Exceptional performance noted. Increasing allocation to similar segments."
 }
@@ -207,7 +207,7 @@ A2A returns results as artifacts:
 #### Request
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "creative_id": "creative_video_123",
   "measurement_period": {
@@ -226,7 +226,7 @@ A2A returns results as artifacts:
 **Payload**:
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-response.json",
   "success": true,
   "message": "Creative performance feedback recorded. Consider creative optimization."
 }
@@ -239,7 +239,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Viewability Feedback
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
     "start": "2024-02-01T00:00:00Z",
@@ -254,7 +254,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Completion Rate Feedback
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
     "start": "2024-02-01T00:00:00Z",
@@ -269,7 +269,7 @@ To report multiple metrics for the same media buy, send one request per metric t
 #### Request - Brand Safety Feedback
 ```json
 {
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
+  "$schema": "/schemas/3.0.0-beta.3/media-buy/provide-performance-feedback-request.json",
   "media_buy_id": "ttd_5555555555",
   "measurement_period": {
     "start": "2024-02-01T00:00:00Z",
@@ -383,6 +383,6 @@ def get_metric_type(campaign_objective):
 
 ## Related Documentation
 
-- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Retrieve delivery metrics
-- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) - Performance feedback concepts
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Understanding targeting for optimization
+- [`get_media_buy_delivery`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/get_media_buy_delivery) - Retrieve delivery metrics
+- [Optimization & Reporting](/dist/docs/3.0.0-beta.3/media-buy/media-buys/optimization-reporting) - Performance feedback concepts
+- [Targeting](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/targeting) - Understanding targeting for optimization

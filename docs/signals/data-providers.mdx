@@ -10,9 +10,9 @@ This guide explains how data providers publish signal catalogs via `adagents.jso
 
 ## The Problem
 
-Data providers (Polk, Experian, Acxiom, etc.) own valuable audience and contextual data, but integrating with the growing ecosystem of AI-powered advertising agents presents challenges:
+Data providers (Pinnacle Data, Meridian Analytics, Apex Segments, etc.) own valuable audience and contextual data, but integrating with the growing ecosystem of AI-powered advertising agents presents challenges:
 
-**Discovery is fragmented.** Each signals agent (LiveRamp, The Trade Desk, etc.) needs custom integrations to know what signals you offer. There's no standard way for an AI agent to ask "what automotive purchase intent signals does Polk have?"
+**Discovery is fragmented.** Each signals agent (Luminary Data, Nova DSP, etc.) needs custom integrations to know what signals you offer. There's no standard way for an AI agent to ask "what automotive purchase intent signals does Pinnacle Data have?"
 
 **Authorization is opaque.** When a buyer receives a signal from a signals agent, they can't verify that the agent is actually authorized to resell it. They have to trust the intermediary.
 
@@ -67,9 +67,9 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
-    "name": "Acme Data Solutions",
-    "email": "partnerships@acme-data.com",
-    "domain": "acme-data.com"
+    "name": "Pinnacle Auto Data",
+    "email": "partnerships@pinnacle-auto-data.com",
+    "domain": "pinnacle-auto-data.com"
   },
   "signals": [
     {
@@ -131,8 +131,8 @@ User either matches or doesn't. Most common type.
 
 ```json
 {
-  "id": "likely_tesla_buyers",
-  "name": "Likely Tesla Buyers",
+  "id": "likely_ev_buyers",
+  "name": "Likely EV Buyers",
   "value_type": "binary",
   "tags": ["automotive", "purchase_intent"]
 }
@@ -149,11 +149,11 @@ User has one of several possible values.
   "id": "vehicle_ownership",
   "name": "Current Vehicle Ownership",
   "value_type": "categorical",
-  "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"]
+  "allowed_values": ["luxury_ev", "luxury_non_ev", "mid_range", "economy", "none"]
 }
 ```
 
-**Targeting**: Target users with specific values (e.g., "users who own tesla or bmw").
+**Targeting**: Target users with specific values (e.g., "users who own a luxury EV or luxury non-EV").
 
 ### Numeric Signals
 
@@ -187,7 +187,7 @@ Authorize specific signals by ID:
       "url": "https://premium-agent.example.com",
       "authorized_for": "Premium automotive signals only",
       "authorization_type": "signal_ids",
-      "signal_ids": ["likely_tesla_buyers", "luxury_auto_intenders"]
+      "signal_ids": ["likely_ev_buyers", "luxury_auto_intenders"]
     }
   ]
 }
@@ -253,13 +253,13 @@ When a buyer receives a signal, they can verify authorization:
 ```json
 {
   "signal_id": {
-    "data_provider_domain": "acme-data.com",
-    "id": "likely_tesla_buyers"
+    "data_provider_domain": "pinnacle-auto-data.com",
+    "id": "likely_ev_buyers"
   }
 }
 ```
 
-The buyer fetches `https://acme-data.com/.well-known/adagents.json` and checks:
+The buyer fetches `https://pinnacle-auto-data.com/.well-known/adagents.json` and checks:
 1. Does the signal exist in the `signals` array?
 2. Is the signals agent in `authorized_agents`?
 3. Does the authorization cover this signal (by ID or tag)?
@@ -271,21 +271,21 @@ Based on `value_type`, buyers construct targeting expressions:
 ```json
 // Binary targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "likely_tesla_buyers" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "likely_ev_buyers" },
   "value_type": "binary",
   "value": true
 }
 
 // Categorical targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "vehicle_ownership" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "vehicle_ownership" },
   "value_type": "categorical",
-  "values": ["tesla", "bmw"]
+  "values": ["luxury_ev", "luxury_non_ev"]
 }
 
 // Numeric targeting
 {
-  "signal_id": { "source": "catalog", "data_provider_domain": "acme-data.com", "id": "purchase_propensity" },
+  "signal_id": { "source": "catalog", "data_provider_domain": "pinnacle-auto-data.com", "id": "purchase_propensity" },
   "value_type": "numeric",
   "min_value": 0.7
 }
@@ -310,7 +310,7 @@ Signal IDs use `source` as a discriminator:
 {
   "signal_id": {
     "source": "agent",
-    "agent_url": "https://liveramp.com/.well-known/adcp/signals",
+    "agent_url": "https://luminary-data.com/.well-known/adcp/signals",
     "id": "custom_auto_intenders"
   },
   "value_type": "binary",
@@ -321,7 +321,7 @@ Signal IDs use `source` as a discriminator:
 ### When to Use Each
 
 **Use `source: "catalog"`** when:
-- Signal comes from an external data provider (Polk, Experian, etc.)
+- Signal comes from an external data provider (Pinnacle Data, Meridian Analytics, etc.)
 - Authorization verification is important
 - You want to reference the canonical signal definition
 
@@ -338,24 +338,24 @@ A full signal catalog for an automotive data provider:
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
   "contact": {
-    "name": "Polk Automotive Data",
-    "email": "partnerships@polk.com",
-    "domain": "polk.com"
+    "name": "Pinnacle Auto Data",
+    "email": "partnerships@pinnacle-auto-data.com",
+    "domain": "pinnacle-auto-data.com"
   },
   "signals": [
     {
-      "id": "likely_tesla_buyers",
-      "name": "Likely Tesla Buyers",
-      "description": "Consumers modeled as likely to purchase a Tesla in the next 12 months based on vehicle registration, financial, and behavioral data",
+      "id": "likely_ev_buyers",
+      "name": "Likely EV Buyers",
+      "description": "Consumers modeled as likely to purchase an electric vehicle in the next 12 months based on vehicle registration, financial, and behavioral data",
       "value_type": "binary",
       "tags": ["automotive", "premium"]
     },
     {
       "id": "vehicle_ownership",
       "name": "Current Vehicle Ownership",
-      "description": "Current vehicle make owned by the consumer",
+      "description": "Current vehicle category owned by the consumer",
       "value_type": "categorical",
-      "allowed_values": ["tesla", "bmw", "mercedes", "audi", "lexus", "other_luxury", "non_luxury"],
+      "allowed_values": ["luxury_ev", "luxury_non_ev", "mid_range", "economy", "none"],
       "tags": ["automotive"]
     },
     {
@@ -379,16 +379,16 @@ A full signal catalog for an automotive data provider:
   },
   "authorized_agents": [
     {
-      "url": "https://liveramp.com/.well-known/adcp/signals",
-      "authorized_for": "All Polk automotive signals via LiveRamp",
+      "url": "https://luminary-data.com/.well-known/adcp/signals",
+      "authorized_for": "All Pinnacle automotive signals via Luminary Data",
       "authorization_type": "signal_tags",
       "signal_tags": ["automotive"]
     },
     {
-      "url": "https://the-trade-desk.com/.well-known/adcp/signals",
-      "authorized_for": "Polk premium signals only",
+      "url": "https://nova-dsp.com/.well-known/adcp/signals",
+      "authorized_for": "Pinnacle premium signals only",
       "authorization_type": "signal_ids",
-      "signal_ids": ["likely_tesla_buyers"]
+      "signal_ids": ["likely_ev_buyers"]
     }
   ],
   "last_updated": "2025-01-15T10:00:00Z"
@@ -417,7 +417,7 @@ The validator checks:
 
 ```json
 // Good
-{ "id": "likely_tesla_buyers" }
+{ "id": "likely_ev_buyers" }
 { "id": "household_income_150k_plus" }
 
 // Avoid
@@ -448,7 +448,7 @@ Signal agents advertise available data providers via `get_adcp_capabilities`:
 ```json
 {
   "signals": {
-    "data_provider_domains": ["polk.com", "experian.com", "acxiom.com"]
+    "data_provider_domains": ["pinnacle-auto-data.com", "meridian-analytics.com", "apex-segments.com"]
   }
 }
 ```

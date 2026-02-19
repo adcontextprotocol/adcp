@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/promoted-products.json",
   "title": "Promoted Products",
-  "description": "Specification of products or offerings being promoted in a campaign. Supports multiple selection methods from the brand manifest that can be combined using UNION (OR) logic. When multiple selection methods are provided, products matching ANY of the criteria are selected (logical OR, not AND).",
+  "description": "Specification of products or offerings being promoted in a campaign. Supports multiple selection methods from the brand's product catalog that can be combined using UNION (OR) logic. When multiple selection methods are provided, products matching ANY of the criteria are selected (logical OR, not AND).",
   "type": "object",
   "properties": {
     "manifest_gtins": {
@@ -15,25 +15,25 @@
     },
     "manifest_skus": {
       "type": "array",
-      "description": "Direct product SKU references from the brand manifest product catalog",
+      "description": "Direct product SKU references from the brand's product catalog",
       "items": {
         "type": "string"
       }
     },
     "manifest_tags": {
       "type": "array",
-      "description": "Select products by tags from the brand manifest product catalog (e.g., 'organic', 'sauces', 'holiday')",
+      "description": "Select products by tags from the brand's product catalog (e.g., 'organic', 'sauces', 'holiday')",
       "items": {
         "type": "string"
       }
     },
     "manifest_category": {
       "type": "string",
-      "description": "Select products from a specific category in the brand manifest product catalog (e.g., 'beverages/soft-drinks', 'food/sauces')"
+      "description": "Select products from a specific category in the brand's product catalog (e.g., 'beverages/soft-drinks', 'food/sauces')"
     },
     "manifest_query": {
       "type": "string",
-      "description": "Natural language query to select products from the brand manifest (e.g., 'all Kraft Heinz pasta sauces', 'organic products under $20')"
+      "description": "Natural language query to select products from the brand's catalog (e.g., 'all pasta sauces', 'organic products under $20')"
     }
   },
   "minProperties": 1,
@@ -49,7 +49,7 @@
       }
     },
     {
-      "description": "Direct SKU selection for specific products from brand manifest",
+      "description": "Direct SKU selection for specific products from brand catalog",
       "data": {
         "manifest_skus": [
           "SKU-12345",
@@ -58,7 +58,7 @@
       }
     },
     {
-      "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand manifest",
+      "description": "UNION selection: products tagged 'organic' OR 'sauces' OR in 'food/condiments' category from brand catalog",
       "data": {
         "manifest_tags": [
           "organic",
@@ -68,7 +68,7 @@
       }
     },
     {
-      "description": "Natural language product selection from brand manifest",
+      "description": "Natural language product selection from brand catalog",
       "data": {
         "manifest_query": "all Kraft Heinz pasta sauces under $5"
       }

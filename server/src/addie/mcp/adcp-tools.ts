@@ -50,13 +50,14 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description:
             'Natural language description of campaign requirements (e.g., "Looking for premium video inventory targeting tech professionals")',
         },
-        brand_manifest: {
+        brand: {
           type: 'object',
-          description: 'Brand context - either { url: "https://brand.com" } or inline manifest with name, colors, etc.',
+          description: 'Brand reference — resolved to full brand identity at execution time',
           properties: {
-            url: { type: 'string', description: 'Brand website URL for context extraction' },
-            name: { type: 'string', description: 'Brand name (for inline manifest)' },
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
           },
+          required: ['domain'],
         },
         filters: {
           type: 'object',
@@ -110,13 +111,14 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Your unique identifier for this campaign',
         },
-        brand_manifest: {
+        brand: {
           type: 'object',
-          description: 'Brand context - URL reference or inline manifest',
+          description: 'Brand reference — resolved to full brand identity at execution time',
           properties: {
-            url: { type: 'string' },
-            name: { type: 'string' },
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
           },
+          required: ['domain'],
         },
         packages: {
           type: 'array',
@@ -157,7 +159,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'buyer_ref', 'brand_manifest', 'packages', 'start_time', 'end_time'],
+      required: ['agent_url', 'buyer_ref', 'brand', 'packages', 'start_time', 'end_time'],
     },
   },
   {
@@ -758,9 +760,14 @@ export const ADCP_GOVERNANCE_PROPERTY_TOOLS: AddieTool[] = [
             },
           },
         },
-        brand_manifest: {
+        brand: {
           type: 'object',
-          description: 'Brand context - agent applies appropriate rules based on industry, audience, etc.',
+          description: 'Brand reference — agent applies appropriate rules based on industry, audience, etc.',
+          properties: {
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
+          },
+          required: ['domain'],
         },
         debug: {
           type: 'boolean',
@@ -915,7 +922,15 @@ export const ADCP_GOVERNANCE_CONTENT_TOOLS: AddieTool[] = [
             },
           },
         },
-        brand_manifest: { type: 'object', description: 'Brand context for automatic rule inference' },
+        brand: {
+          type: 'object',
+          description: 'Brand reference for automatic rule inference',
+          properties: {
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
+          },
+          required: ['domain'],
+        },
         debug: { type: 'boolean' },
       },
       required: ['agent_url', 'name'],
@@ -1469,7 +1484,7 @@ export function createAdcpToolHandlers(
     const params: Record<string, unknown> = {
       brief: input.brief,
     };
-    if (input.brand_manifest) params.brand_manifest = input.brand_manifest;
+    if (input.brand) params.brand = input.brand;
     if (input.filters) params.filters = input.filters;
 
     return executeTask(agentUrl, 'get_products', params, debug);
@@ -1480,7 +1495,7 @@ export function createAdcpToolHandlers(
     const debug = input.debug as boolean | undefined;
     const params: Record<string, unknown> = {
       buyer_ref: input.buyer_ref,
-      brand_manifest: input.brand_manifest,
+      brand: input.brand,
       packages: input.packages,
       start_time: input.start_time,
       end_time: input.end_time,
@@ -1639,7 +1654,7 @@ export function createAdcpToolHandlers(
     if (input.description) params.description = input.description;
     if (input.base_properties) params.base_properties = input.base_properties;
     if (input.filters) params.filters = input.filters;
-    if (input.brand_manifest) params.brand_manifest = input.brand_manifest;
+    if (input.brand) params.brand = input.brand;
 
     return executeTask(agentUrl, 'create_property_list', params, debug);
   });
@@ -1695,7 +1710,7 @@ export function createAdcpToolHandlers(
     };
     if (input.description) params.description = input.description;
     if (input.rules) params.rules = input.rules;
-    if (input.brand_manifest) params.brand_manifest = input.brand_manifest;
+    if (input.brand) params.brand = input.brand;
 
     return executeTask(agentUrl, 'create_content_standards', params, debug);
   });

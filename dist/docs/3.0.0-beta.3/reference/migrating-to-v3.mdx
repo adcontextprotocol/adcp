@@ -10,11 +10,11 @@ AdCP v3 is a major release that expands the protocol's scope beyond media buying
 
 ## Why v3?
 
-- **[Media Channel Taxonomy](/docs/reference/media-channel-taxonomy)** — 19 planning-oriented channels that reflect how buyers allocate budgets
-- **[Proposals](/docs/media-buy/product-discovery/media-products#proposals)** — Structured media plans with conversational refinement and direct execution
-- **[Capability Discovery](/docs/protocol/get_adcp_capabilities)** — Verify seller targeting support (geo systems, etc.) before purchasing
-- **[Governance Protocol](/docs/governance)** — Property lists and content standards for enterprise brand suitability
-- **[Sponsored Intelligence](/docs/sponsored-intelligence/overview)** — Conversational brand experiences in AI assistants
+- **[Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy)** — 19 planning-oriented channels that reflect how buyers allocate budgets
+- **[Proposals](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#proposals)** — Structured media plans with conversational refinement and direct execution
+- **[Capability Discovery](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities)** — Verify seller targeting support (geo systems, etc.) before purchasing
+- **[Governance Protocol](/dist/docs/3.0.0-beta.3/governance)** — Property lists and content standards for enterprise brand suitability
+- **[Sponsored Intelligence](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview)** — Conversational brand experiences in AI assistants
 
 ---
 
@@ -64,7 +64,7 @@ Your migration path depends on what you're building:
 
 **Data Providers** (signal catalog publishers) - *new in v3*:
 - **New feature** - Publish signal catalogs via `adagents.json`
-- See [Data Provider Guide](/docs/signals/data-providers) for implementation details
+- See [Data Provider Guide](/dist/docs/3.0.0-beta.3/signals/data-providers) for implementation details
 
 **Creative Agents** (creative management, DCO providers):
 - **Breaking changes** - Support `assets` array with `required` boolean for full asset discovery
@@ -72,11 +72,11 @@ Your migration path depends on what you're building:
 
 **Governance Agents** (verification vendors, brand suitability platforms) - *new in v3*:
 - **New protocol** - Implement property lists and content standards tasks
-- See [Governance Protocol](/docs/governance) for implementation details
+- See [Governance Protocol](/dist/docs/3.0.0-beta.3/governance) for implementation details
 
 **Sponsored Intelligence Agents** (brand agents) - *new in v3*:
 - **New protocol** - Implement SI session tasks for conversational brand experiences
-- See [Sponsored Intelligence](/docs/sponsored-intelligence/overview) for implementation details
+- See [Sponsored Intelligence](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview) for implementation details
 
 ---
 
@@ -115,7 +115,7 @@ All code that reads or writes channel values must be updated.
 | `native` | Removed | Use format-level `native` property instead |
 | `retail` | `retail_media` | Renamed for clarity |
 
-See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) for complete definitions.
+See [Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy) for complete definitions.
 
 #### Migration Steps
 
@@ -519,7 +519,7 @@ SI defines how AI assistants invoke brand agent endpoints for rich brand engagem
 }
 ```
 
-See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
+See [Sponsored Intelligence Overview](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview) for complete documentation.
 
 ---
 
@@ -637,7 +637,7 @@ The request now supports ID-based lookup alongside natural language:
 
 When `signal_ids` is provided, the agent returns exact matches from the data provider's catalog.
 
-See the [Data Provider Guide](/docs/signals/data-providers) for complete implementation details.
+See the [Data Provider Guide](/dist/docs/3.0.0-beta.3/signals/data-providers) for complete implementation details.
 
 ---
 
@@ -664,7 +664,7 @@ These items from v2.x have been removed in v3:
 
 These breaking changes affect anyone reading or writing AdCP data:
 
-- [ ] Update channel enum values to [new taxonomy](/docs/reference/media-channel-taxonomy)
+- [ ] Update channel enum values to [new taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy)
 - [ ] Rename `fixed_rate` → `fixed_price` in pricing options
 - [ ] Move `price_guidance.floor` → `floor_price` (top-level)
 - [ ] Replace `creative_ids` with `creative_assignments`

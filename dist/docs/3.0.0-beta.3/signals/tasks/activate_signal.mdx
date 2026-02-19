@@ -145,7 +145,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
 Immediate response with activation key:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -181,7 +181,7 @@ Immediate response with activation key:
 Initial response:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -197,7 +197,7 @@ Initial response:
 After polling for completion:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Signal successfully activated on The Trade Desk",
   "context_id": "ctx-signals-123",
   "deployments": [{
@@ -333,7 +333,7 @@ Authorization: Bearer secret-token
 }
 ```
 
-See **[Webhooks](/docs/building/implementation/webhooks)** for complete details on webhook configuration and reliability.
+See **[Webhooks](/dist/docs/3.0.0-beta.3/building/implementation/webhooks)** for complete details on webhook configuration and reliability.
 
 ## Scenarios
 
@@ -343,7 +343,7 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -362,7 +362,7 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -385,7 +385,7 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
   "context_id": "ctx-signals-ghi789",
   "deployments": [{
@@ -408,7 +408,7 @@ See **[Webhooks](/docs/building/implementation/webhooks)** for complete details 
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
   "context_id": "ctx-signals-def456",
   "deployments": [{
@@ -435,7 +435,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 **Complete Response**:
 ```json
 {
-  "$schema": "/schemas/signals/activate-signal-response.json",
+  "$schema": "/schemas/3.0.0-beta.3/signals/activate-signal-response.json",
   "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
   "context_id": "ctx-signals-def456",
   "errors": [

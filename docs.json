@@ -60,7 +60,16 @@
             "pages": [
               "docs/intro",
               "docs/quickstart",
-              "docs/reference/migrating-to-v3"
+              {
+                "group": "AdCP v3",
+                "pages": [
+                  "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/channels",
+                  "docs/reference/migration/pricing",
+                  "docs/reference/migration/geo-targeting",
+                  "docs/reference/migration/creatives"
+                ]
+              }
             ]
           },
           {
@@ -158,6 +167,7 @@
             "pages": [
               "docs/signals/overview",
               "docs/signals/specification",
+              "docs/signals/data-providers",
               {
                 "group": "Tasks",
                 "pages": [
@@ -210,7 +220,8 @@
                   "docs/media-buy/task-reference/update_media_buy",
                   "docs/media-buy/task-reference/provide_performance_feedback",
                   "docs/media-buy/task-reference/sync_event_sources",
-                  "docs/media-buy/task-reference/log_event"
+                  "docs/media-buy/task-reference/log_event",
+                  "docs/media-buy/task-reference/sync_audiences"
                 ]
               },
               {
@@ -271,7 +282,6 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
-              "docs/creative/brand-manifest",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
@@ -526,7 +536,16 @@
             "pages": [
               "docs/intro",
               "docs/quickstart",
-              "docs/reference/migrating-to-v3"
+              {
+                "group": "AdCP v3",
+                "pages": [
+                  "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/channels",
+                  "docs/reference/migration/pricing",
+                  "docs/reference/migration/geo-targeting",
+                  "docs/reference/migration/creatives"
+                ]
+              }
             ]
           },
           {
@@ -624,6 +643,7 @@
             "pages": [
               "docs/signals/overview",
               "docs/signals/specification",
+              "docs/signals/data-providers",
               {
                 "group": "Tasks",
                 "pages": [
@@ -676,7 +696,8 @@
                   "docs/media-buy/task-reference/update_media_buy",
                   "docs/media-buy/task-reference/provide_performance_feedback",
                   "docs/media-buy/task-reference/sync_event_sources",
-                  "docs/media-buy/task-reference/log_event"
+                  "docs/media-buy/task-reference/log_event",
+                  "docs/media-buy/task-reference/sync_audiences"
                 ]
               },
               {
@@ -737,7 +758,6 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
-              "docs/creative/brand-manifest",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
@@ -836,6 +856,16 @@
       "apiKey": ""
     }
   },
+  "redirects": [
+    {
+      "source": "/docs/reference/migrating-to-v3",
+      "destination": "/docs/reference/whats-new-in-v3"
+    },
+    {
+      "source": "/docs/creative/brand-manifest",
+      "destination": "/docs/brand-protocol/brand-json"
+    }
+  ],
   "modeToggle": {
     "default": "light",
     "isHidden": false

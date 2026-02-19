@@ -352,8 +352,8 @@
             <div class="filter-row">
                 <div class="filter-group">
                     <label>Type:</label>
-                    <button class="filter-btn" data-filter="all" onclick="setFilter('all')">All</button>
-                    <button class="filter-btn active" data-filter="house" onclick="setFilter('house')">Houses</button>
+                    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="house" onclick="setFilter('house')">Houses</button>
                     <button class="filter-btn" data-filter="sub_brand" onclick="setFilter('sub_brand')">Sub-brands</button>
                     <button class="filter-btn" data-filter="brand_json" onclick="setFilter('brand_json')">brand.json</button>
                 </div>
@@ -376,10 +376,15 @@
 
     <script type="module">
         let brands = [];
-        let filters = { type: 'house' };
+        let filters = { type: 'all' };
 
         window.addEventListener('DOMContentLoaded', async () => {
-            await loadBrands();
+            // Pre-fill search from ?domain= query param (e.g. linked from member profile)
+            const domainParam = new URLSearchParams(window.location.search).get('domain');
+            if (domainParam) {
+                document.getElementById('search-input').value = domainParam;
+            }
+            await loadBrands(domainParam || undefined);
         });
 
         let activeController = null;

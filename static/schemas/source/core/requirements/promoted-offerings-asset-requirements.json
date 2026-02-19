@@ -7,7 +7,7 @@
   "properties": {
     "requires": {
       "type": "array",
-      "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand_manifest.* paths, the validating agent resolves the brand_manifest reference first.",
+      "description": "Content that must be available in this format's promoted offerings. Each value is a presence check: the referenced field must exist and be non-empty. For brand.* paths, the validating agent resolves the brand reference first.",
       "items": {
         "$ref": "/schemas/enums/promoted-offerings-requirement.json"
       },

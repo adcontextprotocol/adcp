@@ -569,14 +569,14 @@
       const members = data.members || [];
 
       // Only show members with logos (organizations, not individuals)
-      const membersWithLogos = members.filter(m => m.show_in_carousel && m.logo_url);
+      const membersWithLogos = members.filter(m => m.show_in_carousel && m.resolved_brand?.logo_url);
 
       // Render members with logos
       const memberLogosEl = document.getElementById('member-logos');
       if (membersWithLogos.length > 0) {
         memberLogosEl.innerHTML = membersWithLogos.map(member => `
           <a href="/members/${encodeURIComponent(member.slug)}" class="member-logo-link" title="${escapeHtml(member.display_name)}">
-            <img src="${escapeHtml(member.logo_url)}" alt="${escapeHtml(member.display_name)}" class="member-logo">
+            <img src="${escapeHtml(member.resolved_brand.logo_url)}" alt="${escapeHtml(member.display_name)}" class="member-logo">
           </a>
         `).join('');
       }

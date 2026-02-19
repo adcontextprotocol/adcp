@@ -12,6 +12,7 @@ import { CreativeAgentClient, SingleAgentClient } from "@adcp/client";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
+import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter } from "../middleware/rate-limit.js";
 import { createLogger } from "../logger.js";
@@ -37,6 +38,7 @@ import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
+import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
 
 const logger = createLogger("registry-api");
 
@@ -928,6 +930,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
       if (!domainPattern.test(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
+      }
+
+      // Block edits when a verified member org owns this domain
+      const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+      if (hostedBrand?.domain_verified) {
+        return res.status(409).json({
+          error: "This brand is managed by a verified member organization",
+          domain,
+        });
       }
 
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
@@ -1879,6 +1890,187 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       logger.error({ err: error, domain }, "Public publisher validation error");
 
       return res.status(500).json({ error: "Publisher validation failed", message: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
+  // ── Brand hosting: serve brand.json for hosted members ─────────
+  // Public endpoint — target of authoritative_location pointer files.
+  // Members place {"authoritative_location":"<this URL>"} at /.well-known/brand.json.
+
+  router.get("/brands/:domain/brand.json", async (req, res) => {
+    const domain = req.params.domain.toLowerCase();
+
+    try {
+      // Hosted brand takes priority (member-managed)
+      const hosted = await brandDb.getHostedBrandByDomain(domain);
+      if (hosted && hosted.is_public) {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "public, max-age=300");
+        return res.json(hosted.brand_json);
+      }
+
+      // Fall back to discovered brand — reconstruct minimal brand.json
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (discovered) {
+        const brandJson: Record<string, unknown> = {
+          name: discovered.brand_name || domain,
+        };
+        if (discovered.brand_manifest) {
+          const manifest = discovered.brand_manifest as Record<string, unknown>;
+          if (manifest.logos) brandJson.logos = manifest.logos;
+          if (manifest.colors) brandJson.colors = manifest.colors;
+        }
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "public, max-age=300");
+        return res.json(brandJson);
+      }
+
+      return res.status(404).json({ error: "Brand not found" });
+    } catch (error) {
+      logger.error({ err: error, domain }, "Failed to serve brand.json");
+      return res.status(500).json({ error: "Failed to retrieve brand" });
+    }
+  });
+
+  // ── Brand setup: link member to brand registry ───────────────────
+  // Creates (or updates) a hosted brand entry and links it to the authenticated member's profile.
+  // Returns the pointer snippet for the member to place at /.well-known/brand.json on their domain.
+
+  const setupBrandMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
+
+  router.post("/brands/setup-my-brand", ...setupBrandMiddleware, async (req, res) => {
+    const { brand_name, logo_url, brand_color } = req.body;
+    const rawDomain = req.body.domain as string;
+
+    if (!rawDomain || typeof rawDomain !== "string") {
+      return res.status(400).json({ error: "domain is required" });
+    }
+    if (!brand_name || typeof brand_name !== "string") {
+      return res.status(400).json({ error: "brand_name is required" });
+    }
+
+    const domain = rawDomain
+      .replace(/^https?:\/\/(www\.)?/, "")
+      .replace(/[/?#].*$/, "")
+      .replace(/\/$/, "")
+      .toLowerCase();
+
+    const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+    if (!domainPattern.test(domain)) {
+      return res.status(400).json({ error: "Invalid domain format" });
+    }
+
+    try {
+      // Check whether brand.json is already live on their domain
+      let hasBrandJson = false;
+      try {
+        const validation = await brandManager.validateDomain(domain);
+        hasBrandJson = validation.valid;
+      } catch {
+        // Validation failure is non-fatal — domain just doesn't have brand.json yet
+      }
+
+      // Look up the user's primary org once — used for both hosted brand creation and profile linking
+      const userRow = await query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [req.user!.id]
+      );
+      const orgId = userRow.rows[0]?.primary_organization_id;
+
+      // Verify the requested domain belongs to this org (matches a WorkOS-verified domain or subdomain).
+      // Skipped in dev mode (DEV_USER_EMAIL set) since dev orgs are not in WorkOS.
+      const devMode = !!(process.env.DEV_USER_EMAIL && process.env.DEV_USER_ID);
+      if (!devMode && orgId) {
+        const orgDomainsResult = await query<{ domain: string }>(
+          'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
+          [orgId]
+        );
+        const orgDomains = orgDomainsResult.rows.map(r => r.domain.toLowerCase());
+        const domainBelongsToOrg = orgDomains.some(
+          od => domain === od || domain.endsWith(`.${od}`)
+        );
+        if (!domainBelongsToOrg) {
+          return res.status(403).json({
+            error: 'This domain is not associated with your organization',
+          });
+        }
+      }
+
+      // Only create a hosted entry if they don't already self-host brand.json
+      if (!hasBrandJson) {
+        const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+
+        // If the community has already built out approved brand data, adopt it directly.
+        // Otherwise build a minimal entry from the request params.
+        let brandJson: Record<string, unknown>;
+        const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+          brandJson = manifest;
+        } else {
+          const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+          const brandEntry: Record<string, unknown> = {
+            id: brandId,
+            keller_type: 'master',
+            names: [{ en: brand_name }],
+          };
+          if (logo_url) brandEntry.logos = [{ url: logo_url }];
+          if (brand_color) brandEntry.colors = { primary: brand_color };
+          brandJson = {
+            house: { domain, name: brand_name },
+            brands: [brandEntry],
+          };
+        }
+
+        const existing = await brandDb.getHostedBrandByDomain(domain);
+        if (existing) {
+          // Only lock once domain_verified=true — unverified claims can be overwritten.
+          // A verified domain with no org (e.g. crawler-verified before setup) is also locked.
+          if (existing.domain_verified && existing.workos_organization_id !== orgId) {
+            return res.status(403).json({ error: 'This domain is managed by another organization' });
+          }
+          // Update org attribution alongside brand data — keeps ownership current when
+          // an unverified entry is overwritten. WorkOS organization_domains uniqueness
+          // ensures only one org can hold a given domain, so this is safe.
+          await brandDb.updateHostedBrand(existing.id, {
+            brand_json: brandJson,
+            workos_organization_id: orgId || undefined,
+          });
+        } else {
+          await brandDb.createHostedBrand({
+            workos_organization_id: orgId || undefined,
+            created_by_user_id: req.user!.id,
+            created_by_email: req.user!.email,
+            brand_domain: domain,
+            brand_json: brandJson,
+            is_public: true,
+          });
+        }
+      }
+
+      // Link the member profile to this brand domain using authenticated user's org
+      const memberDb = new MemberDatabase();
+      if (orgId) {
+        await memberDb.updateProfileByOrgId(orgId, {
+          primary_brand_domain: domain,
+        });
+      }
+
+      const hostedBrandJsonUrl = aaoHostedBrandJsonUrl(domain);
+      const pointerSnippet = JSON.stringify(
+        { authoritative_location: hostedBrandJsonUrl },
+        null,
+        2
+      );
+
+      return res.json({
+        domain,
+        has_brand_json: hasBrandJson,
+        hosted_brand_json_url: hostedBrandJsonUrl,
+        pointer_snippet: pointerSnippet,
+      });
+    } catch (error) {
+      logger.error({ err: error, domain }, "Failed to set up brand");
+      return res.status(500).json({ error: "Failed to set up brand" });
     }
   });
 

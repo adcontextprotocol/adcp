@@ -18,6 +18,7 @@
     "sync_accounts",
     "get_creative_delivery",
     "sync_event_sources",
+    "sync_audiences",
     "log_event"
   ],
   "enumDescriptions": {
@@ -26,7 +27,7 @@
     "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
     "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
     "get_signals": "Signals domain: Discover available audience signals based on natural language description",
-    "create_property_list": "Property domain: Create a new property list with filters and brand manifest",
+    "create_property_list": "Property domain: Create a new property list with filters and brand reference",
     "update_property_list": "Property domain: Update an existing property list",
     "get_property_list": "Property domain: Retrieve a property list with resolved properties",
     "list_property_lists": "Property domain: List all accessible property lists",
@@ -34,6 +35,7 @@
     "sync_accounts": "Account domain: Sync advertiser accounts with a seller, declaring brands, operators, and billing arrangements",
     "get_creative_delivery": "Creative domain: Retrieve variant-level creative delivery data",
     "sync_event_sources": "Media-buy domain: Configure event sources on an account with upsert semantics",
+    "sync_audiences": "Media-buy domain: Manage first-party CRM audiences on an account with delta upsert semantics",
     "log_event": "Media-buy domain: Send conversion or marketing events for attribution"
   },
   "notes": [

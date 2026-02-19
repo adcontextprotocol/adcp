@@ -90,7 +90,7 @@ The publisher's AI interprets this and returns relevant products. Future version
 }
 ```
 
-See [Policy Compliance](/docs/media-buy/media-buys/policy-compliance) for complete implementation guidance.
+See [Policy Compliance](/dist/docs/3.0.0-beta.3/media-buy/media-buys/policy-compliance) for complete implementation guidance.
 
 ### Q: Is the advertiser's name always shared?
 
@@ -212,7 +212,7 @@ Best practice: Always require it. Policy checking should happen during discovery
 }
 ```
 
-Buyers can discover the agent's portfolio via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), which returns the publisher domains and primary channels the agent represents. This keeps responses lightweight while maintaining full validation capability.
+Buyers can discover the agent's portfolio via [`get_adcp_capabilities`](/dist/docs/3.0.0-beta.3/protocol/get_adcp_capabilities), which returns the publisher domains and primary channels the agent represents. This keeps responses lightweight while maintaining full validation capability.
 
 ## Testing and Validation
 
@@ -288,7 +288,7 @@ assert(response.message.includes("policy"));
 3. Verify the sales agent URL appears in `authorized_agents`
 4. Reject products from unauthorized agents
 
-See [Authorization Validation](/docs/governance/property/adagents#buyer-agent-validation) for complete requirements.
+See [Authorization Validation](/dist/docs/3.0.0-beta.3/governance/property/adagents#buyer-agent-validation) for complete requirements.
 
 ## Terminology
 
@@ -308,15 +308,15 @@ Products describe what's available. Packages describe what you're buying.
 
 ### Q: What's "AXE" mentioned in the docs?
 
-**A:** **Agentic eXecution Engine (AXE)** - the real-time execution layer between orchestrators and decisioning platforms. AXE handles dynamic audience targeting (buyers bringing their own segments), brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for complete details.
+**A:** **Agentic eXecution Engine (AXE)** - the real-time execution layer between orchestrators and decisioning platforms. AXE handles dynamic audience targeting (buyers bringing their own segments), brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine) for complete details.
 
 ## Need More Help?
 
 If your question isn't answered here:
 
-1. Check the [Task Reference](/docs/media-buy/task-reference/) for detailed API documentation
-2. Review [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations) for discovery guidance
-3. See [Media Products](/docs/media-buy/product-discovery/media-products) for product model details
+1. Check the [Task Reference](/dist/docs/3.0.0-beta.3/media-buy/task-reference/) for detailed API documentation
+2. Review [Brief Expectations](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/brief-expectations) for discovery guidance
+3. See [Media Products](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products) for product model details
 4. Open a GitHub issue for specification clarifications
 
 This FAQ is updated regularly based on implementer feedback.

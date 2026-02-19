@@ -770,6 +770,61 @@
         <button class="btn" id="individualBtn" onclick="createIndividualWorkspace()">Join as Individual</button>
       </div>
     </div>
+
+    <!-- Brand Setup Step (shown after org creation) -->
+    <div id="brandSetupSection" class="form-section" style="display: none;">
+      <h2 style="margin-bottom: var(--space-2);">Set up your brand</h2>
+      <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); font-size: var(--text-sm);">
+        As a member, you get a hosted brand.json at <strong>agenticadvertising.org/brands/yourdomain.com/brand.json</strong>.
+        Place a one-line pointer file on your domain to make AgenticAdvertising.org your authoritative brand source — and use the same file on any domain you own.
+      </p>
+
+      <div class="form-group">
+        <label for="brandDomain">Your domain</label>
+        <div style="display: flex; gap: var(--space-2);">
+          <input type="text" id="brandDomain" placeholder="yourdomain.com" style="flex: 1;" oninput="clearBrandCheck()">
+          <button type="button" onclick="checkBrandJson()" style="padding: var(--space-2) var(--space-4); background: var(--color-gray-100); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; white-space: nowrap; font-size: var(--text-sm);">Check</button>
+        </div>
+        <div id="brandJsonStatus" style="margin-top: var(--space-2); font-size: var(--text-sm); display: none;"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="brandLogoUrl">Logo URL <span style="color: var(--color-text-muted); font-weight: normal;">(optional)</span></label>
+        <input type="url" id="brandLogoUrl" placeholder="https://yourdomain.com/logo.png">
+      </div>
+
+      <div class="form-group">
+        <label for="brandColor">Brand color <span style="color: var(--color-text-muted); font-weight: normal;">(optional)</span></label>
+        <div style="display: flex; gap: var(--space-3); align-items: center;">
+          <input type="color" id="brandColorPicker" style="width: 48px; height: 38px; padding: 2px; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer;" oninput="document.getElementById('brandColor').value = this.value">
+          <input type="text" id="brandColor" placeholder="#10b981" style="flex: 1;" oninput="if(this.value.match(/^#[0-9a-f]{6}$/i)) document.getElementById('brandColorPicker').value = this.value">
+        </div>
+      </div>
+
+      <div id="brandPointerResult" style="display: none; margin-bottom: var(--space-5);">
+        <div style="background: var(--color-success-50); border: var(--border-1) solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4);">
+          <div style="font-weight: var(--font-semibold); color: var(--color-success-700); margin-bottom: var(--space-3);">Your brand is set up!</div>
+          <p style="font-size: var(--text-sm); color: var(--color-success-700); margin-bottom: var(--space-3);">
+            To make AgenticAdvertising.org the authoritative source for your brand, place this file at
+            <code style="background: var(--color-success-100); padding: 1px 4px; border-radius: 3px;">yourdomain.com/.well-known/brand.json</code>.
+            You can put the same file on any domain you own.
+          </p>
+          <div style="position: relative;">
+            <pre id="brandPointerSnippet" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); overflow-x: auto; margin: 0;"></pre>
+            <button onclick="copyPointerSnippet()" style="position: absolute; top: var(--space-2); right: var(--space-2); padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+          </div>
+          <p style="margin-top: var(--space-3); margin-bottom: 0; font-size: var(--text-xs); color: var(--color-success-600);">
+            You can always update your brand data and manage your brand.json from the <strong>member dashboard</strong>.
+          </p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: var(--space-3);">
+        <button class="btn" id="brandSetupBtn" onclick="setupBrand()">Set up brand</button>
+        <button onclick="goToDashboard()" style="padding: var(--space-3) var(--space-5); background: none; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; color: var(--color-text-secondary); font-size: var(--text-base);">Skip for now</button>
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -1280,7 +1335,8 @@
           throw new Error(data.message || 'Failed to register company');
         }
 
-        window.location.href = '/dashboard';
+        // Show brand setup step instead of going directly to dashboard
+        showBrandSetup(orgName, corporateDomain);
       } catch (error) {
         showError(error.message);
         createBtn.disabled = false;
@@ -1338,6 +1394,100 @@
         btn.disabled = false;
         btn.textContent = 'Join as Individual';
       }
+    }
+
+    // ── Brand setup step ──────────────────────────────────────────────
+
+    var createdOrgName = '';
+
+    function showBrandSetup(orgName, domain) {
+      createdOrgName = orgName;
+      document.getElementById('createForm').style.display = 'none';
+      document.getElementById('brandSetupSection').style.display = 'block';
+      document.getElementById('brandDomain').value = domain || '';
+      // Hide the main content wrapper header/subtitle
+      document.querySelector('h1').style.display = 'none';
+      document.querySelector('.subtitle') && (document.querySelector('.subtitle').style.display = 'none');
+    }
+
+    function clearBrandCheck() {
+      document.getElementById('brandJsonStatus').style.display = 'none';
+    }
+
+    async function checkBrandJson() {
+      var domain = document.getElementById('brandDomain').value.trim();
+      if (!domain) return;
+      var statusEl = document.getElementById('brandJsonStatus');
+      statusEl.style.display = 'block';
+      statusEl.innerHTML = '<span style="color: var(--color-text-muted);">Checking...</span>';
+      try {
+        var res = await fetch('/api/brands/resolve?domain=' + encodeURIComponent(domain));
+        var data = await res.json();
+        if (data.domain) {
+          statusEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json found — your brand data is already in the registry.</span>';
+        } else {
+          statusEl.innerHTML = '<span style="color: var(--color-info-700);">No brand.json found. We\'ll host your brand info as a member service.</span>';
+        }
+      } catch {
+        statusEl.innerHTML = '<span style="color: var(--color-text-muted);">Could not check domain.</span>';
+      }
+    }
+
+    async function setupBrand() {
+      var domain = document.getElementById('brandDomain').value.trim();
+      var logoUrl = document.getElementById('brandLogoUrl').value.trim();
+      var brandColor = document.getElementById('brandColor').value.trim();
+      var btn = document.getElementById('brandSetupBtn');
+
+      if (!domain) {
+        alert('Please enter your domain');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Setting up...';
+
+      try {
+        var res = await fetch('/api/brands/setup-my-brand', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            domain: domain,
+            brand_name: createdOrgName,
+            logo_url: logoUrl || undefined,
+            brand_color: brandColor || undefined
+          })
+        });
+
+        var data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to set up brand');
+        }
+
+        // Show pointer snippet
+        document.getElementById('brandPointerResult').style.display = 'block';
+        document.getElementById('brandPointerSnippet').textContent = data.pointer_snippet;
+        btn.style.display = 'none';
+
+      } catch (error) {
+        alert(error.message);
+        btn.disabled = false;
+        btn.textContent = 'Set up brand';
+      }
+    }
+
+    function copyPointerSnippet() {
+      var text = document.getElementById('brandPointerSnippet').textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        var btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+
+    function goToDashboard() {
+      window.location.href = '/dashboard';
     }
 
     // Initialize on page load
