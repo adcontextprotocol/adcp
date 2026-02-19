@@ -34,7 +34,7 @@
           },
           "remove": {
             "type": "array",
-            "description": "Members to remove from this audience. If the same identifier appears in both add and remove in a single request, behavior is seller-defined; most platforms treat it as a conflict and fail the audience.",
+            "description": "Members to remove from this audience. If the same identifier appears in both add and remove in a single request, remove takes precedence.",
             "items": {
               "$ref": "/schemas/core/audience-member.json"
             },
@@ -67,5 +67,13 @@
     }
   },
   "required": ["account_id"],
+  "if": {
+    "properties": { "delete_missing": { "const": true } },
+    "required": ["delete_missing"]
+  },
+  "then": {
+    "required": ["audiences"],
+    "errorMessage": "audiences is required when delete_missing is true — omitting it would delete all buyer-managed audiences on the account"
+  },
   "additionalProperties": true
 }

@@ -118,7 +118,7 @@ asyncio.run(main())
 | `name` | string | No | Human-readable name |
 | `delete` | boolean | No | When true, delete this audience from the account entirely. All other fields are ignored. |
 | `add` | [AudienceMember](#audience-member)[] | No | Members to add to this audience |
-| `remove` | [AudienceMember](#audience-member)[] | No | Members to remove from this audience. If the same identifier appears in both `add` and `remove`, behavior is seller-defined. |
+| `remove` | [AudienceMember](#audience-member)[] | No | Members to remove from this audience. If the same identifier appears in both `add` and `remove`, remove takes precedence. |
 | `consent_basis` | string | No | GDPR lawful basis: `consent`, `legitimate_interest`, `contract`, or `legal_obligation`. Required by some sellers in regulated markets. |
 
 ### Audience Member
@@ -132,6 +132,8 @@ At least one identifier is required. Hash all values with SHA-256 before sending
 | `uids` | UID[] | Universal IDs: `type` (rampid, uid2, maid, etc.) + `value` |
 
 Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip) are not yet standardized — use `ext` for platform-specific extensions.
+
+**Identifier support varies by seller**: Check `get_adcp_capabilities` → `audience_targeting.supported_identifier_types` and `supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `matching_latency_hours` range and `minimum_audience_size` in capabilities are also seller-specific.
 
 **Size limit**: Send no more than 100,000 members per call. For larger lists, chunk into sequential calls using `add` deltas.
 

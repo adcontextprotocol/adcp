@@ -223,10 +223,57 @@
                 "language": {
                   "type": "boolean",
                   "description": "Whether seller supports language targeting (ISO 639-1 codes)"
+                },
+                "audience_include": {
+                  "type": "boolean",
+                  "description": "Whether seller supports audience_include in targeting overlays (requires features.audience_targeting)"
+                },
+                "audience_exclude": {
+                  "type": "boolean",
+                  "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
                 }
               }
             }
           }
+        },
+        "audience_targeting": {
+          "type": "object",
+          "description": "Audience targeting capabilities. Only present when features.audience_targeting is true.",
+          "properties": {
+            "supported_identifier_types": {
+              "type": "array",
+              "description": "Hashed PII types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": ["hashed_email", "hashed_phone"]
+              },
+              "minItems": 1
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending uids with type: maid.",
+              "items": {
+                "$ref": "/schemas/enums/uid-type.json"
+              },
+              "minItems": 1
+            },
+            "minimum_audience_size": {
+              "type": "integer",
+              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
+              "minimum": 1
+            },
+            "matching_latency_hours": {
+              "type": "object",
+              "description": "Expected matching latency range after sync. Use as polling guidance.",
+              "properties": {
+                "min": { "type": "integer", "minimum": 0 },
+                "max": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["supported_identifier_types", "minimum_audience_size"],
+          "additionalProperties": true
         },
         "conversion_tracking": {
           "type": "object",
