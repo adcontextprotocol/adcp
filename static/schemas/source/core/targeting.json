@@ -153,6 +153,22 @@
       "type": "string",
       "description": "AXE segment ID to exclude from targeting"
     },
+    "audience_include": {
+      "type": "array",
+      "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "audience_exclude": {
+      "type": "array",
+      "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
     },

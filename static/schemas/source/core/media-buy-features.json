@@ -20,6 +20,10 @@
     "conversion_tracking": {
       "type": "boolean",
       "description": "Supports sync_event_sources and log_event tasks for conversion event tracking"
+    },
+    "audience_targeting": {
+      "type": "boolean",
+      "description": "Supports sync_audiences task and audience_include/audience_exclude in targeting overlays for first-party CRM audience management"
     }
   },
   "additionalProperties": {
