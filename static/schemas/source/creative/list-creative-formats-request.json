@@ -68,6 +68,22 @@
       "$ref": "/schemas/enums/wcag-level.json",
       "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
     },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose input_format_ids includes any of these format IDs. Returns formats that accept these creatives as input — inspect each result's output_format_ids to see what they can produce.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },
