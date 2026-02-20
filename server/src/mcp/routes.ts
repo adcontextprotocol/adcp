@@ -93,6 +93,14 @@ export function configureMCPRoutes(router: Router): void {
   // Build the MCP POST middleware chain
   const mcpMiddleware: Array<(req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => void> = [];
 
+  // CORS headers must be set on all /mcp responses, including 401 from requireBearerAuth.
+  // Without CORS on 401 responses, browser-based MCP clients (Claude.ai) can't read
+  // the WWW-Authenticate header and the OAuth flow never starts.
+  mcpMiddleware.push((_req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => {
+    setCORSHeaders(res);
+    next();
+  });
+
   if (MCP_AUTH_ENABLED) {
     // Bearer token validation via SDK
     mcpMiddleware.push(requireBearerAuth({
@@ -128,8 +136,6 @@ export function configureMCPRoutes(router: Router): void {
     ...mcpMiddleware,
     mcpRateLimiter,
     async (req: MCPAuthenticatedRequest, res: Response) => {
-      setCORSHeaders(res);
-
       let server: ReturnType<typeof createUnifiedMCPServer> | null = null;
       try {
         server = createUnifiedMCPServer(req.mcpAuth);
