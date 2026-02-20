@@ -642,19 +642,21 @@ export class HTTPServer {
 
     this.app.use('/schemas', express.static(schemasPath));
 
-    // Serve domain-specific brand.json for adcontextprotocol.org
-    // The static/.well-known/brand.json has the full house portfolio for agenticadvertising.org.
-    // AdCP domain gets a house redirect pointing to the AgenticAdvertising.org portfolio.
-    this.app.get('/.well-known/brand.json', (req, res, next) => {
+    // Serve brand.json for both AAO domains.
+    // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
+    this.app.get('/.well-known/brand.json', (req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
           "house": "agenticadvertising.org",
-          "note": "AdCP is a sub-brand of AgenticAdvertising.org",
-          "last_updated": "2026-02-08T00:00:00Z"
+          "note": "AdCP is a sub-brand of AgenticAdvertising.org"
         });
       }
-      next();
+      return res.json({
+        "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+        "authoritative_location": "https://agenticadvertising.org/brands/agenticadvertising.org/brand.json"
+      });
     });
 
     // Serve other static files (robots.txt, images, etc.)
