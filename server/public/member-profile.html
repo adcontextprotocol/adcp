@@ -2155,6 +2155,11 @@
         } else {
           const data = await response.json();
           agentInfo[url] = data;
+          // Write discovered type back so it gets persisted when the profile is saved
+          const agent = agents.find(a => a.url === url);
+          if (agent && data.type && data.type !== 'unknown' && (!agent.type || agent.type === 'unknown')) {
+            agent.type = data.type;
+          }
         }
       } catch (error) {
         agentInfo[url] = { error: 'Failed to connect to agent' };
