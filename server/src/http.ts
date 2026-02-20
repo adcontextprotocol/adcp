@@ -504,8 +504,8 @@ export class HTTPServer {
           // Stable versions come before prereleases (no prerelease = higher precedence)
           if (!av.prerelease && bv.prerelease) return -1;
           if (av.prerelease && !bv.prerelease) return 1;
-          // Both have prereleases, sort alphabetically (beta.1 < beta.2)
-          if (av.prerelease && bv.prerelease) return av.prerelease.localeCompare(bv.prerelease);
+          // Both have prereleases, sort descending (beta.3 before beta.1)
+          if (av.prerelease && bv.prerelease) return bv.prerelease.localeCompare(av.prerelease);
           return 0;
         });
 
