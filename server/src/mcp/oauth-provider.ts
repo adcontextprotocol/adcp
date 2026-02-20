@@ -23,12 +23,6 @@ import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
 
 const logger = createLogger('mcp-oauth');
 
-/**
- * WorkOS AuthKit configuration
- */
-export const AUTHKIT_ISSUER =
-  process.env.AUTHKIT_ISSUER || 'https://clean-gradient-46.authkit.app';
-
 const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID;
 
 /**
@@ -51,14 +45,12 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 function getJWKS() {
   if (!jwks) {
     if (!WORKOS_CLIENT_ID) {
-      logger.warn('MCP OAuth: WORKOS_CLIENT_ID not set — audience validation disabled');
+      throw new Error('WORKOS_CLIENT_ID is required for MCP token verification');
     }
-    const jwksUrl = new URL(`${AUTHKIT_ISSUER}/oauth2/jwks`);
+    // WorkOS serves JWKS at this endpoint for all user management tokens
+    const jwksUrl = new URL(`https://api.workos.com/sso/jwks/${WORKOS_CLIENT_ID}`);
     jwks = createRemoteJWKSet(jwksUrl);
-    logger.info(
-      { jwksUrl: jwksUrl.toString(), audienceValidation: !!WORKOS_CLIENT_ID },
-      'MCP OAuth: JWKS configured'
-    );
+    logger.info({ jwksUrl: jwksUrl.toString() }, 'MCP OAuth: JWKS configured');
   }
   return jwks;
 }
@@ -66,16 +58,11 @@ function getJWKS() {
 async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
   const jwksInstance = getJWKS();
 
-  const verifyOptions: { issuer: string; audience?: string } = {
-    issuer: AUTHKIT_ISSUER,
-  };
-  if (WORKOS_CLIENT_ID) {
-    verifyOptions.audience = WORKOS_CLIENT_ID;
-  }
-
+  // WorkOS user tokens don't include `aud` or a stable `iss`.
+  // Signature verification via JWKS plus expiration is sufficient.
   let payload: Awaited<ReturnType<typeof jwtVerify>>['payload'];
   try {
-    const result = await jwtVerify(token, jwksInstance, verifyOptions);
+    const result = await jwtVerify(token, jwksInstance);
     payload = result.payload;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Token verification failed';
@@ -236,7 +223,7 @@ export function createOAuthProvider(): MCPOAuthProvider {
   const provider = new MCPOAuthProvider();
 
   logger.info(
-    { issuer: AUTHKIT_ISSUER, authEnabled: MCP_AUTH_ENABLED },
+    { authEnabled: MCP_AUTH_ENABLED },
     'MCP OAuth: Provider configured',
   );
 
