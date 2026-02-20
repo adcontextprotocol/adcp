@@ -1,4 +1,2 @@
 ---
-"@agenticadvertising/wellington": patch
 ---
-
