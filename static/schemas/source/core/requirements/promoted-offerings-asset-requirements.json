@@ -19,7 +19,8 @@
       "description": "Per-group asset constraints that each offering must satisfy. Specifies what asset groups (e.g., headlines, images_landscape) offerings must provide and how many items each group requires. Only meaningful when 'offerings.assets' is included in requires.",
       "items": {
         "$ref": "/schemas/core/requirements/offering-asset-constraint.json"
-      }
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true

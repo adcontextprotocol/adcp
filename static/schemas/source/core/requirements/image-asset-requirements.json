@@ -27,8 +27,8 @@
     },
     "aspect_ratio": {
       "type": "string",
-      "pattern": "^\\d+:\\d+$",
-      "description": "Required aspect ratio (e.g., '16:9', '1:1')"
+      "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$",
+      "description": "Required aspect ratio (e.g., '16:9', '1:1', '1.91:1')"
     },
     "formats": {
       "type": "array",

@@ -154,7 +154,8 @@ For each offering, provide asset groups matching the format's `offering_asset_co
       "asset_group_id": "descriptions",
       "asset_type": "text",
       "items": [
-        {"content": "Up to 50% off our entire summer collection. Limited time only."}
+        {"content": "Up to 50% off our entire summer collection. Limited time only."},
+        {"content": "Shop now and save big on summer styles."}
       ]
     },
     {
@@ -293,6 +294,32 @@ interface OfferingAssetGroup {
 | `asset_group_id` | string | Yes | Matches format-level vocabulary (e.g., `headlines`, `descriptions`, `images_landscape`) |
 | `asset_type` | AssetContentType | Yes | Content type of all items in this group |
 | `items` | Asset[] | Yes | The assets; each item must match the declared `asset_type` |
+
+### OfferingAssetConstraint
+
+**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/v2/core/requirements/offering-asset-constraint.json)
+
+Declared by a format to specify what asset groups each offering must provide and the technical requirements for items in each group. Used within `PromotedOfferingsAssetRequirements.offering_asset_constraints`.
+
+```typescript
+interface OfferingAssetConstraint {
+  asset_group_id: string;         // Must match the offering's OfferingAssetGroup.asset_group_id
+  asset_type: AssetContentType;   // Expected content type for this group
+  required?: boolean;             // Whether the group must be present (default: true)
+  min_count?: number;             // Minimum items required in the group
+  max_count?: number;             // Maximum items allowed in the group
+  asset_requirements?: AssetRequirements;  // Technical requirements per item
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset_group_id` | string | Yes | The group this constraint applies to (e.g., `headlines`, `images_landscape`) |
+| `asset_type` | AssetContentType | Yes | Expected content type for items in this group |
+| `required` | boolean | No | Whether the group must be present in every offering. Defaults to `true`. |
+| `min_count` | integer | No | Minimum number of items the offering must provide |
+| `max_count` | integer | No | Maximum number of items the offering may provide |
+| `asset_requirements` | object | No | Technical requirements for each item — use the matching type-specific schema (e.g., `max_length` for text, `min_width`/`aspect_ratio` for images) |
 
 ### Product Selectors
 

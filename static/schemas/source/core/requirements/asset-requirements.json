@@ -3,7 +3,7 @@
   "$id": "/schemas/core/requirements/asset-requirements.json",
   "title": "Asset Requirements",
   "description": "Technical requirements for creative assets. The applicable schema is determined by the sibling asset_type field.",
-  "oneOf": [
+  "anyOf": [
     { "$ref": "/schemas/core/requirements/image-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/video-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" },
