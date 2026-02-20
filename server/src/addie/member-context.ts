@@ -18,6 +18,7 @@ import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
+import { PERSONA_LABELS } from '../config/personas.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -988,17 +989,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   if (context.persona) {
     lines.push('');
     lines.push('### Organization Persona');
-    const personaLabels: Record<string, string> = {
-      molecule_builder: 'Molecule Builder',
-      data_decoder: 'Data Decoder',
-      pureblood_protector: 'Pureblood Protector',
-      resops_integrator: 'ResOps Integrator',
-      ladder_climber: 'Ladder Climber',
-      simple_starter: 'Simple Starter',
-    };
-    lines.push(`Persona: ${personaLabels[context.persona.persona] || context.persona.persona}`);
+    lines.push(`Persona: ${PERSONA_LABELS[context.persona.persona] || context.persona.persona}`);
     if (context.persona.aspiration_persona) {
-      lines.push(`Aspiration: ${personaLabels[context.persona.aspiration_persona] || context.persona.aspiration_persona}`);
+      lines.push(`Aspiration: ${PERSONA_LABELS[context.persona.aspiration_persona] || context.persona.aspiration_persona}`);
     }
     if (context.persona.journey_stage) {
       lines.push(`Journey stage: ${context.persona.journey_stage}`);
