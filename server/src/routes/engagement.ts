@@ -28,13 +28,16 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
 
       // Resolve user's organization — check memberships table first, then users.primary_organization_id
       const membershipResult = await query<{ workos_organization_id: string }>(
-        `SELECT om.workos_organization_id
-         FROM organization_memberships om
-         WHERE om.workos_user_id = $1
-         UNION ALL
-         SELECT u.primary_organization_id
-         FROM users u
-         WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
+        `SELECT workos_organization_id FROM (
+           SELECT om.workos_organization_id, 1 AS priority
+           FROM organization_memberships om
+           WHERE om.workos_user_id = $1
+           UNION ALL
+           SELECT u.primary_organization_id, 2 AS priority
+           FROM users u
+           WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
+         ) ranked
+         ORDER BY priority, workos_organization_id
          LIMIT 1`,
         [userId]
       );
@@ -173,6 +176,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         const isValid = typeof scores === 'object' &&
           !Array.isArray(scores) &&
           Object.keys(scores).length <= 20 &&
+          Object.keys(scores).every(k => k.length <= 100) &&
           Object.values(scores).every(v => typeof v === 'number' && isFinite(v as number));
         if (!isValid) {
           return res.status(400).json({ error: 'Invalid scores format' });
@@ -180,11 +184,14 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
       }
 
       const membershipResult = await query<{ workos_organization_id: string }>(
-        `SELECT om.workos_organization_id
-         FROM organization_memberships om WHERE om.workos_user_id = $1
-         UNION ALL
-         SELECT u.primary_organization_id FROM users u
-         WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
+        `SELECT workos_organization_id FROM (
+           SELECT om.workos_organization_id, 1 AS priority
+           FROM organization_memberships om WHERE om.workos_user_id = $1
+           UNION ALL
+           SELECT u.primary_organization_id, 2 AS priority FROM users u
+           WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
+         ) ranked
+         ORDER BY priority, workos_organization_id
          LIMIT 1`,
         [userId]
       );

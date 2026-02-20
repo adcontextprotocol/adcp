@@ -1388,6 +1388,7 @@ export class HTTPServer {
       }
     };
 
+    this.app.get('/dashboard/organization', (req, res) => serveDashboardPage(req, res, 'dashboard-organization.html'));
     this.app.get('/dashboard/settings', (req, res) => serveDashboardPage(req, res, 'dashboard-settings.html'));
     this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
     // Redirect old billing path to new membership path
@@ -1692,8 +1693,8 @@ export class HTTPServer {
     });
 
     // Member hub
-    this.app.get("/member-hub", async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
+    this.app.get("/member-hub", (req, res) => {
+      res.redirect(302, '/dashboard/organization');
     });
 
     // Persona assessment
@@ -4723,7 +4724,7 @@ Disallow: /api/admin/
       try {
         // Dev mode: show dev login page
         if (isDevModeEnabled()) {
-          const returnTo = req.query.return_to as string || '/dashboard';
+          const returnTo = req.query.return_to as string || '/dashboard/organization';
           return res.redirect(`/dev-login.html?return_to=${encodeURIComponent(returnTo)}`);
         }
 
@@ -4815,7 +4816,7 @@ Disallow: /api/admin/
       }
 
       // Validate return_to is a relative path to prevent open redirect
-      let safeReturnTo = '/dashboard';
+      let safeReturnTo = '/dashboard/organization';
       if (return_to && typeof return_to === 'string' && return_to.startsWith('/') && !return_to.startsWith('//')) {
         safeReturnTo = return_to;
       }
@@ -5041,7 +5042,7 @@ Disallow: /api/admin/
         }
 
         // Parse return_to, slack_user_id, and native mode from state
-        let returnTo = '/dashboard';
+        let returnTo = '/dashboard/organization';
         let slackUserIdToLink: string | undefined;
         let isNativeMode = false;
         let nativeRedirectUri = 'addie://auth/callback';

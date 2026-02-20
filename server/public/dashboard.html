@@ -729,18 +729,6 @@
       </section>
 
       <!-- ========== COMMITTEES SECTION ========== -->
-      <section id="committees" class="dashboard-section">
-        <div class="section-header">
-          <h2>Committees</h2>
-          <p>Join working groups, industry councils, and regional chapters</p>
-        </div>
-        <div class="section-card" id="committeesCard">
-          <div id="committeesCardContent" class="section-card-body">
-            <div style="text-align: center; color: var(--color-text-secondary);">Loading committees...</div>
-          </div>
-        </div>
-      </section>
-
       <!-- ========== LEADERSHIP SECTION ========== -->
       <section id="leadership" class="dashboard-section" style="display: none;">
         <div class="section-header">
@@ -1039,6 +1027,13 @@
         });
 
         if (!response.ok) {
+          if (response.status === 403) {
+            // User doesn't have permission to update billing info (e.g. committee leader, not org admin)
+            // Dismiss the modal gracefully — don't block them from using the dashboard
+            document.getElementById('profileModal').classList.remove('show');
+            sessionStorage.setItem('profileInfoChecked', 'true');
+            return;
+          }
           let message = 'Failed to save organization info';
           try {
             const errorData = await response.json();
@@ -1155,7 +1150,6 @@
       if (!isPersonal) {
         loadTeamSection(org.id);
       }
-      loadCommitteesSection();
       loadLeadershipSection();
 
       // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
