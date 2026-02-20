@@ -296,6 +296,61 @@
         }
         .add-brand-cta button:hover { background: var(--color-primary-600); }
 
+        /* Claim Brand CTA */
+        .claim-brand-cta {
+            margin-top: var(--space-8);
+            padding: var(--space-8) var(--space-6);
+            background: var(--color-primary-50);
+            border: 1px solid var(--color-primary-200);
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+        .claim-brand-cta__title {
+            font-size: var(--text-lg);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+            margin-bottom: var(--space-2);
+        }
+        .claim-brand-cta__desc {
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+            margin-bottom: var(--space-4);
+        }
+        .claim-brand-cta__links {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+        }
+        .claim-brand-cta__primary {
+            padding: var(--space-2.5) var(--space-5);
+            background: var(--color-primary-500);
+            color: white;
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            font-weight: var(--font-semibold);
+            text-decoration: none;
+            transition: var(--transition-all);
+        }
+        .claim-brand-cta__primary:hover { background: var(--color-primary-600); }
+        .claim-brand-cta__primary:focus-visible,
+        .claim-brand-cta__secondary:focus-visible {
+            outline: 2px solid var(--color-brand);
+            outline-offset: 2px;
+        }
+        .claim-brand-cta__secondary {
+            padding: var(--space-2.5) var(--space-5);
+            background: var(--color-bg-card);
+            color: var(--color-primary-600);
+            border: 1px solid var(--color-primary-300);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            text-decoration: none;
+            transition: var(--transition-all);
+        }
+        .claim-brand-cta__secondary:hover { border-color: var(--color-primary-500); color: var(--color-primary-700); }
+
         .hidden { display: none; }
 
         .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
@@ -369,6 +424,16 @@
         <div id="add-brand-cta" class="add-brand-cta hidden">
             <button onclick="window.location.href='/brand/view/new?edit=true'">+ Add brand</button>
         </div>
+
+        <!-- Claim Brand CTA (hidden by default, shown for non-members) -->
+        <div id="claim-brand-cta" class="claim-brand-cta hidden">
+            <div class="claim-brand-cta__title">Is your brand listed here?</div>
+            <div class="claim-brand-cta__desc">Join AgenticAdvertising.org to claim your brand and manage your identity in the AI advertising ecosystem.</div>
+            <div class="claim-brand-cta__links">
+                <a href="/membership" class="claim-brand-cta__primary">Claim your brand</a>
+                <a href="/community/profile-edit" class="claim-brand-cta__secondary">Set up your profile</a>
+            </div>
+        </div>
     </div>
 
     <!-- Footer placeholder -->
@@ -413,17 +478,18 @@
                 document.getElementById('stat-brand-json').textContent = stats.brand_json || 0;
 
                 renderBrands();
+
+                // Show add CTA for members, claim CTA for non-members
+                const config = window.__APP_CONFIG__;
+                if (config?.user?.isMember) {
+                    document.getElementById('add-brand-cta')?.classList.remove('hidden');
+                } else {
+                    document.getElementById('claim-brand-cta')?.classList.remove('hidden');
+                }
             } catch (error) {
                 if (error.name === 'AbortError') return;
                 console.error('Failed to load brands:', error);
                 grid.innerHTML = '<div class="empty-state"><div class="empty-state__title">Failed to load brands</div></div>';
-            }
-
-            // Show add CTA for members
-            const config = window.__APP_CONFIG__;
-            if (config?.user?.isMember) {
-                const cta = document.getElementById('add-brand-cta');
-                if (cta) cta.classList.remove('hidden');
             }
         }
 
