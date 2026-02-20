@@ -70,7 +70,8 @@ export async function getRecommendedGroups(
     return [];
   }
 
-  // Get high-affinity groups for this persona, excluding groups user is already in
+  // Get high-affinity groups for this persona, excluding groups user is already in.
+  // Cap at 3 per committee_type so working groups and councils are balanced.
   const result = await pool.query<{
     working_group_id: string;
     name: string;
@@ -79,19 +80,24 @@ export async function getRecommendedGroups(
     committee_type: string;
     affinity_score: number;
   }>(
-    `SELECT pga.working_group_id, wg.name, wg.slug, wg.description, wg.committee_type, pga.affinity_score
-     FROM persona_group_affinity pga
-     JOIN working_groups wg ON wg.id = pga.working_group_id
-     WHERE pga.persona = $1
-       AND wg.status = 'active'
-       AND pga.affinity_score >= 3
-       AND NOT EXISTS (
-         SELECT 1 FROM working_group_memberships wgm
-         WHERE wgm.working_group_id = pga.working_group_id
-           AND wgm.workos_user_id = $2
-           AND wgm.status = 'active'
-       )
-     ORDER BY pga.affinity_score DESC, wg.name
+    `SELECT working_group_id, name, slug, description, committee_type, affinity_score
+     FROM (
+       SELECT pga.working_group_id, wg.name, wg.slug, wg.description, wg.committee_type, pga.affinity_score,
+              ROW_NUMBER() OVER (PARTITION BY wg.committee_type ORDER BY pga.affinity_score DESC, wg.name) AS rn
+       FROM persona_group_affinity pga
+       JOIN working_groups wg ON wg.id = pga.working_group_id
+       WHERE pga.persona = $1
+         AND wg.status = 'active'
+         AND pga.affinity_score >= 3
+         AND NOT EXISTS (
+           SELECT 1 FROM working_group_memberships wgm
+           WHERE wgm.working_group_id = pga.working_group_id
+             AND wgm.workos_user_id = $2
+             AND wgm.status = 'active'
+         )
+     ) ranked
+     WHERE rn <= 3
+     ORDER BY (affinity_score + CASE WHEN committee_type = 'council' THEN 0.5 ELSE 0 END) DESC, name
      LIMIT $3`,
     [persona, workosUserId, limit]
   );
@@ -148,14 +154,19 @@ export async function getRecommendedGroupsForOrg(
     committee_type: string;
     affinity_score: number;
   }>(
-    `SELECT pga.working_group_id, wg.name, wg.slug, wg.description, wg.committee_type, pga.affinity_score
-     FROM persona_group_affinity pga
-     JOIN working_groups wg ON wg.id = pga.working_group_id
-     WHERE pga.persona = $1
-       AND wg.status = 'active'
-       AND pga.affinity_score >= 3
-       ${excludeClause}
-     ORDER BY pga.affinity_score DESC, wg.name
+    `SELECT working_group_id, name, slug, description, committee_type, affinity_score
+     FROM (
+       SELECT pga.working_group_id, wg.name, wg.slug, wg.description, wg.committee_type, pga.affinity_score,
+              ROW_NUMBER() OVER (PARTITION BY wg.committee_type ORDER BY pga.affinity_score DESC, wg.name) AS rn
+       FROM persona_group_affinity pga
+       JOIN working_groups wg ON wg.id = pga.working_group_id
+       WHERE pga.persona = $1
+         AND wg.status = 'active'
+         AND pga.affinity_score >= 3
+         ${excludeClause}
+     ) ranked
+     WHERE rn <= 3
+     ORDER BY (affinity_score + CASE WHEN committee_type = 'council' THEN 0.5 ELSE 0 END) DESC, name
      LIMIT $2`,
     params
   );

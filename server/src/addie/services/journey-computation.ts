@@ -21,7 +21,7 @@ function stageIndex(stage: JourneyStage): number {
   return STAGE_ORDER.indexOf(stage);
 }
 
-interface MilestoneCheck {
+export interface MilestoneCheck {
   has_leadership: boolean;
   has_content_proposals: boolean;
   has_working_groups: boolean;
@@ -33,7 +33,7 @@ interface MilestoneCheck {
 /**
  * Check milestones for an organization
  */
-async function checkMilestones(orgId: string): Promise<MilestoneCheck | null> {
+export async function checkMilestones(orgId: string): Promise<MilestoneCheck | null> {
   const pool = getPool();
 
   const result = await pool.query(
@@ -47,7 +47,7 @@ async function checkMilestones(orgId: string): Promise<MilestoneCheck | null> {
        ) as has_leadership,
        EXISTS (
          SELECT 1 FROM perspectives p
-         JOIN organization_memberships om ON om.workos_user_id = p.workos_user_id
+         JOIN organization_memberships om ON om.workos_user_id = p.proposer_user_id
          WHERE om.workos_organization_id = $1
        ) as has_content_proposals,
        EXISTS (

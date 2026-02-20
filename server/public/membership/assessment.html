@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organization type assessment - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .assessment-container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .assessment-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .assessment-header h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .assessment-header p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+    }
+
+    .progress-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-2);
+    }
+
+    .progress-bar-track {
+      height: 4px;
+      background: var(--color-gray-200);
+      border-radius: var(--radius-full);
+      margin-bottom: var(--space-6);
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--color-brand);
+      border-radius: var(--radius-full);
+      transition: width 0.35s ease;
+    }
+
+    .question-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5) var(--space-6);
+      margin-bottom: var(--space-3);
+    }
+
+    .question-num {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--space-3);
+    }
+
+    .question-row {
+      display: grid;
+      grid-template-columns: 1fr 140px 1fr;
+      gap: var(--space-4);
+      align-items: center;
+    }
+
+    .question-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-body);
+      line-height: var(--leading-relaxed);
+    }
+
+    .question-label--left { text-align: right; }
+    .question-label--right { text-align: left; }
+
+    .slider-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .slider-input {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 4px;
+      border-radius: var(--radius-full);
+      outline: none;
+      cursor: pointer;
+      background: var(--color-gray-200);
+    }
+
+    .slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: var(--color-brand);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .slider-input::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      background: var(--color-brand);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .slider-scale {
+      display: flex;
+      justify-content: space-between;
+      width: 120px;
+      font-size: var(--text-xs);
+      color: var(--color-text-tertiary);
+    }
+
+    .nav-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: var(--space-6);
+    }
+
+    /* Result */
+    .result-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: var(--radius-xl);
+      padding: var(--space-10);
+      text-align: center;
+    }
+
+    .result-icon {
+      font-size: 3rem;
+      margin-bottom: var(--space-4);
+      line-height: 1;
+    }
+
+    .result-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-brand);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: var(--space-2);
+    }
+
+    .result-title {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+
+    .result-desc {
+      font-size: var(--text-base);
+      color: var(--color-text-secondary);
+      max-width: 480px;
+      margin: 0 auto var(--space-8);
+      line-height: var(--leading-relaxed);
+    }
+
+    @media (max-width: 600px) {
+      .question-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-3);
+      }
+      .question-label--left { text-align: left; }
+      .slider-col { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
+  <div class="assessment-container">
+    <div id="assessment-body">
+      <div class="assessment-header">
+        <h1>Organization type assessment</h1>
+        <p>20 questions · about 5 minutes · helps us tailor your group recommendations and connections</p>
+      </div>
+
+      <div class="progress-label"><span id="progress-text">Step 1 of 4</span></div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progress-fill" style="width: 25%"></div>
+      </div>
+
+      <div id="questions-container"></div>
+
+      <div class="nav-row">
+        <button class="btn btn-ghost" id="btn-back" style="visibility:hidden" onclick="goBack()">← Back</button>
+        <button class="btn btn-primary" id="btn-next" onclick="goNext()">Next →</button>
+      </div>
+    </div>
+
+    <div id="result-section" style="display:none">
+      <div class="result-card">
+        <div class="result-icon" id="result-icon"></div>
+        <div class="result-label">Your organization type</div>
+        <div class="result-title" id="result-title"></div>
+        <div class="result-desc" id="result-desc"></div>
+        <a href="/member-hub" class="btn btn-primary">Go to member hub →</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="adcp-footer"></div>
+
+  <script>
+    const config = window.__APP_CONFIG__ || {};
+    if (!config.user) {
+      window.location.href = '/auth/login?return_to=/persona-assessment';
+    }
+
+    // =========================================================================
+    // Survey data
+    // =========================================================================
+
+    const QUESTIONS = [
+      { left: 'We prioritize operational efficiency over emotional impact with customers.', right: 'We prioritize creating emotionally resonant experiences for customers.' },
+      { left: 'Our marketing spend is mainly with established paid media platforms.', right: 'We actively experiment with new ways to engage customers across paid, owned, and earned media.' },
+      { left: 'We focus our marketing investments on locally targeted advertising.', right: 'We focus our marketing investments on advertising with national reach.' },
+      { left: 'We produce content without tailoring it to specific customer personas.', right: 'We invest in high-quality, personalized content at scale.' },
+      { left: 'Teams work mostly within their functional silos.', right: 'Multi-disciplinary teams collaborate regularly across the organization.' },
+      { left: 'We rely mainly on third-party and syndicated data for a limited set of use cases.', right: 'We regularly leverage first-party and proprietary data across the organization.' },
+      { left: 'Customer segmentation is based mainly on demographics and purchase history.', right: 'Segmentation integrates signals like engagement, product usage, and customer conversations.' },
+      { left: 'Optimization happens after campaigns with multi-week lead times.', right: 'Optimization happens continuously using real-time data signals.' },
+      { left: 'Planning relies mostly on historical reporting and static dashboards.', right: 'Planning relies on predictive models, advanced analytics, and simulation.' },
+      { left: 'Data platforms are primarily used for reporting.', right: 'Data and intelligence platforms are used to orchestrate customer experiences.' },
+      { left: 'Roles are narrowly defined, and people stick to their lanes.', right: 'People regularly cross role boundaries to solve problems collaboratively.' },
+      { left: 'We develop creative content and campaign targeting independently.', right: 'Creative and targeting are developed together in a data-driven approach.' },
+      { left: 'We wait until others have proven new platforms and formats before investing.', right: 'We pioneer new platforms and formats through a network of partnerships.' },
+      { left: 'Marketing, sales, and service operate in silos.', right: 'Marketing, sales, and service work together seamlessly.' },
+      { left: 'We optimize marketing mainly for short-term performance.', right: 'We optimize over longer horizons, using brand health and customer lifetime value.' },
+      { left: 'Experimentation is limited, and the culture is more risk-averse.', right: 'Experimentation and continuous test-and-learn are core to our culture.' },
+      { left: 'Automation is used mainly to reduce costs and headcount.', right: 'AI and automation are used to elevate experience design.' },
+      { left: 'Our marketing approach is primarily focused on buying media.', right: 'Our marketing approach is focused on orchestrating experiences.' },
+      { left: 'We prioritize either growth or efficiency depending on economic conditions.', right: 'We sustain a balanced focus on marketing effectiveness and efficiency across cycles.' },
+      { left: 'We focus on internal tools and proprietary approaches.', right: 'We actively support open standards and shared industry frameworks.' },
+    ];
+
+    // Persona scoring maps (0-based question indices, 'r'=high scores, 'l'=low scores)
+    const PERSONA_MAP = {
+      molecular_gastronomists: [{q:1,d:'r'},{q:3,d:'r'},{q:5,d:'r'},{q:6,d:'r'},{q:7,d:'r'},{q:11,d:'r'},{q:12,d:'r'},{q:14,d:'r'},{q:15,d:'r'},{q:16,d:'r'},{q:17,d:'r'},{q:18,d:'r'}],
+      data_denizens:           [{q:2,d:'r'},{q:4,d:'r'},{q:5,d:'r'},{q:6,d:'r'},{q:7,d:'r'},{q:8,d:'r'},{q:9,d:'r'},{q:15,d:'r'},{q:19,d:'r'}],
+      positionless_marketers:  [{q:0,d:'r'},{q:1,d:'r'},{q:4,d:'r'},{q:9,d:'r'},{q:10,d:'r'},{q:11,d:'r'},{q:13,d:'r'},{q:15,d:'r'},{q:17,d:'r'}],
+      mold_breakers:           [{q:0,d:'r'},{q:1,d:'r'},{q:3,d:'r'},{q:12,d:'r'},{q:14,d:'r'},{q:15,d:'r'},{q:16,d:'r'},{q:18,d:'r'},{q:19,d:'r'}],
+      revops_integrators:      [{q:4,d:'r'},{q:5,d:'r'},{q:9,d:'r'},{q:13,d:'r'},{q:17,d:'r'}],
+      bootstrappers:           [{q:0,d:'r'},{q:1,d:'r'},{q:2,d:'r'},{q:4,d:'r'},{q:5,d:'r'},{q:6,d:'r'},{q:9,d:'r'},{q:10,d:'r'},{q:15,d:'r'}],
+      limber_locals:           [{q:0,d:'r'},{q:1,d:'l'},{q:2,d:'l'},{q:3,d:'l'},{q:4,d:'r'},{q:7,d:'r'},{q:9,d:'r'}],
+      plumbers:                [{q:0,d:'l'},{q:1,d:'l'},{q:3,d:'l'},{q:4,d:'l'},{q:5,d:'l'},{q:6,d:'l'},{q:8,d:'l'},{q:10,d:'l'},{q:11,d:'l'},{q:12,d:'l'},{q:13,d:'l'},{q:14,d:'l'},{q:15,d:'l'},{q:16,d:'l'},{q:17,d:'l'},{q:18,d:'l'},{q:19,d:'l'}],
+      simple_simons:           [{q:1,d:'l'},{q:3,d:'l'},{q:4,d:'l'},{q:5,d:'l'},{q:6,d:'l'},{q:7,d:'l'},{q:8,d:'l'},{q:9,d:'l'},{q:10,d:'l'},{q:15,d:'l'},{q:18,d:'l'}],
+    };
+
+    const MAX_POINTS = Object.fromEntries(
+      Object.entries(PERSONA_MAP).map(([k, v]) => [k, v.length * 2])
+    );
+
+    // Map assessment winner → system persona key
+    const ASSESSMENT_TO_SYSTEM = {
+      molecular_gastronomists: 'molecule_builder',
+      data_denizens:           'data_decoder',
+      positionless_marketers:  'ladder_climber',
+      mold_breakers:           'pureblood_protector',
+      revops_integrators:      'resops_integrator',
+      bootstrappers:           'simple_starter',
+      limber_locals:           'simple_starter',
+      plumbers:                'simple_starter',
+      simple_simons:           'simple_starter',
+    };
+
+    // Inner-core personas in preference order for tie-breaking
+    const INNER_CORE = ['molecular_gastronomists', 'data_denizens', 'positionless_marketers', 'mold_breakers', 'revops_integrators'];
+
+    const SYSTEM_PERSONA_CFG = {
+      molecule_builder:    { icon: '⚙️', label: 'Molecule Builder',     desc: 'You\'re the architect of your organization\'s tech stack — building and integrating components that others depend on.' },
+      data_decoder:        { icon: '📈', label: 'Data Decoder',         desc: 'Every decision traces back to a signal. You use data, measurement, and optimization to drive marketing effectiveness.' },
+      ladder_climber:      { icon: '🎯', label: 'Ladder Climber',       desc: 'You break organizational silos and build strategic visibility — seeking industry leadership through cross-functional excellence.' },
+      pureblood_protector: { icon: '🛡️', label: 'Pureblood Protector',  desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time.' },
+      resops_integrator:   { icon: '🔄', label: 'ResOps Integrator',    desc: 'Marketing, sales, and service move as one for you — you\'re wired to streamline operations and connect revenue workflows.' },
+      simple_starter:      { icon: '🌱', label: 'Simple Starter',       desc: 'You\'re getting started with agentic advertising. There\'s a clear path from here, and AAO is the right place to be.' },
+    };
+
+    // =========================================================================
+    // State
+    // =========================================================================
+
+    const PAGE_SIZE = 5;
+    const TOTAL_PAGES = 4; // 20 questions / 5 per page
+    let currentPage = 0;
+    const answers = new Array(QUESTIONS.length).fill(3);
+
+    // =========================================================================
+    // Render
+    // =========================================================================
+
+    function renderPage() {
+      const start = currentPage * PAGE_SIZE;
+      const end = Math.min(start + PAGE_SIZE, QUESTIONS.length);
+
+      document.getElementById('questions-container').innerHTML = QUESTIONS.slice(start, end).map((q, i) => {
+        const idx = start + i;
+        return `
+          <div class="question-card">
+            <div class="question-num">Question ${idx + 1} of ${QUESTIONS.length}</div>
+            <div class="question-row">
+              <p class="question-label question-label--left">${q.left}</p>
+              <div class="slider-col">
+                <input type="range" min="1" max="5" value="${answers[idx]}"
+                  class="slider-input" data-idx="${idx}"
+                  oninput="answers[${idx}] = +this.value; paintSlider(this)">
+                <div class="slider-scale"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div>
+              </div>
+              <p class="question-label question-label--right">${q.right}</p>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Progress
+      const pct = ((currentPage + 1) / TOTAL_PAGES) * 100;
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-text').textContent = `Step ${currentPage + 1} of ${TOTAL_PAGES}`;
+
+      document.getElementById('btn-back').style.visibility = currentPage === 0 ? 'hidden' : 'visible';
+      document.getElementById('btn-next').textContent = currentPage === TOTAL_PAGES - 1 ? 'Submit' : 'Next →';
+
+      document.querySelectorAll('.slider-input').forEach(paintSlider);
+    }
+
+    function paintSlider(el) {
+      const pct = ((+el.value - 1) / 4) * 100;
+      el.style.background = `linear-gradient(to right, var(--color-brand) ${pct}%, var(--color-gray-200) ${pct}%)`;
+    }
+
+    function goNext() {
+      if (currentPage < TOTAL_PAGES - 1) {
+        currentPage++;
+        renderPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        submitAssessment();
+      }
+    }
+
+    function goBack() {
+      if (currentPage > 0) {
+        currentPage--;
+        renderPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+
+    // =========================================================================
+    // Scoring
+    // =========================================================================
+
+    function pointsForAnswer(val, direction) {
+      if (direction === 'r') {
+        if (val === 5) return 2;
+        if (val === 4) return 1;
+        return 0;
+      } else {
+        if (val === 1) return 2;
+        if (val === 2) return 1;
+        return 0;
+      }
+    }
+
+    function computeScores() {
+      const normalized = {};
+      for (const [persona, mappings] of Object.entries(PERSONA_MAP)) {
+        const raw = mappings.reduce((sum, {q, d}) => sum + pointsForAnswer(answers[q], d), 0);
+        normalized[persona] = MAX_POINTS[persona] > 0 ? Math.round((raw / MAX_POINTS[persona]) * 100) : 0;
+      }
+      return normalized;
+    }
+
+    function pickWinner(scores) {
+      // Best inner-core
+      let bestInner = null, bestInnerScore = -1;
+      for (const p of INNER_CORE) {
+        if (scores[p] > bestInnerScore) { bestInnerScore = scores[p]; bestInner = p; }
+      }
+
+      // Best overall
+      let best = null, bestScore = -1;
+      for (const [p, s] of Object.entries(scores)) {
+        if (s > bestScore) { bestScore = s; best = p; }
+      }
+
+      // Prefer inner-core if within 5 points
+      if (bestInner && (bestScore - bestInnerScore) <= 5) return bestInner;
+      return best;
+    }
+
+    // =========================================================================
+    // Submit
+    // =========================================================================
+
+    async function submitAssessment() {
+      const btn = document.getElementById('btn-next');
+      btn.textContent = 'Scoring…';
+      btn.disabled = true;
+
+      const scores = computeScores();
+      const winner = pickWinner(scores);
+      const systemPersona = ASSESSMENT_TO_SYSTEM[winner];
+
+      try {
+        const resp = await fetch('/api/me/engagement/persona-assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ persona: systemPersona, scores }),
+        });
+
+        if (!resp.ok) throw new Error('Save failed');
+        showResult(systemPersona);
+      } catch (err) {
+        console.error(err);
+        btn.textContent = 'Try again';
+        btn.disabled = false;
+      }
+    }
+
+    function showResult(persona) {
+      document.getElementById('assessment-body').style.display = 'none';
+      document.getElementById('result-section').style.display = 'block';
+
+      const cfg = SYSTEM_PERSONA_CFG[persona] || { icon: '?', label: persona, desc: '' };
+      document.getElementById('result-icon').textContent = cfg.icon;
+      document.getElementById('result-title').textContent = cfg.label;
+      document.getElementById('result-desc').textContent = cfg.desc;
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    renderPage();
+  </script>
+</body>
+</html>

@@ -69,7 +69,10 @@ import { createContentRouter, createMyContentRouter } from "./routes/content.js"
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createCommunityRouters } from "./routes/community.js";
+import { createEngagementRouter } from "./routes/engagement.js";
 import { CommunityDatabase } from "./db/community-db.js";
+import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
+import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
@@ -898,6 +901,12 @@ export class HTTPServer {
     this.app.use('/api/community', communityPublicRouter);
     this.app.use('/api/me', communityUserRouter);
 
+    // Mount engagement dashboard route
+    const orgKnowledgeDb = new OrgKnowledgeDatabase();
+    const workingGroupDb = new WorkingGroupDatabase();
+    const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
+    this.app.use('/api/me/engagement', engagementRouter);
+
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
 
@@ -1680,6 +1689,16 @@ export class HTTPServer {
     // Individual member profile page
     this.app.get("/members/:slug", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'members.html');
+    });
+
+    // Member hub
+    this.app.get("/member-hub", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
+    });
+
+    // Persona assessment
+    this.app.get("/persona-assessment", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'membership/assessment.html');
     });
 
     // Community pages
