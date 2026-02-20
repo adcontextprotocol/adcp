@@ -8,17 +8,9 @@ import { createLogger } from '../logger.js';
 import { getAdminChannel } from '../db/system-settings-db.js';
 import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
 import type { SlackBlock, SlackTextObject } from '../slack/types.js';
+import { PERSONA_LABELS } from '../config/personas.js';
 
 const logger = createLogger('assessment-notifications');
-
-const PERSONA_LABELS: Record<string, string> = {
-  molecule_builder: 'Molecular Gastronomist',
-  data_decoder: 'Data Denizen',
-  pureblood_protector: 'Mold Breaker',
-  resops_integrator: 'RevOps Integrator',
-  ladder_climber: 'Positionless Marketer',
-  simple_starter: 'Simple Simon',
-};
 
 /**
  * Post assessment completion to the admin channel

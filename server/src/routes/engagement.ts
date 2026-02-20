@@ -177,7 +177,7 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         const isValid = typeof scores === 'object' &&
           !Array.isArray(scores) &&
           Object.keys(scores).length <= 20 &&
-          Object.keys(scores).every(k => k.length <= 100) &&
+          Object.keys(scores).every(k => k.length > 0 && k.length <= 100) &&
           Object.values(scores).every(v => typeof v === 'number' && isFinite(v as number));
         if (!isValid) {
           return res.status(400).json({ error: 'Invalid scores format' });

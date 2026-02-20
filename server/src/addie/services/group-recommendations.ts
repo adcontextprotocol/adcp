@@ -8,6 +8,7 @@
 import { getPool } from '../../db/client.js';
 import type { Persona } from '../../db/org-knowledge-db.js';
 import { logger as baseLogger } from '../../logger.js';
+import { PERSONA_LABELS } from '../../config/personas.js';
 
 const logger = baseLogger.child({ module: 'group-recommendations' });
 
@@ -21,17 +22,8 @@ export interface GroupRecommendation {
   reason: string;
 }
 
-const personaLabels: Record<string, string> = {
-  molecule_builder: 'Molecular Gastronomist',
-  data_decoder: 'Data Denizen',
-  pureblood_protector: 'Mold Breaker',
-  resops_integrator: 'RevOps Integrator',
-  ladder_climber: 'Positionless Marketer',
-  simple_starter: 'Simple Simon',
-};
-
 function buildReason(affinityScore: number, persona: string): string {
-  const label = personaLabels[persona] || persona;
+  const label = PERSONA_LABELS[persona] || persona;
   if (affinityScore >= 5) return `Highly recommended for ${label} organizations`;
   if (affinityScore >= 4) return `Strong match for ${label} organizations`;
   return `Good fit for ${label} organizations`;
