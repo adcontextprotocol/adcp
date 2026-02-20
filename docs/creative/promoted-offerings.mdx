@@ -41,31 +41,34 @@ When a format lists a `promoted_offerings` asset in its definition, the buying a
       "assets": {
         "promoted_offerings": {
           "brand": { "domain": "acme.com" },
-          "offerings": [
-            {
-              "offering_id": "summer-sale",
-              "name": "Summer Sale",
-              "landing_url": "https://acme.com/summer",
-              "assets": [
-                {
-                  "asset_group_id": "headlines",
-                  "asset_type": "text",
-                  "items": [
-                    {"content": "Shop the Summer Sale"},
-                    {"content": "50% Off Everything"},
-                    {"content": "Summer Savings Event"}
-                  ]
-                },
-                {
-                  "asset_group_id": "images_landscape",
-                  "asset_type": "image",
-                  "items": [
-                    {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
-                  ]
-                }
-              ]
-            }
-          ]
+          "catalog": {
+            "type": "offerings",
+            "items": [
+              {
+                "offering_id": "summer-sale",
+                "name": "Summer Sale",
+                "landing_url": "https://acme.com/summer",
+                "assets": [
+                  {
+                    "asset_group_id": "headlines",
+                    "asset_type": "text",
+                    "items": [
+                      {"content": "Shop the Summer Sale"},
+                      {"content": "50% Off Everything"},
+                      {"content": "Summer Savings Event"}
+                    ]
+                  },
+                  {
+                    "asset_group_id": "images_landscape",
+                    "asset_type": "image",
+                    "items": [
+                      {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
         }
       }
     }
@@ -189,7 +192,10 @@ If the brand has an SI agent, add `si_agent_url` to the `PromotedOfferings` obje
 {
   "brand": { "domain": "brand.com" },
   "si_agent_url": "https://agent.brand.com/mcp",
-  "offerings": [...]
+  "catalog": {
+    "type": "offerings",
+    "items": [...]
+  }
 }
 ```
 
@@ -209,9 +215,8 @@ interface PromotedOfferings {
   // Conversational AI endpoint (optional)
   si_agent_url?: string;  // MCP endpoint for SI sessions
 
-  // What to promote (choose one or both)
-  offerings?: Offering[];           // Explicit offering definitions
-  product_selectors?: ProductSelectors;  // Select from brand catalog
+  // What to promote
+  catalog?: Catalog;  // Typed collection of promotable items
 
   // Creative asset filtering (optional)
   asset_selectors?: AssetSelectors;
@@ -222,8 +227,7 @@ interface PromotedOfferings {
 |-------|------|----------|-------------|
 | `brand` | object | Yes | Brand reference with `domain` field |
 | `si_agent_url` | string (uri) | No | MCP endpoint for conversational experiences |
-| `offerings` | Offering[] | No | Array of specific offerings to promote |
-| `product_selectors` | object | No | Selectors to choose products from brand catalog |
+| `catalog` | Catalog | No | Typed collection of promotable items — offerings or product catalog entries |
 | `asset_selectors` | object | No | Filters to select specific creative assets |
 
 ### Offering
@@ -330,31 +334,65 @@ interface OfferingAssetConstraint {
 | `max_count` | integer | No | Maximum number of items the offering may provide |
 | `asset_requirements` | object | No | Technical requirements for each item — use the matching type-specific schema (e.g., `max_length` for text, `min_width`/`aspect_ratio` for images) |
 
-### Product Selectors
+### Catalog
 
-**Schema URL**: [`/schemas/core/promoted-products.json`](https://adcontextprotocol.org/schemas/v2/core/promoted-products.json)
+**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/v2/core/catalog.json)
 
-Instead of defining explicit offerings, select products from the brand's product catalog:
+A typed collection of promotable items. The `type` field determines the item schema and sourcing:
 
 ```typescript
-interface ProductSelectors {
-  manifest_skus?: string[];      // Specific SKUs
-  manifest_tags?: string[];      // Products with these tags
-  manifest_category?: string;    // Products in this category
-  manifest_query?: string;       // Natural language query
+interface Catalog {
+  type: "offerings" | "product";  // Catalog type
+  url?: string;      // External catalog URL
+  items?: Offering[];  // Inline items (offerings type only)
+  ids?: string[];    // Filter by item ID (offering_id or SKU)
+  gtins?: string[];  // Filter by GTIN (product type only)
+  tags?: string[];   // Filter by tag
+  category?: string; // Filter by category
+  query?: string;    // Natural language filter
 }
 ```
 
-Multiple selectors are combined with OR logic—products matching ANY criteria are selected.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | `"offerings"` for AdCP Offering objects, `"product"` for ecommerce catalog entries |
+| `url` | uri | No | External catalog manifest URL. Omit for inline items or platform-synced catalogs. |
+| `items` | Offering[] | No | Inline offering definitions. Mutually exclusive with `url`. |
+| `ids` | string[] | No | Filter to specific item IDs (offering_id or SKU) |
+| `gtins` | string[] | No | Filter product catalogs by GTIN (cross-retailer matching) |
+| `tags` | string[] | No | Filter to items with these tags (OR logic) |
+| `category` | string | No | Filter to items in this category |
+| `query` | string | No | Natural language filter |
 
+**Inline offerings:**
 ```json
 {
-  "brand": {
-    "domain": "brand.com"
-  },
-  "product_selectors": {
-    "manifest_tags": ["organic", "seasonal"],
-    "manifest_category": "beverages"
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {"offering_id": "summer-sale", "name": "Summer Sale", "landing_url": "https://acme.com/summer"}
+    ]
+  }
+}
+```
+
+**External offerings catalog with ID filter:**
+```json
+{
+  "catalog": {
+    "type": "offerings",
+    "url": "https://acme-restaurants.com/vacancies.json",
+    "ids": ["vacancy-amsterdam-42", "vacancy-rotterdam-17"]
+  }
+}
+```
+
+**Product catalog (retail media):**
+```json
+{
+  "catalog": {
+    "type": "product",
+    "ids": ["SKU-123", "SKU-456"]
   }
 }
 ```
@@ -393,36 +431,39 @@ The buyer provides multiple offerings, each with their own creative asset pool. 
 ```json
 {
   "brand": { "domain": "acme.com" },
-  "offerings": [
-    {
-      "offering_id": "summer-sale",
-      "name": "Summer Sale",
-      "landing_url": "https://acme.com/summer",
-      "assets": [
-        {"asset_group_id": "headlines", "asset_type": "text", "items": [
-          {"content": "Shop the Summer Sale"},
-          {"content": "50% Off Everything"}
-        ]},
-        {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
-          {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
-        ]}
-      ]
-    },
-    {
-      "offering_id": "new-arrivals",
-      "name": "New Arrivals",
-      "landing_url": "https://acme.com/new",
-      "assets": [
-        {"asset_group_id": "headlines", "asset_type": "text", "items": [
-          {"content": "Just Arrived"},
-          {"content": "New This Week"}
-        ]},
-        {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
-          {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
-        ]}
-      ]
-    }
-  ]
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {
+        "offering_id": "summer-sale",
+        "name": "Summer Sale",
+        "landing_url": "https://acme.com/summer",
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Shop the Summer Sale"},
+            {"content": "50% Off Everything"}
+          ]},
+          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+            {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
+          ]}
+        ]
+      },
+      {
+        "offering_id": "new-arrivals",
+        "name": "New Arrivals",
+        "landing_url": "https://acme.com/new",
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Just Arrived"},
+            {"content": "New This Week"}
+          ]},
+          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+            {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
+          ]}
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -433,14 +474,17 @@ For traditional format types (display banners, video), use `portfolio_ref` to po
 ```json
 {
   "brand": { "domain": "brand.com" },
-  "offerings": [
-    {
-      "offering_id": "summer-campaign",
-      "name": "Summer Sale",
-      "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
-      "landing_url": "https://brand.com/summer"
-    }
-  ]
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {
+        "offering_id": "summer-campaign",
+        "name": "Summer Sale",
+        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
+        "landing_url": "https://brand.com/summer"
+      }
+    ]
+  }
 }
 ```
 
@@ -452,20 +496,23 @@ No pre-built creatives—just an SI agent for interactive experiences:
 {
   "brand": { "domain": "saas-company.com" },
   "si_agent_url": "https://agent.saas-company.com/mcp",
-  "offerings": [
-    {
-      "offering_id": "enterprise-demo",
-      "name": "Enterprise Demo",
-      "description": "See our platform in action with a personalized demo",
-      "keywords": ["demo", "enterprise", "trial", "pricing"]
-    },
-    {
-      "offering_id": "free-trial",
-      "name": "14-Day Free Trial",
-      "checkout_url": "https://saas-company.com/signup",
-      "keywords": ["trial", "free", "signup"]
-    }
-  ]
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {
+        "offering_id": "enterprise-demo",
+        "name": "Enterprise Demo",
+        "description": "See our platform in action with a personalized demo",
+        "keywords": ["demo", "enterprise", "trial", "pricing"]
+      },
+      {
+        "offering_id": "free-trial",
+        "name": "14-Day Free Trial",
+        "checkout_url": "https://saas-company.com/signup",
+        "keywords": ["trial", "free", "signup"]
+      }
+    ]
+  }
 }
 ```
 
@@ -476,40 +523,56 @@ For brands with multiple physical locations — restaurants, retail chains, job 
 ```json
 {
   "brand": { "domain": "acme-restaurants.com" },
-  "offerings": [
-    {
-      "offering_id": "vacancy-amsterdam-chef",
-      "name": "Head Chef — Amsterdam",
-      "description": "Full-time head chef at our Amsterdam flagship",
-      "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
-      "geo_targets": {
-        "countries": ["NL"],
-        "regions": ["NL-NH"]
+  "catalog": {
+    "type": "offerings",
+    "url": "https://careers.acme-restaurants.com/vacancies.json",
+    "tags": ["active"]
+  }
+}
+```
+
+Or with inline items:
+
+```json
+{
+  "brand": { "domain": "acme-restaurants.com" },
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {
+        "offering_id": "vacancy-amsterdam-chef",
+        "name": "Head Chef — Amsterdam",
+        "description": "Full-time head chef at our Amsterdam flagship",
+        "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
+        "geo_targets": {
+          "countries": ["NL"],
+          "regions": ["NL-NH"]
+        },
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Head Chef Wanted in Amsterdam"},
+            {"content": "Join Our Amsterdam Kitchen Team"}
+          ]}
+        ]
       },
-      "assets": [
-        {"asset_group_id": "headlines", "asset_type": "text", "items": [
-          {"content": "Head Chef Wanted in Amsterdam"},
-          {"content": "Join Our Amsterdam Kitchen Team"}
-        ]}
-      ]
-    },
-    {
-      "offering_id": "vacancy-rotterdam-manager",
-      "name": "Restaurant Manager — Rotterdam",
-      "description": "Managing our Rotterdam location",
-      "landing_url": "https://careers.acme-restaurants.com/vacancies/42",
-      "geo_targets": {
-        "countries": ["NL"],
-        "regions": ["NL-ZH"]
-      },
-      "assets": [
-        {"asset_group_id": "headlines", "asset_type": "text", "items": [
-          {"content": "Restaurant Manager in Rotterdam"},
-          {"content": "Lead Our Rotterdam Team"}
-        ]}
-      ]
-    }
-  ]
+      {
+        "offering_id": "vacancy-rotterdam-manager",
+        "name": "Restaurant Manager — Rotterdam",
+        "description": "Managing our Rotterdam location",
+        "landing_url": "https://careers.acme-restaurants.com/vacancies/42",
+        "geo_targets": {
+          "countries": ["NL"],
+          "regions": ["NL-ZH"]
+        },
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Restaurant Manager in Rotterdam"},
+            {"content": "Lead Our Rotterdam Team"}
+          ]}
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -521,24 +584,27 @@ Geo targets on offerings are about what the offering IS — the Amsterdam vacanc
 {
   "brand": { "domain": "airline.com" },
   "si_agent_url": "https://agent.airline.com/mcp",
-  "offerings": [
-    {
-      "offering_id": "flash-sale-LAX",
-      "name": "Flash Sale: LA Flights",
-      "description": "Flights to LA from $99",
-      "valid_from": "2025-02-01T00:00:00Z",
-      "valid_to": "2025-02-07T23:59:59Z",
-      "keywords": ["los angeles", "LA", "cheap flights", "sale"]
-    },
-    {
-      "offering_id": "loyalty-bonus",
-      "name": "Double Miles February",
-      "description": "Earn 2x miles on all bookings",
-      "valid_from": "2025-02-01T00:00:00Z",
-      "valid_to": "2025-02-28T23:59:59Z",
-      "keywords": ["miles", "loyalty", "rewards", "points"]
-    }
-  ]
+  "catalog": {
+    "type": "offerings",
+    "items": [
+      {
+        "offering_id": "flash-sale-LAX",
+        "name": "Flash Sale: LA Flights",
+        "description": "Flights to LA from $99",
+        "valid_from": "2025-02-01T00:00:00Z",
+        "valid_to": "2025-02-07T23:59:59Z",
+        "keywords": ["los angeles", "LA", "cheap flights", "sale"]
+      },
+      {
+        "offering_id": "loyalty-bonus",
+        "name": "Double Miles February",
+        "description": "Earn 2x miles on all bookings",
+        "valid_from": "2025-02-01T00:00:00Z",
+        "valid_to": "2025-02-28T23:59:59Z",
+        "keywords": ["miles", "loyalty", "rewards", "points"]
+      }
+    ]
+  }
 }
 ```
 

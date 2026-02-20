@@ -136,7 +136,11 @@
         },
         "promoted-offerings": {
           "$ref": "/schemas/core/promoted-offerings.json",
-          "description": "Complete offering specification combining brand reference, product selectors, and asset filters"
+          "description": "Complete offering specification combining brand reference, catalog of promotable items, and asset filters"
+        },
+        "catalog": {
+          "$ref": "/schemas/core/catalog.json",
+          "description": "A typed collection of promotable items — offerings (inline or URL) or product catalog entries (platform-synced)"
         },
         "offering": {
           "$ref": "/schemas/core/offering.json",
@@ -579,6 +583,10 @@
         "promoted-offerings-requirement": {
           "$ref": "/schemas/enums/promoted-offerings-requirement.json",
           "description": "Content requirements that a creative format can impose on promoted offerings"
+        },
+        "catalog-type": {
+          "$ref": "/schemas/enums/catalog-type.json",
+          "description": "Catalog type for promoted offerings: 'offerings' (AdCP native) or 'product' (ecommerce)"
         }
       }
     },

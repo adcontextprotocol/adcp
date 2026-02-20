@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Type `Offering.assets` as `OfferingAssetGroup[]`. Add `OfferingAssetGroup` schema for structured per-offering creative pools (headlines, images, videos). Add `OfferingAssetConstraint` schema and extend `PromotedOfferingsAssetRequirements` with `offering_asset_constraints` so formats can declare per-group asset requirements on offerings. Extend `PromotedOfferingsRequirement` enum with `offerings.assets` and `offerings.landing_url`.
+Refactor `PromotedOfferings` to use a unified `catalog` field. Replace separate `offerings[]` and `product_selectors` fields with a typed `Catalog` object that supports inline items, external URL references, and platform-synced product catalogs through a single interface. Add `OfferingAssetGroup` schema for structured per-offering creative pools, `OfferingAssetConstraint` for format-level asset requirements, and `geo_targets` on `Offering` for location-specific offerings.

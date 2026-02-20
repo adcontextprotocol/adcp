@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog.json",
+  "title": "Catalog",
+  "description": "A collection of promotable items sourced from an inline array, an external URL, or a platform-synced catalog. The catalog type determines the item schema: 'offerings' items are AdCP Offering objects (campaigns, vacancies, events, services); 'product' items are ecommerce product entries from a platform-synced brand catalog. Selectors (ids, tags, category, query) filter items regardless of sourcing method.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/catalog-type.json",
+      "description": "Catalog type. 'offerings' = AdCP Offering objects (general promotable items). 'product' = ecommerce product entries from a platform-synced brand catalog."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to an external catalog manifest. The platform fetches and resolves items from this URL. For offerings-type catalogs, the manifest contains an array of Offering objects. When omitted with type 'product', the platform uses its synced copy of the brand's product catalog."
+    },
+    "items": {
+      "type": "array",
+      "description": "Inline catalog items. For offerings-type catalogs, each item is an Offering object. Mutually exclusive with url — provide items inline or reference an external manifest, not both.",
+      "items": {
+        "$ref": "/schemas/core/offering.json"
+      },
+      "minItems": 1
+    },
+    "ids": {
+      "type": "array",
+      "description": "Filter catalog to specific item IDs. For offerings-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "gtins": {
+      "type": "array",
+      "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]{8,14}$"
+      },
+      "minItems": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "category": {
+      "type": "string",
+      "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')."
+    }
+  },
+  "required": ["type"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Inline offerings catalog",
+      "data": {
+        "type": "offerings",
+        "items": [
+          {
+            "offering_id": "summer-sale",
+            "name": "Summer Sale",
+            "landing_url": "https://acme.com/summer"
+          }
+        ]
+      }
+    },
+    {
+      "description": "External offerings catalog with ID filter",
+      "data": {
+        "type": "offerings",
+        "url": "https://acme.com/offerings.json",
+        "ids": ["vacancy-amsterdam-42", "vacancy-rotterdam-17"]
+      }
+    },
+    {
+      "description": "Product catalog with SKU selection (platform-synced)",
+      "data": {
+        "type": "product",
+        "ids": ["SKU-12345", "SKU-67890"]
+      }
+    },
+    {
+      "description": "Product catalog with tag and category filter",
+      "data": {
+        "type": "product",
+        "tags": ["organic", "seasonal"],
+        "category": "beverages"
+      }
+    },
+    {
+      "description": "Product catalog with GTIN cross-retailer matching",
+      "data": {
+        "type": "product",
+        "gtins": ["00013000006040", "00013000006057"]
+      }
+    }
+  ]
+}
