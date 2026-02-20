@@ -989,12 +989,12 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     lines.push('');
     lines.push('### Organization Persona');
     const personaLabels: Record<string, string> = {
-      molecule_builder: 'Molecule Builder',
-      data_decoder: 'Data Decoder',
-      pureblood_protector: 'Pureblood Protector',
-      resops_integrator: 'ResOps Integrator',
-      ladder_climber: 'Ladder Climber',
-      simple_starter: 'Simple Starter',
+      molecule_builder: 'Molecular Gastronomist',
+      data_decoder: 'Data Denizen',
+      pureblood_protector: 'Mold Breaker',
+      resops_integrator: 'RevOps Integrator',
+      ladder_climber: 'Positionless Marketer',
+      simple_starter: 'Simple Simon',
     };
     lines.push(`Persona: ${personaLabels[context.persona.persona] || context.persona.persona}`);
     if (context.persona.aspiration_persona) {

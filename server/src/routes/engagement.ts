@@ -7,6 +7,7 @@ import { OrgKnowledgeDatabase, type Persona } from '../db/org-knowledge-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { checkMilestones } from '../addie/services/journey-computation.js';
 import { getRecommendedGroupsForOrg } from '../addie/services/group-recommendations.js';
+import { notifyAssessmentCompleted } from '../notifications/assessment.js';
 
 const VALID_PERSONAS: Persona[] = ['molecule_builder', 'data_decoder', 'pureblood_protector', 'resops_integrator', 'ladder_climber', 'simple_starter'];
 
@@ -207,7 +208,25 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
       });
 
       logger.info({ orgId, persona, userId }, 'Persona set via diagnostic assessment');
+
       res.json({ success: true, persona });
+
+      // Fire-and-forget admin notification (after response is sent)
+      const user = req.user!;
+      const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+      Promise.resolve().then(async () => {
+        const orgResult = await query<{ name: string }>(
+          `SELECT name FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        const orgName = orgResult.rows[0]?.name ?? orgId;
+        await notifyAssessmentCompleted({
+          organizationName: orgName,
+          userName,
+          userEmail: user.email,
+          persona,
+        });
+      }).catch(err => logger.warn({ err }, 'Failed to send assessment notification'));
     } catch (error) {
       logger.error({ error }, 'Failed to save persona assessment');
       res.status(500).json({ error: 'Internal server error' });

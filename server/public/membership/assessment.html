@@ -221,7 +221,7 @@
         <div class="result-label">Your organization type</div>
         <div class="result-title" id="result-title"></div>
         <div class="result-desc" id="result-desc"></div>
-        <a href="/member-hub" class="btn btn-primary">Go to member hub →</a>
+        <div id="result-cta"></div>
       </div>
     </div>
   </div>
@@ -230,9 +230,8 @@
 
   <script>
     const config = window.__APP_CONFIG__ || {};
-    if (!config.user) {
-      window.location.href = '/auth/login?return_to=/persona-assessment';
-    }
+    const isLoggedIn = !!config.user;
+    const isMember = !!(config.user && config.user.isMember);
 
     // =========================================================================
     // Survey data
@@ -295,12 +294,12 @@
     const INNER_CORE = ['molecular_gastronomists', 'data_denizens', 'positionless_marketers', 'mold_breakers', 'revops_integrators'];
 
     const SYSTEM_PERSONA_CFG = {
-      molecule_builder:    { icon: '⚙️', label: 'Molecule Builder',     desc: 'You\'re the architect of your organization\'s tech stack — building and integrating components that others depend on.' },
-      data_decoder:        { icon: '📈', label: 'Data Decoder',         desc: 'Every decision traces back to a signal. You use data, measurement, and optimization to drive marketing effectiveness.' },
-      ladder_climber:      { icon: '🎯', label: 'Ladder Climber',       desc: 'You break organizational silos and build strategic visibility — seeking industry leadership through cross-functional excellence.' },
-      pureblood_protector: { icon: '🛡️', label: 'Pureblood Protector',  desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time.' },
-      resops_integrator:   { icon: '🔄', label: 'ResOps Integrator',    desc: 'Marketing, sales, and service move as one for you — you\'re wired to streamline operations and connect revenue workflows.' },
-      simple_starter:      { icon: '🌱', label: 'Simple Starter',       desc: 'You\'re getting started with agentic advertising. There\'s a clear path from here, and AAO is the right place to be.' },
+      molecule_builder:    { icon: '⚙️', label: 'Molecular Gastronomist', desc: 'You\'re the architect of your organization\'s tech stack — building and integrating components that others depend on.' },
+      data_decoder:        { icon: '📈', label: 'Data Denizen',           desc: 'Every decision traces back to a signal. You use data, measurement, and optimization to drive marketing effectiveness.' },
+      ladder_climber:      { icon: '🎯', label: 'Positionless Marketer',  desc: 'You break organizational silos and build strategic visibility — seeking industry leadership through cross-functional excellence.' },
+      pureblood_protector: { icon: '🛡️', label: 'Mold Breaker',          desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time.' },
+      resops_integrator:   { icon: '🔄', label: 'RevOps Integrator',      desc: 'Marketing, sales, and service move as one for you — you\'re wired to streamline operations and connect revenue workflows.' },
+      simple_starter:      { icon: '🌱', label: 'Simple Simon',           desc: 'You\'re getting started with agentic advertising. There\'s a clear path from here, and AAO is the right place to be.' },
     };
 
     // =========================================================================
@@ -428,21 +427,21 @@
       const winner = pickWinner(scores);
       const systemPersona = ASSESSMENT_TO_SYSTEM[winner];
 
-      try {
-        const resp = await fetch('/api/me/engagement/persona-assessment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ persona: systemPersona, scores }),
-        });
-
-        if (!resp.ok) throw new Error('Save failed');
-        showResult(systemPersona);
-      } catch (err) {
-        console.error(err);
-        btn.textContent = 'Try again';
-        btn.disabled = false;
+      if (isLoggedIn) {
+        try {
+          const resp = await fetch('/api/me/engagement/persona-assessment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ persona: systemPersona, scores }),
+          });
+          if (!resp.ok) console.error('Failed to save assessment results');
+        } catch (err) {
+          console.error('Failed to save assessment results', err);
+        }
       }
+
+      showResult(systemPersona);
     }
 
     function showResult(persona) {
@@ -453,6 +452,25 @@
       document.getElementById('result-icon').textContent = cfg.icon;
       document.getElementById('result-title').textContent = cfg.label;
       document.getElementById('result-desc').textContent = cfg.desc;
+
+      const returnTo = encodeURIComponent('/persona-assessment');
+      let ctaHtml;
+      if (isMember) {
+        ctaHtml = `
+          <a href="/dashboard/organization" class="btn btn-primary">Go to member hub →</a>
+          <p style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            <a href="/events" style="color: var(--color-brand);">Book a feedback session with Randall &amp; Brian →</a>
+          </p>`;
+      } else if (isLoggedIn) {
+        ctaHtml = `<a href="/membership" class="btn btn-primary">Explore membership →</a>`;
+      } else {
+        ctaHtml = `
+          <a href="/auth/login?return_to=${returnTo}&signup=true" class="btn btn-primary">Create account to save results →</a>
+          <p style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Already have an account? <a href="/auth/login?return_to=${returnTo}" style="color: var(--color-brand);">Log in</a>
+          </p>`;
+      }
+      document.getElementById('result-cta').innerHTML = ctaHtml;
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
