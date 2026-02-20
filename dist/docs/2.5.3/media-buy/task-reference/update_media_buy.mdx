@@ -648,7 +648,7 @@ AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handle
 - **Updates**: Protocol-specific mechanisms
 - **Long-running tasks**: Different timeout and notification patterns
 
-See [Task Management](/docs/building/implementation/task-lifecycle) for protocol-specific async patterns and examples.
+See [Task Management](/dist/docs/2.5.3/protocols/task-management) for protocol-specific async patterns and examples.
 
 ## Best Practices
 
@@ -682,14 +682,14 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 
 After updating a media buy:
 
-1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative_ids changed
+1. **Verify Changes**: Use [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery) to confirm updates
+2. **Upload New Creatives**: Use [`sync_creatives`](/dist/docs/2.5.3/media-buy/task-reference/sync_creatives) if creative_ids changed
 3. **Monitor Performance**: Track impact of changes on campaign metrics
-4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
+4. **Optimize Further**: Use [`provide_performance_feedback`](/dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 
 ## Learn More
 
-- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
-- [Task Management](/docs/building/implementation/task-lifecycle) - Async patterns and status checking
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) - Initial campaign creation
+- [Media Buy Lifecycle](/dist/docs/2.5.3/media-buy/media-buys/) - Complete campaign workflow
+- [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
+- [Task Management](/dist/docs/2.5.3/protocols/task-management) - Async patterns and status checking
+- [create_media_buy](/dist/docs/2.5.3/media-buy/task-reference/create_media_buy) - Initial campaign creation

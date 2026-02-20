@@ -7,7 +7,7 @@ A **Product** is the core sellable unit in AdCP. This document details the Produ
 
 <Tip>
 **Pricing Models**
-Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/docs/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, vCPM, and flat rate pricing.
+Products declare which pricing models they support. Buyers select a specific pricing option when creating media buys. See the complete [Pricing Models Guide](/dist/docs/2.5.3/media-buy/advanced-topics/pricing-models) for details on CPM, CPCV, CPP, CPC, vCPM, and flat rate pricing.
 </Tip>
 
 ## The Product Model
@@ -15,7 +15,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
-- `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
+- `formats` (list[Format], required): See [Creative Formats](/dist/docs/2.5.3/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
@@ -193,7 +193,7 @@ When creating a media buy, buyers can assign different creatives to different pl
 }
 ```
 
-See [Creative Assignment and Placement Targeting](/docs/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
+See [Creative Assignment and Placement Targeting](/dist/docs/2.5.3/media-buy/media-buys/index.mdx#creative-assignment-and-placement-targeting) for more details.
 
 ### Custom & Principal-Specific Products
 
@@ -454,11 +454,11 @@ This ensures a consistent user experience regardless of what product metadata is
 
 ## Integration with Discovery
 
-Products are discovered through the [Product Discovery](/docs/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
+Products are discovered through the [Product Discovery](/dist/docs/2.5.3/media-buy/product-discovery) process, which uses natural language to match campaign briefs with available inventory. Once products are identified, they can be purchased via `create_media_buy`.
 
 ## See Also
 
-- [Product Discovery](/docs/media-buy/product-discovery) - How to discover products using natural language
-- [Media Buys](/docs/media-buy/media-buys) - How to purchase products
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Detailed targeting options
-- [Creative Formats](/docs/creative/formats) - Understanding format specifications and discovery
+- [Product Discovery](/dist/docs/2.5.3/media-buy/product-discovery) - How to discover products using natural language
+- [Media Buys](/dist/docs/2.5.3/media-buy/media-buys) - How to purchase products
+- [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) - Detailed targeting options
+- [Creative Formats](/dist/docs/2.5.3/creative/formats) - Understanding format specifications and discovery

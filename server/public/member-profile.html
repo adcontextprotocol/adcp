@@ -894,65 +894,52 @@
           </div>
           </div><!-- end photo-section -->
 
-          <!-- Branding (companies only) -->
+          <!-- Brand identity (companies only) -->
           <div id="logos-section">
-          <h2>Logos</h2>
+          <h2>Brand identity</h2>
+          <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-5);">
+            Your logo and brand colors are managed in the brand registry. As a member, we host your brand.json at
+            <strong>agenticadvertising.org/brands/yourdomain.com/brand.json</strong> — a stable URL you can reference from your domain.
+          </p>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="logo_light_url">Logo for Light Backgrounds</label>
-              <div class="logo-input-group">
-                <input type="text" id="logo_light_url" name="logo_light_url" placeholder="https://example.com/logo-dark.png" readonly>
-                <span class="upload-filename" id="logo_light_filename"></span>
-                <label class="btn-upload">
-                  Upload
-                  <input type="file" id="logo_light_upload" accept="image/*" onchange="handleLogoUpload(this, 'logo_light_url', 'logo_light_filename')">
-                </label>
-                <button type="button" class="btn-clear" id="logo_light_clear" onclick="clearLogo('logo_light_url', 'logo_light_filename')" style="display: none;">Clear</button>
+          <!-- Brand linked state -->
+          <div id="brand-linked" style="display: none;">
+            <div style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4);">
+              <div id="brand-logo-preview" style="width: 80px; height: 60px; background: var(--color-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--color-border); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <span style="color: var(--color-text-muted); font-size: 11px;">No logo</span>
               </div>
-              <div class="hint">Dark-colored logo that looks good on white/light pages</div>
+              <div>
+                <div id="brand-domain-display" style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: 4px;"></div>
+                <div id="brand-verified-status" style="font-size: var(--text-sm);"></div>
+              </div>
+              <a id="brand-manage-link" href="#" target="_blank" style="margin-left: auto; padding: var(--space-2) var(--space-4); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
             </div>
-            <div class="form-group">
-              <label for="logo_dark_url">Logo for Dark Backgrounds</label>
-              <div class="logo-input-group">
-                <input type="text" id="logo_dark_url" name="logo_dark_url" placeholder="https://example.com/logo-light.png" readonly>
-                <span class="upload-filename" id="logo_dark_filename"></span>
-                <label class="btn-upload">
-                  Upload
-                  <input type="file" id="logo_dark_upload" accept="image/*" onchange="handleLogoUpload(this, 'logo_dark_url', 'logo_dark_filename')">
-                </label>
-                <button type="button" class="btn-clear" id="logo_dark_clear" onclick="clearLogo('logo_dark_url', 'logo_dark_filename')" style="display: none;">Clear</button>
+
+            <!-- Pointer snippet for unverified brands -->
+            <div id="brand-pointer-callout" style="display: none; background: var(--color-primary-50); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-primary-700); margin-bottom: var(--space-2);">Make AAO your authoritative brand source</div>
+              <p style="font-size: var(--text-sm); color: var(--color-primary-700); margin-bottom: var(--space-3);">
+                Place this file at <code style="background: var(--color-primary-100); padding: 1px 4px; border-radius: 3px;">yourdomain.com/.well-known/brand.json</code> (and any other domains you own) to make this your canonical brand identity:
+              </p>
+              <div style="position: relative;">
+                <pre id="brand-pointer-snippet" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); overflow-x: auto; margin: 0;"></pre>
+                <button onclick="copyBrandPointer()" style="position: absolute; top: var(--space-2); right: var(--space-2); padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
               </div>
-              <div class="hint">Light-colored logo that looks good on dark pages</div>
             </div>
           </div>
-          <div class="hint" style="margin-top: calc(-1 * var(--space-2.5)); margin-bottom: var(--space-4);">If you only upload one logo, we'll use it for both backgrounds.</div>
 
-          <!-- Hidden field to store primary logo for backwards compatibility -->
-          <input type="hidden" id="logo_url" name="logo_url">
-
-          <div class="preview-section">
-            <h3>Logo Preview</h3>
-            <div class="logo-preview" id="logo-preview-container">
-              <div class="logo-preview-box light">
-                <span class="label">Light Background</span>
-                <div id="logo-light-preview" class="placeholder">No logo</div>
-              </div>
-              <div class="logo-preview-box dark">
-                <span class="label">Dark Background</span>
-                <div id="logo-dark-preview" class="placeholder">No logo</div>
-              </div>
-            </div>
-            <div class="gravatar-note" id="gravatar-note" style="display: none;">
-              <strong>Tip:</strong> No logo? We'll use your <a href="https://gravatar.com" target="_blank">Gravatar</a> based on your contact email as a fallback.
+          <!-- Brand not linked state -->
+          <div id="brand-not-linked">
+            <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); text-align: center;">
+              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">Your brand isn't set up yet. Set it up to get a hosted brand.json and appear with your logo in the member directory.</p>
+              <a href="/onboarding?step=brand" style="display: inline-block; padding: var(--space-2.5) var(--space-5); background: var(--color-brand); color: white; border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Set up brand</a>
             </div>
           </div>
 
           <div class="preview-section" style="margin-top: var(--space-8);">
-            <h3>Member Card Preview</h3>
+            <h3>Member card preview</h3>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-4);">This is how your organization will appear in the member directory:</p>
             <div id="member-card-preview">
-              <!-- Initial placeholder - will be replaced by updateMemberCardPreview() -->
               <div class="member-card">
                 <div class="member-card-header">
                   <div class="member-logo-placeholder">Y</div>
@@ -1094,6 +1081,7 @@
     let currentProfile = null;
     let tags = [];
     let agents = []; // Array of {url: string, is_public: boolean}
+    let currentResolvedBrand = null; // Resolved brand from registry for member card preview
     let agentInfo = {}; // Cache of discovered agent info by URL
     let publishers = []; // Array of {domain: string, is_public: boolean}
     let publisherInfo = {}; // Cache of validated publisher info by domain
@@ -1122,7 +1110,6 @@
       setupOfferingsToggle();
       setupTagsInput();
       setupSlugCheck();
-      setupLogoPreview();
       setupPhotoPreview();
       setupMemberCardPreview();
       setupPhoneFormatting();
@@ -1434,20 +1421,93 @@
       document.getElementById('profile-status-indicator').style.display = 'none';
     }
 
+    function populateBrandSection(profile) {
+      currentResolvedBrand = profile.resolved_brand || null;
+      const linkedEl = document.getElementById('brand-linked');
+      const notLinkedEl = document.getElementById('brand-not-linked');
+      if (!linkedEl || !notLinkedEl) return;
+
+      if (profile.primary_brand_domain) {
+        linkedEl.style.display = 'block';
+        notLinkedEl.style.display = 'none';
+
+        document.getElementById('brand-domain-display').textContent = profile.primary_brand_domain;
+
+        const manageLink = document.getElementById('brand-manage-link');
+        manageLink.href = '/brands?domain=' + encodeURIComponent(profile.primary_brand_domain);
+
+        // Show logo if available
+        const logoPreview = document.getElementById('brand-logo-preview');
+        if (profile.resolved_brand?.logo_url) {
+          logoPreview.innerHTML = '<img src="' + profile.resolved_brand.logo_url + '" style="max-width: 76px; max-height: 56px; object-fit: contain;" alt="">';
+        }
+
+        // Verification status
+        const verifiedEl = document.getElementById('brand-verified-status');
+        if (profile.resolved_brand?.verified) {
+          verifiedEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json verified</span>';
+          document.getElementById('brand-pointer-callout').style.display = 'none';
+        } else {
+          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">No brand.json on domain yet &mdash; </span>' +
+            '<button onclick="verifyBrandNow(\'' + escapeHtml(profile.primary_brand_domain) + '\')" ' +
+            'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
+          // Show pointer snippet
+          const callout = document.getElementById('brand-pointer-callout');
+          const snippet = document.getElementById('brand-pointer-snippet');
+          callout.style.display = 'block';
+          snippet.textContent = JSON.stringify({
+            authoritative_location: 'https://agenticadvertising.org/brands/' + profile.primary_brand_domain + '/brand.json'
+          }, null, 2);
+        }
+
+      } else {
+        linkedEl.style.display = 'none';
+        notLinkedEl.style.display = 'block';
+      }
+    }
+
+    function copyBrandPointer() {
+      const text = document.getElementById('brand-pointer-snippet').textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+
+    async function verifyBrandNow(domain) {
+      const btn = document.getElementById('brand-verify-btn');
+      if (btn) { btn.textContent = 'Checking...'; btn.disabled = true; }
+      try {
+        const res = await fetch('/api/me/member-profile/verify-brand', { method: 'POST' });
+        const data = await res.json();
+        const verifiedEl = document.getElementById('brand-verified-status');
+        if (data.verified) {
+          verifiedEl.innerHTML = '<span style="color: var(--color-success-700);">&#10003; brand.json verified</span>';
+          document.getElementById('brand-pointer-callout').style.display = 'none';
+        } else {
+          verifiedEl.innerHTML = '<span style="color: var(--color-text-muted);">No brand.json on domain yet &mdash; </span>' +
+            '<button onclick="verifyBrandNow(\'' + escapeHtml(domain) + '\')" ' +
+            'id="brand-verify-btn" style="background: none; border: none; color: var(--color-primary-600); cursor: pointer; font-size: var(--text-sm); padding: 0; text-decoration: underline;">Check now</button>';
+        }
+      } catch {
+        if (btn) { btn.textContent = 'Check now'; btn.disabled = false; }
+      }
+    }
+
     function populateForm(profile) {
       document.getElementById('display_name').value = profile.display_name || '';
       document.getElementById('slug').value = profile.slug || '';
       document.getElementById('description').value = profile.description || '';
-      document.getElementById('logo_url').value = profile.logo_url || '';
-      document.getElementById('logo_light_url').value = profile.logo_light_url || '';
-      document.getElementById('logo_dark_url').value = profile.logo_dark_url || '';
-      // For individuals, photo_url uses the same field as logo_url
+      // For individuals, photo_url uses the same field as resolved_brand logo
       const photoUrlField = document.getElementById('photo_url');
       if (photoUrlField) {
-        photoUrlField.value = profile.logo_url || '';
+        photoUrlField.value = profile.resolved_brand?.logo_url || '';
         updateFilenameDisplay('photo_url', 'photo_filename');
         updatePhotoPreview();
       }
+      // Populate brand identity section
+      populateBrandSection(profile);
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
       const phoneInput = document.getElementById('contact_phone');
@@ -1499,12 +1559,8 @@
       // Validate info for each publisher
       publishers.forEach(pub => validatePublisherDomain(pub.domain));
 
-      // Update filename displays for logos
-      updateFilenameDisplay('logo_light_url', 'logo_light_filename');
-      updateFilenameDisplay('logo_dark_url', 'logo_dark_filename');
-
-      // Update logo preview
-      updateLogoPreview();
+      // Update member card preview after brand section is populated
+      updateMemberCardPreview();
 
       // Update status badge
       updateStatusBadge(profile);
@@ -1719,14 +1775,6 @@
       }
     }
 
-    function setupLogoPreview() {
-      document.getElementById('logo_light_url').addEventListener('input', updateLogoPreview);
-      document.getElementById('logo_dark_url').addEventListener('input', updateLogoPreview);
-      document.getElementById('contact_email').addEventListener('input', updateLogoPreview);
-      // Also update photo preview when contact email changes (for Gravatar fallback)
-      document.getElementById('contact_email').addEventListener('input', updatePhotoPreview);
-    }
-
     function setupPhotoPreview() {
       const photoInput = document.getElementById('photo_url');
       if (photoInput) {
@@ -1741,11 +1789,7 @@
 
       if (!photoPreview) return;
 
-      // Also set the hidden logo_url field for backwards compatibility with member cards
-      const logoUrlField = document.getElementById('logo_url');
-      if (logoUrlField && photoUrl) {
-        logoUrlField.value = photoUrl;
-      }
+
 
       if (photoUrl) {
         const img = document.createElement('img');
@@ -1780,78 +1824,6 @@
       return `https://www.gravatar.com/avatar/${btoa(hash).substring(0, 32)}?s=${size}&d=identicon`;
     }
 
-    function updateLogoPreview() {
-      const logoLightUrl = document.getElementById('logo_light_url').value;
-      const logoDarkUrl = document.getElementById('logo_dark_url').value;
-      const contactEmail = document.getElementById('contact_email').value;
-
-      const lightPreview = document.getElementById('logo-light-preview');
-      const darkPreview = document.getElementById('logo-dark-preview');
-      const gravatarNote = document.getElementById('gravatar-note');
-
-      // If only one logo provided, use it for both
-      const lightLogo = logoLightUrl || logoDarkUrl;
-      const darkLogo = logoDarkUrl || logoLightUrl;
-
-      // Also set the hidden logo_url field to the light logo for backwards compatibility
-      document.getElementById('logo_url').value = logoLightUrl || logoDarkUrl || '';
-
-      const hasAnyLogo = logoLightUrl || logoDarkUrl;
-      const gravatarUrl = getGravatarUrl(contactEmail);
-
-      // Show gravatar note if no logos but has email
-      gravatarNote.style.display = (!hasAnyLogo && contactEmail) ? 'block' : 'none';
-
-      // Update light background preview
-      if (lightLogo) {
-        const lightImg = document.createElement('img');
-        lightImg.id = 'logo-light-preview';
-        lightImg.src = lightLogo;
-        lightImg.alt = 'Logo on light';
-        lightImg.onerror = function() {
-          this.outerHTML = '<div id="logo-light-preview" class="placeholder">Invalid URL</div>';
-        };
-        lightPreview.replaceWith(lightImg);
-      } else if (gravatarUrl) {
-        const lightImg = document.createElement('img');
-        lightImg.id = 'logo-light-preview';
-        lightImg.src = gravatarUrl;
-        lightImg.alt = 'Gravatar fallback';
-        lightImg.style.borderRadius = '50%';
-        lightPreview.replaceWith(lightImg);
-      } else {
-        if (lightPreview.tagName === 'IMG') {
-          lightPreview.outerHTML = '<div id="logo-light-preview" class="placeholder">No logo</div>';
-        }
-      }
-
-      // Update dark background preview
-      if (darkLogo) {
-        const darkImg = document.createElement('img');
-        darkImg.id = 'logo-dark-preview';
-        darkImg.src = darkLogo;
-        darkImg.alt = 'Logo on dark';
-        darkImg.onerror = function() {
-          this.outerHTML = '<div id="logo-dark-preview" class="placeholder">Invalid URL</div>';
-        };
-        darkPreview.replaceWith(darkImg);
-      } else if (gravatarUrl) {
-        const darkImg = document.createElement('img');
-        darkImg.id = 'logo-dark-preview';
-        darkImg.src = gravatarUrl;
-        darkImg.alt = 'Gravatar fallback';
-        darkImg.style.borderRadius = '50%';
-        darkPreview.replaceWith(darkImg);
-      } else {
-        if (darkPreview.tagName === 'IMG') {
-          darkPreview.outerHTML = '<div id="logo-dark-preview" class="placeholder">No logo</div>';
-        }
-      }
-
-      // Update member card preview
-      updateMemberCardPreview();
-    }
-
     async function handleLogoUpload(input, targetFieldId, filenameId) {
       const file = input.files[0];
       if (!file) return;
@@ -1883,7 +1855,8 @@
       const reader = new FileReader();
       reader.onload = (e) => {
         document.getElementById(targetFieldId).value = e.target.result;
-        updateLogoPreview();
+        updatePhotoPreview();
+        updateMemberCardPreview();
       };
       reader.readAsDataURL(file);
 
@@ -1897,7 +1870,8 @@
       filenameEl.textContent = '';
       filenameEl.classList.remove('has-file');
       document.getElementById(fieldId.replace('_url', '_clear')).style.display = 'none';
-      updateLogoPreview();
+      updatePhotoPreview();
+      updateMemberCardPreview();
     }
 
     function updateFilenameDisplay(fieldId, filenameId) {
@@ -1939,7 +1913,7 @@
       const member = {
         display_name: document.getElementById('display_name').value || 'Your Company',
         description: document.getElementById('description').value || '',
-        logo_url: document.getElementById('logo_light_url').value || document.getElementById('logo_dark_url').value || null,
+        resolved_brand: currentResolvedBrand || null,
         contact_website: document.getElementById('contact_website').value || null,
         linkedin_url: document.getElementById('linkedin_url').value || null,
         offerings: Array.from(document.querySelectorAll('input[name="offerings"]:checked')).map(cb => cb.value)
@@ -1959,22 +1933,12 @@
       hideMessages();
 
       // Gather form data
-      const logoLightUrl = document.getElementById('logo_light_url').value || null;
-      const logoDarkUrl = document.getElementById('logo_dark_url').value || null;
-      const photoUrl = document.getElementById('photo_url')?.value || null;
       const description = document.getElementById('description').value || null;
-
-      // Check if this is an individual account (photo section visible)
-      const isIndividual = document.getElementById('photo-section')?.style.display !== 'none';
 
       const formData = {
         display_name: document.getElementById('display_name').value,
         tagline: null, // No longer using separate tagline - description is truncated where needed
         description,
-        // For individuals, use photo_url; for companies, use logo URLs
-        logo_url: isIndividual ? photoUrl : (logoLightUrl || logoDarkUrl),
-        logo_light_url: isIndividual ? null : logoLightUrl,
-        logo_dark_url: isIndividual ? null : logoDarkUrl,
         contact_email: document.getElementById('contact_email').value || null,
         contact_phone: document.getElementById('contact_phone').value || null,
         contact_website: document.getElementById('contact_website').value || null,
@@ -2191,6 +2155,11 @@
         } else {
           const data = await response.json();
           agentInfo[url] = data;
+          // Write discovered type back so it gets persisted when the profile is saved
+          const agent = agents.find(a => a.url === url);
+          if (agent && data.type && data.type !== 'unknown' && (!agent.type || agent.type === 'unknown')) {
+            agent.type = data.type;
+          }
         }
       } catch (error) {
         agentInfo[url] = { error: 'Failed to connect to agent' };

@@ -69,6 +69,10 @@
       },
       "required": ["amount", "currency"]
     },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

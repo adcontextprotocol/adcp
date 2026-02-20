@@ -731,6 +731,51 @@ export class BrandManager {
   }
 
   /**
+   * Resolve a brand reference (domain + optional brand_id) to a ResolvedBrand.
+   * For single-brand domains (no brand_id), delegates to resolveBrand(domain).
+   * For multi-brand domains (with brand_id), resolves the house portfolio and
+   * finds the specific brand by id.
+   */
+  async resolveBrandRef(
+    ref: { domain: string; brand_id?: string },
+    options: { skipCache?: boolean } = {}
+  ): Promise<ResolvedBrand | null> {
+    const resolved = await this.resolveBrand(ref.domain, options);
+    if (!resolved || !ref.brand_id) {
+      return resolved;
+    }
+
+    // If the resolved brand already matches the requested brand_id, return it
+    if (resolved.canonical_id === ref.brand_id || resolved.canonical_domain === ref.brand_id) {
+      return resolved;
+    }
+
+    // For house portfolios, look up the specific brand by id
+    const validationResult = await this.validateDomain(ref.domain, { skipCache: options.skipCache });
+    if (validationResult.variant === 'house_portfolio' && validationResult.raw_data) {
+      const portfolio = validationResult.raw_data as HousePortfolioVariant;
+      const brand = portfolio.brands.find((b) => b.id === ref.brand_id);
+      if (brand) {
+        const primaryName = this.getPrimaryName(brand.names);
+        return {
+          canonical_id: brand.parent_brand ? `${brand.parent_brand}#${brand.id}` : brand.id,
+          canonical_domain: brand.id,
+          brand_name: primaryName || brand.id,
+          names: brand.names,
+          keller_type: brand.keller_type,
+          parent_brand: brand.parent_brand,
+          house_domain: portfolio.house.domain,
+          house_name: portfolio.house.name,
+          brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
+          source: 'brand_json',
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Find a brand in a portfolio by property identifier
    */
   private findBrandByProperty(

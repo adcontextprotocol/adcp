@@ -292,7 +292,7 @@ Inclusion targeting works the same way for cases where you want to specify exact
 - **Demographic preferences** (age, gender, income) - "Target millennials" or "high-income households" in brief text
 - **Device preferences** - "Mobile users" or "CTV viewers" in brief text (use `device_platform` overlay only for technical compatibility)
 - **Content categories** - "Sports content" or "News sites" in brief text
-- **Audience segments** - "Auto intenders" or "Luxury shoppers" in brief text
+- **Third-party audience segments** - "Auto intenders" or "Luxury shoppers" in brief text (use signals protocol for data provider segments)
 - **Daypart preferences** - "Morning commute hours" or "prime time evening" in brief text
 
 **Overlays vs Briefs:**
@@ -304,6 +304,8 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Device for audience preference | | ✅ "Mobile users" |
 | Language for creative localization | ✅ `language` | |
 | Language for audience preference | | ✅ "Spanish-speaking audiences" |
+| First-party CRM audience (retargeting, suppression) | ✅ `audience_include` / `audience_exclude` | |
+| Third-party audience segment (interest targeting) | | ✅ "Auto intenders" in brief, or use signals protocol |
 
 **Why briefs work better for preferences:**
 - Natural language captures intent more clearly
@@ -392,6 +394,23 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Examples**: `"seg_existing_customers"`, `"audience_past_converters"`
 - **Use cases**: Customer suppression, frequency management
 - **Details**: See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine)
+
+### audience_include
+- **Description**: Restrict delivery to users who are members of these first-party CRM audiences. Only people on the uploaded list are eligible to see the ad.
+- **Format**: Array of `audience_id` strings from [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)
+- **Example**: `["lapsed_subscribers", "high_value_prospects"]`
+- **Use cases**: Retargeting known users, loyalty campaigns targeting existing members, CRM-based inclusion on closed platforms (LinkedIn, Meta, TikTok, Google Ads)
+- **Not for lookalike/expansion**: To find new users *similar to* an audience, describe the intent in your campaign brief ("reach people like our existing customers") — the seller handles expansion strategy
+- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
+- **Note**: Seller must declare support in `get_adcp_capabilities`
+
+### audience_exclude
+- **Description**: Suppress delivery to users who are members of these first-party CRM audiences. Matched users are excluded regardless of other targeting.
+- **Format**: Array of `audience_id` strings from [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)
+- **Example**: `["existing_customers", "recent_purchasers"]`
+- **Use cases**: Customer suppression in acquisition campaigns, excluding recent converters, suppressing opted-out users
+- **Prerequisite**: Audiences must be registered and `ready` via `sync_audiences` before use
+- **Note**: Seller must declare support in `get_adcp_capabilities`
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per user

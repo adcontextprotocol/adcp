@@ -2,8 +2,11 @@ import type { Agent } from "./types.js";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/client";
 import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
+import { BrandManager } from "./brand-manager.js";
+import { BrandDatabase } from "./db/brand-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { AAO_HOST } from "./config/aao.js";
 
 export class CrawlerService {
   private crawler: PropertyCrawler;
@@ -13,6 +16,8 @@ export class CrawlerService {
   private intervalId: NodeJS.Timeout | null = null;
   private federatedIndex: FederatedIndexService;
   private adAgentsManager: AdAgentsManager;
+  private brandManager: BrandManager;
+  private brandDb: BrandDatabase;
   private memberDb: MemberDatabase;
   private capabilityDiscovery: CapabilityDiscovery;
 
@@ -20,6 +25,8 @@ export class CrawlerService {
     this.crawler = new PropertyCrawler({ logLevel: 'debug' });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
+    this.brandManager = new BrandManager();
+    this.brandDb = new BrandDatabase();
     this.memberDb = new MemberDatabase();
     this.capabilityDiscovery = new CapabilityDiscovery();
   }
@@ -78,7 +85,12 @@ export class CrawlerService {
       }
 
       // Populate federated index from PropertyIndex and adagents.json files
-      await this.populateFederatedIndex(agents);
+      const crawledDomains = await this.populateFederatedIndex(agents);
+
+      // Scan brand.json for all crawled domains + all hosted brand domains
+      const hostedDomains = await this.brandDb.listAllHostedBrandDomains();
+      const brandDomains = [...new Set([...crawledDomains, ...hostedDomains])];
+      await this.scanBrandsForDomains(brandDomains);
 
       return result;
     } catch (error) {
@@ -140,10 +152,80 @@ export class CrawlerService {
   }
 
   /**
+   * Scan brand.json for each domain. Verifies pointer files pointing back to AAO
+   * (setting domain_verified on hosted_brands) and upserts live authoritative
+   * brand.json files into discovered_brands.
+   */
+  private async scanBrandsForDomains(domains: string[]): Promise<void> {
+    const CONCURRENCY = 5;
+    console.log(`Scanning brand.json for ${domains.length} domains...`);
+    let verified = 0;
+    let discovered = 0;
+
+    const scanOne = async (domain: string): Promise<void> => {
+      try {
+        const result = await this.brandManager.validateDomain(domain, { skipCache: true });
+        if (!result.valid || !result.raw_data) return;
+
+        if (result.variant === 'authoritative_location') {
+          const data = result.raw_data as { authoritative_location: string };
+          try {
+            const url = new URL(data.authoritative_location);
+            if (url.hostname === AAO_HOST &&
+                url.pathname === `/brands/${domain}/brand.json`) {
+              const hosted = await this.brandDb.getHostedBrandByDomain(domain);
+              if (hosted && !hosted.domain_verified) {
+                await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
+                verified++;
+                console.log(`  Brand verified: ${domain}`);
+              }
+            }
+          } catch {
+            // Invalid URL in authoritative_location — skip
+          }
+        } else if (result.variant === 'house_portfolio' ||
+                   result.variant === 'brand_agent' ||
+                   result.variant === 'house_redirect') {
+          const brandName = this.extractBrandName(result.raw_data, domain);
+          await this.brandDb.upsertDiscoveredBrand({
+            domain,
+            brand_name: brandName,
+            has_brand_manifest: result.variant === 'house_portfolio',
+            brand_manifest: result.variant === 'house_portfolio'
+              ? result.raw_data as Record<string, unknown>
+              : undefined,
+            source_type: 'brand_json',
+          });
+          discovered++;
+        }
+      } catch (err) {
+        console.log(`  Brand scan failed for ${domain}:`, err instanceof Error ? err.message : err);
+      }
+    };
+
+    // Process in batches of CONCURRENCY
+    for (let i = 0; i < domains.length; i += CONCURRENCY) {
+      await Promise.all(domains.slice(i, i + CONCURRENCY).map(scanOne));
+    }
+
+    console.log(`Brand scan complete: ${verified} verified, ${discovered} authoritative brand.json entries updated`);
+  }
+
+  private extractBrandName(data: unknown, fallback: string): string {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj?.house === 'object' && obj.house !== null) {
+      const house = obj.house as Record<string, unknown>;
+      if (typeof house.name === 'string') return house.name;
+    }
+    return fallback;
+  }
+
+  /**
    * Populate the federated index with discovered agents and publishers.
    * This is called after the PropertyCrawler finishes to persist data to PostgreSQL.
+   * Returns the set of domains that were crawled (for brand scanning).
    */
-  private async populateFederatedIndex(agents: Agent[]): Promise<void> {
+  private async populateFederatedIndex(agents: Agent[]): Promise<Set<string>> {
     console.log("Populating federated index...");
     const index = getPropertyIndex();
 
@@ -273,6 +355,8 @@ export class CrawlerService {
 
     // 3. Probe all agents to discover and save their types
     await this.probeAndUpdateAgentTypes(agents);
+
+    return processedDomains;
   }
 
   /**

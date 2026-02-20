@@ -11,10 +11,10 @@
 export const ModelConfig = {
   /**
    * Primary model for complex tasks (Addie chat, rule analysis)
-   * Default: claude-sonnet-4-5
+   * Default: claude-sonnet-4-6
    * Override: CLAUDE_MODEL_PRIMARY
    */
-  primary: process.env.CLAUDE_MODEL_PRIMARY || 'claude-sonnet-4-5',
+  primary: process.env.CLAUDE_MODEL_PRIMARY || 'claude-sonnet-4-6',
 
   /**
    * Fast model for simple tasks (insight extraction, classification)

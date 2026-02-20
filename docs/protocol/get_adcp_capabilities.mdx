@@ -348,7 +348,7 @@ const products = await client.getProducts({
 // (if seller supports postal areas, we can target specific ZIP codes)
 const buy = await client.createMediaBuy({
   buyer_ref: 'my-campaign-001',
-  brand_manifest: { url: 'https://mybrand.com' },
+  brand: { domain: 'mybrand.com' },
   packages: [{
     buyer_ref: 'package-001',
     product_id: products.products[0].product_id,
@@ -403,7 +403,7 @@ const radioProducts = await client.getProducts({
 // the product's coverage IS the geography
 const buy = await client.createMediaBuy({
   buyer_ref: 'radio-campaign-001',
-  brand_manifest: { url: 'https://mybrand.com' },
+  brand: { domain: 'mybrand.com' },
   packages: [{
     buyer_ref: 'package-001',
     product_id: radioProducts.products[0].product_id,

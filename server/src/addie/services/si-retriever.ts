@@ -18,7 +18,6 @@ export interface RetrievedSIAgent {
   tagline: string | null;
   description: string | null;
   offerings: string[];
-  brand_color: string | null;
   relevance_score: number;
 }
 
@@ -183,7 +182,6 @@ export async function retrieveRelevantSIAgents(
       tagline: member.tagline,
       description: member.description,
       offerings: member.offerings || [],
-      brand_color: member.brand_color,
       relevance_score: scoreRelevance(
         {
           display_name: member.display_name,

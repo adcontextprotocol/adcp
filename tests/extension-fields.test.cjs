@@ -378,8 +378,8 @@ async function runTests() {
       buyer_ref: 'buyer_ref_123',
       account_id: 'acc_test_001',
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
-      brand_manifest: {
-        name: 'Test Brand'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z',
@@ -468,8 +468,8 @@ async function runTests() {
       buyer_ref: 'buyer_ref_123',
       account_id: 'acc_test_001',
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
-      brand_manifest: {
-        name: 'Test Brand'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z',
@@ -498,8 +498,8 @@ async function runTests() {
       buyer_ref: 'buyer_ref_123',
       account_id: 'acc_test_001',
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
-      brand_manifest: {
-        name: 'Test Brand'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z',
@@ -527,8 +527,8 @@ async function runTests() {
       buyer_ref: 'buyer_ref_123',
       account_id: 'acc_test_001',
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
-      brand_manifest: {
-        name: 'Test Brand'
+      brand: {
+        domain: 'acmecorp.com'
       },
       start_time: 'asap',
       end_time: '2024-12-31T23:59:59Z'

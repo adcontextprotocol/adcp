@@ -6,7 +6,7 @@ title: Glossary
 ## A
 
 **Account**
-A billing relationship between a buyer and a seller. The account determines rate cards, payment terms, and billing entity. An agent may have access to multiple accounts (e.g., an agency managing accounts for different clients). See [Accounts and Agents](/docs/building/integration/accounts-and-agents).
+A billing relationship between a buyer and a seller. The account determines rate cards, payment terms, and billing entity. An agent may have access to multiple accounts (e.g., an agency managing accounts for different clients). See [Accounts and Agents](/dist/docs/3.0.0-beta.3/building/integration/accounts-and-agents).
 
 **Account Type**
 Classification of MCP session credentials as either "platform" (aggregator) or "customer" (direct advertiser/agency).
@@ -24,13 +24,13 @@ An open standard for AI-powered advertising workflows. AdCP defines domain-speci
 An open standard developed by OpenAI and Stripe for programmatic commerce flows in AI assistants. ACP defines how agents can initiate checkout, delegate payment, and complete transactions without becoming the merchant of record. In the context of Sponsored Intelligence, ACP handles the transaction after a brand agent hands off a user with purchase intent.
 
 **Agentic eXecution Engine (AXE)**
-The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine) for details.
+The real-time execution layer that sits between orchestrators and decisioning platforms, handling dynamic audience targeting, brand suitability enforcement, frequency management, and first-party data activation at impression time. See [AXE documentation](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/agentic-execution-engine) for details.
 
 **AgenticAdvertising.org**
 The member organization that stewards the Ad Context Protocol (AdCP) and related open standards for AI-powered advertising.
 
 **Agent** (AdCP Context)
-The authenticated entity making API calls—may be a brand's internal team, an agency's trading desk, or an automated buying system. Identified by the authentication token. Distinct from "Sales Agent" (the MCP server exposing inventory) and "AI Agent" (the AI assistant). See [Accounts and Agents](/docs/building/integration/accounts-and-agents).
+The authenticated entity making API calls—may be a brand's internal team, an agency's trading desk, or an automated buying system. Identified by the authentication token. Distinct from "Sales Agent" (the MCP server exposing inventory) and "AI Agent" (the AI assistant). See [Accounts and Agents](/dist/docs/3.0.0-beta.3/building/integration/accounts-and-agents).
 
 ## B
 
@@ -69,7 +69,7 @@ Direct advertiser or agency account with specific seat access and negotiated rat
 ## D
 
 **Data Provider**
-An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal catalogs via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/docs/signals/data-providers).
+An organization that owns and publishes audience or contextual data (e.g., Polk, Experian, Acxiom). Data providers publish signal catalogs via `/.well-known/adagents.json` on their domain, enabling discovery and authorization verification. See [Data Provider Guide](/dist/docs/3.0.0-beta.3/signals/data-providers).
 
 **Data Provider Domain**
 The domain where a data provider publishes their signal catalog (e.g., `polk.com`). Used in `signal_id` objects to reference signals: `{ "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`.
@@ -248,7 +248,7 @@ Percentage of available ad inventory allocated to a specific advertiser in DOOH 
 A server (via MCP or A2A) that provides signal discovery and activation services. Enables natural language audience discovery and deploys signals to decisioning platforms. Can be private (owned by a single principal) or marketplace (licensing data to multiple principals). Signal agents are authorized by data providers via `adagents.json` to resell specific signals. Examples: LiveRamp, The Trade Desk, Peer39.
 
 **Signal Catalog**
-A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/docs/signals/data-providers).
+A collection of signal definitions published by a data provider via `/.well-known/adagents.json`. The catalog includes signal metadata (id, name, value_type, tags) and authorization declarations for signals agents. See [Data Provider Guide](/dist/docs/3.0.0-beta.3/signals/data-providers).
 
 **Signal Definition**
 A single signal entry in a data provider's signal catalog, containing: `id` (unique identifier), `name` (human-readable), `value_type` (binary, categorical, or numeric), and optional fields like `description`, `tags`, `allowed_values`, and `range`.
@@ -260,7 +260,7 @@ The process of finding relevant data signals (audiences, contextual, geographica
 A structured identifier referencing a signal. Uses `source` as a discriminator with two variants: `catalog` signals reference a data provider's published catalog (`data_provider_domain` + `id`, verifiable); `agent` signals are native to the signals agent (`agent_url` + `id`, trust-based). Example catalog signal: `{ "source": "catalog", "data_provider_domain": "polk.com", "id": "likely_tesla_buyers" }`. Example agent signal: `{ "source": "agent", "agent_url": "https://liveramp.com/signals", "id": "custom_segment" }`.
 
 **Signal Source**
-The origin type for a signal identifier: `catalog` (from a data provider's published catalog, authorization verifiable via adagents.json) or `agent` (native to the signals agent, not externally verifiable). See [Data Provider Guide](/docs/signals/data-providers).
+The origin type for a signal identifier: `catalog` (from a data provider's published catalog, authorization verifiable via adagents.json) or `agent` (native to the signals agent, not externally verifiable). See [Data Provider Guide](/dist/docs/3.0.0-beta.3/signals/data-providers).
 
 **Signal Tags**
 Tags used to group related signals within a data provider's catalog. Enable efficient authorization (authorize "all automotive signals" rather than listing individual IDs). Tags must be lowercase alphanumeric with underscores/hyphens.
@@ -275,7 +275,7 @@ The data type of a signal's values: `binary` (user matches or doesn't), `categor
 The measurement type for signal size: individuals, devices, or households.
 
 **Sponsored Intelligence (SI)**
-An open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints. SI handles the engagement; the Agentic Commerce Protocol (ACP) handles transactions. See [Sponsored Intelligence Protocol](/docs/sponsored-intelligence/overview) for details.
+An open standard for conversational brand experiences in AI assistants. Like VAST defines video ad serving, SI defines how to serve and interact with brand agent endpoints. SI handles the engagement; the Agentic Commerce Protocol (ACP) handles transactions. See [Sponsored Intelligence Protocol](/dist/docs/3.0.0-beta.3/sponsored-intelligence/overview) for details.
 
 **SSP (Supply-Side Platform)**
 A type of decisioning platform that helps publishers sell advertising inventory programmatically. SSPs connect to multiple demand sources and make ad selection decisions. Examples: Index Exchange, OpenX, PubMatic, Magnite.

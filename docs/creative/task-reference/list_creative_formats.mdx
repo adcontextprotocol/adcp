@@ -43,6 +43,8 @@ See [list_creative_formats (Sales Agent)](/docs/media-buy/task-reference/list_cr
 | `is_responsive` | boolean | No | Filter for responsive formats (adapt to container size) |
 | `name_search` | string | No | Search formats by name (case-insensitive partial match) |
 | `wcag_level` | string | No | Filter to formats meeting at least this WCAG level: `A`, `AA`, `AAA`. See [Accessibility](/docs/creative/accessibility). |
+| `output_format_ids` | FormatID[] | No | Filter to formats whose `output_format_ids` includes any of these. Returns formats that can produce these outputs — inspect their `input_format_ids` to see what inputs they accept. |
+| `input_format_ids` | FormatID[] | No | Filter to formats whose `input_format_ids` includes any of these. Returns formats that accept these creatives as input — inspect their `output_format_ids` to see what they can produce. |
 | `pagination` | object | No | Pagination: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
 
 ### Multi-Render Dimension Filtering
@@ -164,7 +166,8 @@ console.log(`Found ${validated.formats.length} formats`);
 validated.formats.forEach(format => {
   console.log(`\n${format.name}:`);
   format.assets.forEach(asset => {
-    console.log(`  - ${asset.asset_role}: ${asset.asset_type}`);
+    const label = asset.asset_role ?? asset.asset_id;
+    console.log(`  - ${label}: ${asset.asset_type}`);
   });
 });
 ```
@@ -187,7 +190,8 @@ async def main():
     for fmt in result.formats:
         print(f"\n{fmt.name}:")
         for asset in fmt.assets:
-            print(f"  - {asset.asset_role}: {asset.asset_type}")
+            label = asset.asset_role or asset.asset_id
+            print(f"  - {label}: {asset.asset_type}")
 
 asyncio.run(main())
 ```
@@ -274,22 +278,14 @@ if (!result.success) {
 const validated = ListCreativeFormatsResponseSchema.parse(result.data);
 console.log(`Found ${validated.formats.length} video formats`);
 
-// Group by duration
-const byDuration = {};
 validated.formats.forEach(format => {
-  const duration = format.requirements?.duration || 'unknown';
-  if (!byDuration[duration]) byDuration[duration] = [];
-  byDuration[duration].push(format.name);
-});
-
-Object.entries(byDuration).forEach(([duration, formats]) => {
-  console.log(`${duration}s: ${formats.join(', ')}`);
+  const assetTypes = format.assets.map(a => a.asset_type).join(', ');
+  console.log(`${format.name}: ${assetTypes}`);
 });
 ```
 
 ```python Python
 import asyncio
-from collections import defaultdict
 from adcp.testing import test_agent
 from adcp.types import ListCreativeFormatsRequest
 
@@ -303,12 +299,9 @@ async def main():
         raise Exception(f"Failed: {result.errors}")
 
     print(f"Found {len(result.formats)} video formats")
-    by_duration = defaultdict(list)
     for fmt in result.formats:
-        duration = getattr(fmt.requirements, 'duration', 'unknown') if fmt.requirements else 'unknown'
-        by_duration[duration].append(fmt.name)
-    for duration, formats in by_duration.items():
-        print(f"{duration}s: {', '.join(formats)}")
+        asset_types = ', '.join(a.asset_type for a in fmt.assets)
+        print(f"{fmt.name}: {asset_types}")
 
 asyncio.run(main())
 ```
@@ -412,6 +405,125 @@ asyncio.run(main())
 
 </CodeGroup>
 
+### Discover Build Capabilities
+
+Some formats declare the output formats they can produce via `output_format_ids`. A creative builder (like a multi-publisher template tool) may accept one asset group and produce many publisher-specific formats. A format transformer may accept an existing creative and reformat it.
+
+The format schema expresses both sides of the relationship:
+
+- **`input_format_ids`** — existing creative formats this format accepts as input
+- **`output_format_ids`** — concrete output formats this format can produce
+
+These filters are ANDed — a format must match all specified filters. Within each filter, matching is OR (any ID in the array matches). A bare format ID (no dimension parameters) matches all parameterized variants of that format; a parameterized ID is an exact match.
+
+Note: `asset_types` and these filters target different things. A format that takes only creative manifests as input will have no entries in its `assets` array, so combining `asset_types` with `input_format_ids` will typically return no results.
+
+Serve-time dynamic creative (DCO platforms that render from data feeds at ad serving time) is not expressed through these fields — those platforms describe their inputs via `assets` and their output via the format itself.
+
+#### Given output formats I need, what inputs are accepted?
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// I need portrait video — what can generate it?
+const result = await testAgent.listCreativeFormats({
+  output_format_ids: [
+    { agent_url: 'https://creative.adcontextprotocol.org', id: 'video_9x16_15s' }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
+  const inputs = format.input_format_ids?.map(f => f.id) ?? ['(from brief)'];
+  console.log(`${format.name} accepts: ${inputs.join(', ')}`);
+});
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
+
+async def main():
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            output_format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_9x16_15s')
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        inputs = [f.id for f in fmt.input_format_ids] if fmt.input_format_ids else ['(from brief)']
+        print(f"{fmt.name} accepts: {', '.join(inputs)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+#### Given an input format I have, what outputs can it produce?
+
+<CodeGroup>
+
+```javascript test=false
+import { testAgent } from '@adcp/client/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+
+// I have a landscape 16:9 video — what can I transform it into?
+const result = await testAgent.listCreativeFormats({
+  input_format_ids: [
+    { agent_url: 'https://creative.adcontextprotocol.org', id: 'video_16x9_30s' }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = ListCreativeFormatsResponseSchema.parse(result.data);
+validated.formats.forEach(format => {
+  const outputs = format.output_format_ids?.map(f => f.id) ?? [];
+  console.log(`${format.name} → ${outputs.join(', ')}`);
+});
+```
+
+```python test=false
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import ListCreativeFormatsRequest, FormatId
+
+async def main():
+    result = await test_agent.list_creative_formats(
+        ListCreativeFormatsRequest(
+            input_format_ids=[
+                FormatId(agent_url='https://creative.adcontextprotocol.org', id='video_16x9_30s')
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Failed: {result.errors}")
+
+    for fmt in result.formats:
+        outputs = [f.id for f in fmt.output_format_ids] if fmt.output_format_ids else []
+        print(f"{fmt.name} → {', '.join(outputs)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
 ## Format Structure
 
 Each format includes:
@@ -420,10 +532,11 @@ Each format includes:
 |-------|-------------|
 | `format_id` | Structured identifier with agent_url and id |
 | `name` | Human-readable format name |
-| `type` | Format type (audio, video, display, dooh) |
-| `requirements` | Technical requirements (duration, file types, bitrate, etc.) |
+| `type` | *(deprecated)* Format type (audio, video, display, dooh). Use `asset_types` filter instead. |
 | `assets` | Array of all assets with `required` boolean indicating mandatory vs optional |
 | `renders` | Array of rendered output pieces (dimensions, role) |
+| `input_format_ids` | Creative formats this format accepts as input manifests (omitted for formats that work from raw assets) |
+| `output_format_ids` | Output formats this format can produce (omitted for formats that produce a single fixed output) |
 
 ### Asset Roles
 

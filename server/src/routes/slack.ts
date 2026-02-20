@@ -20,16 +20,15 @@ import {
   createSlackSignatureVerifier,
   handleUrlVerification,
 } from '../middleware/slack.js';
+import { getAddieBoltRouter } from '../addie/index.js';
 
 const logger = createLogger('slack-routes');
 
 /**
  * Create public Slack routes
  * Returns a router to be mounted at /api/slack with sub-routers for each bot
- *
- * @param addieBoltRouter - Optional Bolt router for Addie (if Bolt is initialized)
  */
-export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRouter: Router; addieRouter: Router } {
+export function createSlackRouter(): { aaobotRouter: Router; addieRouter: Router } {
   const aaobotRouter = Router();
   // Create wrapper router for Addie that handles URL verification first
   const addieRouter = Router();
@@ -124,10 +123,10 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
   // We use a custom parser that peeks at the body without consuming it for non-verification requests
   // Also handles interactive payloads which come as URL-encoded form data
   addieRouter.post('/events', (req, res, next) => {
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk: string) => { body += chunk; });
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => { chunks.push(chunk); });
     req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
       try {
         let parsed: Record<string, unknown>;
 
@@ -155,6 +154,7 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
         // We need to "replay" the body for Bolt since we consumed it
         // Store raw body and parsed body on request
         (req as any).rawBody = body;
+        (req as any)._body = true; // Tell body-parser the body is already parsed
         req.body = parsed;
         next();
       } catch (err) {
@@ -164,18 +164,18 @@ export function createSlackRouter(addieBoltRouter?: Router | null): { aaobotRout
     });
   });
 
-  if (addieBoltRouter) {
-    // Mount Bolt router to handle real events at /events
-    // Note: We've already parsed the body above, but Bolt's ExpressReceiver
-    // will use req.rawBody for signature verification
-    addieRouter.use(addieBoltRouter);
-  } else {
-    // Fallback handler when Bolt is not available
-    addieRouter.post('/events', slackJsonParser(), async (_req, res) => {
+  // Dynamically delegate to Bolt on each request.
+  // Bolt initializes asynchronously after the HTTP server starts,
+  // so the router isn't available at route setup time.
+  addieRouter.use((req, res, next) => {
+    const boltRouter = getAddieBoltRouter();
+    if (boltRouter) {
+      boltRouter(req, res, next);
+    } else {
       logger.warn('Addie Slack event received but Bolt is not initialized');
       res.status(503).json({ error: 'Addie is not available' });
-    });
-  }
+    }
+  });
 
   return { aaobotRouter, addieRouter };
 }

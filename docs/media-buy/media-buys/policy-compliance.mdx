@@ -7,29 +7,29 @@ AdCP includes comprehensive policy compliance features to ensure brand safety an
 
 ## Overview
 
-Policy compliance in AdCP centers around the `brand_manifest` - a required description of the advertiser brand. This enables publishers to:
+Policy compliance in AdCP centers around the `brand` field - a required reference to the advertiser brand. This enables publishers to:
 
 - Filter inappropriate advertisers before showing inventory
 - Enforce category-specific restrictions
 - Maintain brand safety standards
 - Comply with regulatory requirements
 
-## Brand Manifest
+## Brand
 
-All product discovery and media buy creation requests must include a `brand_manifest` that describes the advertiser brand:
+All product discovery and media buy creation requests must include a `brand` field that identifies the advertiser brand:
 
 ```json
 {
-  "name": "Nike",
-  "url": "https://nike.com",
-  "category": "athletic_apparel"
+  "brand": {
+    "domain": "acmecorp.com"
+  }
 }
 ```
 
-The manifest provides:
-- **name**: The advertiser/brand making the request
-- **url**: Brand's primary website for verification
-- **category** (optional): Industry category for policy filtering
+The brand domain is used to look up the brand's published identity (via `brand.json`), which provides:
+- **Brand name and identity** for verification
+- **Industry category** for policy filtering
+- **Brand assets** for creative compliance
 
 Combined with the `brief` field (which describes what's being promoted), publishers have full context for policy decisions.
 
@@ -43,25 +43,26 @@ Publishers must implement policy checks at two key points in the workflow:
 
 When a `get_products` request is received, the publisher should:
 
-1. Validate that the `brand_manifest` is present and meaningful
+1. Validate that the `brand` field is present and meaningful
 2. Extract brand and category information
 3. Check against publisher policies
 4. Filter out unsuitable products
 
 **Example Policy Check Flow:**
 ```python
-def check_brand_policy(brand_manifest: dict) -> PolicyResult:
-    # Extract brand information
-    brand_name = brand_manifest.get("name")
-    brand_url = brand_manifest.get("url")
-    category = brand_manifest.get("category")
+def check_brand_policy(brand: dict) -> PolicyResult:
+    # Look up brand identity from domain
+    domain = brand.get("domain")
+    brand_identity = fetch_brand_json(domain)
 
     # Verify brand identity if needed
-    if not verify_brand_domain(brand_name, brand_url):
+    if not verify_brand_domain(domain, brand_identity):
         return PolicyResult(
             status="blocked",
             message="Brand verification failed"
         )
+
+    category = brand_identity.get("category")
 
     # Check blocked categories
     if category in BLOCKED_CATEGORIES:
@@ -85,7 +86,7 @@ def check_brand_policy(brand_manifest: dict) -> PolicyResult:
 
 When creating a media buy:
 
-1. Validate the `brand_manifest` against publisher policies
+1. Validate the `brand` against publisher policies
 2. Ensure consistency with the campaign brief
 3. Flag for manual review if needed
 4. Return appropriate errors for violations
@@ -135,7 +136,7 @@ The brand category cannot be supported by this publisher.
 
 ## Creative Validation
 
-All uploaded creatives should be validated against the declared `brand_manifest`:
+All uploaded creatives should be validated against the declared brand identity:
 
 1. **Automated Analysis**: Use creative recognition to verify brand consistency
 2. **Human Review**: Manual verification for sensitive categories
@@ -185,7 +186,7 @@ For policy violations during media buy creation:
   "error": {
     "code": "POLICY_VIOLATION",
     "message": "Brand category not permitted on this publisher",
-    "field": "brand_manifest",
+    "field": "brand",
     "suggestion": "Contact publisher for category approval process"
   }
 }

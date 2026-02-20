@@ -7,19 +7,19 @@ keywords: [campaign optimization, performance reporting, delivery analytics, med
 
 Continuous improvement through data-driven monitoring and optimization. AdCP provides comprehensive reporting tools and optimization features to help you track performance, analyze delivery, and improve campaign outcomes.
 
-Reporting in AdCP aligns with the [Targeting](/docs/media-buy/advanced-topics/targeting) system used for campaign setup, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
+Reporting in AdCP aligns with the [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) system used for campaign setup, enabling consistent analysis across the campaign lifecycle. This unified approach means you can report on exactly what you targeted.
 
-Performance data feeds into AdCP's [Accountability & Trust Framework](/docs/media-buy/index.mdx#accountability--trust-framework), enabling publishers to build reputation through consistent delivery and helping buyers make data-driven allocation decisions.
+Performance data feeds into AdCP's [Accountability & Trust Framework](/dist/docs/2.5.3/media-buy/index.mdx#accountability--trust-framework), enabling publishers to build reputation through consistent delivery and helping buyers make data-driven allocation decisions.
 
 ## Key Optimization Tasks
 
 ### Delivery Reporting
-Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
+Use [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery) to retrieve comprehensive performance data including impressions, spend, clicks, and conversions across all campaign packages.
 
 Alternatively, configure **webhook-based reporting** during media buy creation to receive automated delivery notifications at regular intervals.
 
 ### Campaign Updates
-Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign settings, budgets, and configurations based on performance insights.
+Use [`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy) to modify campaign settings, budgets, and configurations based on performance insights.
 
 ## Optimization Workflow
 
@@ -110,7 +110,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 - **Bearer tokens**: Simple, good for development (Authorization header)
 - **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
 - Credentials exchanged out-of-band during publisher onboarding
-- See [Webhook Security](/docs/building/implementation/task-lifecycle.mdx#security) for implementation details
+- See [Webhook Security](/dist/docs/2.5.3/protocols/task-management.mdx#security) for implementation details
 
 #### Supported Frequencies
 
@@ -150,7 +150,7 @@ When a reporting webhook is configured, publishers commit to sending:
 
 #### Webhook Payload
 
-Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
+Reporting webhooks use the same payload structure as [`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery) with additional metadata:
 
 ```json
 {
@@ -435,7 +435,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 
 #### Webhook Health Monitoring
 
-Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](/docs/building/implementation/task-lifecycle)).
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Management](/dist/docs/2.5.3/protocols/task-management)).
 
 When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
 
@@ -727,7 +727,7 @@ Reporting webhooks follow AdCP's standard webhook reliability patterns:
 - **Best-effort ordering**: Notifications may arrive out of order
 - **Timeout and retry**: Limited retry attempts on delivery failure
 
-See [Core Concepts: Webhook Reliability](/docs/building/implementation/task-lifecycle.mdx#webhook-reliability) for detailed implementation guidance.
+See [Core Concepts: Webhook Reliability](/dist/docs/2.5.3/protocols/task-management.mdx#webhook-reliability) for detailed implementation guidance.
 
 ## Optimization Strategies
 
@@ -747,7 +747,7 @@ See [Core Concepts: Webhook Reliability](/docs/building/implementation/task-life
 - **Temporal adjustments** for optimal timing
 
 ## Performance Feedback Loop
-The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for detailed API documentation.
+The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](/dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback) for detailed API documentation.
 
 ### Performance Index Concept
 
@@ -759,7 +759,7 @@ A normalized score indicating relative performance:
 
 ### Sharing Performance Data
 
-Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) task:
+Buyers can voluntarily share performance outcomes using the [`provide_performance_feedback`](/dist/docs/2.5.3/media-buy/task-reference/provide_performance_feedback) task:
 
 ```json
 {
@@ -804,7 +804,7 @@ Publishers can leverage performance indices to:
 Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
 
 ## Targeting Consistency
-Reporting aligns with AdCP's [Targeting](/docs/media-buy/advanced-topics/targeting) approach, enabling:
+Reporting aligns with AdCP's [Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting) approach, enabling:
 - **Consistent analysis** across campaign lifecycle
 - **Granular breakdowns** by targeting parameters
 - **Cross-campaign insights** for portfolio optimization
@@ -883,7 +883,7 @@ Optimization and reporting is the ongoing phase that runs throughout active camp
 
 ## Related Documentation
 
-- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Retrieve delivery reports
-- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Modify campaigns based on performance
-- **[Media Buy Lifecycle](/docs/media-buy/media-buys)** - Complete campaign management workflow
-- **[Targeting](/docs/media-buy/advanced-topics/targeting)** - Brief-based targeting and overlays
+- **[`get_media_buy_delivery`](/dist/docs/2.5.3/media-buy/task-reference/get_media_buy_delivery)** - Retrieve delivery reports
+- **[`update_media_buy`](/dist/docs/2.5.3/media-buy/task-reference/update_media_buy)** - Modify campaigns based on performance
+- **[Media Buy Lifecycle](/dist/docs/2.5.3/media-buy/media-buys)** - Complete campaign management workflow
+- **[Targeting](/dist/docs/2.5.3/media-buy/advanced-topics/targeting)** - Brief-based targeting and overlays

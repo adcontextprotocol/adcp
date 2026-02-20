@@ -127,10 +127,10 @@ asyncio.run(discover_with_filters())
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements. When refining a proposal, can include instructions like "focus more on German speakers". |
 | `proposal_id` | string | No | Proposal ID to refine. When provided with a brief, the publisher uses the brief as refinement instructions and returns an updated proposal. |
-| `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/docs/creative/brand-manifest) |
+| `brand_manifest` | BrandManifest \| string | No | Brand information (inline object or URL). See [Brand Manifest](/dist/docs/3.0.0-beta.3/creative/brand-manifest) |
 | `product_selectors` | ProductSelectors | No | Selectors to filter the brand manifest product catalog. Requires `brand_manifest`. See [Product Selectors](#product-selectors) below. |
 | `filters` | Filters | No | Structured filters (see below) |
-| `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
+| `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/dist/docs/3.0.0-beta.3/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
 
 ### Filters Object
@@ -147,7 +147,7 @@ asyncio.run(discover_with_filters())
 | `end_date` | string | Campaign end date in ISO 8601 format (YYYY-MM-DD) for availability checks |
 | `budget_range` | object | Budget range to filter appropriate products (see Budget Range Object below) |
 | `countries` | string[] | Filter by target countries using ISO 3166-1 alpha-2 codes (case-insensitive, e.g., `["US", "CA", "GB"]`) |
-| `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
+| `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/dist/docs/3.0.0-beta.3/reference/media-channel-taxonomy) |
 
 ### Budget Range Object
 
@@ -191,14 +191,14 @@ Returns an array of `products` and optionally `proposals`.
 
 ### Proposals Array (Optional)
 
-Publishers may return proposals alongside products - structured media plans with budget allocations. See [Proposals](/docs/media-buy/product-discovery/media-products#proposals) for details.
+Publishers may return proposals alongside products - structured media plans with budget allocations. See [Proposals](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#proposals) for details.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `proposal_id` | string | Unique identifier for executing or refining this proposal |
 | `name` | string | Human-readable name for the media plan |
 | `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100) |
-| `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
+| `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#delivery-forecasts) |
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
 | `expires_at` | string | ISO 8601 timestamp when this proposal expires |
@@ -702,7 +702,7 @@ Products have a `property_targeting_allowed` flag that affects filtering:
 
 This allows publishers to offer run-of-network products that can't be cherry-picked alongside flexible inventory that buyers can filter.
 
-See [Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/docs/governance/property/specification) for more on property lists.
+See [Property Targeting](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/dist/docs/3.0.0-beta.3/governance/property/specification) for more on property lists.
 
 ## Error Handling
 
@@ -799,7 +799,7 @@ asyncio.run(compare_auth())
 - **Without credentials**: Returns limited catalog (standard catalog products), no pricing, no custom offerings
 - **With credentials**: Returns complete catalog with pricing and custom products
 
-See [Authentication Guide](/docs/building/integration/authentication) for details.
+See [Authentication Guide](/dist/docs/3.0.0-beta.3/building/integration/authentication) for details.
 
 ## Asynchronous Operations
 
@@ -1118,7 +1118,7 @@ Response (200 OK):
 | `submitted` | Custom curation queued | Wait for webhook notification |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
-**Note:** For the complete status list see [Task Lifecycle](/docs/building/implementation/task-lifecycle).
+**Note:** For the complete status list see [Task Lifecycle](/dist/docs/3.0.0-beta.3/building/implementation/task-lifecycle).
 
 **Most searches complete immediately.** Async processing is only needed for complex scenarios or when the system needs your input.
 
@@ -1127,13 +1127,13 @@ Response (200 OK):
 After discovering products:
 
 1. **Review Options**: Compare products, pricing, and targeting capabilities
-2. **Create Media Buy**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to execute campaign
-3. **Prepare Creatives**: Use [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) to see format requirements
-4. **Upload Assets**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to provide creative assets
+2. **Create Media Buy**: Use [`create_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/create_media_buy) to execute campaign
+3. **Prepare Creatives**: Use [`list_creative_formats`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/list_creative_formats) to see format requirements
+4. **Upload Assets**: Use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives) to provide creative assets
 
 ## Learn More
 
-- [Product Discovery Guide](/docs/media-buy/product-discovery/) - Understanding briefs and products
-- [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
-- [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations) - How to write effective briefs
-- [Media Products](/docs/media-buy/product-discovery/media-products) - Product structure and fields
+- [Product Discovery Guide](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/) - Understanding briefs and products
+- [Pricing Models](/dist/docs/3.0.0-beta.3/media-buy/advanced-topics/pricing-models) - CPM, CPCV, CPP explained
+- [Brief Expectations](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/brief-expectations) - How to write effective briefs
+- [Media Products](/dist/docs/3.0.0-beta.3/media-buy/product-discovery/media-products) - Product structure and fields

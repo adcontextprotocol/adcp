@@ -51,7 +51,7 @@ import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
-import { sendAccountLinkedMessage, invalidateMemberContextCache, getAddieBoltRouter, isAddieBoltReady } from "./addie/index.js";
+import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
@@ -833,9 +833,7 @@ export class HTTPServer {
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
-    // Addie uses Bolt SDK - get its router if available
-    const addieBoltRouter = getAddieBoltRouter();
-    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter(addieBoltRouter);
+    const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter();
     this.app.use('/api/slack/aaobot', aaobotRouter);    // AAO bot: /api/slack/aaobot/commands, /api/slack/aaobot/events
     this.app.use('/api/slack/addie', slackAddieRouter); // Addie bot: /api/slack/addie/events (Bolt SDK)
 
@@ -880,12 +878,41 @@ export class HTTPServer {
     });
     this.app.use('/api', registryApiRouter);
 
+    // Public brand.json hosting — stable URL for authoritative_location pointer files.
+    // Accessible at /brands/:domain/brand.json (no /api prefix — this is a public resource URL).
+    this.app.get('/brands/:domain/brand.json', async (req, res) => {
+      const domain = req.params.domain.toLowerCase();
+      try {
+        const hosted = await this.brandDb.getHostedBrandByDomain(domain);
+        if (hosted && hosted.is_public) {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.json(hosted.brand_json);
+        }
+        const discovered = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (discovered) {
+          const brandJson: Record<string, unknown> = { name: discovered.brand_name || domain };
+          const manifest = discovered.brand_manifest as Record<string, unknown> | null;
+          if (manifest?.logos) brandJson.logos = manifest.logos;
+          if (manifest?.colors) brandJson.colors = manifest.colors;
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          return res.json(brandJson);
+        }
+        return res.status(404).json({ error: 'Brand not found' });
+      } catch (error) {
+        logger.error({ err: error, domain }, 'Failed to serve brand.json');
+        return res.status(500).json({ error: 'Failed to retrieve brand' });
+      }
+    });
+
     // Mount member profile routes
     const memberDb = new MemberDatabase();
     const orgDb = new OrganizationDatabase();
     const memberProfileConfig = {
       workos,
       memberDb,
+      brandDb: this.brandDb,
       orgDb,
       invalidateMemberContextCache,
     };
@@ -5596,7 +5623,7 @@ Disallow: /api/admin/
           joinableOrgs.push({
             organization_id: profile.workos_organization_id,
             name: profile.display_name,
-            logo_url: profile.logo_url || null,
+            logo_url: profile.resolved_brand?.logo_url || null,
             tagline: profile.tagline || null,
             match_reason: 'public',
             request_pending: pendingOrgIds.has(profile.workos_organization_id),
@@ -5641,7 +5668,7 @@ Disallow: /api/admin/
                 joinableOrgs.push({
                   organization_id: org.id,
                   name: org.name,
-                  logo_url: profile?.logo_url || null,
+                  logo_url: profile?.resolved_brand?.logo_url || null,
                   tagline: profile?.tagline || null,
                   match_reason: 'domain',
                   request_pending: pendingOrgIds.has(org.id),
@@ -6220,6 +6247,21 @@ Disallow: /api/admin/
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
+        // Resolve brand data in parallel for all profiles that have a primary brand
+        await Promise.all(profiles.map(async (profile) => {
+          if (profile.primary_brand_domain) {
+            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
+            if (hosted) {
+              const bj = hosted.brand_json as Record<string, unknown>;
+              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
+              const primaryBrand = brands?.[0];
+              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
+              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            }
+          }
+        }));
+
         res.json({ members: profiles });
       } catch (error) {
         logger.error({ err: error }, 'List members error');
@@ -6234,6 +6276,22 @@ Disallow: /api/admin/
     this.app.get('/api/members/carousel', async (req, res) => {
       try {
         const profiles = await memberDb.getCarouselProfiles();
+
+        // Resolve brand data for carousel profiles
+        await Promise.all(profiles.map(async (profile) => {
+          if (profile.primary_brand_domain) {
+            const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
+            if (hosted) {
+              const bj = hosted.brand_json as Record<string, unknown>;
+              const brands = bj.brands as Array<Record<string, unknown>> | undefined;
+              const primaryBrand = brands?.[0];
+              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
+              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            }
+          }
+        }));
+
         res.json({ members: profiles });
       } catch (error) {
         logger.error({ err: error }, 'Get carousel members error');
@@ -6328,6 +6386,19 @@ Disallow: /api/admin/
           }
         } catch (err) {
           logger.debug({ err }, 'Failed to load content for member profile');
+        }
+
+        // Resolve brand data from registry if linked
+        if (profile.primary_brand_domain) {
+          const hostedBrand = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
+          if (hostedBrand) {
+            const bj = hostedBrand.brand_json as Record<string, unknown>;
+            const brands = bj.brands as Array<Record<string, unknown>> | undefined;
+            const primaryBrand = brands?.[0];
+            const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
+            const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+            profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+          }
         }
 
         res.json({ member: profile, perspectives, registry_contributions, github_username });
@@ -6780,7 +6851,7 @@ Disallow: /api/admin/
     const salesAgents = await this.agentService.listAgents("sales");
     if (salesAgents.length > 0) {
       logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-      this.crawler.startPeriodicCrawl(salesAgents, 60); // Crawl every 60 minutes
+      this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
     }
 
     // Register and start all scheduled jobs

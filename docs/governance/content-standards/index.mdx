@@ -15,8 +15,9 @@ Traditional brand suitability relies on third-party verification: send your cont
 - **Private conversations** - Content in messaging apps, private social feeds
 - **Ephemeral content** - Stories, live streams, real-time feeds that disappear
 - **Privacy-regulated content** - GDPR-protected data that cannot be exported
+- **CTV and linear TV** - Ad decisioning in live linear has a sub-second latency budget; there is no room to make a blocking call to a third-party verification service before insertion
 
-For these platforms, **there is no traditional verification option**. The content simply cannot leave. OpenAI cannot send user conversations to an external service. A messaging app cannot export private chats. A streaming platform cannot share real-time content before it disappears.
+For these platforms, **there is no traditional verification option**. The content simply cannot leave — or cannot wait. OpenAI cannot send user conversations to an external service. A messaging app cannot export private chats. A live broadcaster cannot block insertion on an external API response.
 
 Yet these are exactly the environments where advertising is growing fastest - and where brands most need suitability guarantees. Without a privacy-preserving approach, brands either avoid these channels entirely or accept unknown risk.
 
@@ -33,6 +34,8 @@ Content Standards solves this by **using agents to protect privacy**. It's a thr
 This inverts the traditional model. Instead of "send us your content, we'll evaluate it," it's "we'll teach you our standards, you evaluate locally, we'll audit statistically."
 
 **The key insight**: The execution engine runs entirely inside the publisher's infrastructure. For OpenAI, that means brand suitability evaluation happens within their firewall - user conversations never leave. For a messaging app, it means private content stays private. The calibration and validation phases provide confidence that the local model is working correctly, without ever requiring access to sensitive data.
+
+**Sellers have full control over how they implement local execution.** A publisher might use a third-party AI vendor, build a custom model, use a rules-based classifier, or apply human editorial review at spot-check scale. What matters is that the implementation is calibrated against the verification agent's standards and that validation samples confirm alignment — the protocol does not mandate how sellers get there.
 
 ## What It Covers
 
@@ -239,6 +242,8 @@ Before running campaigns, sellers calibrate their local models against the verif
 3. Seller asks follow-up questions about edge cases
 4. Process repeats until alignment is achieved
 
+When a seller surfaces an edge case the verification agent does not handle well, that's signal to the buyer to improve their standards — refining the policy language or adding calibration exemplars. The calibration dialogue is also how publishers communicate what they actually see in their inventory, which is often more nuanced than the policy anticipated. Buyers who revisit calibration periodically get ongoing signal from publishers about real-world inventory nuance.
+
 **Human-in-the-loop**: Calibration often involves humans on both sides. A brand suitability specialist at the buyer might review edge cases flagged by the verification agent. A content operations team at the seller might curate calibration samples and validate the local model's learning. The protocol supports async workflows where either party can pause for human review before responding.
 
 ```json
@@ -255,14 +260,22 @@ Before running campaigns, sellers calibrate their local models against the verif
 {
   "verdict": "fail",
   "explanation": "Political content is excluded by brand policy, even when balanced.",
-  "policy_alignment": {
-    "violations": [{
-      "policy_text": "Avoid content about controversial politics",
-      "violation_reason": "Article discusses ongoing political controversy"
-    }]
-  }
+  "features": [
+    {
+      "feature_id": "brand_safety",
+      "status": "passed",
+      "explanation": "No hate speech, illegal content, or explicit material."
+    },
+    {
+      "feature_id": "brand_suitability",
+      "status": "failed",
+      "explanation": "Political content is excluded by brand policy, even when balanced."
+    }
+  ]
 }
 ```
+
+Verdicts are **legible and auditable**, not opaque scores. The top-level `explanation` and per-feature `features[].explanation` fields tell the seller exactly which policy clause was triggered and why — not just a number. This means a publisher can understand decisions, dispute edge cases, and adjust how they classify content. Buyers can audit a sample of verdicts to verify their standards are being interpreted correctly.
 
 See [calibrate_content](./tasks/calibrate_content) for the full task specification.
 
@@ -364,4 +377,4 @@ This architecture aligns with the [IAB Tech Lab ARTF (Agentic RTB Framework)](ht
 ## Related
 
 - [Artifacts](./artifacts) - What artifacts are and how to structure them
-- [Brand Manifest](../../creative/brand-manifest) - Static brand identity that can link to standards agents
+- [Brand identity](/docs/brand-protocol/brand-json) - Brand identity that can link to standards agents

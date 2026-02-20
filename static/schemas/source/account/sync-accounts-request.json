@@ -29,11 +29,21 @@
           },
           "billing": {
             "type": "string",
-            "enum": ["brand", "operator", "agent"],
+            "enum": [
+              "brand",
+              "operator",
+              "agent"
+            ],
             "description": "Who should be invoiced. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing across brands. Omit to accept the seller's default."
+          },
+          "sandbox": {
+            "type": "boolean",
+            "description": "When true, provision this as a sandbox account. No real platform calls or billing. Sandbox accounts are identified by account_id in subsequent requests."
           }
         },
-        "required": ["house"],
+        "required": [
+          "house"
+        ],
         "additionalProperties": true
       },
       "maxItems": 1000
@@ -59,7 +69,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["accounts"],
+  "required": [
+    "accounts"
+  ],
   "additionalProperties": true,
   "examples": [
     {

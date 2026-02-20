@@ -10,7 +10,7 @@ Creative formats define the structural and technical requirements used to instan
 
 Formats define requirements and constraints, not brand content or layout logic.
 
-For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/docs/creative).
+For an overview of how formats, manifests, and creative agents work together, see the [Creative Protocol Overview](/dist/docs/3.0.0-beta.3/creative).
 
 ## Standard vs Custom Formats
 
@@ -33,7 +33,7 @@ Standard formats typically cover common use cases such as:
 - Audio formats with defined spot lengths
 - Common DOOH display and video executions
 
-**Guidance for sales agents:** Before defining custom formats, check whether an equivalent standard format already exists. Most publishers can reference standard formats for common inventory and reserve custom formats for genuinely differentiated offerings. See [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats) for detailed guidance.
+**Guidance for sales agents:** Before defining custom formats, check whether an equivalent standard format already exists. Most publishers can reference standard formats for common inventory and reserve custom formats for genuinely differentiated offerings. See [Implementing Standard Format Support](/dist/docs/3.0.0-beta.3/media-buy/capability-discovery/implementing-standard-formats) for detailed guidance.
 
 ### Custom Formats
 
@@ -80,7 +80,7 @@ Formats may be sourced from:
 
 This indicates that the sales agent supports its own custom format and all formats defined by the referenced creative agent.
 
-**For sales agents implementing format support:** See [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats).
+**For sales agents implementing format support:** See [Implementing Standard Format Support](/dist/docs/3.0.0-beta.3/media-buy/capability-discovery/implementing-standard-formats).
 
 ## Format Authority
 
@@ -296,7 +296,7 @@ Formats are JSON objects with the following key fields:
 - **assets**: Array of all asset specifications with `required` boolean indicating mandatory vs optional. This is the authoritative source for understanding creative requirements.
 - **asset_role**: Identifies asset purpose (hero_image, logo, cta_button, etc.)
 - **renders**: Array of rendered outputs with dimensions - see below
-- **accessibility**: Optional WCAG conformance declaration — see [Accessibility](/docs/creative/accessibility)
+- **accessibility**: Optional WCAG conformance declaration — see [Accessibility](/dist/docs/3.0.0-beta.3/creative/accessibility)
 
 <Note>
 **Deprecation Notice**: The `type` field is deprecated and optional. The `assets` array provides precise information about creative requirements (video, image, text, etc.) and should be used instead. Categories like "video", "display", and "native" are lossy abstractions that don't scale well to emerging formats like Performance Max (spans multiple channels), search ads (text-only with high intent), or conversational AI placements.
@@ -381,7 +381,7 @@ Each asset type has its own requirements schema that defines what constraints ap
 
 This tells creative agents: "Build HTML that works in a SafeFrame container with no external resource loading."
 
-See [Display Ads - HTML Display Formats](/docs/creative/channels/display#html-display-formats-with-execution-context) for complete examples.
+See [Display Ads - HTML Display Formats](/dist/docs/3.0.0-beta.3/creative/channels/display#html-display-formats-with-execution-context) for complete examples.
 
 ### Rendered Outputs and Dimensions
 
@@ -555,7 +555,7 @@ AdCP supports formats across multiple media types:
 - VAST/VPAID tags
 - Interactive video
 
-See [Video Channel Guide](/docs/creative/channels/video) for complete specifications.
+See [Video Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/video) for complete specifications.
 
 ### Display Formats
 - Standard IAB sizes (300x250, 728x90, etc.)
@@ -563,7 +563,7 @@ See [Video Channel Guide](/docs/creative/channels/video) for complete specificat
 - Rich media and expandable
 - HTML5 creative
 
-See [Display Channel Guide](/docs/creative/channels/display) for complete specifications.
+See [Display Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/display) for complete specifications.
 
 ### Audio Formats
 - Streaming audio (15s, 30s, 60s)
@@ -571,7 +571,7 @@ See [Display Channel Guide](/docs/creative/channels/display) for complete specif
 - Companion banners
 - VAST audio tags
 
-See [Audio Channel Guide](/docs/creative/channels/audio) for complete specifications.
+See [Audio Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/audio) for complete specifications.
 
 ### DOOH Formats
 - Digital billboards
@@ -579,7 +579,7 @@ See [Audio Channel Guide](/docs/creative/channels/audio) for complete specificat
 - Retail screens
 - Venue-based impression tracking
 
-See [DOOH Channel Guide](/docs/creative/channels/dooh) for complete specifications.
+See [DOOH Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/dooh) for complete specifications.
 
 ### Carousel/Multi-Asset Formats
 - Product carousels (3-10 items)
@@ -587,11 +587,11 @@ See [DOOH Channel Guide](/docs/creative/channels/dooh) for complete specificatio
 - Slideshow formats
 - Frame-based structures
 
-See [Carousel Channel Guide](/docs/creative/channels/carousels) for complete specifications.
+See [Carousel Channel Guide](/dist/docs/3.0.0-beta.3/creative/channels/carousels) for complete specifications.
 
 ## Multi-Asset & Frame-Based Formats
 
-Some formats like carousels, slideshows, and stories use repeatable asset groups where each frame contains a collection of assets. See the [Carousel & Multi-Asset Formats guide](/docs/creative/channels/carousels) for complete documentation on frame-based format patterns.
+Some formats like carousels, slideshows, and stories use repeatable asset groups where each frame contains a collection of assets. See the [Carousel & Multi-Asset Formats guide](/dist/docs/3.0.0-beta.3/creative/channels/carousels) for complete documentation on frame-based format patterns.
 
 ## Reported Metrics
 
@@ -735,9 +735,9 @@ This ensures a consistent user experience regardless of what format metadata is 
 
 ## Related Documentation
 
-- [Creative Protocol Overview](/docs/creative) - How formats, manifests, and agents work together
-- [Creative Manifests](/docs/creative/creative-manifests) - Pairing assets with formats
-- [Asset Types](/docs/creative/asset-types) - Understanding asset specifications
-- [Channel Guides](/docs/creative/channels/video) - Detailed format documentation by media type
-- [Implementing Standard Format Support](/docs/media-buy/capability-discovery/implementing-standard-formats) - For sales agents
-- [list_creative_formats Task](/docs/media-buy/task-reference/list_creative_formats) - API reference for format discovery
+- [Creative Protocol Overview](/dist/docs/3.0.0-beta.3/creative) - How formats, manifests, and agents work together
+- [Creative Manifests](/dist/docs/3.0.0-beta.3/creative/creative-manifests) - Pairing assets with formats
+- [Asset Types](/dist/docs/3.0.0-beta.3/creative/asset-types) - Understanding asset specifications
+- [Channel Guides](/dist/docs/3.0.0-beta.3/creative/channels/video) - Detailed format documentation by media type
+- [Implementing Standard Format Support](/dist/docs/3.0.0-beta.3/media-buy/capability-discovery/implementing-standard-formats) - For sales agents
+- [list_creative_formats Task](/dist/docs/3.0.0-beta.3/media-buy/task-reference/list_creative_formats) - API reference for format discovery

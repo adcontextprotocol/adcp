@@ -17,6 +17,10 @@
             "$ref": "/schemas/core/deployment.json"
           }
         },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -59,8 +63,17 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "deployments"
+        "anyOf": [
+          {
+            "required": [
+              "deployments"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
         ]
       }
     }

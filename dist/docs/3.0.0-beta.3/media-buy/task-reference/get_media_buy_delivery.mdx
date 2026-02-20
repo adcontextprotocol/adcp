@@ -596,7 +596,7 @@ Each creative entry includes:
 }
 ```
 
-For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) on the creative agent.
+For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/dist/docs/3.0.0-beta.3/creative/task-reference/get_creative_delivery) on the creative agent.
 
 ## Best Practices
 
@@ -622,13 +622,13 @@ Use multi-status queries to understand why campaigns were paused or completed.
 
 After retrieving delivery data:
 
-1. **Optimize Campaigns**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to adjust budgets, pacing, or targeting
-2. **Provide Feedback**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) to share results with seller
-3. **Update Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) to refresh underperforming assets
-4. **Create Follow-Up Campaigns**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) based on insights
+1. **Optimize Campaigns**: Use [`update_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/update_media_buy) to adjust budgets, pacing, or targeting
+2. **Provide Feedback**: Use [`provide_performance_feedback`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/provide_performance_feedback) to share results with seller
+3. **Update Creatives**: Use [`sync_creatives`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/sync_creatives) to refresh underperforming assets
+4. **Create Follow-Up Campaigns**: Use [`create_media_buy`](/dist/docs/3.0.0-beta.3/media-buy/task-reference/create_media_buy) based on insights
 
 ## Learn More
 
-- [Media Buy Lifecycle](/docs/media-buy/media-buys/) - Complete campaign workflow
-- [Async Operations](/docs/building/implementation/async-operations) - Async patterns and status handling
-- [Performance Optimization](/docs/media-buy/media-buys/optimization-reporting) - Using delivery data for optimization
+- [Media Buy Lifecycle](/dist/docs/3.0.0-beta.3/media-buy/media-buys/) - Complete campaign workflow
+- [Async Operations](/dist/docs/3.0.0-beta.3/building/implementation/async-operations) - Async patterns and status handling
+- [Performance Optimization](/dist/docs/3.0.0-beta.3/media-buy/media-buys/optimization-reporting) - Using delivery data for optimization

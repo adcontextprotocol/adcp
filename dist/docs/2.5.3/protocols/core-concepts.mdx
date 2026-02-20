@@ -492,7 +492,7 @@ input-required → → → → →
 - **`completed`**: Success, process results
 - **`failed`**: Error, handle appropriately
 
-For detailed timing expectations and polling patterns, see **[Task Management](/docs/building/implementation/task-lifecycle.mdx#task-status-lifecycle)**.
+For detailed timing expectations and polling patterns, see **[Task Management](/dist/docs/2.5.3/protocols/task-management.mdx#task-status-lifecycle)**.
 
 ## Webhook Reliability
 
@@ -1171,7 +1171,7 @@ For daily and monthly frequencies, the publisher's reporting timezone (from prod
 6. **Frequency Validation**: Ensure requested frequency is in product's `available_reporting_frequencies`
 7. **Metrics Validation**: Ensure requested metrics are in product's `available_metrics`
 
-See [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting.mdx#webhook-based-reporting) for complete implementation guidance.
+See [Optimization & Reporting](/dist/docs/2.5.3/media-buy/media-buys/optimization-reporting.mdx#webhook-based-reporting) for complete implementation guidance.
 
 ## Error Handling
 
@@ -1354,8 +1354,8 @@ function getStatus(response) {
 
 ## Next Steps
 
-- **MCP Integration**: See [MCP Guide](/docs/building/integration/mcp-guide) for tool calls and context management
-- **A2A Integration**: See [A2A Guide](/docs/building/integration/a2a-guide) for artifacts and streaming
-- **Protocol Comparison**: See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for choosing between MCP and A2A
+- **MCP Integration**: See [MCP Guide](/dist/docs/2.5.3/protocols/mcp-guide) for tool calls and context management
+- **A2A Integration**: See [A2A Guide](/dist/docs/2.5.3/protocols/a2a-guide) for artifacts and streaming
+- **Protocol Comparison**: See [Protocol Comparison](/dist/docs/2.5.3/protocols/protocol-comparison) for choosing between MCP and A2A
 
 This unified status approach ensures consistent behavior across all AdCP implementations while making client development more predictable and robust.

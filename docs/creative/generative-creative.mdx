@@ -14,7 +14,7 @@ The Creative Protocol provides AI-powered creative generation:
 - **`preview_creative`**: Generate previews of creative manifests
 - **`list_creative_formats`**: Discover supported creative formats
 
-Assets are provided via [Brand Manifest](/docs/creative/brand-manifest) - no separate asset library management needed.
+Assets are provided via [brand identity](/docs/brand-protocol/brand-json) - no separate asset library management needed.
 
 ## Quick Start: Generate Your First Creative
 
@@ -86,7 +86,7 @@ Iterate on the generated creative by modifying the manifest and regenerating:
 
 ## Common Patterns
 
-### Using Brand Manifests
+### Using brand identity
 
 Provide brand context for better creative generation:
 
@@ -97,20 +97,14 @@ Provide brand context for better creative generation:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
-  "brand_manifest": {
-    "url": "https://mycoffeeshop.com",
-    "name": "Brew & Co",
-    "colors": {
-      "primary": "#6F4E37",
-      "secondary": "#C4A35A"
-    },
-    "tone": "warm and inviting"
+  "brand": {
+    "domain": "mycoffeeshop.com"
   },
   "output_mode": "manifest"
 }
 ```
 
-**Minimal Brand Manifest**: Start with just a URL for low-friction creative generation:
+**Minimal brand reference**: Start with just a domain for low-friction creative generation:
 
 ```json
 {
@@ -119,13 +113,13 @@ Provide brand context for better creative generation:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_native"
   },
-  "brand_manifest": {
-    "url": "https://mycoffeeshop.com"
+  "brand": {
+    "domain": "mycoffeeshop.com"
   }
 }
 ```
 
-See [Brand Manifest Reference](/docs/creative/brand-manifest) for comprehensive examples.
+See [brand.json reference](/docs/brand-protocol/brand-json) for comprehensive examples.
 
 ### Using Your Own Assets
 
@@ -211,12 +205,12 @@ If you get a format error, the publisher may not support that format. Try:
 ### Creative Quality Issues
 To improve creative output:
 1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
-2. Provide comprehensive brand manifest with assets and guidelines
+2. Provide comprehensive brand identity with assets and guidelines
 3. Use the conversational refinement feature to iterate (via `context_id`)
 
 ### Asset Management
-Assets are provided via [Brand Manifest](/docs/creative/brand-manifest):
-1. Include assets in brand manifest with descriptive tags
+Assets are provided via [brand identity](/docs/brand-protocol/brand-json):
+1. Include assets in brand identity with descriptive tags
 2. Use `asset_filters` in requests to select specific assets
 3. Reference product catalogs for large inventories
 

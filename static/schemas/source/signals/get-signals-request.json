@@ -67,8 +67,16 @@
     "deliver_to"
   ],
   "anyOf": [
-    { "required": ["signal_spec"] },
-    { "required": ["signal_ids"] }
+    {
+      "required": [
+        "signal_spec"
+      ]
+    },
+    {
+      "required": [
+        "signal_ids"
+      ]
+    }
   ],
   "additionalProperties": true
 }

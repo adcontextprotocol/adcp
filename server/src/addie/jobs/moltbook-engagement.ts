@@ -662,7 +662,7 @@ async function discoverPosts(limit: number): Promise<MoltbookPost[]> {
     try {
       const searchResult = await searchPosts(term, 5);
       if (!searchResult?.posts || !Array.isArray(searchResult.posts)) {
-        logger.warn({ term }, 'Search returned invalid result structure');
+        logger.debug({ term }, 'Search returned invalid result structure');
         continue;
       }
       const resultCount = searchResult.posts.length;

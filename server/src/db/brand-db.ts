@@ -27,6 +27,7 @@ export interface UpdateHostedBrandInput {
   domain_verified?: boolean;
   verification_token?: string;
   is_public?: boolean;
+  workos_organization_id?: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export interface UpdateHostedBrandInput {
  */
 export interface UpsertDiscoveredBrandInput {
   domain: string;
+  brand_id?: string;
   canonical_domain?: string;
   house_domain?: string;
   brand_name?: string;
@@ -156,6 +158,10 @@ export class BrandDatabase {
       updates.push(`is_public = $${paramIndex++}`);
       values.push(input.is_public);
     }
+    if (input.workos_organization_id !== undefined) {
+      updates.push(`workos_organization_id = $${paramIndex++}`);
+      values.push(input.workos_organization_id);
+    }
 
     if (updates.length === 0) {
       return this.getHostedBrandById(id);
@@ -189,6 +195,17 @@ export class BrandDatabase {
     return result.rows[0] ? token : null;
   }
 
+  /**
+   * List all hosted brand domains (used by crawler for brand.json scanning).
+   */
+  async listAllHostedBrandDomains(): Promise<string[]> {
+    const result = await query<{ brand_domain: string }>(
+      'SELECT brand_domain FROM hosted_brands',
+      []
+    );
+    return result.rows.map(r => r.brand_domain);
+  }
+
   // ========== Discovered Brands ==========
 
   /**
@@ -197,11 +214,12 @@ export class BrandDatabase {
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
     const result = await query<DiscoveredBrand>(
       `INSERT INTO discovered_brands (
-        domain, canonical_domain, house_domain, brand_name, brand_names,
+        domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
         keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
         has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
       ON CONFLICT (domain) DO UPDATE SET
+        brand_id = COALESCE(EXCLUDED.brand_id, discovered_brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
         house_domain = EXCLUDED.house_domain,
         brand_name = EXCLUDED.brand_name,
@@ -218,6 +236,7 @@ export class BrandDatabase {
       RETURNING *`,
       [
         input.domain.toLowerCase(),
+        input.brand_id || null,
         input.canonical_domain || null,
         input.house_domain || null,
         input.brand_name || null,
@@ -244,6 +263,30 @@ export class BrandDatabase {
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeDiscoveredBrand(result.rows[0]) : null;
+  }
+
+  /**
+   * Get discovered brand by domain + optional brand_id (brand reference lookup).
+   * If brand_id is provided, looks for a brand with that brand_id under the domain.
+   * If no brand_id, falls back to getDiscoveredBrandByDomain.
+   */
+  async getDiscoveredBrandByRef(domain: string, brandId?: string): Promise<DiscoveredBrand | null> {
+    if (!brandId) {
+      return this.getDiscoveredBrandByDomain(domain);
+    }
+    const result = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    if (result.rows[0]) {
+      return this.deserializeDiscoveredBrand(result.rows[0]);
+    }
+    // Fall back to house domain lookup (brand_id might be under the house)
+    const houseResult = await query<DiscoveredBrand>(
+      'SELECT * FROM discovered_brands WHERE house_domain = $1 AND brand_id = $2',
+      [domain.toLowerCase(), brandId]
+    );
+    return houseResult.rows[0] ? this.deserializeDiscoveredBrand(houseResult.rows[0]) : null;
   }
 
   /**
@@ -319,11 +362,15 @@ export class BrandDatabase {
     primary_color?: string;
     industry?: string;
     sub_brand_count: number;
+    employee_count: number;
   }>> {
-    const limit = options.limit || 500;
     const offset = options.offset || 0;
     const escapedSearch = options.search ? options.search.replace(/[%_\\]/g, '\\$&') : null;
     const search = escapedSearch ? `%${escapedSearch}%` : null;
+
+    const params: (string | number | null)[] = [search, offset];
+    const limitClause = options.limit ? `LIMIT $3` : '';
+    if (options.limit) params.push(options.limit);
 
     const result = await query<{
       domain: string;
@@ -337,6 +384,7 @@ export class BrandDatabase {
       primary_color?: string;
       industry?: string;
       sub_brand_count: number;
+      employee_count: number;
     }>(
       `
       SELECT
@@ -350,7 +398,8 @@ export class BrandDatabase {
         brand_json->'logos'->0->>'url' as logo_url,
         brand_json->'colors'->>'primary' as primary_color,
         brand_json->'company'->>'industry' as industry,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
+        COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM hosted_brands
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
@@ -368,16 +417,18 @@ export class BrandDatabase {
         brand_manifest->'logos'->0->>'url' as logo_url,
         brand_manifest->'colors'->>'primary' as primary_color,
         brand_manifest->'company'->>'industry' as industry,
-        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count
+        (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = discovered_brands.domain) as sub_brand_count,
+        COALESCE(CASE WHEN brand_manifest->'company'->>'employees' ~ '^\d+$' THEN (brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM discovered_brands
       WHERE ($1::text IS NULL OR domain ILIKE $1 OR brand_name ILIKE $1)
         AND (review_status IS NULL OR review_status = 'approved')
         AND domain NOT IN (SELECT brand_domain FROM hosted_brands WHERE is_public = true)
 
-      ORDER BY brand_name, domain
-      LIMIT $2 OFFSET $3
+      ORDER BY employee_count DESC, brand_name, domain
+      ${limitClause}
+      OFFSET $2
       `,
-      [search, limit, offset]
+      params
     );
 
     return result.rows;

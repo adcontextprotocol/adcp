@@ -327,7 +327,7 @@ asyncio.run(main())
 
 ### Generative Creatives
 
-Use the creative agent to generate creatives from a brand manifest. See the [Generative Creatives guide](/docs/creative/generative-creative) for complete workflow details.
+Use the creative agent to generate creatives from brand identity data. See the [Generative Creatives guide](/docs/creative/generative-creative) for complete workflow details.
 
 <CodeGroup>
 
@@ -346,7 +346,7 @@ const result = await testAgent.syncCreatives({
       },
       assets: {
         manifest: {
-          url: "https://cdn.example.com/brand-manifest.json",
+          url: "https://cdn.example.com/brand.json",
         },
       },
     },
@@ -386,7 +386,7 @@ async def main():
             },
             'assets': {
                 'manifest': {
-                    'url': 'https://cdn.example.com/brand-manifest.json'
+                    'url': 'https://cdn.example.com/brand.json'
                 }
             }
         }]
@@ -662,7 +662,7 @@ The operation status (`completed`) means the review process finished. Individual
 
 4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
 
-5. **Brand manifests** - For generative creatives, validate manifest schema before syncing to avoid processing failures.
+5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
 6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
 
@@ -671,6 +671,6 @@ The operation status (`completed`) means the review process finished. Individual
 ## Next Steps
 
 - [list_creative_formats](/docs/media-buy/task-reference/list_creative_formats) - Check supported formats before upload
-- [Generative Creatives Guide](/docs/creative/generative-creative) - Generate creatives from brand manifests
+- [Generative Creatives Guide](/docs/creative/generative-creative) - Generate creatives from brand identity
 - [get_media_buy_delivery](/docs/media-buy/task-reference/get_media_buy_delivery) - Monitor creative performance
 - [Creative Asset Types](/docs/creative/asset-types) - Technical requirements for assets

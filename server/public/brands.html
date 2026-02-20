@@ -296,6 +296,61 @@
         }
         .add-brand-cta button:hover { background: var(--color-primary-600); }
 
+        /* Claim Brand CTA */
+        .claim-brand-cta {
+            margin-top: var(--space-8);
+            padding: var(--space-8) var(--space-6);
+            background: var(--color-primary-50);
+            border: 1px solid var(--color-primary-200);
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+        .claim-brand-cta__title {
+            font-size: var(--text-lg);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-heading);
+            margin-bottom: var(--space-2);
+        }
+        .claim-brand-cta__desc {
+            font-size: var(--text-sm);
+            color: var(--color-text-muted);
+            margin-bottom: var(--space-4);
+        }
+        .claim-brand-cta__links {
+            display: flex;
+            justify-content: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+        }
+        .claim-brand-cta__primary {
+            padding: var(--space-2.5) var(--space-5);
+            background: var(--color-primary-500);
+            color: white;
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            font-weight: var(--font-semibold);
+            text-decoration: none;
+            transition: var(--transition-all);
+        }
+        .claim-brand-cta__primary:hover { background: var(--color-primary-600); }
+        .claim-brand-cta__primary:focus-visible,
+        .claim-brand-cta__secondary:focus-visible {
+            outline: 2px solid var(--color-brand);
+            outline-offset: 2px;
+        }
+        .claim-brand-cta__secondary {
+            padding: var(--space-2.5) var(--space-5);
+            background: var(--color-bg-card);
+            color: var(--color-primary-600);
+            border: 1px solid var(--color-primary-300);
+            border-radius: var(--radius-md);
+            font-size: var(--text-sm);
+            font-weight: var(--font-medium);
+            text-decoration: none;
+            transition: var(--transition-all);
+        }
+        .claim-brand-cta__secondary:hover { border-color: var(--color-primary-500); color: var(--color-primary-700); }
+
         .hidden { display: none; }
 
         .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
@@ -347,13 +402,13 @@
         <!-- Search and Filters -->
         <div class="search-filters">
             <div class="search-box">
-                <input type="text" id="search-input" placeholder="Search by brand name or domain..." onkeyup="filterBrands()">
+                <input type="text" id="search-input" placeholder="Search by brand name or domain..." oninput="onSearchInput()">
             </div>
             <div class="filter-row">
                 <div class="filter-group">
                     <label>Type:</label>
-                    <button class="filter-btn" data-filter="all" onclick="setFilter('all')">All</button>
-                    <button class="filter-btn active" data-filter="house" onclick="setFilter('house')">Houses</button>
+                    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="house" onclick="setFilter('house')">Houses</button>
                     <button class="filter-btn" data-filter="sub_brand" onclick="setFilter('sub_brand')">Sub-brands</button>
                     <button class="filter-btn" data-filter="brand_json" onclick="setFilter('brand_json')">brand.json</button>
                 </div>
@@ -369,6 +424,16 @@
         <div id="add-brand-cta" class="add-brand-cta hidden">
             <button onclick="window.location.href='/brand/view/new?edit=true'">+ Add brand</button>
         </div>
+
+        <!-- Claim Brand CTA (hidden by default, shown for non-members) -->
+        <div id="claim-brand-cta" class="claim-brand-cta hidden">
+            <div class="claim-brand-cta__title">Is your brand listed here?</div>
+            <div class="claim-brand-cta__desc">Join AgenticAdvertising.org to claim your brand and manage your identity in the AI advertising ecosystem.</div>
+            <div class="claim-brand-cta__links">
+                <a href="/membership" class="claim-brand-cta__primary">Claim your brand</a>
+                <a href="/community/profile-edit" class="claim-brand-cta__secondary">Set up your profile</a>
+            </div>
+        </div>
     </div>
 
     <!-- Footer placeholder -->
@@ -376,18 +441,30 @@
 
     <script type="module">
         let brands = [];
-        let filters = { type: 'house', search: '' };
+        let filters = { type: 'all' };
 
         window.addEventListener('DOMContentLoaded', async () => {
-            await loadBrands();
+            // Pre-fill search from ?domain= query param (e.g. linked from member profile)
+            const domainParam = new URLSearchParams(window.location.search).get('domain');
+            if (domainParam) {
+                document.getElementById('search-input').value = domainParam;
+            }
+            await loadBrands(domainParam || undefined);
         });
 
-        async function loadBrands() {
+        let activeController = null;
+        async function loadBrands(search) {
+            if (activeController) activeController.abort();
+            activeController = new AbortController();
+
             const grid = document.getElementById('brands-grid');
             grid.innerHTML = renderLoadingSkeleton(6);
 
             try {
-                const response = await fetch('/api/brands/registry');
+                const params = new URLSearchParams();
+                if (search) params.set('search', search);
+                const qs = params.toString();
+                const response = await fetch(`/api/brands/registry${qs ? '?' + qs : ''}`, { signal: activeController.signal });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 brands = data.brands || [];
@@ -401,16 +478,18 @@
                 document.getElementById('stat-brand-json').textContent = stats.brand_json || 0;
 
                 renderBrands();
+
+                // Show add CTA for members, claim CTA for non-members
+                const config = window.__APP_CONFIG__;
+                if (config?.user?.isMember) {
+                    document.getElementById('add-brand-cta')?.classList.remove('hidden');
+                } else {
+                    document.getElementById('claim-brand-cta')?.classList.remove('hidden');
+                }
             } catch (error) {
+                if (error.name === 'AbortError') return;
                 console.error('Failed to load brands:', error);
                 grid.innerHTML = '<div class="empty-state"><div class="empty-state__title">Failed to load brands</div></div>';
-            }
-
-            // Show add CTA for members
-            const config = window.__APP_CONFIG__;
-            if (config?.user?.isMember) {
-                const cta = document.getElementById('add-brand-cta');
-                if (cta) cta.classList.remove('hidden');
             }
         }
 
@@ -444,12 +523,6 @@
                 if (filters.type === 'house' && brand.keller_type !== 'master' && brand.keller_type !== 'independent') return false;
                 if (filters.type === 'sub_brand' && brand.keller_type !== 'sub_brand' && brand.keller_type !== 'endorsed') return false;
                 if (filters.type === 'brand_json' && brand.source !== 'brand_json' && brand.source !== 'hosted') return false;
-                if (filters.search) {
-                    const q = filters.search.toLowerCase();
-                    if (!brand.brand_name?.toLowerCase().includes(q) &&
-                        !brand.domain?.toLowerCase().includes(q) &&
-                        !brand.house_domain?.toLowerCase().includes(q)) return false;
-                }
                 return true;
             });
 
@@ -539,9 +612,11 @@
             renderBrands();
         };
 
-        window.filterBrands = function() {
-            filters.search = document.getElementById('search-input').value;
-            renderBrands();
+        let searchTimeout = null;
+        window.onSearchInput = function() {
+            clearTimeout(searchTimeout);
+            const value = document.getElementById('search-input').value.trim();
+            searchTimeout = setTimeout(() => loadBrands(value || undefined), 300);
         };
 
         function escapeHtml(str) {

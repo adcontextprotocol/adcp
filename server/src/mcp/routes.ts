@@ -20,6 +20,7 @@ import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
+import { PostgresStore } from '../middleware/pg-rate-limit-store.js';
 import { createUnifiedMCPServer } from './server.js';
 import { createOAuthProvider, MCP_AUTH_ENABLED } from './oauth-provider.js';
 import {
@@ -51,6 +52,7 @@ const mcpRateLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new PostgresStore('mcp:'),
   keyGenerator: (req: MCPAuthenticatedRequest) => {
     return `user:${req.mcpAuth?.sub || 'anonymous'}`;
   },
@@ -91,6 +93,14 @@ export function configureMCPRoutes(router: Router): void {
   // Build the MCP POST middleware chain
   const mcpMiddleware: Array<(req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => void> = [];
 
+  // CORS headers must be set on all /mcp responses, including 401 from requireBearerAuth.
+  // Without CORS on 401 responses, browser-based MCP clients (Claude.ai) can't read
+  // the WWW-Authenticate header and the OAuth flow never starts.
+  mcpMiddleware.push((_req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => {
+    setCORSHeaders(res);
+    next();
+  });
+
   if (MCP_AUTH_ENABLED) {
     // Bearer token validation via SDK
     mcpMiddleware.push(requireBearerAuth({
@@ -126,8 +136,6 @@ export function configureMCPRoutes(router: Router): void {
     ...mcpMiddleware,
     mcpRateLimiter,
     async (req: MCPAuthenticatedRequest, res: Response) => {
-      setCORSHeaders(res);
-
       let server: ReturnType<typeof createUnifiedMCPServer> | null = null;
       try {
         server = createUnifiedMCPServer(req.mcpAuth);

@@ -29,6 +29,9 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["event_source_id", "events"],
+  "required": [
+    "event_source_id",
+    "events"
+  ],
   "additionalProperties": true
 }

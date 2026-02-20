@@ -9,13 +9,13 @@
       "type": "string",
       "description": "Natural language description of campaign requirements."
     },
-    "brand_manifest": {
-      "$ref": "/schemas/core/brand-manifest-ref.json",
-      "description": "Brand information manifest providing brand context, assets, and product catalog. Can be provided inline or as a URL reference to a hosted manifest."
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
     "product_selectors": {
       "$ref": "/schemas/core/promoted-products.json",
-      "description": "Selectors to filter the brand manifest product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+      "description": "Selectors to filter the brand's product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
     },
     "account_id": {
       "type": "string",
@@ -40,7 +40,7 @@
   },
   "required": [],
   "dependencies": {
-    "product_selectors": ["brand_manifest"]
+    "product_selectors": ["brand"]
   },
   "additionalProperties": true
 }

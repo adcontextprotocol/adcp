@@ -473,7 +473,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
-        logo_url: profile.logo_url,
+        logo_url: profile.resolved_brand?.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
       };
@@ -739,7 +739,7 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       context.member_profile = {
         display_name: profile.display_name,
         tagline: profile.tagline,
-        logo_url: profile.logo_url,
+        logo_url: profile.resolved_brand?.logo_url,
         offerings: profile.offerings,
         headquarters: profile.headquarters,
       };

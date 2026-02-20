@@ -43,14 +43,30 @@ async function getBrandProfile(memberProfileId: string): Promise<{
   brand_color: string | null;
 } | null> {
   const result = await query(
-    `SELECT id, display_name, slug, tagline, description, logo_url, brand_color
-     FROM member_profiles
-     WHERE id = $1`,
+    `SELECT mp.id, mp.display_name, mp.slug, mp.tagline, mp.description,
+            hb.brand_json
+     FROM member_profiles mp
+     LEFT JOIN hosted_brands hb ON hb.brand_domain = mp.primary_brand_domain
+     WHERE mp.id = $1`,
     [memberProfileId]
   );
 
   if (result.rows.length === 0) return null;
-  return result.rows[0];
+  const row = result.rows[0];
+  const bj = row.brand_json as Record<string, unknown> | null;
+  const brands = bj?.brands as Array<Record<string, unknown>> | undefined;
+  const primaryBrand = brands?.[0];
+  const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
+  const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+  return {
+    id: row.id,
+    display_name: row.display_name,
+    slug: row.slug,
+    tagline: row.tagline,
+    description: row.description,
+    logo_url: (logos?.[0]?.url as string | undefined) ?? null,
+    brand_color: (colors?.primary as string | undefined) ?? null,
+  };
 }
 
 /**

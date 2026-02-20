@@ -1,7 +1,7 @@
 ---
 title: Promoted Offerings
 description: The unified schema that connects brand identity, products, creative assets, and conversational AI experiences
-keywords: [promoted offerings, offerings, campaigns, SI, sponsored intelligence, brand manifest]
+keywords: [promoted offerings, offerings, campaigns, SI, sponsored intelligence, brand identity]
 ---
 
 **Promoted Offerings** is the core schema that unifies everything a brand wants to promote. It connects:
@@ -19,14 +19,16 @@ A promoted offering answers four questions:
 
 | Question | Field | Purpose |
 |----------|-------|---------|
-| **Who?** | `brand_manifest` | Brand identity, logos, colors, tone |
+| **Who?** | `brand` | Brand identity, logos, colors, tone |
 | **What?** | `offerings` / `product_selectors` | Products, promotions, campaigns to promote |
 | **How (visual)?** | `asset_selectors` / offering `assets` | Creative assets for traditional ad formats |
 | **How (conversational)?** | `si_agent_url` | AI agent endpoint for interactive experiences |
 
 ```json
 {
-  "brand_manifest": "https://brand.com/manifest.json",
+  "brand": {
+    "domain": "brand.com"
+  },
   "si_agent_url": "https://agent.brand.com/mcp",
   "offerings": [
     {
@@ -50,7 +52,9 @@ When creating a media buy, include promoted offerings to specify what's being ad
 {
   "buyer_ref": "q2-awareness",
   "promoted_offerings": {
-    "brand_manifest": "https://acme.com/manifest.json",
+    "brand": {
+      "domain": "acme.com"
+    },
     "offerings": [
       {
         "offering_id": "new-product-launch",
@@ -69,7 +73,9 @@ When the brand has an SI agent, users can have conversations about any of the of
 
 ```json
 {
-  "brand_manifest": "https://delta.com/manifest.json",
+  "brand": {
+    "domain": "delta.com"
+  },
   "si_agent_url": "https://agent.delta.com/mcp",
   "offerings": [
     {
@@ -99,7 +105,9 @@ Offerings can include both creative assets for traditional ads AND be available 
 
 ```json
 {
-  "brand_manifest": "https://brand.com/manifest.json",
+  "brand": {
+    "domain": "brand.com"
+  },
   "si_agent_url": "https://agent.brand.com/mcp",
   "offerings": [
     {
@@ -123,14 +131,14 @@ The `portfolio_ref` provides creative assets for display/video ads, while `si_ag
 ```typescript
 interface PromotedOfferings {
   // Brand identity (required)
-  brand_manifest: BrandManifest | string;  // Inline object or URL
+  brand: Brand;  // Brand reference with domain
 
   // Conversational AI endpoint (optional)
   si_agent_url?: string;  // MCP endpoint for SI sessions
 
   // What to promote (choose one or both)
   offerings?: Offering[];           // Explicit offering definitions
-  product_selectors?: ProductSelectors;  // Select from brand manifest catalog
+  product_selectors?: ProductSelectors;  // Select from brand catalog
 
   // Creative asset filtering (optional)
   asset_selectors?: AssetSelectors;
@@ -139,10 +147,10 @@ interface PromotedOfferings {
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `brand_manifest` | object \| string | Yes | Brand manifest inline or URL reference |
+| `brand` | object | Yes | Brand reference with `domain` field |
 | `si_agent_url` | string (uri) | No | MCP endpoint for conversational experiences |
 | `offerings` | Offering[] | No | Array of specific offerings to promote |
-| `product_selectors` | object | No | Selectors to choose products from brand manifest catalog |
+| `product_selectors` | object | No | Selectors to choose products from brand catalog |
 | `asset_selectors` | object | No | Filters to select specific creative assets |
 
 ### Offering
@@ -198,7 +206,7 @@ interface Offering {
 
 **Schema URL**: [`/schemas/core/promoted-products.json`](https://adcontextprotocol.org/schemas/v2/core/promoted-products.json)
 
-Instead of defining explicit offerings, select products from the brand manifest's product catalog:
+Instead of defining explicit offerings, select products from the brand's product catalog:
 
 ```typescript
 interface ProductSelectors {
@@ -213,7 +221,9 @@ Multiple selectors are combined with OR logic—products matching ANY criteria a
 
 ```json
 {
-  "brand_manifest": "https://brand.com/manifest.json",
+  "brand": {
+    "domain": "brand.com"
+  },
   "product_selectors": {
     "manifest_tags": ["organic", "seasonal"],
     "manifest_category": "beverages"
@@ -223,7 +233,7 @@ Multiple selectors are combined with OR logic—products matching ANY criteria a
 
 ### Asset Selectors
 
-Filter which creative assets from the brand manifest to use:
+Filter which creative assets from the brand to use:
 
 ```typescript
 interface AssetSelectors {
@@ -235,7 +245,9 @@ interface AssetSelectors {
 
 ```json
 {
-  "brand_manifest": "https://brand.com/manifest.json",
+  "brand": {
+    "domain": "brand.com"
+  },
   "asset_selectors": {
     "tags": ["holiday", "premium"],
     "asset_types": ["image", "video"],
@@ -252,9 +264,8 @@ No SI agent—just brand identity and asset selection for traditional ad serving
 
 ```json
 {
-  "brand_manifest": {
-    "name": "Bob's Burgers",
-    "url": "https://bobsburgers.com"
+  "brand": {
+    "domain": "bobsburgers.com"
   },
   "product_selectors": {
     "manifest_skus": ["BURGER-001", "BURGER-002"]
@@ -272,7 +283,9 @@ SI agent without traditional creative assets—pure conversational commerce:
 
 ```json
 {
-  "brand_manifest": "https://saas-company.com/manifest.json",
+  "brand": {
+    "domain": "saas-company.com"
+  },
   "si_agent_url": "https://agent.saas-company.com/mcp",
   "offerings": [
     {
@@ -298,7 +311,9 @@ Multiple time-limited offers, all accessible via conversation:
 
 ```json
 {
-  "brand_manifest": "https://airline.com/manifest.json",
+  "brand": {
+    "domain": "airline.com"
+  },
   "si_agent_url": "https://agent.airline.com/mcp",
   "offerings": [
     {
@@ -428,7 +443,7 @@ For offerings with many creative variants, use `portfolio_ref` instead of inline
 
 ## Related Documentation
 
-- **[Brand Manifest](/docs/creative/brand-manifest)** - Brand identity and assets
+- **[Brand identity](/docs/brand-protocol/brand-json)** - Brand identity and assets
 - **[SI Overview](/docs/sponsored-intelligence/overview)** - Conversational brand experiences
 - **[SI Session Lifecycle](/docs/sponsored-intelligence/specification)** - How SI sessions work
 - **[create_media_buy](/docs/media-buy/task-reference/create_media_buy)** - Using promoted offerings in campaigns
