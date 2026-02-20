@@ -1180,12 +1180,19 @@ export function setupDomainRoutes(
 
         // Verify org exists
         const orgResult = await pool.query(
-          `SELECT name FROM organizations WHERE workos_organization_id = $1`,
+          `SELECT name, is_personal FROM organizations WHERE workos_organization_id = $1`,
           [orgId]
         );
 
         if (orgResult.rows.length === 0) {
           return res.status(404).json({ error: "Organization not found" });
+        }
+
+        if (orgResult.rows[0].is_personal) {
+          return res.status(400).json({
+            error: "Invalid operation",
+            message: "Domains cannot be added to individual (personal) organizations",
+          });
         }
 
         // Check if domain is already claimed by another org locally

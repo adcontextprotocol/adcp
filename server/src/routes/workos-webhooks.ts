@@ -348,12 +348,17 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
 
   // First check if the organization exists in our database
   const orgCheck = await pool.query(
-    `SELECT workos_organization_id FROM organizations WHERE workos_organization_id = $1`,
+    `SELECT workos_organization_id, is_personal FROM organizations WHERE workos_organization_id = $1`,
     [org.id]
   );
 
   if (orgCheck.rows.length === 0) {
     logger.debug({ orgId: org.id, orgName: org.name }, 'Organization not in our database, skipping domain sync');
+    return;
+  }
+
+  if (orgCheck.rows[0].is_personal) {
+    logger.debug({ orgId: org.id, orgName: org.name }, 'Personal organization, skipping domain sync');
     return;
   }
 
@@ -458,7 +463,7 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData)
 
     // Check if org exists (with lock to prevent races)
     const orgCheck = await client.query(
-      `SELECT workos_organization_id FROM organizations
+      `SELECT workos_organization_id, is_personal FROM organizations
        WHERE workos_organization_id = $1 FOR UPDATE`,
       [domainData.organization_id]
     );
@@ -468,6 +473,15 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData)
       logger.debug(
         { orgId: domainData.organization_id, domain: domainData.domain },
         'Organization not in our database, skipping domain upsert'
+      );
+      return;
+    }
+
+    if (orgCheck.rows[0].is_personal) {
+      await client.query('ROLLBACK');
+      logger.debug(
+        { orgId: domainData.organization_id, domain: domainData.domain },
+        'Personal organization, skipping domain upsert'
       );
       return;
     }
