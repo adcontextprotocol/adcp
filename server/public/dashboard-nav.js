@@ -15,7 +15,7 @@
   async function checkProfileInfoRequired() {
     // Skip if already on main dashboard (it handles its own modal)
     const currentPath = window.location.pathname;
-    if (currentPath === '/dashboard' || currentPath === '/dashboard/') return;
+    if (currentPath === '/dashboard' || currentPath === '/dashboard/' || currentPath.startsWith('/dashboard/organization')) return;
 
     // Skip if we already checked this session
     if (sessionStorage.getItem('profileInfoChecked')) return;
@@ -69,20 +69,19 @@
     logo: 'Dashboard',
     sections: [
       {
-        label: 'Dashboard',
+        label: 'Organization',
         items: [
-          { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Member Profile', icon: '🏢', anchor: 'profile' },
-          { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
-          { href: isDashboardPage ? '#committees' : '/dashboard#committees', label: 'Committees', icon: '🏛️', anchor: 'committees' },
-          { href: isDashboardPage ? '#leadership' : '/dashboard#leadership', label: 'Leadership', icon: '👔', anchor: 'leadership', hidden: true, id: 'leadershipNavItem' },
-          { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
+          { href: '/dashboard/organization', label: 'Journey & overview', icon: '📊' },
         ]
       },
       {
         label: 'Account',
         items: [
+          { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Profile', icon: '🏢', anchor: 'profile' },
+          { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
+          { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
           { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
-          { href: '/dashboard/emails', label: 'Email Preferences', icon: '📧' },
+          { href: '/dashboard/emails', label: 'Email preferences', icon: '📧' },
           { href: '/dashboard/api-keys', label: 'API keys', icon: '🔑' },
         ]
       }

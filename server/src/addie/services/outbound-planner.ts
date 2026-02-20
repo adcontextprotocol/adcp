@@ -15,6 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../logger.js';
 import { ModelConfig } from '../../config/models.js';
 import * as outboundDb from '../../db/outbound-db.js';
+import { getRecommendedGroupsForOrg } from './group-recommendations.js';
 import type {
   OutreachGoal,
   UserGoalHistory,
@@ -123,6 +124,12 @@ export class OutboundPlanner {
     if (goal.requires_company_type.length > 0) {
       if (!ctx.company?.type) return false;
       if (!goal.requires_company_type.includes(ctx.company.type)) return false;
+    }
+
+    // Check persona requirement
+    if (goal.requires_persona && goal.requires_persona.length > 0) {
+      if (!ctx.company?.persona) return false;
+      if (!goal.requires_persona.includes(ctx.company.persona)) return false;
     }
 
     // Check engagement requirement
@@ -332,6 +339,22 @@ export class OutboundPlanner {
           reason: 'Active user not in any working groups - opportunity to increase participation',
           priority_score: 70,
           alternative_goals: goals.filter(g => g.id !== wgGoal.id).slice(0, 3),
+          decision_method: 'rule_match',
+        };
+      }
+    }
+
+    // PRIORITY 5.5: Persona-based working group recommendation (for users with persona but no groups)
+    if (caps && caps.account_linked && !caps.is_committee_leader && caps.working_group_count === 0 && ctx.company?.persona) {
+      const personaGoal = goals.find(g =>
+        g.requires_persona?.includes(ctx.company!.persona!)
+      );
+      if (personaGoal) {
+        return {
+          goal: personaGoal,
+          reason: `${ctx.company.persona} persona matched - recommending persona-aligned group`,
+          priority_score: 72,
+          alternative_goals: goals.filter(g => g.id !== personaGoal.id).slice(0, 3),
           decision_method: 'rule_match',
         };
       }

@@ -21,8 +21,10 @@ import {
 import { invalidateInsightsCache } from '../insights-cache.js';
 import { trackApiCall, ApiPurpose } from './api-tracker.js';
 import { isLLMConfigured, complete } from '../../utils/llm.js';
+import { OrgKnowledgeDatabase } from '../../db/org-knowledge-db.js';
 
 const insightsDb = new InsightsDatabase();
+const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 /**
  * Extracted insight from Claude analysis
@@ -316,6 +318,39 @@ export async function extractInsights(
     // Invalidate insights cache if we stored any new insights
     if (storedInsights.length > 0 || storedGoalResponses.length > 0) {
       invalidateInsightsCache(context.slackUserId);
+    }
+
+    // Write org-level insights to org_knowledge for provenance tracking
+    if ((storedInsights.length > 0) && context.workosUserId) {
+      try {
+        const pool = (await import('../../db/client.js')).getPool();
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+          [context.workosUserId]
+        );
+        const orgId = orgResult.rows[0]?.workos_organization_id;
+        if (orgId) {
+          const orgLevelTypes = ['building', 'company_focus', 'interest', 'aao_goals', 'focus_area'];
+          for (const insight of storedInsights) {
+            if (orgLevelTypes.includes(insight.type_name)) {
+              orgKnowledgeDb.setKnowledge({
+                workos_organization_id: orgId,
+                attribute: insight.type_name,
+                value: insight.value,
+                source: 'addie_inferred',
+                confidence: insight.confidence === 'high' ? 'high' : insight.confidence === 'medium' ? 'medium' : 'low',
+                set_by_user_id: context.workosUserId,
+                set_by_description: 'Addie conversation insight extraction',
+                source_reference: context.threadId,
+              }).catch(err => {
+                logger.warn({ err, orgId, attribute: insight.type_name }, 'Failed to write insight to org_knowledge');
+              });
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Failed to look up org for insight provenance');
+      }
     }
 
     logger.info(

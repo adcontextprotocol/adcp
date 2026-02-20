@@ -4,11 +4,13 @@ import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
 import type { Agreement } from '../types.js';
+import { OrgKnowledgeDatabase } from './org-knowledge-db.js';
 
 // Re-export Agreement for backwards compatibility
 export type { Agreement };
 
 const logger = createLogger('organization-db');
+const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 /**
  * Error thrown when trying to link a Stripe customer that's already linked to another organization
@@ -992,6 +994,21 @@ export class OrganizationDatabase {
        WHERE workos_organization_id = $1`,
       [workos_organization_id, data.interest_level, data.note || null, data.set_by || null]
     );
+
+    // Track in org_knowledge for provenance
+    if (data.interest_level) {
+      orgKnowledgeDb.setKnowledge({
+        workos_organization_id,
+        attribute: 'interest_level',
+        value: data.interest_level,
+        source: 'admin_set',
+        confidence: 'high',
+        set_by_description: data.set_by ? `Set by ${data.set_by}` : 'Admin set',
+        source_reference: data.note || undefined,
+      }).catch(() => {
+        // Non-critical, don't fail the main operation
+      });
+    }
   }
 
   // ========================================

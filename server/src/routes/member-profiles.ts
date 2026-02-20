@@ -19,9 +19,12 @@ import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
+import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import type { MemberBrandInfo } from "../types.js";
+
+const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 const logger = createLogger("member-profile-routes");
 
@@ -316,6 +319,52 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         show_in_carousel: show_in_carousel ?? false,
       });
 
+      // Write user-reported org knowledge (fire-and-forget)
+      const knowledgeWrites: Promise<unknown>[] = [];
+      const userId = user.id;
+
+      if (tagline) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'description',
+          value: tagline,
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile creation',
+        }));
+      }
+
+      if (description) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'company_focus',
+          value: description,
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile creation',
+        }));
+      }
+
+      if (offerings && Array.isArray(offerings) && offerings.length > 0) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'interest',
+          value: offerings.join(', '),
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile offerings',
+        }));
+      }
+
+      if (knowledgeWrites.length > 0) {
+        Promise.all(knowledgeWrites).catch(err => {
+          logger.warn({ err, orgId: targetOrgId }, 'Failed to write profile data to org_knowledge');
+        });
+      }
+
       // Invalidate Addie's member context cache - organization profile created
       invalidateMemberContextCache();
 
@@ -412,6 +461,52 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       delete updates.featured; // Only admins can set featured
 
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
+
+      // Write user-reported org knowledge (fire-and-forget)
+      const knowledgeWrites: Promise<unknown>[] = [];
+      const userId = user.id;
+
+      if (updates.tagline) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'description',
+          value: updates.tagline,
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile update',
+        }));
+      }
+
+      if (updates.description) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'company_focus',
+          value: updates.description,
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile update',
+        }));
+      }
+
+      if (updates.offerings && Array.isArray(updates.offerings) && updates.offerings.length > 0) {
+        knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
+          workos_organization_id: targetOrgId,
+          attribute: 'interest',
+          value: updates.offerings.join(', '),
+          source: 'user_reported',
+          confidence: 'high',
+          set_by_user_id: userId,
+          set_by_description: 'Member profile offerings',
+        }));
+      }
+
+      if (knowledgeWrites.length > 0) {
+        Promise.all(knowledgeWrites).catch(err => {
+          logger.warn({ err, orgId: targetOrgId }, 'Failed to write profile data to org_knowledge');
+        });
+      }
 
       // Invalidate Addie's member context cache - organization profile updated
       invalidateMemberContextCache();

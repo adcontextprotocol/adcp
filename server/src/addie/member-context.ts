@@ -12,6 +12,7 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { JoinRequestDatabase } from '../db/join-request-db.js';
+import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
 import { logger } from '../logger.js';
@@ -25,6 +26,7 @@ const workingGroupDb = new WorkingGroupDatabase();
 const emailPrefsDb = new EmailPreferencesDatabase();
 const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
+const orgKnowledgeDb = new OrgKnowledgeDatabase();
 
 /**
  * Get pending content count for a user
@@ -190,6 +192,14 @@ export interface MemberContext {
     name: string;
     subscription_status: string | null;
     is_personal: boolean;
+  };
+
+  /** Persona classification for the organization */
+  persona?: {
+    persona: string;
+    aspiration_persona: string | null;
+    source: string;
+    journey_stage: string | null;
   };
 
   /** Member profile info (if organization has a profile) */
@@ -402,6 +412,7 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       activity,
       userWorkingGroups,
       emailPrefs,
+      personaKnowledge,
     ] = await Promise.all([
       // Step 5: Get organization details from local DB
       orgDb.getOrganization(organizationId).catch(error => {
@@ -436,6 +447,11 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
       // Step 11: Get email subscription preferences
       emailPrefsDb.getUserPreferencesByUserId(workosUserId).catch(error => {
         logger.warn({ error, workosUserId }, 'Addie: Failed to get email preferences');
+        return null;
+      }),
+      // Step 12: Get persona and journey stage
+      orgKnowledgeDb.resolveAttribute(organizationId, 'persona').catch(error => {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get persona');
         return null;
       }),
     ]);
@@ -516,6 +532,29 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         subscribed_categories: categoryPrefs.filter(c => c.enabled).map(c => c.category_name),
         unsubscribed_categories: categoryPrefs.filter(c => !c.enabled).map(c => c.category_name),
       };
+    }
+
+    // Process persona and journey stage
+    if (org) {
+      try {
+        const pool = getPool();
+        const personaResult = await pool.query(
+          `SELECT persona, aspiration_persona, persona_source, journey_stage
+           FROM organizations WHERE workos_organization_id = $1`,
+          [organizationId]
+        );
+        const pRow = personaResult.rows[0];
+        if (pRow?.persona) {
+          context.persona = {
+            persona: pRow.persona,
+            aspiration_persona: pRow.aspiration_persona,
+            source: pRow.persona_source,
+            journey_stage: pRow.journey_stage,
+          };
+        }
+      } catch (error) {
+        logger.warn({ error, organizationId }, 'Addie: Failed to get persona data');
+      }
     }
 
     // Community profile
@@ -768,7 +807,30 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
       logger.warn({ error, workosUserId }, 'Addie Web: Failed to get email preferences');
     }
 
-    // Step 10b: Community profile
+    // Get persona and journey stage
+    if (org) {
+      try {
+        const pool = getPool();
+        const personaResult = await pool.query(
+          `SELECT persona, aspiration_persona, persona_source, journey_stage
+           FROM organizations WHERE workos_organization_id = $1`,
+          [organizationId]
+        );
+        const pRow = personaResult.rows[0];
+        if (pRow?.persona) {
+          context.persona = {
+            persona: pRow.persona,
+            aspiration_persona: pRow.aspiration_persona,
+            source: pRow.persona_source,
+            journey_stage: pRow.journey_stage,
+          };
+        }
+      } catch (error) {
+        logger.warn({ error, organizationId }, 'Addie Web: Failed to get persona data');
+      }
+    }
+
+    // Community profile
     try {
       context.community_profile = await fetchCommunityProfile(workosUserId);
     } catch (error) {
@@ -920,6 +982,28 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
     if (context.member_profile.headquarters) {
       lines.push(`Company headquarters: ${context.member_profile.headquarters}`);
     }
+  }
+
+  // Persona and journey stage
+  if (context.persona) {
+    lines.push('');
+    lines.push('### Organization Persona');
+    const personaLabels: Record<string, string> = {
+      molecule_builder: 'Molecule Builder',
+      data_decoder: 'Data Decoder',
+      pureblood_protector: 'Pureblood Protector',
+      resops_integrator: 'ResOps Integrator',
+      ladder_climber: 'Ladder Climber',
+      simple_starter: 'Simple Starter',
+    };
+    lines.push(`Persona: ${personaLabels[context.persona.persona] || context.persona.persona}`);
+    if (context.persona.aspiration_persona) {
+      lines.push(`Aspiration: ${personaLabels[context.persona.aspiration_persona] || context.persona.aspiration_persona}`);
+    }
+    if (context.persona.journey_stage) {
+      lines.push(`Journey stage: ${context.persona.journey_stage}`);
+    }
+    lines.push(`Classification source: ${context.persona.source}`);
   }
 
   // Subscription details
