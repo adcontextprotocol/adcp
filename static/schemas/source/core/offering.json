@@ -53,6 +53,79 @@
       "format": "uri",
       "description": "Reference to a creative portfolio for this offering. Portfolios contain organized creative assets across formats, enabling consistent ad delivery for this specific offering."
     },
+    "geo_targets": {
+      "type": "object",
+      "description": "Geographic scope of this offering. Declares where the offering is relevant — for location-specific offerings such as job vacancies, in-store promotions, or local events. Platforms use this to target geographically appropriate audiences and to filter out offerings irrelevant to a user's location. Uses the same geographic structures as targeting_overlay in create_media_buy.",
+      "properties": {
+        "countries": {
+          "type": "array",
+          "description": "Countries where this offering is relevant. ISO 3166-1 alpha-2 codes (e.g., 'US', 'NL', 'DE').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "regions": {
+          "type": "array",
+          "description": "Regions or states where this offering is relevant. ISO 3166-2 subdivision codes (e.g., 'NL-NH', 'US-CA').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+          },
+          "minItems": 1
+        },
+        "metros": {
+          "type": "array",
+          "description": "Metro areas where this offering is relevant. Each entry specifies the classification system and target values.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "/schemas/enums/metro-system.json",
+                "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+              },
+              "values": {
+                "type": "array",
+                "description": "Metro codes within the system",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["system", "values"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "postal_areas": {
+          "type": "array",
+          "description": "Postal areas where this offering is relevant. Each entry specifies the postal system and target values.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "/schemas/enums/postal-system.json",
+                "description": "Postal code system (e.g., 'us_zip', 'de_plz')"
+              },
+              "values": {
+                "type": "array",
+                "description": "Postal codes within the system",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["system", "values"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "keywords": {
       "type": "array",
       "description": "Keywords for matching this offering to user intent. Hosts use these for retrieval/relevance scoring.",
@@ -109,6 +182,19 @@
         "valid_to": "2025-08-31T23:59:59Z",
         "landing_url": "https://brand.com/summer-sale",
         "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+      }
+    },
+    {
+      "description": "Location-specific offering with geo targets",
+      "data": {
+        "offering_id": "vacancy-amsterdam-chef-42",
+        "name": "Head Chef — Amsterdam",
+        "description": "Full-time head chef position at our Amsterdam location",
+        "landing_url": "https://careers.acme.com/vacancies/42",
+        "geo_targets": {
+          "countries": ["NL"],
+          "regions": ["NL-NH"]
+        }
       }
     },
     {

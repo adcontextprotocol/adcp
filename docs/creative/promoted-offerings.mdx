@@ -254,6 +254,14 @@ interface Offering {
   assets?: OfferingAssetGroup[];  // Structured asset groups
   portfolio_ref?: string;         // URL to creative portfolio
 
+  // Geographic scope
+  geo_targets?: {
+    countries?: string[];          // ISO 3166-1 alpha-2 codes
+    regions?: string[];            // ISO 3166-2 subdivision codes
+    metros?: { system: string; values: string[] }[];
+    postal_areas?: { system: string; values: string[] }[];
+  };
+
   // Discovery
   keywords?: string[];    // For intent matching
   categories?: string[];  // For categorization
@@ -272,6 +280,7 @@ interface Offering {
 | `landing_url` | uri | No | Landing page URL |
 | `assets` | OfferingAssetGroup[] | No | Structured asset groups for this offering |
 | `portfolio_ref` | uri | No | Reference to creative portfolio |
+| `geo_targets` | object | No | Geographic scope — where this offering is relevant |
 | `keywords` | string[] | No | Keywords for intent matching |
 | `categories` | string[] | No | Categories for filtering |
 
@@ -460,6 +469,52 @@ No pre-built creatives—just an SI agent for interactive experiences:
 }
 ```
 
+### Location-specific offerings
+
+For brands with multiple physical locations — restaurants, retail chains, job vacancies — each offering declares its own geographic scope via `geo_targets`. The publisher targets each offering to users in the right area and picks the most locally relevant one to show:
+
+```json
+{
+  "brand": { "domain": "acme-restaurants.com" },
+  "offerings": [
+    {
+      "offering_id": "vacancy-amsterdam-chef",
+      "name": "Head Chef — Amsterdam",
+      "description": "Full-time head chef at our Amsterdam flagship",
+      "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
+      "geo_targets": {
+        "countries": ["NL"],
+        "regions": ["NL-NH"]
+      },
+      "assets": [
+        {"asset_group_id": "headlines", "asset_type": "text", "items": [
+          {"content": "Head Chef Wanted in Amsterdam"},
+          {"content": "Join Our Amsterdam Kitchen Team"}
+        ]}
+      ]
+    },
+    {
+      "offering_id": "vacancy-rotterdam-manager",
+      "name": "Restaurant Manager — Rotterdam",
+      "description": "Managing our Rotterdam location",
+      "landing_url": "https://careers.acme-restaurants.com/vacancies/42",
+      "geo_targets": {
+        "countries": ["NL"],
+        "regions": ["NL-ZH"]
+      },
+      "assets": [
+        {"asset_group_id": "headlines", "asset_type": "text", "items": [
+          {"content": "Restaurant Manager in Rotterdam"},
+          {"content": "Lead Our Rotterdam Team"}
+        ]}
+      ]
+    }
+  ]
+}
+```
+
+Geo targets on offerings are about what the offering IS — the Amsterdam vacancy genuinely doesn't exist for someone in Rotterdam. Platforms use `geo_targets` to filter offerings down to the one geographically relevant to each user before selecting the best creative combination.
+
 ### Multiple time-limited offers with SI
 
 ```json
@@ -590,7 +645,24 @@ For time-limited promotions, always set `valid_from` and `valid_to`. Hosts filte
 }
 ```
 
-### 6. Provide both destination URLs when applicable
+### 6. Use `geo_targets` for inherently location-specific offerings
+
+When an offering's identity is tied to a geographic location — a job vacancy, an in-store promotion, a local event — declare its scope with `geo_targets`. This is not ad targeting; it's a property of what the offering IS. The publisher uses it to serve the right offering to the right user and to exclude offerings irrelevant to a user's location:
+
+```json
+{
+  "offering_id": "store-promo-berlin",
+  "name": "Berlin Store Opening",
+  "geo_targets": {
+    "countries": ["DE"],
+    "regions": ["DE-BE"]
+  }
+}
+```
+
+Campaign-wide geo targeting (e.g., run this campaign only in Germany) belongs on `targeting_overlay` in the package, not on individual offerings.
+
+### 7. Provide both destination URLs when applicable
 
 Include both `checkout_url` (for direct conversion) and `landing_url` (for information):
 
