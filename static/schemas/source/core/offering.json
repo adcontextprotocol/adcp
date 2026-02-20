@@ -43,11 +43,9 @@
     },
     "assets": {
       "type": "array",
-      "description": "Assets specific to this offering (images, videos, copy)",
+      "description": "Structured asset groups for this offering. Each group carries a typed pool of creative assets (headlines, images, videos, etc.) identified by a group ID that matches format-level vocabulary.",
       "items": {
-        "type": "object",
-        "description": "Asset definition using standard asset structure",
-        "additionalProperties": true
+        "$ref": "/schemas/core/offering-asset-group.json"
       }
     },
     "portfolio_ref": {
@@ -114,16 +112,35 @@
       }
     },
     {
-      "description": "Offering with inline assets",
+      "description": "Offering with structured asset groups",
       "data": {
-        "offering_id": "product-launch",
-        "name": "New Product Launch",
-        "description": "Introducing our latest innovation",
+        "offering_id": "summer-sale",
+        "name": "Summer Sale",
+        "description": "Up to 50% off summer collection",
+        "landing_url": "https://acme.com/summer",
         "assets": [
           {
-            "asset_id": "launch-hero",
+            "asset_group_id": "headlines",
+            "asset_type": "text",
+            "items": [
+              {"content": "Shop the Summer Sale"},
+              {"content": "50% Off Everything"},
+              {"content": "Summer Savings Event"}
+            ]
+          },
+          {
+            "asset_group_id": "images_landscape",
             "asset_type": "image",
-            "url": "https://cdn.brand.com/launch-hero.jpg"
+            "items": [
+              {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+            ]
+          },
+          {
+            "asset_group_id": "images_square",
+            "asset_type": "image",
+            "items": [
+              {"url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+            ]
           }
         ]
       }

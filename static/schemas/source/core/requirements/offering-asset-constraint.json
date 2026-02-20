@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/requirements/offering-asset-constraint.json",
+  "title": "Offering Asset Constraint",
+  "description": "Declares per-group creative requirements that each offering must satisfy. Allows formats to specify what asset groups (headlines, images, videos) offerings must provide, along with count and per-asset technical constraints.",
+  "type": "object",
+  "properties": {
+    "asset_group_id": {
+      "type": "string",
+      "description": "The asset group this constraint applies to (e.g., 'headlines', 'descriptions', 'images_landscape', 'images_square', 'videos_portrait')."
+    },
+    "asset_type": {
+      "$ref": "/schemas/enums/asset-content-type.json",
+      "description": "The expected content type for this group."
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this asset group must be present in each offering. Defaults to true.",
+      "default": true
+    },
+    "min_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of items required in this group."
+    },
+    "max_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of items allowed in this group."
+    },
+    "asset_requirements": {
+      "$ref": "/schemas/core/requirements/asset-requirements.json",
+      "description": "Technical requirements for each item in this group (e.g., max_length for text, min_width/aspect_ratio for images). Applies uniformly to all items in the group."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["asset_group_id", "asset_type"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Headline constraint with count bounds",
+      "data": {
+        "asset_group_id": "headlines",
+        "asset_type": "text",
+        "required": true,
+        "min_count": 3,
+        "max_count": 15
+      }
+    },
+    {
+      "description": "Landscape image constraint with count bounds",
+      "data": {
+        "asset_group_id": "images_landscape",
+        "asset_type": "image",
+        "required": true,
+        "min_count": 1,
+        "max_count": 20
+      }
+    }
+  ]
+}

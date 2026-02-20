@@ -1,126 +1,198 @@
 ---
 title: Promoted Offerings
-description: The unified schema that connects brand identity, products, creative assets, and conversational AI experiences
+description: Structured brand and offering data that publishers use to assemble ads — multiple campaigns each with their own creative pool, business context, and optional conversational AI experience
 keywords: [promoted offerings, offerings, campaigns, SI, sponsored intelligence, brand identity]
 ---
 
-**Promoted Offerings** is the core schema that unifies everything a brand wants to promote. It connects:
+A traditional creative asset is a finished ad: one image, one video, one message. **Promoted Offerings** is different — it's a structured brief that carries everything a publisher needs to compose the right ad for each impression.
 
-- **Brand identity** (who's promoting)
-- **Products/offerings** (what's being promoted)
-- **Creative assets** (how it's visually presented)
-- **Conversational AI** (how users can interact)
+The buyer provides:
 
-This is the schema that bridges traditional advertising (creatives, media buys) with conversational commerce (Sponsored Intelligence).
+- **Brand identity** — who's advertising, their logos, colors, tone
+- **Multiple offerings** — each a distinct campaign, product, or promotion with its own name, validity window, landing URL, and keywords
+- **Per-offering creative pools** — each offering carries its own headlines, images, and videos; the publisher selects the best combination at serve time
+- **Optional SI agent** — if the brand supports conversational experiences, any offering can escalate to a live chat with the brand agent
 
-## Overview
+The key distinction from a simple asset pool: each offering is a *semantic unit*. It has a name, a validity window, keywords for intent matching, a destination URL, and its own creative assets. The publisher can serve the offering most relevant to a given user, not just pick from a flat list of files. When a user engages beyond the ad, the same offering can trigger an SI session.
 
-A promoted offering answers four questions:
+This makes `promoted_offerings` the right choice when:
 
-| Question | Field | Purpose |
-|----------|-------|---------|
-| **Who?** | `brand` | Brand identity, logos, colors, tone |
-| **What?** | `offerings` / `product_selectors` | Products, promotions, campaigns to promote |
-| **How (visual)?** | `asset_selectors` / offering `assets` | Creative assets for traditional ad formats |
-| **How (conversational)?** | `si_agent_url` | AI agent endpoint for interactive experiences |
+- You're running a universal format (PMax-style) where the publisher assembles the creative
+- The brand has multiple promotions and you want the publisher to pick the most relevant one
+- The brand supports conversational experiences alongside traditional ad serving
+- You want creative performance optimization without managing hundreds of individual creative variants
+
+For formats that don't use `promoted_offerings` as a creative asset, attach basic brand context to a campaign via the `brand` field on `create_media_buy`.
+
+## How it works in a media buy
+
+When a format lists a `promoted_offerings` asset in its definition, the buying agent submits the `PromotedOfferings` object as the value for that asset key in a creative manifest via `sync_creatives`:
 
 ```json
 {
-  "brand": {
-    "domain": "brand.com"
-  },
-  "si_agent_url": "https://agent.brand.com/mcp",
-  "offerings": [
+  "creatives": [
     {
-      "offering_id": "summer-sale",
-      "name": "Summer Sale",
-      "description": "50% off summer collection",
-      "valid_to": "2025-08-31T23:59:59Z",
-      "checkout_url": "https://brand.com/summer"
-    }
-  ]
-}
-```
-
-## When to Use Promoted Offerings
-
-### Campaign Creation
-
-When creating a media buy, include promoted offerings to specify what's being advertised:
-
-```json
-{
-  "buyer_ref": "q2-awareness",
-  "promoted_offerings": {
-    "brand": {
-      "domain": "acme.com"
-    },
-    "offerings": [
-      {
-        "offering_id": "new-product-launch",
-        "name": "Widget Pro Launch",
-        "landing_url": "https://acme.com/widget-pro"
+      "creative_id": "summer-sale-universal",
+      "name": "Summer Sale — Universal Format",
+      "format_id": {
+        "agent_url": "https://publisher.example/adcp",
+        "id": "universal_multi_channel"
+      },
+      "assets": {
+        "promoted_offerings": {
+          "brand": { "domain": "acme.com" },
+          "offerings": [
+            {
+              "offering_id": "summer-sale",
+              "name": "Summer Sale",
+              "landing_url": "https://acme.com/summer",
+              "assets": [
+                {
+                  "asset_group_id": "headlines",
+                  "asset_type": "text",
+                  "items": [
+                    {"content": "Shop the Summer Sale"},
+                    {"content": "50% Off Everything"},
+                    {"content": "Summer Savings Event"}
+                  ]
+                },
+                {
+                  "asset_group_id": "images_landscape",
+                  "asset_type": "image",
+                  "items": [
+                    {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       }
-    ]
-  },
-  "packages": [...]
+    }
+  ]
 }
 ```
 
-### Conversational Commerce
+The publisher picks which offering to show and selects the best headline/image/video combination from within each offering's asset groups.
 
-When the brand has an SI agent, users can have conversations about any of the offerings:
+## Buying platform workflow
+
+### Step 1: Discover format requirements
+
+Call `list_creative_formats` and look for formats with a `promoted_offerings` asset. The asset's `requirements` field tells you exactly what each offering must provide.
 
 ```json
 {
-  "brand": {
-    "domain": "delta.com"
-  },
-  "si_agent_url": "https://agent.delta.com/mcp",
-  "offerings": [
+  "assets": [
     {
-      "offering_id": "boston-routes",
-      "name": "Boston Flights",
-      "description": "Direct flights BOS-LAX, BOS-SFO, BOS-SEA",
-      "keywords": ["boston", "flights", "direct", "east coast"]
+      "item_type": "individual",
+      "asset_id": "promoted_offerings",
+      "asset_type": "promoted_offerings",
+      "required": true,
+      "requirements": {
+        "requires": ["offerings", "offerings.assets", "offerings.landing_url", "brand.logos"],
+        "offering_asset_constraints": [
+          {
+            "asset_group_id": "headlines",
+            "asset_type": "text",
+            "required": true,
+            "min_count": 3,
+            "max_count": 15,
+            "asset_requirements": {"max_length": 30}
+          },
+          {
+            "asset_group_id": "descriptions",
+            "asset_type": "text",
+            "required": true,
+            "min_count": 2,
+            "max_count": 5,
+            "asset_requirements": {"max_length": 90}
+          },
+          {
+            "asset_group_id": "images_landscape",
+            "asset_type": "image",
+            "required": true,
+            "min_count": 1,
+            "max_count": 20,
+            "asset_requirements": {"aspect_ratio": "1.91:1", "min_width": 1200, "min_height": 628}
+          },
+          {
+            "asset_group_id": "images_square",
+            "asset_type": "image",
+            "required": true,
+            "min_count": 1,
+            "max_count": 20,
+            "asset_requirements": {"aspect_ratio": "1:1", "min_width": 600, "min_height": 600}
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+### Step 2: Build conformant offerings
+
+For each offering, provide asset groups matching the format's `offering_asset_constraints`. The `asset_group_id` values must match exactly what the format declares.
+
+```json
+{
+  "offering_id": "summer-sale",
+  "name": "Summer Sale",
+  "landing_url": "https://acme.com/summer",
+  "assets": [
+    {
+      "asset_group_id": "headlines",
+      "asset_type": "text",
+      "items": [
+        {"content": "Shop the Summer Sale"},
+        {"content": "50% Off Everything"},
+        {"content": "Summer Savings Event"}
+      ]
     },
     {
-      "offering_id": "skymiles-promo",
-      "name": "Double Miles Promotion",
-      "description": "Earn 2x SkyMiles on all flights booked this month",
-      "valid_to": "2025-02-28T23:59:59Z"
+      "asset_group_id": "descriptions",
+      "asset_type": "text",
+      "items": [
+        {"content": "Up to 50% off our entire summer collection. Limited time only."}
+      ]
+    },
+    {
+      "asset_group_id": "images_landscape",
+      "asset_type": "image",
+      "items": [
+        {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628},
+        {"url": "https://cdn.acme.com/hero2.jpg", "width": 1200, "height": 628}
+      ]
+    },
+    {
+      "asset_group_id": "images_square",
+      "asset_type": "image",
+      "items": [
+        {"url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+      ]
     }
   ]
 }
 ```
 
-When a user expresses interest ("I need a flight to Boston"), the host can:
-1. Match the intent to a relevant offering using `keywords`
-2. Get offering details and matching products via `si_get_offering`
-3. Initiate an SI session with the brand agent, passing the `offering_id`
+### Step 3: Submit via sync_creatives
 
-### Hybrid: Creatives + Conversation
+Wrap the `PromotedOfferings` object as the value for the format's `promoted_offerings` asset key in the creative manifest. The publisher validates the asset groups against its constraints before accepting the creative.
 
-Offerings can include both creative assets for traditional ads AND be available for SI conversations:
+### Conversational experiences
+
+If the brand has an SI agent, add `si_agent_url` to the `PromotedOfferings` object. This enables the publisher to initiate SI sessions when users want to interact with an offering rather than just view an ad:
 
 ```json
 {
-  "brand": {
-    "domain": "brand.com"
-  },
+  "brand": { "domain": "brand.com" },
   "si_agent_url": "https://agent.brand.com/mcp",
-  "offerings": [
-    {
-      "offering_id": "summer-campaign",
-      "name": "Summer Sale",
-      "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
-      "landing_url": "https://brand.com/summer"
-    }
-  ]
+  "offerings": [...]
 }
 ```
 
-The `portfolio_ref` provides creative assets for display/video ads, while `si_agent_url` enables conversational experiences when users want to learn more.
+The `si_agent_url` and asset-pool creatives can coexist: the same offering can serve a display ad and also be available for a conversational experience.
 
 ## Schema Reference
 
@@ -178,8 +250,8 @@ interface Offering {
   landing_url?: string;   // Information page
 
   // Creative assets
-  assets?: Asset[];           // Inline assets
-  portfolio_ref?: string;     // URL to creative portfolio
+  assets?: OfferingAssetGroup[];  // Structured asset groups
+  portfolio_ref?: string;         // URL to creative portfolio
 
   // Discovery
   keywords?: string[];    // For intent matching
@@ -197,10 +269,30 @@ interface Offering {
 | `valid_to` | datetime | No | When offering expires |
 | `checkout_url` | uri | No | URL for purchase flow |
 | `landing_url` | uri | No | Landing page URL |
-| `assets` | Asset[] | No | Offering-specific creative assets |
+| `assets` | OfferingAssetGroup[] | No | Structured asset groups for this offering |
 | `portfolio_ref` | uri | No | Reference to creative portfolio |
 | `keywords` | string[] | No | Keywords for intent matching |
 | `categories` | string[] | No | Categories for filtering |
+
+### OfferingAssetGroup
+
+**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/v2/core/offering-asset-group.json)
+
+A typed pool of creative assets within an offering. Uses the same `asset_group_id` vocabulary as format-level asset definitions, enabling formats to declare per-group constraints on what each offering must provide.
+
+```typescript
+interface OfferingAssetGroup {
+  asset_group_id: string;        // e.g., 'headlines', 'images_landscape', 'videos_portrait'
+  asset_type: AssetContentType;  // Type of all items in this group
+  items: Asset[];                // The assets (must match asset_type)
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset_group_id` | string | Yes | Matches format-level vocabulary (e.g., `headlines`, `descriptions`, `images_landscape`) |
+| `asset_type` | AssetContentType | Yes | Content type of all items in this group |
+| `items` | Asset[] | Yes | The assets; each item must match the declared `asset_type` |
 
 ### Product Selectors
 
@@ -258,34 +350,71 @@ interface AssetSelectors {
 
 ## Use Cases
 
-### Traditional Creative Campaign
+### Universal format (asset pool)
 
-No SI agent—just brand identity and asset selection for traditional ad serving:
+The buyer provides multiple offerings, each with their own creative asset pool. The publisher picks the most relevant offering and assembles the best headline/image combination:
 
 ```json
 {
-  "brand": {
-    "domain": "bobsburgers.com"
-  },
-  "product_selectors": {
-    "manifest_skus": ["BURGER-001", "BURGER-002"]
-  },
-  "asset_selectors": {
-    "tags": ["summer-menu"],
-    "asset_types": ["image", "video"]
-  }
+  "brand": { "domain": "acme.com" },
+  "offerings": [
+    {
+      "offering_id": "summer-sale",
+      "name": "Summer Sale",
+      "landing_url": "https://acme.com/summer",
+      "assets": [
+        {"asset_group_id": "headlines", "asset_type": "text", "items": [
+          {"content": "Shop the Summer Sale"},
+          {"content": "50% Off Everything"}
+        ]},
+        {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+          {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
+        ]}
+      ]
+    },
+    {
+      "offering_id": "new-arrivals",
+      "name": "New Arrivals",
+      "landing_url": "https://acme.com/new",
+      "assets": [
+        {"asset_group_id": "headlines", "asset_type": "text", "items": [
+          {"content": "Just Arrived"},
+          {"content": "New This Week"}
+        ]},
+        {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+          {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
+        ]}
+      ]
+    }
+  ]
 }
 ```
 
-### Conversational-Only Experience
+### Pre-built creatives with brand context
 
-SI agent without traditional creative assets—pure conversational commerce:
+For traditional format types (display banners, video), use `portfolio_ref` to point to pre-built creative variants rather than providing an asset pool:
 
 ```json
 {
-  "brand": {
-    "domain": "saas-company.com"
-  },
+  "brand": { "domain": "brand.com" },
+  "offerings": [
+    {
+      "offering_id": "summer-campaign",
+      "name": "Summer Sale",
+      "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
+      "landing_url": "https://brand.com/summer"
+    }
+  ]
+}
+```
+
+### Conversational-only
+
+No pre-built creatives—just an SI agent for interactive experiences:
+
+```json
+{
+  "brand": { "domain": "saas-company.com" },
   "si_agent_url": "https://agent.saas-company.com/mcp",
   "offerings": [
     {
@@ -297,7 +426,6 @@ SI agent without traditional creative assets—pure conversational commerce:
     {
       "offering_id": "free-trial",
       "name": "14-Day Free Trial",
-      "description": "Try all features free for 14 days",
       "checkout_url": "https://saas-company.com/signup",
       "keywords": ["trial", "free", "signup"]
     }
@@ -305,15 +433,11 @@ SI agent without traditional creative assets—pure conversational commerce:
 }
 ```
 
-### Multi-Offer Campaign with SI
-
-Multiple time-limited offers, all accessible via conversation:
+### Multiple time-limited offers with SI
 
 ```json
 {
-  "brand": {
-    "domain": "airline.com"
-  },
+  "brand": { "domain": "airline.com" },
   "si_agent_url": "https://agent.airline.com/mcp",
   "offerings": [
     {
@@ -340,19 +464,19 @@ Multiple time-limited offers, all accessible via conversation:
 
 When `si_agent_url` is present, hosts can initiate SI sessions. The `offering_id` connects the conversation to a specific offering:
 
-### 1. User Expresses Intent
+### 1. User expresses intent
 
 ```
 User: "I need flights to LA next week"
 ```
 
-### 2. Host Matches to Offering
+### 2. Host matches to offering
 
 Host uses `keywords` to find relevant offerings:
 - "flash-sale-LAX" matches "LA" keyword
 - Check `valid_from`/`valid_to` to confirm offering is active
 
-### 3. Host Initiates SI Session
+### 3. Host initiates SI session
 
 ```json
 {
@@ -362,9 +486,7 @@ Host uses `keywords` to find relevant offerings:
 }
 ```
 
-### 4. Brand Agent Responds with Context
-
-The brand agent knows which offering is active and can personalize the response:
+### 4. Brand agent responds with context
 
 ```json
 {
@@ -377,7 +499,6 @@ The brand agent knows which offering is active and can personalize the response:
         "data": {
           "title": "LA Flash Sale",
           "price": "From $99",
-          "badge": "Limited Time",
           "cta": { "label": "Search Flights", "action": "search" }
         }
       }
@@ -388,7 +509,36 @@ The brand agent knows which offering is active and can personalize the response:
 
 ## Best Practices
 
-### 1. Use Keywords for Discovery
+### 1. Match `asset_group_id` to the format's vocabulary
+
+Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in its `offering_asset_constraints`. A format that requires `images_landscape` will not match a group named `landscape_image`.
+
+### 2. Provide more assets than the minimum
+
+Formats that use asset pools select the best-performing combination. Providing the maximum allowed items gives the publisher more to work with:
+
+```json
+{
+  "asset_group_id": "headlines",
+  "asset_type": "text",
+  "items": [
+    {"content": "Shop the Summer Sale"},
+    {"content": "50% Off Everything"},
+    {"content": "Summer Savings Event"},
+    {"content": "Limited Time Offer"},
+    {"content": "Free Shipping This Week"}
+  ]
+}
+```
+
+### 3. Use `assets` for universal formats, `portfolio_ref` for traditional formats
+
+- **`assets`**: provide when the format assembles the creative from your asset pool (universal/PMax-style formats)
+- **`portfolio_ref`**: provide when the creative is pre-built and the publisher picks a matching size/duration
+
+These can coexist on the same offering if you're running across both format types.
+
+### 4. Use keywords for SI discovery
 
 Include relevant keywords so hosts can match user intent to offerings:
 
@@ -396,16 +546,13 @@ Include relevant keywords so hosts can match user intent to offerings:
 {
   "offering_id": "carbon-measurement",
   "name": "Carbon Measurement Platform",
-  "keywords": [
-    "carbon", "sustainability", "emissions",
-    "ESG", "scope 3", "carbon footprint", "green"
-  ]
+  "keywords": ["carbon", "sustainability", "emissions", "ESG", "scope 3"]
 }
 ```
 
-### 2. Set Validity Windows
+### 5. Set validity windows
 
-For time-limited promotions, always set `valid_from` and `valid_to`:
+For time-limited promotions, always set `valid_from` and `valid_to`. Hosts filter expired offerings:
 
 ```json
 {
@@ -416,9 +563,7 @@ For time-limited promotions, always set `valid_from` and `valid_to`:
 }
 ```
 
-Hosts can filter expired offers and avoid showing stale promotions.
-
-### 3. Provide Both URLs When Applicable
+### 6. Provide both destination URLs when applicable
 
 Include both `checkout_url` (for direct conversion) and `landing_url` (for information):
 
@@ -430,20 +575,10 @@ Include both `checkout_url` (for direct conversion) and `landing_url` (for infor
 }
 ```
 
-### 4. Use Portfolio References for Large Asset Libraries
-
-For offerings with many creative variants, use `portfolio_ref` instead of inline `assets`:
-
-```json
-{
-  "offering_id": "holiday-campaign",
-  "portfolio_ref": "https://cdn.brand.com/portfolios/holiday-2025.json"
-}
-```
-
 ## Related Documentation
 
 - **[Brand identity](/docs/brand-protocol/brand-json)** - Brand identity and assets
 - **[SI Overview](/docs/sponsored-intelligence/overview)** - Conversational brand experiences
 - **[SI Session Lifecycle](/docs/sponsored-intelligence/specification)** - How SI sessions work
-- **[create_media_buy](/docs/media-buy/task-reference/create_media_buy)** - Using promoted offerings in campaigns
+- **[sync_creatives](/docs/creative/task-reference/sync_creatives)** - Submitting creative manifests
+- **[list_creative_formats](/docs/creative/task-reference/list_creative_formats)** - Discovering format requirements
