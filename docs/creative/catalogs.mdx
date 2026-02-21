@@ -379,7 +379,6 @@ interface Offering {
 
   // Creative assets
   assets?: OfferingAssetGroup[];  // Structured asset groups
-  portfolio_ref?: string;         // URL to creative portfolio
 
   // Geographic scope
   geo_targets?: {
@@ -406,7 +405,6 @@ interface Offering {
 | `checkout_url` | uri | No | URL for purchase flow |
 | `landing_url` | uri | No | Landing page URL |
 | `assets` | OfferingAssetGroup[] | No | Structured asset groups for this offering |
-| `portfolio_ref` | uri | No | Reference to creative portfolio |
 | `geo_targets` | object | No | Geographic scope — where this offering is relevant |
 | `keywords` | string[] | No | Keywords for intent matching |
 | `categories` | string[] | No | Categories for filtering |
@@ -738,27 +736,6 @@ For retail media, sync product and inventory feeds, then reference them in creat
 
 The publisher assembles the creative from the synced product data and real-time inventory.
 
-### Pre-built creatives with brand context
-
-For traditional formats (display banners, video), use `portfolio_ref` to point to pre-built creative variants:
-
-```json
-{
-  "brand": { "domain": "brand.com" },
-  "catalog": {
-    "type": "offering",
-    "items": [
-      {
-        "offering_id": "summer-campaign",
-        "name": "Summer Sale",
-        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
-        "landing_url": "https://brand.com/summer"
-      }
-    ]
-  }
-}
-```
-
 ### Conversational-only
 
 No pre-built creatives — just offerings available for SI conversations. The brand's SI agent URL is discovered from the [brand identity](/docs/brand-protocol/brand-json):
@@ -827,13 +804,6 @@ Read the format definition from `list_creative_formats` before building offering
 ### Provide more assets than the minimum
 
 Formats that use asset pools select the best-performing combination. Providing the maximum allowed items gives the publisher more to work with.
-
-### Use `assets` for universal formats, `portfolio_ref` for traditional formats
-
-- **`assets`**: provide when the format assembles the creative from your asset pool (universal/PMax-style formats)
-- **`portfolio_ref`**: provide when the creative is pre-built and the publisher picks a matching size/duration
-
-These can coexist on the same offering.
 
 ### Set validity windows
 

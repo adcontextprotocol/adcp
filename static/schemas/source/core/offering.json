@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/offering.json",
   "title": "Offering",
-  "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings can be promoted via traditional creatives (using portfolio_ref or assets) or conversational SI experiences (via the brand's SI agent).",
+  "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings carry structured asset groups for creative assembly and can be promoted via traditional creatives or conversational SI experiences (via the brand's SI agent).",
   "type": "object",
   "properties": {
     "offering_id": {
@@ -47,11 +47,6 @@
       "items": {
         "$ref": "/schemas/core/offering-asset-group.json"
       }
-    },
-    "portfolio_ref": {
-      "type": "string",
-      "format": "uri",
-      "description": "Reference to a creative portfolio for this offering. Portfolios contain organized creative assets across formats, enabling consistent ad delivery for this specific offering."
     },
     "geo_targets": {
       "type": "object",
@@ -170,18 +165,6 @@
         "landing_url": "https://thetradedesk.com/enterprise",
         "keywords": ["dsp", "programmatic", "rtb", "ctv"],
         "categories": ["programmatic", "dsp"]
-      }
-    },
-    {
-      "description": "Offering with creative portfolio",
-      "data": {
-        "offering_id": "summer-sale-2025",
-        "name": "Summer Sale",
-        "description": "Up to 50% off summer collection",
-        "valid_from": "2025-06-01T00:00:00Z",
-        "valid_to": "2025-08-31T23:59:59Z",
-        "landing_url": "https://brand.com/summer-sale",
-        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
       }
     },
     {
