@@ -80,7 +80,7 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie } from './thread-utils.js';
+import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan } from './router.js';
 import {
@@ -2637,16 +2637,20 @@ async function handleChannelMessage({
     );
 
     if (participated) {
-      // When multiple humans are in the thread, only respond if the message
-      // is clearly directed at Addie (mentions her name, or replies to her).
-      if (isMultiPartyThread(slackThreadMessages, context.botUserId, userId)
-          && !isDirectedAtAddie(messageText, slackThreadMessages, event.ts, userId, context.botUserId)) {
+      // Skip if the message is not directed at Addie. In multi-party threads this
+      // prevents butting into human-to-human conversation. In single-party threads
+      // we still skip when the message explicitly starts with a @mention of someone
+      // else (e.g. "@Christina know anything about this?").
+      const multiParty = isMultiPartyThread(slackThreadMessages, context.botUserId, userId);
+      const directedAtAddie = isDirectedAtAddie(messageText, slackThreadMessages, event.ts, userId, context.botUserId);
+      const addressedToOther = isAddressedToAnotherUser(messageText, context.botUserId);
+      if (!directedAtAddie && (multiParty || addressedToOther)) {
         const uniqueHumans = new Set(
           slackThreadMessages.map(msg => msg.user).filter(u => u && u !== context.botUserId)
         ).size;
         logger.info(
-          { channelId, userId, threadTs: threadTsForCheck, uniqueHumans },
-          'Addie Bolt: Skipping auto-response in multi-party thread (message not directed at Addie)'
+          { channelId, userId, threadTs: threadTsForCheck, uniqueHumans, multiParty, addressedToOther },
+          'Addie Bolt: Skipping auto-response in thread (message not directed at Addie)'
         );
         return;
       }
@@ -2701,6 +2705,7 @@ async function handleChannelMessage({
       isThread: isInThread,
       memberInsights,
       isAAOAdmin: isAdminForRouting,
+      channelName: channelContext?.viewing_channel_name,
     };
 
     // Quick match first (no API call for obvious cases)
