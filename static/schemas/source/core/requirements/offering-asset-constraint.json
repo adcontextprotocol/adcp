@@ -7,7 +7,7 @@
   "properties": {
     "asset_group_id": {
       "type": "string",
-      "description": "The asset group this constraint applies to (e.g., 'headlines', 'descriptions', 'images_landscape', 'images_square', 'videos_portrait')."
+      "description": "The asset group this constraint applies to. Values are format-defined vocabulary — each format chooses its own group IDs (e.g., 'headlines', 'images', 'videos'). Buyers discover them via list_creative_formats."
     },
     "asset_type": {
       "$ref": "/schemas/enums/asset-content-type.json",

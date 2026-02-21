@@ -11,7 +11,7 @@
     },
     "catalog": {
       "$ref": "/schemas/core/catalog.json",
-      "description": "Catalog of items this creative promotes. Used for dynamic product ads, carousels, and any format that renders catalog items. The catalog can be inline (with items), a reference to a synced catalog (by catalog_id), or a URL to an external feed."
+      "description": "Catalog of items this creative renders. Tells the creative what data to display — product listings for a carousel, job vacancies for a recruitment ad, store locations for a locator. This is a data reference, not a campaign expansion directive; campaign structure and budget allocation are handled by create_media_buy packages. The catalog can be inline (with items), a reference to a synced catalog (by catalog_id), or a URL to an external feed."
     },
     "assets": {
       "type": "object",

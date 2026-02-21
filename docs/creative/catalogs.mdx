@@ -317,7 +317,9 @@ Buying agents check `catalog_requirements` after discovering formats, sync the r
 
 ## Catalogs in creatives
 
-Creatives reference catalogs via the `catalog` field on the creative object. When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalog` field on the creative to reference the synced data.
+Creatives reference catalogs via the `catalog` field on the creative object. This is a data reference — it tells the creative what items to render (products for a carousel, locations for a store locator). It is not a campaign expansion directive; campaign structure and budget allocation are handled by `create_media_buy` packages.
+
+When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalog` field on the creative to reference the synced data.
 
 ### Workflow
 
@@ -403,7 +405,7 @@ interface Offering {
 | `valid_from` | datetime | No | When offering becomes available |
 | `valid_to` | datetime | No | When offering expires |
 | `checkout_url` | uri | No | URL for purchase flow |
-| `landing_url` | uri | No | Landing page URL |
+| `landing_url` | uri | No | Per-item click-through URL. For catalog-driven formats, this is the destination platforms map to the ad's link-out. Every offering should have one. |
 | `assets` | OfferingAssetGroup[] | No | Structured asset groups for this offering |
 | `geo_targets` | object | No | Geographic scope — where this offering is relevant |
 | `keywords` | string[] | No | Keywords for intent matching |
@@ -799,7 +801,7 @@ Geo targets on offerings are about what the offering IS — the Amsterdam vacanc
 
 ### Match `asset_group_id` to the format's vocabulary
 
-Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in its `offering_asset_constraints`.
+Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in its `offering_asset_constraints`. Group IDs like `headlines`, `images`, or `videos` are format-defined vocabulary, not protocol constants — each format chooses its own IDs. The protocol provides the container and constraint mechanism; the format defines the vocabulary.
 
 ### Provide more assets than the minimum
 
@@ -813,9 +815,13 @@ For time-limited promotions, always set `valid_from` and `valid_to`. Publishers 
 
 When an offering's identity is tied to a geographic location — a job vacancy, an in-store promotion, a local event — declare its scope with `geo_targets`. This is not ad targeting; it's a property of what the offering IS.
 
-### Provide both destination URLs when applicable
+### Always provide `landing_url` on catalog offerings
 
-Include both `checkout_url` (for direct conversion) and `landing_url` (for information).
+For catalog-driven creatives, `landing_url` is the per-item click-through destination that platforms map to the ad's link-out URL (swipe-up, CTA button, carousel card link). Every offering in a catalog should have a `landing_url`. Include `checkout_url` as well when direct conversion is supported.
+
+### Budget distribution across catalog items
+
+Budget allocation across catalog items is a platform optimization decision — some platforms distribute evenly, others allocate based on performance signals. The protocol does not prescribe a specific distribution method. Budget lives on `create_media_buy` packages, not on individual offerings. If your campaign requires specific per-item budget caps, use separate packages per offering.
 
 ## Related documentation
 

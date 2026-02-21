@@ -39,7 +39,7 @@
     "landing_url": {
       "type": "string",
       "format": "uri",
-      "description": "Landing page URL for this offering."
+      "description": "Landing page URL for this offering. For catalog-driven creatives, this is the per-item click-through destination that platforms map to the ad's link-out URL. Every offering in a catalog should have a landing_url unless the format provides its own destination logic."
     },
     "assets": {
       "type": "array",
