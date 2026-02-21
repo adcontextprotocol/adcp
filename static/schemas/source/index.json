@@ -140,7 +140,11 @@
         },
         "offering": {
           "$ref": "/schemas/core/offering.json",
-          "description": "A promotable offering from a brand with optional SI endpoint for conversational experiences"
+          "description": "A promotable offering from a brand with structured asset groups and optional conversational SI experiences"
+        },
+        "offering-asset-group": {
+          "$ref": "/schemas/core/offering-asset-group.json",
+          "description": "A structured group of creative assets within an offering, identified by group ID and asset type"
         },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
@@ -353,6 +357,10 @@
           "catalog-requirements": {
             "$ref": "/schemas/core/requirements/catalog-requirements.json",
             "description": "Format-level declaration of what catalog feeds a creative requires"
+          },
+          "offering-asset-constraint": {
+            "$ref": "/schemas/core/requirements/offering-asset-constraint.json",
+            "description": "Per-group creative requirements that each offering must satisfy within a catalog"
           },
           "webhook-asset-requirements": {
             "$ref": "/schemas/core/requirements/webhook-asset-requirements.json",
