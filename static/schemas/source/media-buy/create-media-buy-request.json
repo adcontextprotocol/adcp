@@ -9,6 +9,10 @@
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
     },
+    "campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+    },
     "account_id": {
       "type": "string",
       "description": "Account to bill for this media buy. Required when the agent has access to multiple accounts; when omitted, the seller uses the agent's sole account. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."

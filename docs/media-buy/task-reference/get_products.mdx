@@ -123,6 +123,7 @@ asyncio.run(discover_with_filters())
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
+| `campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `product_selectors` | ProductSelectors | No | Selectors to filter the brand's product catalog. Requires `brand`. See [Product Selectors](#product-selectors) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
