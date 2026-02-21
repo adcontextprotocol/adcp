@@ -334,15 +334,26 @@ The user is NOT an admin.
 - Billing questions (invoices, payments, membership fees, pricing) → respond with [] (no tools). Use escalate_to_admin (always available regardless of tool set) to create a support ticket on their behalf. Do NOT route to the "billing" tool set.`;
   }
 
+  const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : '';
+  // Community/social channels by name pattern (city chapters, general, introductions, etc.)
+  const isCommunityChannel = ctx.channelName
+    ? /\b(collective|general|introductions|announcements|random|social|london|nyc|sf|chicago|boston|austin|seattle|la)\b/i.test(ctx.channelName)
+    : false;
+  const communityChannelGuidance = isCommunityChannel
+    ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply a higher threshold for responding — community introductions, event mentions, and social updates should be reacted to with an emoji unless the message contains a direct question or explicit request for Addie's help.`
+    : '';
+
   return `You are Addie's router. Analyze this message and select the appropriate tool SETS.
 
 ## User Context
 - Source: ${ctx.source}
+${channelLine}
 - Is member: ${isMember}
 - Is admin: ${isAAOAdmin}
 - In thread: ${ctx.isThread ?? false}
 ${conditionalRules}
 ${insightsSection}
+${communityChannelGuidance}
 
 ## Available Tool Sets
 Select which CATEGORIES of tools will be needed. Each set contains multiple related tools.
@@ -372,6 +383,7 @@ ${reactList}
 - Casual conversation unrelated to AdCP or AgenticAdvertising.org
 - Messages clearly directed at specific people (e.g., start with "<@USERID> ..." in Slack format)
 - Off-topic discussions
+- Community introductions, announcements, or social updates where the author is NOT asking a question and NOT requesting help from Addie — even if the topic relates to AdCP or events. Examples: "Hi everyone, I'm James from X, looking forward to the event", "We hosted an AdCP meetup last week", "Will register for the summit". React to these with an emoji instead.
 
 ## Message
 "${ctx.message.substring(0, 500)}"

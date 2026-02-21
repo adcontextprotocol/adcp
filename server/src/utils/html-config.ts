@@ -133,10 +133,15 @@ export async function enrichUserWithMembership(user: AppUser | null | undefined)
   try {
     const pool = getPool();
     const result = await pool.query(
-      'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+      `SELECT o.workos_organization_id
+       FROM users u
+       JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
+       WHERE u.workos_user_id = $1
+         AND o.subscription_status = 'active'
+         AND o.is_personal = false`,
       [user.id]
     );
-    user.isMember = !!result.rows[0]?.primary_organization_id;
+    user.isMember = result.rows.length > 0;
   } catch {
     user.isMember = false;
   }

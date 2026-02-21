@@ -277,7 +277,7 @@
             <div class="result-first-move-text" id="result-first-move"></div>
           </div>
           <div class="result-actions">
-            <a href="/member-hub" class="btn btn-primary">Go to member hub →</a>
+            <div id="result-cta"></div>
             <button class="btn btn-secondary" id="btn-share" onclick="shareArchetype()">Copy to share</button>
             <span class="share-feedback" id="share-feedback">Copied!</span>
           </div>
@@ -290,9 +290,8 @@
 
   <script>
     const config = window.__APP_CONFIG__ || {};
-    if (!config.user) {
-      window.location.href = '/auth/login?return_to=/persona-assessment';
-    }
+    const isLoggedIn = !!config.user;
+    const isMember = !!(config.user && config.user.isMember);
 
     // =========================================================================
     // Survey data
@@ -357,37 +356,37 @@
     const SYSTEM_PERSONA_CFG = {
       molecule_builder: {
         icon: '⚙️',
-        label: 'Molecule Builder',
+        label: 'Molecular Gastronomist',
         desc: 'You\'re the architect of your organization\'s intelligence layer — building and integrating the components others depend on. Your competitive edge is how signals flow, how models train, and how platforms connect. Where others see a tech stack, you see a composable system for continuous improvement.',
         firstMove: 'Explore the working groups building the technical infrastructure of agentic advertising — you\'ll find peers solving the same integration and data pipeline challenges you are.',
       },
       data_decoder: {
         icon: '📈',
-        label: 'Data Decoder',
+        label: 'Data Denizen',
         desc: 'Every decision traces back to a signal. You use measurement, optimization, and experimentation as the engine of marketing effectiveness. Where others see campaigns, you see tests. Where others see impressions, you see incrementality. Your organization doesn\'t guess — it learns.',
         firstMove: 'Connect with peers pioneering measurement frameworks and attribution models for an AI-first media environment.',
       },
       ladder_climber: {
         icon: '🎯',
-        label: 'Ladder Climber',
+        label: 'Positionless Marketer',
         desc: 'You break organizational silos and build strategic visibility across the business. Cross-functional leadership is your superpower — you translate between marketing, technology, and the C-suite. You\'re not just seeking industry recognition; you\'re building the internal credibility to move faster.',
         firstMove: 'Engage with the working groups shaping how AI transforms the relationship between brands, agencies, and the platforms they buy from.',
       },
       pureblood_protector: {
         icon: '🛡️',
-        label: 'Pureblood Protector',
+        label: 'Mold Breaker',
         desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time. You\'re skeptical of short-term tactics that erode brand equity, and you\'re building the case for AI that enhances rather than shortcuts creative and strategic thinking.',
         firstMove: 'Join the conversation on brand safety, creative standards, and long-term effectiveness in an age of agentic buying.',
       },
       resops_integrator: {
         icon: '🔄',
-        label: 'ResOps Integrator',
+        label: 'RevOps Integrator',
         desc: 'Marketing, sales, and service move as one for you. You\'re wired to streamline operations and connect revenue workflows that most organizations leave fragmented. Efficiency isn\'t a cost play — it\'s how you deliver better customer experiences at scale, with fewer handoffs and less lost context.',
         firstMove: 'Find peers solving the cross-functional orchestration challenges of AI-powered revenue operations.',
       },
       simple_starter: {
         icon: '🌱',
-        label: 'Simple Starter',
+        label: 'Simple Simon',
         desc: 'You\'re building the foundation — and that\'s exactly where the most honest conversations happen. Agentic advertising is moving fast, and organizations that get the fundamentals right now will have a structural advantage. AgenticAdvertising.org is where those foundations get defined.',
         firstMove: 'See what other organizations are working on in their early AI advertising journey, and help shape what "getting started" looks like for the industry.',
       },
@@ -524,21 +523,21 @@
       const winner = pickWinner(scores);
       const systemPersona = ASSESSMENT_TO_SYSTEM[winner];
 
-      try {
-        const resp = await fetch('/api/me/engagement/persona-assessment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ persona: systemPersona, scores }),
-        });
-
-        if (!resp.ok) throw new Error('Save failed');
-        showResult(systemPersona, winner);
-      } catch (err) {
-        console.error(err);
-        btn.textContent = 'Try again';
-        btn.disabled = false;
+      if (isLoggedIn) {
+        try {
+          const resp = await fetch('/api/me/engagement/persona-assessment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ persona: systemPersona, scores }),
+          });
+          if (!resp.ok) console.error('Failed to save assessment results');
+        } catch (err) {
+          console.error('Failed to save assessment results', err);
+        }
       }
+
+      showResult(systemPersona);
     }
 
     let _currentPersona = null;
@@ -556,6 +555,25 @@
       document.getElementById('result-title').textContent = cfg.label;
       document.getElementById('result-desc').textContent = cfg.desc;
       document.getElementById('result-first-move').textContent = cfg.firstMove;
+
+      const returnTo = encodeURIComponent('/persona-assessment');
+      let ctaHtml;
+      if (isMember) {
+        ctaHtml = `
+          <a href="/dashboard/organization" class="btn btn-primary">Go to member hub →</a>
+          <p style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            <a href="/events" style="color: var(--color-brand);">Book a feedback session with Randall &amp; Brian →</a>
+          </p>`;
+      } else if (isLoggedIn) {
+        ctaHtml = `<a href="/membership" class="btn btn-primary">Explore membership →</a>`;
+      } else {
+        ctaHtml = `
+          <a href="/auth/login?return_to=${returnTo}&signup=true" class="btn btn-primary">Create account to save results →</a>
+          <p style="margin-top: var(--space-3); font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Already have an account? <a href="/auth/login?return_to=${returnTo}" style="color: var(--color-brand);">Log in</a>
+          </p>`;
+      }
+      document.getElementById('result-cta').innerHTML = ctaHtml;
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }

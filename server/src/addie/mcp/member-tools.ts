@@ -32,6 +32,7 @@ import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
+import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
 import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -2854,15 +2855,6 @@ export function createMemberToolHandlers(
         }).catch((): GroupRecommendation[] => []),
       ]);
 
-      const personaLabels: Record<string, string> = {
-        molecule_builder: 'Molecule Builder',
-        data_decoder: 'Data Decoder',
-        pureblood_protector: 'Pureblood Protector',
-        resops_integrator: 'ResOps Integrator',
-        ladder_climber: 'Ladder Climber',
-        simple_starter: 'Simple Starter',
-        pragmatic_builder: 'Pragmatic Builder',
-      };
 
       const STAGES = ['aware', 'evaluating', 'joined', 'onboarding', 'participating', 'contributing', 'leading', 'advocating'];
       const stageIdx = orgData?.journey_stage ? STAGES.indexOf(orgData.journey_stage) : -1;
@@ -2872,7 +2864,7 @@ export function createMemberToolHandlers(
         journey_stage: orgData?.journey_stage ?? null,
         next_stage: nextStage,
         engagement_score: orgData?.engagement_score ?? null,
-        persona: orgData?.persona ? personaLabels[orgData.persona] ?? orgData.persona : null,
+        persona: orgData?.persona ? PERSONA_LABELS[orgData.persona] ?? orgData.persona : null,
         persona_key: orgData?.persona ?? null,
         persona_source: orgData?.persona_source ?? null,
         assessment_completed: orgData?.persona_source === 'diagnostic',

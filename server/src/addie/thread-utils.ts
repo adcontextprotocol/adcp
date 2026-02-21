@@ -22,6 +22,19 @@ export function isMultiPartyThread(
 }
 
 /**
+ * Returns true if the message explicitly addresses a user other than the bot.
+ * A message starts with `<@UOTHER>` (not Addie's bot ID).
+ *
+ * Used to prevent Addie from responding in threads where she participated
+ * but the current message is directed at someone else — regardless of how
+ * many humans are in the thread.
+ */
+export function isAddressedToAnotherUser(messageText: string, botUserId: string): boolean {
+  const match = /^<@(U[A-Z0-9]+)>/.exec(messageText.trim());
+  return !!(match && match[1] !== botUserId);
+}
+
+/**
  * In a multi-party thread, determine whether a message is directed at Addie.
  *
  * Returns true if:
