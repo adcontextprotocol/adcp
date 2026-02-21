@@ -77,6 +77,7 @@ function scorePersona(signals: InferenceSignals): InferenceResult {
     resops_integrator: { score: 0, reasons: [] },
     ladder_climber: { score: 0, reasons: [] },
     simple_starter: { score: 0, reasons: [] },
+    pragmatic_builder: { score: 0, reasons: [] },
   };
 
   // Company type signals
@@ -87,6 +88,8 @@ function scorePersona(signals: InferenceSignals): InferenceResult {
       scores.molecule_builder.reasons.push(`company_type: ${ct}`);
       scores.resops_integrator.score += 2;
       scores.resops_integrator.reasons.push(`company_type: ${ct}`);
+      scores.pragmatic_builder.score += 1;
+      scores.pragmatic_builder.reasons.push(`company_type: ${ct}`);
     }
     if (['publisher'].includes(ct)) {
       scores.molecule_builder.score += 2;
@@ -108,6 +111,10 @@ function scorePersona(signals: InferenceSignals): InferenceResult {
     if (['under_1m', '1m_5m'].includes(rt)) {
       scores.ladder_climber.score += 3;
       scores.ladder_climber.reasons.push(`revenue_tier: ${rt} (SMB)`);
+    }
+    if (['5m_25m', '25m_50m'].includes(rt)) {
+      scores.pragmatic_builder.score += 2;
+      scores.pragmatic_builder.reasons.push(`revenue_tier: ${rt} (mid-market)`);
     }
     if (['50m_250m', '250m_1b', '1b_plus'].includes(rt)) {
       scores.molecule_builder.score += 1;
@@ -162,6 +169,27 @@ function scorePersona(signals: InferenceSignals): InferenceResult {
     if (/integrat|unified|cross.?channel|full.?stack|ops/i.test(val)) {
       scores.resops_integrator.score += 1;
       scores.resops_integrator.reasons.push(`insight: "${insight.value.substring(0, 50)}"`);
+    }
+    if (/pragmat|generalist|multi.?channel|experiment|test.?and.?learn|agile|lean|bootstrap/i.test(val)) {
+      scores.pragmatic_builder.score += 1;
+      scores.pragmatic_builder.reasons.push(`insight: "${insight.value.substring(0, 50)}"`);
+    }
+  }
+
+  // Breadth of working group membership signals a generalist
+  if (signals.working_groups.length >= 3) {
+    const categories = new Set<string>();
+    for (const wg of signals.working_groups) {
+      if (matchesAny(wg, creativePatterns)) categories.add('creative');
+      if (matchesAny(wg, dataPatterns)) categories.add('data');
+      if (matchesAny(wg, experiencePatterns)) categories.add('experience');
+      if (matchesAny(wg, customerPatterns)) categories.add('customer');
+    }
+    scores.pragmatic_builder.score += 2;
+    scores.pragmatic_builder.reasons.push(`broad working group membership: ${signals.working_groups.length} groups`);
+    if (categories.size >= 2) {
+      scores.pragmatic_builder.score += 1;
+      scores.pragmatic_builder.reasons.push(`cross-category engagement: ${[...categories].join(', ')}`);
     }
   }
 

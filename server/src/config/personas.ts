@@ -9,4 +9,5 @@ export const PERSONA_LABELS: Record<string, string> = {
   resops_integrator: 'RevOps Integrator',
   ladder_climber: 'Positionless Marketer',
   simple_starter: 'Simple Simon',
+  pragmatic_builder: 'Pragmatic Builder',
 };

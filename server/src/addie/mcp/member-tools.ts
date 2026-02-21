@@ -28,14 +28,19 @@ import {
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
-import { getPool } from '../../db/client.js';
+import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
+import { OrganizationDatabase } from '../../db/organization-db.js';
+import { checkMilestones } from '../services/journey-computation.js';
+import { PERSONA_LABELS } from '../../config/personas.js';
+import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
 import { sendIntroductionEmail } from '../../notifications/email.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
+const orgDb = new OrganizationDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -668,6 +673,17 @@ export const MEMBER_TOOLS: AddieTool[] = [
     description:
       'Get search analytics for the user\'s member profile. Shows how many times their profile appeared in searches, profile clicks, and introduction requests. Only works for members with a public profile.',
     usage_hints: 'use for "how is my profile performing?", "how many people have seen my profile?", "search analytics", "introduction stats"',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_member_engagement',
+    description:
+      "Get the current user's organization engagement data: journey stage, engagement score, persona/archetype, milestone completion, and persona-based working group recommendations. Use this to understand where a member is in their journey and what actions would help them advance.",
+    usage_hints: 'use when a member asks what to do next, asks about their progress or archetype, when you want to recommend working groups, or when you notice low engagement and want to suggest actions proactively',
     input_schema: {
       type: 'object',
       properties: {},
@@ -2797,6 +2813,81 @@ export function createMemberToolHandlers(
     } catch (error) {
       logger.error({ error, slackUserId }, 'Addie: Error setting outreach preference');
       return '❌ Failed to update outreach preference. Please try again.';
+    }
+  });
+
+  // ============================================
+  // MEMBER ENGAGEMENT
+  // ============================================
+  handlers.set('get_member_engagement', async () => {
+    if (!memberContext?.workos_user?.workos_user_id) {
+      return 'You need to be logged in to view your engagement data. Please log in at https://agenticadvertising.org/dashboard first.';
+    }
+
+    const orgId = memberContext.organization?.workos_organization_id;
+    if (!orgId) {
+      return 'Your account is not yet associated with a member organization. Visit https://agenticadvertising.org/membership to learn about joining.';
+    }
+
+    try {
+      const [orgData, milestones, signals, recommendedGroups] = await Promise.all([
+        query<{
+          journey_stage: string | null;
+          engagement_score: number | null;
+          persona: string | null;
+          persona_source: string | null;
+          aspiration_persona: string | null;
+        }>(
+          `SELECT journey_stage, engagement_score, persona, persona_source, aspiration_persona
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        ).then(r => r.rows[0] ?? null).catch(() => null),
+
+        checkMilestones(orgId).catch(() => null),
+
+        orgDb.getEngagementSignals(orgId).catch(() => null),
+
+        getRecommendedGroupsForOrg(orgId, {
+          limit: 5,
+          excludeUserIds: memberContext.workos_user?.workos_user_id
+            ? [memberContext.workos_user.workos_user_id]
+            : [],
+        }).catch((): GroupRecommendation[] => []),
+      ]);
+
+
+      const STAGES = ['aware', 'evaluating', 'joined', 'onboarding', 'participating', 'contributing', 'leading', 'advocating'];
+      const stageIdx = orgData?.journey_stage ? STAGES.indexOf(orgData.journey_stage) : -1;
+      const nextStage = stageIdx >= 0 && stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null;
+
+      const result = {
+        journey_stage: orgData?.journey_stage ?? null,
+        next_stage: nextStage,
+        engagement_score: orgData?.engagement_score ?? null,
+        persona: orgData?.persona ? PERSONA_LABELS[orgData.persona] ?? orgData.persona : null,
+        persona_key: orgData?.persona ?? null,
+        persona_source: orgData?.persona_source ?? null,
+        assessment_completed: orgData?.persona_source === 'diagnostic',
+        assessment_url: 'https://agenticadvertising.org/persona-assessment',
+        milestones: milestones ?? {},
+        activity: signals ? {
+          dashboard_logins_30d: signals.login_count_30d,
+          working_group_count: signals.working_group_count,
+          email_clicks_30d: signals.email_click_count_30d,
+        } : null,
+        recommended_groups: recommendedGroups.map(g => ({
+          name: g.name,
+          slug: g.slug,
+          reason: g.reason,
+          url: `https://agenticadvertising.org/working-groups/${g.slug}`,
+        })),
+        member_hub_url: 'https://agenticadvertising.org/member-hub',
+      };
+
+      return JSON.stringify(result, null, 2);
+    } catch (error) {
+      logger.error({ error, orgId }, 'Addie: get_member_engagement failed');
+      return 'Unable to load engagement data right now. Please try again.';
     }
   });
 
