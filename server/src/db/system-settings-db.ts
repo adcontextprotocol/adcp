@@ -25,11 +25,17 @@ export interface EscalationChannelSetting {
   channel_name: string | null;
 }
 
+export interface AdminChannelSetting {
+  channel_id: string | null;
+  channel_name: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
   BILLING_SLACK_CHANNEL: 'billing_slack_channel',
   ESCALATION_SLACK_CHANNEL: 'escalation_slack_channel',
+  ADMIN_SLACK_CHANNEL: 'admin_slack_channel',
 } as const;
 
 // ============== Generic Operations ==============
@@ -117,6 +123,31 @@ export async function setEscalationChannel(
 ): Promise<void> {
   await setSetting<EscalationChannelSetting>(
     SETTING_KEYS.ESCALATION_SLACK_CHANNEL,
+    { channel_id: channelId, channel_name: channelName },
+    updatedBy
+  );
+}
+
+// ============== Admin Channel Operations ==============
+
+/**
+ * Get the configured admin notification Slack channel
+ */
+export async function getAdminChannel(): Promise<AdminChannelSetting> {
+  const result = await getSetting<AdminChannelSetting>(SETTING_KEYS.ADMIN_SLACK_CHANNEL);
+  return result ?? { channel_id: null, channel_name: null };
+}
+
+/**
+ * Set the admin notification Slack channel
+ */
+export async function setAdminChannel(
+  channelId: string | null,
+  channelName: string | null,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<AdminChannelSetting>(
+    SETTING_KEYS.ADMIN_SLACK_CHANNEL,
     { channel_id: channelId, channel_name: channelName },
     updatedBy
   );

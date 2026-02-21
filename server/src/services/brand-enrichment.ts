@@ -11,6 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
 import { fetchBrandData, isBrandfetchConfigured } from './brandfetch.js';
+import { downloadAndCacheLogos } from './logo-cdn.js';
 import { classifyBrand } from './brand-classifier.js';
 import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
@@ -161,6 +162,11 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   // Sanitize brand name — Brandfetch sometimes returns garbage (e.g., "About", "Home")
   const brandName = sanitizeBrandName(result.manifest.name, domain);
 
+  // Download logos to our CDN so external agents can access them without hotlink restrictions
+  const logos = (result.manifest.logos && result.manifest.logos.length > 0)
+    ? await downloadAndCacheLogos(domain, result.manifest.logos)
+    : result.manifest.logos;
+
   // Map to discovered brand input
   const input: UpsertDiscoveredBrandInput = {
     domain,
@@ -169,7 +175,7 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       name: brandName,
       url: result.manifest.url,
       description: result.manifest.description,
-      logos: result.manifest.logos,
+      logos,
       colors: result.manifest.colors,
       fonts: result.manifest.fonts,
       ...(result.company ? { company: result.company } : {}),
@@ -310,6 +316,65 @@ export async function getEnrichmentCandidates(options: {
   }
 
   return candidates.slice(0, limit);
+}
+
+/**
+ * Migrate existing enriched brands that still have Brandfetch CDN logo URLs.
+ * Downloads logos to our CDN and updates the manifest in the DB.
+ */
+export async function migrateLogosToHosted(options: {
+  limit?: number;
+  delayMs?: number;
+} = {}): Promise<{ total: number; migrated: number; failed: number; skipped: number }> {
+  const limit = Math.min(Math.max(1, options.limit || 50), 200);
+  const delayMs = Math.max(0, options.delayMs ?? 500);
+
+  const result = await query<{ domain: string; brand_manifest: Record<string, unknown> }>(
+    `SELECT domain, brand_manifest FROM discovered_brands
+     WHERE source_type IN ('enriched', 'community')
+       AND has_brand_manifest = true
+       AND EXISTS (
+         SELECT 1 FROM jsonb_array_elements(brand_manifest->'logos') AS logo
+         WHERE logo->>'url' LIKE '%cdn.brandfetch.io%'
+       )
+     ORDER BY domain
+     LIMIT $1`,
+    [limit]
+  );
+
+  const summary = { total: result.rows.length, migrated: 0, failed: 0, skipped: 0 };
+
+  for (let i = 0; i < result.rows.length; i++) {
+    const row = result.rows[i];
+    const logos = (row.brand_manifest.logos as Array<{ url: string; tags: string[] }> | undefined);
+
+    if (!logos || logos.length === 0) {
+      summary.skipped++;
+      continue;
+    }
+
+    try {
+      const hosted = await downloadAndCacheLogos(row.domain, logos);
+      await query(
+        `UPDATE discovered_brands
+         SET brand_manifest = brand_manifest || $2::jsonb
+         WHERE domain = $1`,
+        [row.domain, JSON.stringify({ logos: hosted })]
+      );
+      summary.migrated++;
+      logger.info({ domain: row.domain }, 'Logos migrated to CDN');
+    } catch (err) {
+      logger.warn({ err, domain: row.domain }, 'Logo migration failed');
+      summary.failed++;
+    }
+
+    if (delayMs > 0 && i < result.rows.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  logger.info(summary, 'Logo migration complete');
+  return summary;
 }
 
 /**

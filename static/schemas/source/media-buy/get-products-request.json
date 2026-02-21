@@ -21,6 +21,10 @@
       "type": "string",
       "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
     },
+    "campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+    },
     "filters": {
       "$ref": "/schemas/core/product-filters.json"
     },

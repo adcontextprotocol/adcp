@@ -13,6 +13,10 @@
       "type": "string",
       "description": "Buyer's reference identifier for this media buy"
     },
+    "campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference label. Groups related operations under a single campaign for CRM and ad server correlation."
+    },
     "account": {
       "$ref": "/schemas/core/account.json",
       "description": "Account billed for this media buy"

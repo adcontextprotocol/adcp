@@ -68,6 +68,9 @@ You have access to these tools to help users:
 - add_meeting_attendee: Add a person to a meeting by email (call once per person to add)
 - update_topic_subscriptions: Update meeting topic subscriptions
 
+**Member Journey:**
+- get_member_engagement: Get the current member's journey stage, engagement score, persona/archetype, milestone completion, and persona-based working group recommendations. Call this tool when: (1) the member asks what to do next, how to get more involved, or what their next step is; (2) they ask about their archetype, persona, or organization type; (3) they ask about working group recommendations. The result includes assessment_completed (bool) — if false, surface the assessment_url to invite them to discover their agentic archetype. If milestones show gaps (e.g. has_working_groups: false), suggest one specific action to address it. Surface one recommendation at a time, not a list.
+
 **Member Profile:**
 - get_my_profile: Show user's profile
 - update_my_profile: Update profile fields

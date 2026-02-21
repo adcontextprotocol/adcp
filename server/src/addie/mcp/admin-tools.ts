@@ -4563,7 +4563,7 @@ Use add_committee_leader to assign a leader.`;
     try {
       // Verify org exists
       const orgResult = await pool.query(
-        `SELECT name, email_domain FROM organizations WHERE workos_organization_id = $1`,
+        `SELECT name, email_domain, is_personal FROM organizations WHERE workos_organization_id = $1`,
         [organizationId]
       );
 
@@ -4572,6 +4572,7 @@ Use add_committee_leader to assign a leader.`;
       }
 
       const orgName = orgResult.rows[0].name;
+      const isPersonal = orgResult.rows[0].is_personal;
 
       switch (action) {
         case 'list': {
@@ -4603,6 +4604,10 @@ Use add_committee_leader to assign a leader.`;
         case 'add': {
           if (!domain) {
             return '❌ domain is required for the "add" action. Example: "acme.com"';
+          }
+
+          if (isPersonal) {
+            return `❌ Domains cannot be added to individual (personal) organizations like **${orgName}**.`;
           }
 
           const normalizedDomain = domain.toLowerCase().trim();

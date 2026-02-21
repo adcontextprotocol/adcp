@@ -1665,7 +1665,7 @@ export function setupAccountRoutes(
 
         // Get members to migrate
         let membersQuery = `
-          SELECT om.workos_user_id, om.workos_membership_id, om.email, om.first_name, om.last_name
+          SELECT om.workos_user_id, om.workos_membership_id, om.email, om.first_name, om.last_name, om.role
           FROM organization_memberships om
           WHERE om.workos_organization_id = $1
         `;
@@ -1715,11 +1715,19 @@ export function setupAccountRoutes(
 
         for (const member of members) {
           try {
+            if (!member.role) {
+              logger.warn(
+                { userId: member.workos_user_id, sourceOrgId },
+                'Member has no cached role, defaulting to member during migration'
+              );
+            }
+
             // Add to target org FIRST (if this fails, no state has changed)
             const newMembership =
               await workos.userManagement.createOrganizationMembership({
                 organizationId: targetOrgId,
                 userId: member.workos_user_id,
+                roleSlug: member.role || 'member',
               });
 
             // Only remove from source org AFTER successful add
@@ -1739,10 +1747,11 @@ export function setupAccountRoutes(
             // Insert into target org cache
             await pool.query(
               `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, synced_at)
-               VALUES ($1, $2, $3, $4, $5, $6, NOW())
+               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
                workos_membership_id = EXCLUDED.workos_membership_id,
+               role = EXCLUDED.role,
                synced_at = NOW()`,
               [
                 member.workos_user_id,
@@ -1751,6 +1760,7 @@ export function setupAccountRoutes(
                 member.email,
                 member.first_name,
                 member.last_name,
+                member.role || 'member',
               ]
             );
 

@@ -141,6 +141,10 @@
             "type": "string",
             "description": "Buyer's reference identifier for this media buy"
           },
+          "campaign_ref": {
+            "type": "string",
+            "description": "Buyer's campaign reference label. Groups related operations under a single campaign for CRM and ad server correlation."
+          },
           "status": {
             "type": "string",
             "description": "Current media buy status. In webhook context, reporting_delayed indicates data temporarily unavailable.",

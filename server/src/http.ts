@@ -75,6 +75,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -276,7 +277,7 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -291,6 +292,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
+      isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
       apiKey: POSTHOG_API_KEY,
@@ -302,7 +304,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null } | null): string {
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
   const config = buildAppConfig(user);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
@@ -642,19 +644,21 @@ export class HTTPServer {
 
     this.app.use('/schemas', express.static(schemasPath));
 
-    // Serve domain-specific brand.json for adcontextprotocol.org
-    // The static/.well-known/brand.json has the full house portfolio for agenticadvertising.org.
-    // AdCP domain gets a house redirect pointing to the AgenticAdvertising.org portfolio.
-    this.app.get('/.well-known/brand.json', (req, res, next) => {
+    // Serve brand.json for both AAO domains.
+    // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
+    this.app.get('/.well-known/brand.json', (req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
           "house": "agenticadvertising.org",
-          "note": "AdCP is a sub-brand of AgenticAdvertising.org",
-          "last_updated": "2026-02-08T00:00:00Z"
+          "note": "AdCP is a sub-brand of AgenticAdvertising.org"
         });
       }
-      next();
+      return res.json({
+        "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+        "authoritative_location": "https://agenticadvertising.org/brands/agenticadvertising.org/brand.json"
+      });
     });
 
     // Serve other static files (robots.txt, images, etc.)
@@ -903,6 +907,37 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
         return res.status(500).json({ error: 'Failed to retrieve brand' });
+      }
+    });
+
+    // Serve cached brand logos — public endpoint so agents can download them.
+    // Logos are stored in brand_logo_cache when brands are enriched via Brandfetch.
+    const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+    this.app.get('/logos/brands/:domain/:idx', async (req, res) => {
+      const domain = req.params.domain.toLowerCase();
+      const idx = parseInt(req.params.idx, 10);
+      if (!logoDomainPattern.test(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      if (isNaN(idx) || idx < 0 || idx > 999) {
+        return res.status(400).json({ error: 'Invalid logo index' });
+      }
+      try {
+        const logo = await getCachedLogo(domain, idx);
+        if (!logo) {
+          return res.status(404).json({ error: 'Logo not found' });
+        }
+        if (!isAllowedLogoContentType(logo.content_type)) {
+          logger.error({ domain, idx, contentType: logo.content_type }, 'Cached logo has disallowed content-type');
+          return res.status(500).json({ error: 'Failed to retrieve logo' });
+        }
+        res.setHeader('Content-Type', logo.content_type);
+        res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(logo.data);
+      } catch (error) {
+        logger.error({ err: error, domain, idx }, 'Failed to serve logo');
+        return res.status(500).json({ error: 'Failed to retrieve logo' });
       }
     });
 
