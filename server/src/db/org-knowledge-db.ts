@@ -67,7 +67,7 @@ export interface ResolvedKnowledge {
   is_stale: boolean;
 }
 
-export type Persona = 'molecule_builder' | 'data_decoder' | 'pureblood_protector' | 'resops_integrator' | 'ladder_climber' | 'simple_starter';
+export type Persona = 'molecule_builder' | 'data_decoder' | 'pureblood_protector' | 'resops_integrator' | 'ladder_climber' | 'simple_starter' | 'pragmatic_builder';
 
 export type JourneyStage = 'aware' | 'evaluating' | 'joined' | 'onboarding' | 'participating' | 'contributing' | 'leading' | 'advocating';
 

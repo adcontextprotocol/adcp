@@ -28,6 +28,7 @@ const personaLabels: Record<string, string> = {
   resops_integrator: 'ResOps Integrator',
   ladder_climber: 'Ladder Climber',
   simple_starter: 'Simple Starter',
+  pragmatic_builder: 'Pragmatic Builder',
 };
 
 function buildReason(affinityScore: number, persona: string): string {

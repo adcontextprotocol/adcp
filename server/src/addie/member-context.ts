@@ -985,9 +985,9 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   }
 
   // Persona and journey stage
+  lines.push('');
+  lines.push('### Organization Persona');
   if (context.persona) {
-    lines.push('');
-    lines.push('### Organization Persona');
     const personaLabels: Record<string, string> = {
       molecule_builder: 'Molecule Builder',
       data_decoder: 'Data Decoder',
@@ -995,6 +995,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       resops_integrator: 'ResOps Integrator',
       ladder_climber: 'Ladder Climber',
       simple_starter: 'Simple Starter',
+      pragmatic_builder: 'Pragmatic Builder',
     };
     lines.push(`Persona: ${personaLabels[context.persona.persona] || context.persona.persona}`);
     if (context.persona.aspiration_persona) {
@@ -1004,6 +1005,13 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       lines.push(`Journey stage: ${context.persona.journey_stage}`);
     }
     lines.push(`Classification source: ${context.persona.source}`);
+    if (context.persona.source !== 'diagnostic') {
+      lines.push('Note: Persona was inferred, not self-reported. The user has not completed the organization type assessment.');
+      lines.push('If it comes up naturally, suggest they discover their agentic archetype: https://agenticadvertising.org/persona-assessment');
+    }
+  } else {
+    lines.push('Persona: Not set — the user has not completed the organization type assessment.');
+    lines.push('If it comes up naturally, suggest they discover their agentic archetype: https://agenticadvertising.org/persona-assessment');
   }
 
   // Subscription details

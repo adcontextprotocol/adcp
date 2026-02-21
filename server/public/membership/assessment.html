@@ -143,42 +143,90 @@
     }
 
     /* Result */
-    .result-card {
+    .result-card-enhanced {
       background: var(--color-bg-card);
       border: 1px solid var(--color-border-subtle);
       border-radius: var(--radius-xl);
-      padding: var(--space-10);
-      text-align: center;
+      overflow: hidden;
     }
 
-    .result-icon {
-      font-size: 3rem;
-      margin-bottom: var(--space-4);
+    .result-header {
+      background: linear-gradient(135deg, var(--color-brand, #1a36b4) 0%, #3b5bdb 100%);
+      padding: var(--space-10) var(--space-8);
+      text-align: center;
+      color: white;
+    }
+
+    .result-icon-large {
+      font-size: 4rem;
+      margin-bottom: var(--space-3);
       line-height: 1;
     }
 
-    .result-label {
+    .result-eyebrow {
       font-size: var(--text-xs);
       font-weight: var(--font-semibold);
-      color: var(--color-brand);
       text-transform: uppercase;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
+      opacity: 0.75;
       margin-bottom: var(--space-2);
     }
 
     .result-title {
-      font-size: var(--text-2xl);
+      font-size: var(--text-3xl);
       font-weight: var(--font-bold);
-      color: var(--color-text-heading);
-      margin-bottom: var(--space-3);
+      line-height: 1.1;
+    }
+
+    .result-body {
+      padding: var(--space-8);
     }
 
     .result-desc {
       font-size: var(--text-base);
       color: var(--color-text-secondary);
-      max-width: 480px;
-      margin: 0 auto var(--space-8);
       line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-6);
+    }
+
+    .result-first-move {
+      background: var(--color-bg-page, #f8f9fa);
+      border-radius: var(--radius-md);
+      padding: var(--space-4) var(--space-5);
+      margin-bottom: var(--space-6);
+    }
+
+    .result-first-move-label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-tertiary);
+      margin-bottom: var(--space-2);
+    }
+
+    .result-first-move-text {
+      font-size: var(--text-sm);
+      color: var(--color-text-body);
+      line-height: var(--leading-relaxed);
+    }
+
+    .result-actions {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .share-feedback {
+      font-size: var(--text-xs);
+      color: var(--color-brand);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .share-feedback.visible {
+      opacity: 1;
     }
 
     @media (max-width: 600px) {
@@ -216,12 +264,24 @@
     </div>
 
     <div id="result-section" style="display:none">
-      <div class="result-card">
-        <div class="result-icon" id="result-icon"></div>
-        <div class="result-label">Your organization type</div>
-        <div class="result-title" id="result-title"></div>
-        <div class="result-desc" id="result-desc"></div>
-        <a href="/member-hub" class="btn btn-primary">Go to member hub →</a>
+      <div class="result-card-enhanced">
+        <div class="result-header">
+          <div class="result-icon-large" id="result-icon"></div>
+          <div class="result-eyebrow">Your organization type</div>
+          <div class="result-title" id="result-title"></div>
+        </div>
+        <div class="result-body">
+          <p class="result-desc" id="result-desc"></p>
+          <div class="result-first-move">
+            <div class="result-first-move-label">Your first move</div>
+            <div class="result-first-move-text" id="result-first-move"></div>
+          </div>
+          <div class="result-actions">
+            <a href="/member-hub" class="btn btn-primary">Go to member hub →</a>
+            <button class="btn btn-secondary" id="btn-share" onclick="shareArchetype()">Copy to share</button>
+            <span class="share-feedback" id="share-feedback">Copied!</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -285,7 +345,7 @@
       positionless_marketers:  'ladder_climber',
       mold_breakers:           'pureblood_protector',
       revops_integrators:      'resops_integrator',
-      bootstrappers:           'simple_starter',
+      bootstrappers:           'pragmatic_builder',
       limber_locals:           'simple_starter',
       plumbers:                'simple_starter',
       simple_simons:           'simple_starter',
@@ -295,12 +355,48 @@
     const INNER_CORE = ['molecular_gastronomists', 'data_denizens', 'positionless_marketers', 'mold_breakers', 'revops_integrators'];
 
     const SYSTEM_PERSONA_CFG = {
-      molecule_builder:    { icon: '⚙️', label: 'Molecule Builder',     desc: 'You\'re the architect of your organization\'s tech stack — building and integrating components that others depend on.' },
-      data_decoder:        { icon: '📈', label: 'Data Decoder',         desc: 'Every decision traces back to a signal. You use data, measurement, and optimization to drive marketing effectiveness.' },
-      ladder_climber:      { icon: '🎯', label: 'Ladder Climber',       desc: 'You break organizational silos and build strategic visibility — seeking industry leadership through cross-functional excellence.' },
-      pureblood_protector: { icon: '🛡️', label: 'Pureblood Protector',  desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time.' },
-      resops_integrator:   { icon: '🔄', label: 'ResOps Integrator',    desc: 'Marketing, sales, and service move as one for you — you\'re wired to streamline operations and connect revenue workflows.' },
-      simple_starter:      { icon: '🌱', label: 'Simple Starter',       desc: 'You\'re getting started with agentic advertising. There\'s a clear path from here, and AAO is the right place to be.' },
+      molecule_builder: {
+        icon: '⚙️',
+        label: 'Molecule Builder',
+        desc: 'You\'re the architect of your organization\'s intelligence layer — building and integrating the components others depend on. Your competitive edge is how signals flow, how models train, and how platforms connect. Where others see a tech stack, you see a composable system for continuous improvement.',
+        firstMove: 'Explore the working groups building the technical infrastructure of agentic advertising — you\'ll find peers solving the same integration and data pipeline challenges you are.',
+      },
+      data_decoder: {
+        icon: '📈',
+        label: 'Data Decoder',
+        desc: 'Every decision traces back to a signal. You use measurement, optimization, and experimentation as the engine of marketing effectiveness. Where others see campaigns, you see tests. Where others see impressions, you see incrementality. Your organization doesn\'t guess — it learns.',
+        firstMove: 'Connect with peers pioneering measurement frameworks and attribution models for an AI-first media environment.',
+      },
+      ladder_climber: {
+        icon: '🎯',
+        label: 'Ladder Climber',
+        desc: 'You break organizational silos and build strategic visibility across the business. Cross-functional leadership is your superpower — you translate between marketing, technology, and the C-suite. You\'re not just seeking industry recognition; you\'re building the internal credibility to move faster.',
+        firstMove: 'Engage with the working groups shaping how AI transforms the relationship between brands, agencies, and the platforms they buy from.',
+      },
+      pureblood_protector: {
+        icon: '🛡️',
+        label: 'Pureblood Protector',
+        desc: 'You play the long game — championing brand quality, trust, and investment in experiences that compound over time. You\'re skeptical of short-term tactics that erode brand equity, and you\'re building the case for AI that enhances rather than shortcuts creative and strategic thinking.',
+        firstMove: 'Join the conversation on brand safety, creative standards, and long-term effectiveness in an age of agentic buying.',
+      },
+      resops_integrator: {
+        icon: '🔄',
+        label: 'ResOps Integrator',
+        desc: 'Marketing, sales, and service move as one for you. You\'re wired to streamline operations and connect revenue workflows that most organizations leave fragmented. Efficiency isn\'t a cost play — it\'s how you deliver better customer experiences at scale, with fewer handoffs and less lost context.',
+        firstMove: 'Find peers solving the cross-functional orchestration challenges of AI-powered revenue operations.',
+      },
+      simple_starter: {
+        icon: '🌱',
+        label: 'Simple Starter',
+        desc: 'You\'re building the foundation — and that\'s exactly where the most honest conversations happen. Agentic advertising is moving fast, and organizations that get the fundamentals right now will have a structural advantage. AgenticAdvertising.org is where those foundations get defined.',
+        firstMove: 'See what other organizations are working on in their early AI advertising journey, and help shape what "getting started" looks like for the industry.',
+      },
+      pragmatic_builder: {
+        icon: '🔨',
+        label: 'Pragmatic Builder',
+        desc: 'Your organization doesn\'t specialize — it executes. You combine cross-functional teamwork, data-informed decisions, and a test-and-learn culture to move fast across channels. Pragmatic Builders are the generalists who make agentic advertising work in practice, not in theory.',
+        firstMove: 'Connect with peers across multiple working groups — your broad perspective is exactly what cross-cutting initiatives need.',
+      },
     };
 
     // =========================================================================
@@ -437,7 +533,7 @@
         });
 
         if (!resp.ok) throw new Error('Save failed');
-        showResult(systemPersona);
+        showResult(systemPersona, winner);
       } catch (err) {
         console.error(err);
         btn.textContent = 'Try again';
@@ -445,16 +541,39 @@
       }
     }
 
-    function showResult(persona) {
+    let _currentPersona = null;
+    let _currentLabel = null;
+
+    function showResult(persona, assessmentWinner) {
       document.getElementById('assessment-body').style.display = 'none';
       document.getElementById('result-section').style.display = 'block';
 
-      const cfg = SYSTEM_PERSONA_CFG[persona] || { icon: '?', label: persona, desc: '' };
+      const cfg = SYSTEM_PERSONA_CFG[persona] || { icon: '?', label: persona, desc: '', firstMove: '' };
+      _currentPersona = persona;
+      _currentLabel = cfg.label;
+
       document.getElementById('result-icon').textContent = cfg.icon;
       document.getElementById('result-title').textContent = cfg.label;
       document.getElementById('result-desc').textContent = cfg.desc;
+      document.getElementById('result-first-move').textContent = cfg.firstMove;
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function shareArchetype() {
+      if (!_currentLabel) return;
+      const text = `I took the agentic archetype assessment from AgenticAdvertising.org — I'm a ${_currentLabel}.\n\nEvery organization has a distinct approach to agentic advertising. What's yours?\nhttps://agenticadvertising.org/persona-assessment`;
+      navigator.clipboard.writeText(text).then(() => {
+        const feedback = document.getElementById('share-feedback');
+        feedback.textContent = 'Copied!';
+        feedback.classList.add('visible');
+        setTimeout(() => feedback.classList.remove('visible'), 2000);
+      }).catch(() => {
+        const feedback = document.getElementById('share-feedback');
+        feedback.textContent = 'Copy failed — try selecting the text manually';
+        feedback.classList.add('visible');
+        setTimeout(() => feedback.classList.remove('visible'), 3000);
+      });
     }
 
     renderPage();

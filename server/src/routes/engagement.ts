@@ -8,7 +8,7 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { checkMilestones } from '../addie/services/journey-computation.js';
 import { getRecommendedGroupsForOrg } from '../addie/services/group-recommendations.js';
 
-const VALID_PERSONAS: Persona[] = ['molecule_builder', 'data_decoder', 'pureblood_protector', 'resops_integrator', 'ladder_climber', 'simple_starter'];
+const VALID_PERSONAS: Persona[] = ['molecule_builder', 'data_decoder', 'pureblood_protector', 'resops_integrator', 'ladder_climber', 'simple_starter', 'pragmatic_builder'];
 
 const logger = createLogger('engagement-routes');
 
