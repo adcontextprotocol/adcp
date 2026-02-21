@@ -41,6 +41,11 @@ DO NOT USE FOR:
 - Things that don't require admin attention
 - General conversation
 
+BEFORE ESCALATING — gather enough context to make the escalation actionable:
+- Ask what specifically they need if the request is vague
+- Confirm who the request is from: their name and organization. If someone is asking on behalf of another person, capture that person's name and contact details in the summary.
+- Include any relevant context (timeline, urgency, what they've already tried)
+
 When you escalate, be honest with the user that you're passing this to a human who can help.`,
     usage_hints: 'use when you cannot perform an action yourself and need human help',
     input_schema: {
