@@ -115,9 +115,6 @@
                     "$ref": "/schemas/core/assets/daast-asset.json"
                   },
                   {
-                    "$ref": "/schemas/core/promoted-offerings.json"
-                  },
-                  {
                     "$ref": "/schemas/core/assets/url-asset.json"
                   }
                 ]

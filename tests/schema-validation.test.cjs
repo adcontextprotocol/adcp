@@ -278,7 +278,7 @@ async function runTests() {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
       'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type'],
-      'media-buy.json': ['media_buy_id', 'status', 'promoted_offering', 'total_budget', 'packages'],
+      'media-buy.json': ['media_buy_id', 'status', 'total_budget', 'packages'],
       'package.json': ['package_id'],
       'creative-asset.json': ['creative_id', 'name', 'format_id', 'assets'],
       'error.json': ['code', 'message']

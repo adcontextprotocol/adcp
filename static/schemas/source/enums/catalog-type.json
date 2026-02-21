@@ -2,10 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/catalog-type.json",
   "title": "Catalog Type",
-  "description": "The type of catalog being referenced. Determines the item schema and how the platform resolves catalog items.",
+  "description": "The type of catalog feed. Determines the item schema and how the platform resolves catalog items. Multiple catalog types can be synced to the same account and referenced together in creatives.",
   "type": "string",
   "enum": [
-    "offerings",
-    "product"
+    "offering",
+    "product",
+    "inventory",
+    "store",
+    "promotion",
+    "hotel",
+    "flight",
+    "job",
+    "vehicle",
+    "real_estate",
+    "education",
+    "destination"
   ]
 }

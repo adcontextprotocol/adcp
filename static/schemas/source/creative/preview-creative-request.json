@@ -19,7 +19,7 @@
         },
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
-          "description": "Complete creative manifest with all required assets (including promoted_offerings if required by the format)"
+          "description": "Complete creative manifest with all required assets for the format"
         },
         "inputs": {
           "type": "array",

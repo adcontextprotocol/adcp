@@ -67,7 +67,8 @@
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
-                  "docs/reference/migration/creatives"
+                  "docs/reference/migration/creatives",
+                  "docs/reference/migration/catalogs"
                 ]
               }
             ]
@@ -94,6 +95,7 @@
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
                   "docs/building/integration/authentication",
+                  "docs/building/integration/account-state",
                   "docs/building/integration/accounts-and-agents"
                 ]
               },
@@ -286,7 +288,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
-              "docs/creative/promoted-offerings",
+              "docs/creative/catalogs",
               "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
@@ -543,7 +545,8 @@
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
-                  "docs/reference/migration/creatives"
+                  "docs/reference/migration/creatives",
+                  "docs/reference/migration/catalogs"
                 ]
               }
             ]
@@ -570,6 +573,7 @@
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
                   "docs/building/integration/authentication",
+                  "docs/building/integration/account-state",
                   "docs/building/integration/accounts-and-agents"
                 ]
               },
@@ -762,7 +766,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
-              "docs/creative/promoted-offerings",
+              "docs/creative/catalogs",
               "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
@@ -864,6 +868,10 @@
     {
       "source": "/docs/creative/brand-manifest",
       "destination": "/docs/brand-protocol/brand-json"
+    },
+    {
+      "source": "/docs/creative/promoted-offerings",
+      "destination": "/docs/creative/catalogs"
     }
   ],
   "modeToggle": {

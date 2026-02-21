@@ -15,7 +15,7 @@
     },
     "product_selectors": {
       "$ref": "/schemas/core/promoted-products.json",
-      "description": "Selectors to filter the brand's product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+      "description": "Selectors to filter the brand's product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches."
     },
     "account_id": {
       "type": "string",

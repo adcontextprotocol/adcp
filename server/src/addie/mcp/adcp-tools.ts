@@ -1193,7 +1193,7 @@ export const ADCP_SI_TOOLS: AddieTool[] = [
         },
         offering_id: {
           type: 'string',
-          description: 'Offering identifier from promoted offerings',
+          description: 'Offering identifier from the catalog',
         },
         context: {
           type: 'string',

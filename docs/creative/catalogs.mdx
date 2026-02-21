@@ -1,0 +1,856 @@
+---
+title: Catalogs
+description: Typed data feeds — products, hotels, jobs, vehicles, stores, and more — that provide the items publishers render in ads
+keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hotel, flight, job, vehicle, real estate, education, destination, sync_catalogs, catalog requirements]
+---
+
+# Catalogs
+
+Catalogs are typed data feeds that provide the items publishers render in ads. A product catalog supplies the SKUs for a sponsored product carousel. A hotel catalog carries property listings for travel ads. A job catalog provides the postings for recruitment campaigns. An inventory feed tells the publisher what's in stock at which store.
+
+Catalogs are a foundational building block in AdCP:
+
+- **Formats declare** what catalog types they need via `catalog_requirements`
+- **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
+- **Creatives reference** synced catalogs by `catalog_id` instead of embedding items inline
+
+## Catalog types
+
+Catalog types fall into two categories: **structural** types that describe the data's role, and **vertical** types that define industry-specific item schemas.
+
+### Structural types
+
+| Type | Item Schema | Description |
+|------|-------------|-------------|
+| `offering` | [Offering](https://adcontextprotocol.org/schemas/v1/core/offering.json) | AdCP Offering objects — campaigns, vacancies, events, services |
+| `product` | *(freeform)* | Ecommerce product entries (Google Merchant Center, Shopify, etc.) |
+| `inventory` | *(freeform)* | Stock and availability per product per location |
+| `store` | [StoreItem](https://adcontextprotocol.org/schemas/v1/core/store-item.json) | Physical locations with addresses and catchment areas |
+| `promotion` | *(freeform)* | Sales, deals, and promotional pricing |
+
+### Vertical types
+
+Each vertical type has a defined AdCP item schema, so formats can declare `catalog_type: "hotel"` and both sides know the required fields without consulting platform-specific documentation.
+
+| Type | Item Schema | Maps To |
+|------|-------------|---------|
+| `hotel` | [HotelItem](https://adcontextprotocol.org/schemas/v1/core/hotel-item.json) | Google Hotel Center, Meta hotel catalogs |
+| `flight` | [FlightItem](https://adcontextprotocol.org/schemas/v1/core/flight-item.json) | Google DynamicFlightsAsset, Meta flight catalogs |
+| `job` | [JobItem](https://adcontextprotocol.org/schemas/v1/core/job-item.json) | LinkedIn Jobs XML, Google DynamicJobsAsset, schema.org JobPosting |
+| `vehicle` | [VehicleItem](https://adcontextprotocol.org/schemas/v1/core/vehicle-item.json) | Meta Automotive Inventory, Microsoft Auto Inventory feeds |
+| `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/v1/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
+| `education` | [EducationItem](https://adcontextprotocol.org/schemas/v1/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
+| `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/v1/core/destination-item.json) | Meta destination catalogs, Google travel ads |
+
+## The Catalog object
+
+**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/v1/core/catalog.json)
+
+```typescript
+interface Catalog {
+  // Identity (required for sync_catalogs, optional for inline use)
+  catalog_id?: string;  // Buyer's identifier — also used to reference synced catalogs
+  name?: string;        // Human-readable name
+
+  // Type and sourcing
+  type: CatalogType;           // Structural or vertical type
+  url?: string;               // External feed URL
+  feed_format?: FeedFormat;   // Feed format (google_merchant_center, facebook_catalog, shopify, linkedin_jobs, custom)
+  update_frequency?: string;  // How often to re-fetch (realtime, hourly, daily, weekly)
+  items?: object[];            // Inline data — schema depends on catalog type
+
+  // Selectors
+  ids?: string[];    // Filter by item ID (offering_id or SKU)
+  gtins?: string[];  // Filter by GTIN (product type only)
+  tags?: string[];   // Filter by tag
+  category?: string; // Filter by category
+  query?: string;    // Natural language filter
+
+  // Integration
+  conversion_events?: EventType[]; // Events to attribute to catalog items
+  content_id_type?: ContentIdType; // Identifier type for event attribution
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `catalog_id` | string | For sync | Buyer's identifier. Required for `sync_catalogs`. When used in creatives, references a synced catalog. |
+| `name` | string | No | Human-readable name |
+| `type` | CatalogType | Yes | Structural: `"offering"`, `"product"`, `"inventory"`, `"store"`, `"promotion"`. Vertical: `"hotel"`, `"flight"`, `"job"`, `"vehicle"`, `"real_estate"`, `"education"`, `"destination"`. |
+| `url` | uri | No | External feed URL. Mutually exclusive with `items`. |
+| `feed_format` | FeedFormat | No | Format of external feed (`google_merchant_center`, `facebook_catalog`, `shopify`, `linkedin_jobs`, `custom`) |
+| `update_frequency` | string | No | Re-fetch schedule (`realtime`, `hourly`, `daily`, `weekly`) |
+| `items` | object[] | No | Inline catalog data. Item schema depends on `type` — each vertical type has a defined schema (HotelItem, JobItem, etc.). Mutually exclusive with `url`. |
+| `ids` | string[] | No | Filter to specific item IDs (offering_id or SKU) |
+| `gtins` | string[] | No | Filter product catalogs by GTIN (cross-retailer matching) |
+| `tags` | string[] | No | Filter to items with these tags (OR logic) |
+| `category` | string | No | Filter to items in this category |
+| `query` | string | No | Natural language filter |
+| `conversion_events` | EventType[] | No | Event types that represent conversions for items in this catalog (e.g., `submit_application` for job catalogs, `purchase` for product catalogs) |
+| `content_id_type` | ContentIdType | No | Identifier type for matching conversion event `content_ids` to catalog items. Values: `sku`, `gtin`, or vertical-specific IDs (`job_id`, `hotel_id`, etc.). Omit for custom identifier schemes. |
+
+## Conversion events
+
+The `conversion_events` field creates an explicit link between catalog items and the conversion tracking system. When a buyer syncs a catalog with conversion events declared, the platform knows which events to attribute to which catalog items. The event's `content_ids` field carries the item IDs that connect back.
+
+The `content_id_type` field declares what identifier type `content_ids` values represent — for example, `gtin` for cross-retailer product matching or `job_id` for job postings. This tells the platform which field on catalog items to match against. Omit `content_id_type` when using a custom identifier scheme.
+
+Natural mappings by vertical:
+
+| Catalog type | Primary event types |
+|---|---|
+| `product` | `purchase`, `add_to_cart` |
+| `hotel` | `purchase` (booking) |
+| `flight` | `purchase` (booking) |
+| `job` | `submit_application` |
+| `vehicle` | `lead`, `schedule` (test drive) |
+| `real_estate` | `lead`, `schedule` (viewing) |
+| `education` | `submit_application`, `complete_registration` |
+| `destination` | `purchase` (booking) |
+
+These mappings are not enforced by the schema — they're declared by the buyer when syncing a catalog. A job catalog that also tracks `lead` events alongside `submit_application` is perfectly valid.
+
+```json
+{
+  "catalog_id": "job-feed",
+  "type": "job",
+  "content_id_type": "job_id",
+  "conversion_events": ["submit_application", "complete_registration"],
+  "url": "https://careers.acme.com/feed.xml",
+  "feed_format": "linkedin_jobs"
+}
+```
+
+## Sourcing catalogs
+
+There are three ways to provide catalog data, each suited to a different stage of maturity:
+
+### Inline items
+
+Any catalog type can embed items directly via the `items` array. The item schema depends on the catalog `type`:
+
+```json
+{
+  "catalog": {
+    "type": "offering",
+    "items": [
+      {"offering_id": "summer-sale", "name": "Summer Sale", "landing_url": "https://acme.com/summer"}
+    ]
+  }
+}
+```
+
+Vertical types use their industry-specific item schema:
+
+```json
+{
+  "catalog": {
+    "type": "hotel",
+    "items": [
+      {
+        "hotel_id": "grand-amsterdam",
+        "name": "Grand Hotel Amsterdam",
+        "location": {"lat": 52.3676, "lng": 4.9041},
+        "star_rating": 5,
+        "price": {"amount": 289, "currency": "EUR", "period": "night"},
+        "amenities": ["spa", "pool", "restaurant", "wifi"]
+      }
+    ]
+  }
+}
+```
+
+### External feed URL
+
+For feeds managed outside AdCP, point to a URL and let the platform fetch:
+
+```json
+{
+  "catalog": {
+    "catalog_id": "product-feed",
+    "type": "product",
+    "url": "https://feeds.acmecorp.com/products.xml",
+    "feed_format": "google_merchant_center",
+    "update_frequency": "daily"
+  }
+}
+```
+
+### Reference to synced catalog
+
+For catalogs already on the account via `sync_catalogs`, reference by `catalog_id`:
+
+```json
+{
+  "catalog": {
+    "catalog_id": "gmc-primary",
+    "type": "product",
+    "ids": ["SKU-123", "SKU-456"]
+  }
+}
+```
+
+## Syncing catalogs
+
+For catalogs that change frequently or require platform review, use `sync_catalogs` to give them a managed lifecycle on the account. This is the same pattern as `sync_creatives` — upsert semantics, async approval, per-item status.
+
+### Why sync?
+
+- **Platform review**: Product catalogs go through content policy checks (like Google Merchant Center reviewing product listings). `sync_catalogs` returns per-item approval status.
+- **Feed management**: Point to an external feed URL and the platform re-fetches on a schedule, rather than the buyer re-syncing on every change.
+- **Multi-feed creatives**: Formats can require multiple catalog types (product + inventory + store). Syncing catalogs separately lets creatives reference them by `catalog_id`.
+- **Approval workflow**: Async responses notify the buyer when items are approved, rejected, or flagged for issues.
+
+### Sync request
+
+```json
+{
+  "account_id": "acct_acmecorp",
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "name": "Acme Product Catalog",
+      "type": "product",
+      "url": "https://feeds.acmecorp.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
+    },
+    {
+      "catalog_id": "inventory-feed",
+      "name": "Store Inventory",
+      "type": "inventory",
+      "url": "https://feeds.acmecorp.com/inventory.json",
+      "feed_format": "custom",
+      "update_frequency": "hourly"
+    },
+    {
+      "catalog_id": "store-locations",
+      "name": "Retail Locations",
+      "type": "store",
+      "url": "https://feeds.acmecorp.com/stores.json",
+      "feed_format": "custom",
+      "update_frequency": "weekly"
+    }
+  ]
+}
+```
+
+### Sync response with item-level review
+
+```json
+{
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "action": "created",
+      "platform_id": "plat_cat_001",
+      "item_count": 1250,
+      "items_approved": 1180,
+      "items_pending": 45,
+      "items_rejected": 25,
+      "item_issues": [
+        {
+          "item_id": "SKU-789",
+          "status": "rejected",
+          "reasons": ["Missing required field: image_url"]
+        },
+        {
+          "item_id": "SKU-456",
+          "status": "warning",
+          "reasons": ["Price format not recognized — using raw value"]
+        }
+      ],
+      "next_fetch_at": "2025-03-01T06:00:00Z"
+    },
+    {
+      "catalog_id": "inventory-feed",
+      "action": "created",
+      "platform_id": "plat_cat_002",
+      "item_count": 8500,
+      "items_approved": 8500,
+      "next_fetch_at": "2025-02-28T13:00:00Z"
+    }
+  ]
+}
+```
+
+### Discovery mode
+
+Omit `catalogs` to list all catalogs on the account without modification:
+
+```json
+{
+  "account_id": "acct_acmecorp"
+}
+```
+
+This matters because sellers may already have brand data from other sources — a retailer might have the brand's product catalog from their commerce platform. Discovery lets the buyer build on existing state rather than re-uploading everything.
+
+## Format catalog requirements
+
+Formats that render product listings, store locators, or promotional content declare what catalog feeds they need via `catalog_requirements`. This tells buying agents which catalogs to sync before submitting creatives.
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.retailer.com/adcp",
+    "id": "product_carousel_with_inventory"
+  },
+  "name": "Product Carousel with Inventory",
+  "catalog_requirements": [
+    {
+      "catalog_type": "product",
+      "required": true,
+      "min_items": 3,
+      "required_fields": ["title", "price", "image_url"]
+    },
+    {
+      "catalog_type": "inventory",
+      "required": true,
+      "required_fields": ["store_id", "quantity", "in_stock"]
+    }
+  ]
+}
+```
+
+Buying agents check `catalog_requirements` after discovering formats, sync the required catalogs via `sync_catalogs`, then submit creatives that reference those catalogs.
+
+## Catalogs in creatives
+
+Creatives reference catalogs via the `catalog` field on the creative object. When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalog` field on the creative to reference the synced data.
+
+### Workflow
+
+1. **Discover format requirements** — Call `list_creative_formats` and check `catalog_requirements` for what feeds to sync.
+
+2. **Sync catalogs** — Use `sync_catalogs` to push the required feeds to the account. Wait for approval.
+
+3. **Submit the creative** — Reference the synced catalog by `catalog_id` on the creative's `catalog` field:
+
+```json
+{
+  "creatives": [
+    {
+      "creative_id": "product-carousel",
+      "format_id": {
+        "agent_url": "https://creative.retailer.com/adcp",
+        "id": "product_carousel_with_inventory"
+      },
+      "catalog": {
+        "catalog_id": "product-feed",
+        "type": "product",
+        "tags": ["summer"]
+      },
+      "assets": {
+        "banner_image": {
+          "url": "https://cdn.acmecorp.com/carousel-hero.jpg",
+          "width": 1200,
+          "height": 628
+        }
+      }
+    }
+  ]
+}
+```
+
+## Offerings
+
+**Schema URL**: [`/schemas/core/offering.json`](https://adcontextprotocol.org/schemas/v1/core/offering.json)
+
+An Offering is an individual promotable item within an `offering`-type catalog — a campaign, product, service, promotion, or vacancy. Each offering is a semantic unit with its own name, validity window, landing URL, creative assets, and geographic scope.
+
+```typescript
+interface Offering {
+  // Identity (required)
+  offering_id: string;
+  name: string;
+
+  // Description
+  description?: string;
+  tagline?: string;
+
+  // Validity window
+  valid_from?: string;  // ISO 8601 datetime
+  valid_to?: string;    // ISO 8601 datetime
+
+  // Destinations
+  checkout_url?: string;  // Purchase/conversion URL
+  landing_url?: string;   // Information page
+
+  // Creative assets
+  assets?: OfferingAssetGroup[];  // Structured asset groups
+  portfolio_ref?: string;         // URL to creative portfolio
+
+  // Geographic scope
+  geo_targets?: {
+    countries?: string[];
+    regions?: string[];
+    metros?: { system: string; values: string[] }[];
+    postal_areas?: { system: string; values: string[] }[];
+  };
+
+  // Discovery
+  keywords?: string[];
+  categories?: string[];
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `offering_id` | string | Yes | Unique identifier |
+| `name` | string | Yes | Human-readable name |
+| `description` | string | No | Detailed description |
+| `tagline` | string | No | Short promotional tagline |
+| `valid_from` | datetime | No | When offering becomes available |
+| `valid_to` | datetime | No | When offering expires |
+| `checkout_url` | uri | No | URL for purchase flow |
+| `landing_url` | uri | No | Landing page URL |
+| `assets` | OfferingAssetGroup[] | No | Structured asset groups for this offering |
+| `portfolio_ref` | uri | No | Reference to creative portfolio |
+| `geo_targets` | object | No | Geographic scope — where this offering is relevant |
+| `keywords` | string[] | No | Keywords for intent matching |
+| `categories` | string[] | No | Categories for filtering |
+
+### OfferingAssetGroup
+
+**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/v1/core/offering-asset-group.json)
+
+A typed pool of creative assets within an offering. Uses the same `asset_group_id` vocabulary as format-level asset definitions, enabling formats to declare per-group constraints on what each offering must provide.
+
+```typescript
+interface OfferingAssetGroup {
+  asset_group_id: string;        // e.g., 'headlines', 'images_landscape'
+  asset_type: AssetContentType;  // Type of all items in this group
+  items: Asset[];                // The assets (must match asset_type)
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset_group_id` | string | Yes | Matches format-level vocabulary (e.g., `headlines`, `descriptions`, `images_landscape`) |
+| `asset_type` | AssetContentType | Yes | Content type of all items in this group |
+| `items` | Asset[] | Yes | The assets; each item must match the declared `asset_type` |
+
+### OfferingAssetConstraint
+
+**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/v1/core/requirements/offering-asset-constraint.json)
+
+Declared by a format to specify what asset groups each offering must provide. Used within `catalog_requirements` to constrain what offerings in a catalog must provide.
+
+```typescript
+interface OfferingAssetConstraint {
+  asset_group_id: string;
+  asset_type: AssetContentType;
+  required?: boolean;             // default: true
+  min_count?: number;
+  max_count?: number;
+  asset_requirements?: AssetRequirements;
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `asset_group_id` | string | Yes | The group this constraint applies to |
+| `asset_type` | AssetContentType | Yes | Expected content type |
+| `required` | boolean | No | Whether the group must be present. Defaults to `true`. |
+| `min_count` | integer | No | Minimum items required |
+| `max_count` | integer | No | Maximum items allowed |
+| `asset_requirements` | object | No | Technical requirements per item (e.g., `max_length` for text, `min_width` for images) |
+
+### Format requirements for offerings
+
+Call `list_creative_formats` and check `catalog_requirements` to see what catalog types are needed and what each offering must provide:
+
+```json
+{
+  "catalog_requirements": [
+    {
+      "catalog_type": "offering",
+      "required": true,
+      "offering_asset_constraints": [
+        {
+          "asset_group_id": "headlines",
+          "asset_type": "text",
+          "required": true,
+          "min_count": 3,
+          "max_count": 15,
+          "asset_requirements": {"max_length": 30}
+        },
+        {
+          "asset_group_id": "descriptions",
+          "asset_type": "text",
+          "required": true,
+          "min_count": 2,
+          "max_count": 5,
+          "asset_requirements": {"max_length": 90}
+        },
+        {
+          "asset_group_id": "images_landscape",
+          "asset_type": "image",
+          "required": true,
+          "min_count": 1,
+          "max_count": 20,
+          "asset_requirements": {"aspect_ratio": "1.91:1", "min_width": 1200, "min_height": 628}
+        },
+        {
+          "asset_group_id": "images_square",
+          "asset_type": "image",
+          "required": true,
+          "min_count": 1,
+          "max_count": 20,
+          "asset_requirements": {"aspect_ratio": "1:1", "min_width": 600, "min_height": 600}
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Stores
+
+**Schema URL**: [`/schemas/core/store-item.json`](https://adcontextprotocol.org/schemas/v1/core/store-item.json)
+
+A StoreItem represents a physical location within a `store`-type catalog. Each store carries coordinates, an optional address, and one or more catchment areas that define the geographic reach around that location.
+
+```typescript
+interface StoreItem {
+  store_id: string;              // Unique identifier
+  name: string;                  // Human-readable name
+  location: { lat: number; lng: number };  // WGS 84 coordinates
+
+  address?: {
+    street?: string;
+    city?: string;
+    region?: string;             // ISO 3166-2 preferred
+    postal_code?: string;
+    country?: string;            // ISO 3166-1 alpha-2
+  };
+
+  catchments?: Catchment[];      // Reachable areas around this store
+  phone?: string;                // E.164 format
+  url?: string;                  // Store detail page
+  hours?: Record<DayOfWeek, string>;  // e.g., "09:00-21:00"
+  tags?: string[];               // For filtering (e.g., "flagship", "pickup")
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `store_id` | string | Yes | Unique identifier for targeting, inventory, and creative references |
+| `name` | string | Yes | Human-readable store name |
+| `location` | object | Yes | Lat/lng coordinates (WGS 84) |
+| `address` | object | No | Structured address for display and geocoding fallback |
+| `catchments` | Catchment[] | No | Catchment areas for proximity targeting |
+| `phone` | string | No | Phone number (E.164) |
+| `url` | uri | No | Store-specific page URL |
+| `hours` | object | No | Operating hours by day of week |
+| `tags` | string[] | No | Tags for filtering in targeting and creative selection |
+
+### Catchment areas
+
+**Schema URL**: [`/schemas/core/catchment.json`](https://adcontextprotocol.org/schemas/v1/core/catchment.json)
+
+A catchment defines the geographic area a store serves. Three methods are supported — provide exactly one per catchment:
+
+**Isochrone inputs** — the platform resolves the shape from travel time and transport mode, accounting for road networks, transit routes, and terrain:
+
+```json
+{
+  "catchment_id": "drive",
+  "label": "15-min drive",
+  "travel_time": { "value": 15, "unit": "min" },
+  "transport_mode": "driving"
+}
+```
+
+**Simple radius** — a circle around the store's coordinates:
+
+```json
+{
+  "catchment_id": "local",
+  "radius": { "value": 5, "unit": "km" }
+}
+```
+
+**Pre-computed GeoJSON** — the buyer has already calculated the boundary (via TravelTime, Mapbox, etc.) or has custom trade area data:
+
+```json
+{
+  "catchment_id": "trade-area",
+  "label": "Primary trade area",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[[4.85, 52.35], [4.95, 52.35], [4.95, 52.40], [4.85, 52.40], [4.85, 52.35]]]
+  }
+}
+```
+
+A store can have multiple catchments — different modes produce different boundaries. An urban flagship might define a 10-minute walking catchment AND a 15-minute driving catchment:
+
+```json
+{
+  "store_id": "amsterdam-flagship",
+  "name": "Amsterdam Flagship",
+  "location": { "lat": 52.3676, "lng": 4.9041 },
+  "catchments": [
+    {
+      "catchment_id": "walk",
+      "travel_time": { "value": 10, "unit": "min" },
+      "transport_mode": "walking"
+    },
+    {
+      "catchment_id": "drive",
+      "travel_time": { "value": 15, "unit": "min" },
+      "transport_mode": "driving"
+    },
+    {
+      "catchment_id": "transit",
+      "travel_time": { "value": 20, "unit": "min" },
+      "transport_mode": "public_transport"
+    }
+  ]
+}
+```
+
+The `catchment_id` is what targeting references — a campaign can target the `walk` catchment of specific stores or the `drive` catchment of all stores in the catalog.
+
+### Inline store catalog
+
+```json
+{
+  "catalog_id": "retail-locations",
+  "name": "Retail Locations",
+  "type": "store",
+  "items": [
+    {
+      "store_id": "amsterdam-flagship",
+      "name": "Amsterdam Flagship",
+      "location": { "lat": 52.3676, "lng": 4.9041 },
+      "address": {
+        "street": "Kalverstraat 1",
+        "city": "Amsterdam",
+        "region": "NL-NH",
+        "postal_code": "1012 NX",
+        "country": "NL"
+      },
+      "catchments": [
+        {
+          "catchment_id": "walk",
+          "travel_time": { "value": 10, "unit": "min" },
+          "transport_mode": "walking"
+        },
+        {
+          "catchment_id": "drive",
+          "travel_time": { "value": 15, "unit": "min" },
+          "transport_mode": "driving"
+        }
+      ],
+      "tags": ["flagship", "pickup"]
+    },
+    {
+      "store_id": "warehouse-east",
+      "name": "East Warehouse Store",
+      "location": { "lat": 52.2942, "lng": 4.9581 },
+      "catchments": [
+        {
+          "catchment_id": "local",
+          "radius": { "value": 10, "unit": "km" }
+        }
+      ],
+      "tags": ["warehouse", "parking"]
+    }
+  ]
+}
+```
+
+## SI integration
+
+Offerings in a catalog can be promoted through Sponsored Intelligence conversations. The brand's SI agent URL is declared on the [brand identity](/docs/brand-protocol/brand-json), not on the catalog — SI is a brand-level capability.
+
+The `offering_id` connects a catalog item to a conversation:
+
+1. **User expresses intent** — "I need flights to LA next week"
+2. **Publisher matches to offering** — Uses `keywords` to find relevant offerings, checks `valid_from`/`valid_to`
+3. **Publisher initiates SI session** — Passes `offering_id` and user context to the brand's SI agent
+4. **Brand agent responds** — With contextual information, UI elements, and a conversational experience
+
+Display creatives and SI can coexist: the same offering can serve a display ad and also be available for a conversational experience.
+
+## Use cases
+
+### Universal format (asset pool)
+
+The buyer provides multiple offerings, each with their own creative asset pool. The publisher picks the most relevant offering and assembles the best headline/image combination:
+
+```json
+{
+  "brand": { "domain": "acme.com" },
+  "catalog": {
+    "type": "offering",
+    "items": [
+      {
+        "offering_id": "summer-sale",
+        "name": "Summer Sale",
+        "landing_url": "https://acme.com/summer",
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Shop the Summer Sale"},
+            {"content": "50% Off Everything"}
+          ]},
+          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+            {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
+          ]}
+        ]
+      },
+      {
+        "offering_id": "new-arrivals",
+        "name": "New Arrivals",
+        "landing_url": "https://acme.com/new",
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Just Arrived"},
+            {"content": "New This Week"}
+          ]},
+          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+            {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
+          ]}
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Product catalog with synced feeds
+
+For retail media, sync product and inventory feeds, then reference them in creatives:
+
+```json
+{
+  "brand": { "domain": "acmecorp.com" },
+  "catalog": {
+    "catalog_id": "product-feed",
+    "type": "product",
+    "tags": ["summer"]
+  }
+}
+```
+
+The publisher assembles the creative from the synced product data and real-time inventory.
+
+### Pre-built creatives with brand context
+
+For traditional formats (display banners, video), use `portfolio_ref` to point to pre-built creative variants:
+
+```json
+{
+  "brand": { "domain": "brand.com" },
+  "catalog": {
+    "type": "offering",
+    "items": [
+      {
+        "offering_id": "summer-campaign",
+        "name": "Summer Sale",
+        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json",
+        "landing_url": "https://brand.com/summer"
+      }
+    ]
+  }
+}
+```
+
+### Conversational-only
+
+No pre-built creatives — just offerings available for SI conversations. The brand's SI agent URL is discovered from the [brand identity](/docs/brand-protocol/brand-json):
+
+```json
+{
+  "brand": { "domain": "saas-company.com" },
+  "catalog": {
+    "type": "offering",
+    "items": [
+      {
+        "offering_id": "enterprise-demo",
+        "name": "Enterprise Demo",
+        "description": "See our platform in action with a personalized demo",
+        "keywords": ["demo", "enterprise", "trial", "pricing"]
+      },
+      {
+        "offering_id": "free-trial",
+        "name": "14-Day Free Trial",
+        "checkout_url": "https://saas-company.com/signup",
+        "keywords": ["trial", "free", "signup"]
+      }
+    ]
+  }
+}
+```
+
+### Location-specific offerings
+
+For brands with multiple physical locations — restaurants, retail chains, job vacancies — each offering declares its geographic scope via `geo_targets`:
+
+```json
+{
+  "brand": { "domain": "acme-restaurants.com" },
+  "catalog": {
+    "type": "offering",
+    "items": [
+      {
+        "offering_id": "vacancy-amsterdam-chef",
+        "name": "Head Chef — Amsterdam",
+        "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
+        "geo_targets": {
+          "countries": ["NL"],
+          "regions": ["NL-NH"]
+        },
+        "assets": [
+          {"asset_group_id": "headlines", "asset_type": "text", "items": [
+            {"content": "Head Chef Wanted in Amsterdam"},
+            {"content": "Join Our Amsterdam Kitchen Team"}
+          ]}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Geo targets on offerings are about what the offering IS — the Amsterdam vacancy genuinely doesn't exist for someone in Rotterdam. Campaign-wide geo targeting belongs on `targeting_overlay` in the package.
+
+## Best practices
+
+### Match `asset_group_id` to the format's vocabulary
+
+Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in its `offering_asset_constraints`.
+
+### Provide more assets than the minimum
+
+Formats that use asset pools select the best-performing combination. Providing the maximum allowed items gives the publisher more to work with.
+
+### Use `assets` for universal formats, `portfolio_ref` for traditional formats
+
+- **`assets`**: provide when the format assembles the creative from your asset pool (universal/PMax-style formats)
+- **`portfolio_ref`**: provide when the creative is pre-built and the publisher picks a matching size/duration
+
+These can coexist on the same offering.
+
+### Set validity windows
+
+For time-limited promotions, always set `valid_from` and `valid_to`. Publishers filter expired offerings automatically.
+
+### Use `geo_targets` for inherently location-specific offerings
+
+When an offering's identity is tied to a geographic location — a job vacancy, an in-store promotion, a local event — declare its scope with `geo_targets`. This is not ad targeting; it's a property of what the offering IS.
+
+### Provide both destination URLs when applicable
+
+Include both `checkout_url` (for direct conversion) and `landing_url` (for information).
+
+## Related documentation
+
+- **[Account state](/docs/building/integration/account-state)** — How catalogs fit into account state and the setup sequence
+- **[Brand identity](/docs/brand-protocol/brand-json)** — Brand identity and assets
+- **[SI overview](/docs/sponsored-intelligence/overview)** — Conversational brand experiences
+- **[sync_creatives](/docs/media-buy/task-reference/sync_creatives)** — Submitting creative manifests
+- **[list_creative_formats](/docs/creative/task-reference/list_creative_formats)** — Discovering format requirements

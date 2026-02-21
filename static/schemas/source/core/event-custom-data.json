@@ -21,14 +21,14 @@
     },
     "content_ids": {
       "type": "array",
-      "description": "Product or content identifiers",
+      "description": "Item identifiers for catalog attribution. Values are matched against catalog items using the identifier type declared by the catalog's content_id_type field (e.g., SKUs, GTINs, or vertical-specific IDs like job_id).",
       "items": {
         "type": "string"
       }
     },
     "content_type": {
       "type": "string",
-      "description": "Category of content (product, service, etc.)"
+      "description": "Category of content associated with the event (e.g., 'product', 'job', 'hotel'). Corresponds to the catalog type when used for catalog attribution."
     },
     "content_name": {
       "type": "string",

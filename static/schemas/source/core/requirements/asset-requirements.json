@@ -14,7 +14,6 @@
     { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" },
-    { "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/url-asset-requirements.json" },
     { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
   ]

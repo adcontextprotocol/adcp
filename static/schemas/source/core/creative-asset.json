@@ -17,6 +17,10 @@
       "$ref": "/schemas/core/format-id.json",
       "description": "Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats."
     },
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json",
+      "description": "Catalog of items this creative promotes. Used for dynamic product ads, carousels, and any format that renders catalog items. The catalog can be inline (with items), a reference to a synced catalog (by catalog_id), or a URL to an external feed."
+    },
     "assets": {
       "type": "object",
       "description": "Assets required by the format, keyed by asset_role",
@@ -49,9 +53,6 @@
             },
             {
               "$ref": "/schemas/core/assets/daast-asset.json"
-            },
-            {
-              "$ref": "/schemas/core/promoted-offerings.json"
             },
             {
               "$ref": "/schemas/core/assets/url-asset.json"

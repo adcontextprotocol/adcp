@@ -65,11 +65,6 @@
       "description": "JavaScript code for dynamic creative logic",
       "schema": "/schemas/core/assets/javascript-asset.json",
       "typical_use": "Third-party tags, custom interaction logic, analytics"
-    },
-    "promoted_offerings": {
-      "description": "Brand manifest and product selectors for generative creative formats",
-      "schema": "/schemas/core/promoted-offerings.json",
-      "typical_use": "AI-generated creatives that need brand context and product information"
     }
   },
   "architecture": {

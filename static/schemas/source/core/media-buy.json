@@ -20,10 +20,6 @@
     "status": {
       "$ref": "/schemas/enums/media-buy-status.json"
     },
-    "promoted_offering": {
-      "type": "string",
-      "description": "Description of advertiser and what is being promoted"
-    },
     "total_budget": {
       "type": "number",
       "description": "Total budget amount",
@@ -58,7 +54,6 @@
   "required": [
     "media_buy_id",
     "status",
-    "promoted_offering",
     "total_budget",
     "packages"
   ],

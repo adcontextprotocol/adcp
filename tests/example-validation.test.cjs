@@ -131,7 +131,6 @@ const exampleData = {
   mediaBuy: {
     "media_buy_id": "mb_12345",
     "status": "active",
-    "promoted_offering": "Nike Air Max 2024 - latest innovation in cushioning",
     "total_budget": 50000,
     "packages": []
   },
@@ -192,8 +191,7 @@ const exampleData = {
   
   // Request/Response examples
   getProductsRequest: {
-    "promoted_offering": "Nike Air Max 2024 - latest innovation in cushioning",
-    "brief": "Premium video inventory for sports fans"
+    "brief": "Nike Air Max 2024 - Premium video inventory for sports fans"
   },
   
   getProductsResponse: {
@@ -220,7 +218,6 @@ const exampleData = {
         "products": ["ctv_sports_premium"]
       }
     ],
-    "promoted_offering": "Nike Air Max 2024 - latest innovation in cushioning",
     "po_number": "PO-2024-001",
     "start_time": "2024-01-01T00:00:00Z",
     "end_time": "2024-01-31T23:59:59Z",
@@ -266,7 +263,6 @@ const exampleData = {
         "format_ids": ["display_300x250"]
       }
     ],
-    "promoted_offering": "Acme Flash Sale - 24-hour limited time offer",
     "start_time": "asap",
     "end_time": "2024-10-03T23:59:59Z",
     "budget": {

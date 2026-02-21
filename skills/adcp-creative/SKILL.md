@@ -66,24 +66,8 @@ Generate a creative from scratch or transform an existing creative to a differen
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250_generative"
   },
-  "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
-    "assets": {
-      "promoted_offerings": {
-        "brand": {
-          "domain": "mybrand.com"
-        },
-        "inline_offerings": [
-          {
-            "name": "Winter Sale Collection",
-            "description": "50% off all winter items"
-          }
-        ]
-      }
-    }
+  "brand": {
+    "domain": "mybrand.com"
   }
 }
 ```
@@ -258,7 +242,7 @@ The agent resolves the domain to retrieve the brand's identity (name, colors, gu
 
 ### Generative vs Transformation
 
-- **Pure Generation**: Minimal manifest with `promoted_offerings` in assets. Creative agent generates all output assets from scratch.
+- **Pure Generation**: Provide `target_format_id`, `brand`, and a natural language `message`. Creative agent generates all output assets from scratch.
 - **Transformation**: Complete manifest with existing assets. Creative agent adapts to target format, following `message` guidance.
 
 ---

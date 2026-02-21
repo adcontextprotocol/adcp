@@ -279,15 +279,6 @@
             }
           },
           {
-            "description": "Promoted offerings asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
-            "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "promoted_offerings" },
-              "requirements": { "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json" }
-            }
-          },
-          {
             "description": "URL asset",
             "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
             "properties": {
@@ -427,14 +418,6 @@
                       }
                     },
                     {
-                      "description": "Promoted offerings asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
-                      "properties": {
-                        "asset_type": { "const": "promoted_offerings" },
-                        "requirements": { "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json" }
-                      }
-                    },
-                    {
                       "description": "URL asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
@@ -542,6 +525,14 @@
         "manifest"
       ],
       "additionalProperties": true
+    },
+    "catalog_requirements": {
+      "type": "array",
+      "description": "Catalog feeds this format requires for rendering. Formats that display product listings, store locators, inventory availability, or promotional pricing declare what catalog types must be synced to the account. Buyers ensure the required catalogs are synced via sync_catalogs before submitting creatives in this format.",
+      "items": {
+        "$ref": "/schemas/core/requirements/catalog-requirements.json"
+      },
+      "minItems": 1
     },
     "reported_metrics": {
       "type": "array",
