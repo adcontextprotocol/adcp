@@ -36,6 +36,14 @@
       },
       "minItems": 1,
       "uniqueItems": true
+    },
+    "offering_asset_constraints": {
+      "type": "array",
+      "description": "Per-offering creative requirements. Only applicable when catalog_type is 'offering'. Declares what asset groups (headlines, images, videos) each offering must provide, along with count bounds and per-asset technical constraints.",
+      "items": {
+        "$ref": "/schemas/core/requirements/offering-asset-constraint.json"
+      },
+      "minItems": 1
     }
   },
   "required": ["catalog_type"],

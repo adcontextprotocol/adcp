@@ -136,7 +136,7 @@
         },
         "catalog": {
           "$ref": "/schemas/core/catalog.json",
-          "description": "A typed collection of promotable items — offerings (inline or URL) or product catalog entries (platform-synced)"
+          "description": "A typed data feed — structural (offering, product, inventory, store, promotion) or vertical (hotel, flight, job, vehicle, real_estate, education, destination). Can be synced, inline, or fetched from a URL."
         },
         "offering": {
           "$ref": "/schemas/core/offering.json",
@@ -622,7 +622,7 @@
         },
         "catalog-type": {
           "$ref": "/schemas/enums/catalog-type.json",
-          "description": "Catalog feed types: offerings, product, inventory, store, promotion"
+          "description": "Catalog feed types: offering, product, inventory, store, promotion, hotel, flight, job, vehicle, real_estate, education, destination"
         },
         "catalog-action": {
           "$ref": "/schemas/enums/catalog-action.json",
