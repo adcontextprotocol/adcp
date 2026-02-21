@@ -123,7 +123,7 @@ asyncio.run(discover_with_filters())
 |-----------|------|----------|-------------|
 | `brief` | string | No | Natural language description of campaign requirements. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
-| `product_selectors` | ProductSelectors | No | Selectors to filter the brand's product catalog. Requires `brand`. See [Product Selectors](#product-selectors) below. |
+| `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
@@ -154,17 +154,23 @@ asyncio.run(discover_with_filters())
 
 *At least one of `min` or `max` must be specified.
 
-### Product Selectors
+### Catalog discovery
 
-Filter which items from the brand's product catalog to evaluate for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches (e.g., a retailer carries the specified GTINs). Selectors combine with OR logic — items matching any criteria are included.
+Pass a `catalog` to find advertising products that can promote your catalog items. The seller matches your catalog items against its inventory and returns products where matches exist. Supports all catalog types — a product catalog finds sponsored product slots, a job catalog finds job ad products, a flight catalog finds dynamic travel ads.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `manifest_gtins` | string[] | GTIN identifiers for cross-retailer catalog matching (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14) |
-| `manifest_skus` | string[] | Direct SKU references from the brand's product catalog |
-| `manifest_tags` | string[] | Select by tags (e.g., `["organic", "ketchup"]`) |
-| `manifest_category` | string | Select from a specific category (e.g., `"food/condiments"`) |
-| `manifest_query` | string | Natural language query (e.g., `"all pasta sauces under $5"`) |
+The `catalog` field uses the same [Catalog](/docs/creative/catalogs) object used throughout AdCP. You can reference a synced catalog by `catalog_id`, provide inline items, or use selectors to filter:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | CatalogType | Catalog type (required) — `product`, `job`, `hotel`, `flight`, `offering`, etc. |
+| `catalog_id` | string | Reference a synced catalog by ID |
+| `ids` | string[] | Filter to specific item IDs |
+| `gtins` | string[] | Filter by GTIN for cross-retailer matching (product type only) |
+| `tags` | string[] | Filter by tags (OR logic) |
+| `category` | string | Filter by category |
+| `query` | string | Natural language filter |
+
+Products in the response include `catalog_types` (what catalog types they support) and `catalog_match` (which items matched).
 
 ## Response
 
@@ -220,7 +226,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | Field | Type | Description |
 |-------|------|-------------|
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
-| `product_selectors_applied` | boolean | `true` if the seller filtered results based on the provided `product_selectors`. Absent or `false` if not provided or not supported. |
+| `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
@@ -516,9 +522,9 @@ asyncio.run(discover_standard_formats())
 
 </CodeGroup>
 
-### Commerce Product Discovery
+### Catalog-driven discovery
 
-Use `product_selectors` with a brand to discover advertising products where your catalog items have matches at specific retailers:
+Use `catalog` with a brand to discover advertising products that can promote your catalog items. The seller matches your items against its inventory and returns products where matches exist:
 
 <CodeGroup>
 
@@ -530,9 +536,10 @@ const result = await testAgent.getProducts({
   brand: {
     domain: 'acmecorp.com'
   },
-  product_selectors: {
-    manifest_tags: ['ketchup', 'organic'],
-    manifest_category: 'food/condiments'
+  catalog: {
+    type: 'product',
+    tags: ['ketchup', 'organic'],
+    category: 'food/condiments'
   },
   filters: {
     channels: ['retail_media']
@@ -540,10 +547,10 @@ const result = await testAgent.getProducts({
 });
 
 if (result.success && result.data) {
-  if (result.data.product_selectors_applied) {
+  if (result.data.catalog_applied) {
     console.log(`Found ${result.data.products.length} products with catalog matches`);
   } else {
-    console.log('Seller does not support product selectors');
+    console.log('Seller does not support catalog matching');
   }
 }
 ```
@@ -558,18 +565,19 @@ async def discover_commerce_products():
         brand={
             'domain': 'acmecorp.com'
         },
-        product_selectors={
-            'manifest_tags': ['ketchup', 'organic'],
-            'manifest_category': 'food/condiments'
+        catalog={
+            'type': 'product',
+            'tags': ['ketchup', 'organic'],
+            'category': 'food/condiments'
         },
         filters={
             'channels': ['retail_media']
         }
     )
-    if result.get('product_selectors_applied'):
+    if result.get('catalog_applied'):
         print(f"Found {len(result.products)} products with catalog matches")
     else:
-        print("Seller does not support product selectors")
+        print("Seller does not support catalog matching")
 
 asyncio.run(discover_commerce_products())
 ```
@@ -578,18 +586,37 @@ asyncio.run(discover_commerce_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brand":{"domain":"acmecorp.com"},"product_selectors":{"manifest_tags":["ketchup","organic"],"manifest_category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  '{"brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
 </CodeGroup>
 
-You can also select catalog items by GTIN for precise cross-retailer matching:
+You can also use GTIN matching, reference a synced catalog, or discover products for other catalog types:
 
 ```json
 {
-  "product_selectors": {
-    "manifest_gtins": ["00013000006040", "00013000006057"]
+  "catalog": {
+    "type": "product",
+    "gtins": ["00013000006040", "00013000006057"]
+  }
+}
+```
+
+```json
+{
+  "catalog": {
+    "catalog_id": "gmc-primary",
+    "type": "product"
+  }
+}
+```
+
+```json
+{
+  "catalog": {
+    "type": "job",
+    "catalog_id": "chef-vacancies"
   }
 }
 ```

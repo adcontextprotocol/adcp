@@ -7,7 +7,7 @@ keywords: [media buy protocol, advertising automation, AI advertising workflows,
 
 AI is buying ads. The Media Buy protocol ensures it can buy yours.
 
-This is AdCP's core advertising automation interface, providing 10 standardized tasks for managing the complete advertising lifecycle—from inventory discovery through conversion tracking.
+This is AdCP's core advertising automation interface, providing 11 standardized tasks for managing the complete advertising lifecycle—from inventory discovery through conversion tracking.
 
 ## Protocol Access
 
@@ -18,7 +18,7 @@ Media Buy tasks are accessible through multiple protocols:
 
 All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for guidance.
 
-## The 10 Core Media Buy Tasks
+## The 11 Core Media Buy Tasks
 
 The Media Buy protocol provides these essential operations:
 
@@ -30,6 +30,9 @@ The Media Buy protocol provides these essential operations:
 ### Campaign Execution
 - **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)**: Launch advertising campaigns with complete lifecycle management
 - **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)**: Modify budgets, targeting, and campaign settings
+
+### Catalog Management
+- **[`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs)**: Sync product feeds, inventory, stores, and vertical catalogs to seller accounts
 
 ### Creative Management
 - **[`list_creatives`](/docs/media-buy/task-reference/list_creatives)**: Browse and filter creative asset libraries
@@ -224,10 +227,13 @@ sequenceDiagram
     end
 
     rect rgb(240, 255, 240)
-        Note over P,MC: Creation
-        P->>MC: Create media buy (or execute proposal)
+        Note over P,MC: Account Setup & Creation
+        P->>MC: Sync catalogs (product feeds, inventory)
+        MC->>P: Per-catalog approval status
+        P->>MC: Sync creatives (referencing catalogs)
+        MC->>P: Creative approval status
+        P->>MC: Create media buy
         MC->>P: Pending approval
-        P->>MC: Add creatives
     end
 
     rect rgb(255, 250, 240)
@@ -249,7 +255,7 @@ sequenceDiagram
 ## Documentation Structure
 
 ### [Task Reference](/docs/media-buy/task-reference/) 🔗
-Complete API reference for all 10 media buying operations, from product discovery and creative management to campaign creation and conversion tracking.
+Complete API reference for all 11 media buying operations, from product discovery and catalog management to campaign creation and conversion tracking.
 
 ### [Capability Discovery](/docs/media-buy/capability-discovery/) 🔍
 Foundation concepts including creative format specifications and property authorization. Learn about preventing unauthorized resale and understanding format requirements.

@@ -212,6 +212,78 @@ The `content_id_type` field declares what identifier type `content_ids` values r
 
 ---
 
+## product_selectors replaced by catalog on get_products
+
+The `product_selectors` field on `get_products` has been replaced by `catalog`. The `PromotedProducts` schema has been removed.
+
+### Before
+
+```json
+{
+  "brand": { "domain": "acmecorp.com" },
+  "product_selectors": {
+    "manifest_gtins": ["00013000006040"],
+    "manifest_tags": ["organic"]
+  }
+}
+```
+
+### After
+
+```json
+{
+  "brand": { "domain": "acmecorp.com" },
+  "catalog": {
+    "type": "product",
+    "gtins": ["00013000006040"],
+    "tags": ["organic"]
+  }
+}
+```
+
+### Field mapping
+
+| Old (`product_selectors`) | New (`catalog`) |
+|---|---|
+| `manifest_gtins` | `gtins` |
+| `manifest_skus` | `ids` |
+| `manifest_tags` | `tags` |
+| `manifest_category` | `category` |
+| `manifest_query` | `query` |
+
+### Response changes
+
+- `product_selectors_applied` is now `catalog_applied`
+- `catalog_match.matched_skus` is now `catalog_match.matched_ids`
+
+---
+
+## New fields on Product
+
+- **`catalog_types`** — Array of catalog types this product supports (e.g., `["product"]`, `["job", "offering"]`)
+- **`catalog_match.matched_ids`** — Generic item ID matches (replaces `matched_skus`)
+- **`catalog_match.matched_count`** — Count of matched items
+
+---
+
+## Catalog on packages
+
+Packages now accept a `catalog` field for catalog-driven campaigns. One budget envelope promotes an entire catalog, with the platform optimizing delivery across items.
+
+---
+
+## Store catchment targeting
+
+`targeting_overlay` now supports `store_catchments` — referencing synced store catalogs for proximity targeting.
+
+---
+
+## Per-catalog-item delivery
+
+`get_media_buy_delivery` now includes `by_catalog_item` breakdowns within packages for catalog-driven campaigns.
+
+---
+
 ## Migration steps
 
 <Steps>

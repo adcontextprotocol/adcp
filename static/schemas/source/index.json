@@ -110,10 +110,6 @@
           "$ref": "/schemas/core/reference-asset.json",
           "description": "A reference asset with semantic role for creative context"
         },
-        "promoted-products": {
-          "$ref": "/schemas/core/promoted-products.json",
-          "description": "Product or offering selection for campaigns with multiple selection methods"
-        },
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"

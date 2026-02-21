@@ -14,6 +14,65 @@ Catalogs are a foundational building block in AdCP:
 - **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
 - **Creatives reference** synced catalogs by `catalog_id` instead of embedding items inline
 
+## Where sync_catalogs fits
+
+`sync_catalogs` is a **buyer-to-seller** task. The buyer pushes catalog feeds to the seller's account, and the seller reviews and approves them before they can be used in campaigns.
+
+### The actors
+
+| Actor | Role |
+|-------|------|
+| **Buyer** | Calls `sync_catalogs` to push catalog feeds to the seller account. Owns the feed data (product URLs, inline items, inventory feeds). |
+| **Seller** | Receives catalogs, validates items, runs content policy review, and returns per-item approval status. May also have existing catalogs from other sources (e.g., a retailer's commerce platform). |
+| **Orchestrator** | Coordinates the sequence — discovers format requirements, syncs catalogs, then submits creatives that reference them. |
+
+### Lifecycle position
+
+`sync_catalogs` sits between format discovery and creative submission. The buyer must know what catalog types a format needs before syncing, and must have approved catalogs before creatives can reference them.
+
+```mermaid
+sequenceDiagram
+    participant B as Buyer
+    participant S as Seller
+
+    rect rgb(240, 248, 255)
+        Note over B,S: 1. Discovery
+        B->>S: list_creative_formats
+        S->>B: Formats with catalog_requirements
+    end
+
+    rect rgb(240, 255, 240)
+        Note over B,S: 2. Catalog sync
+        B->>S: sync_catalogs (product feed, inventory, stores...)
+        S->>B: Per-catalog results with item-level review
+    end
+
+    rect rgb(245, 240, 255)
+        Note over B,S: 3. Creative submission
+        B->>S: sync_creatives (catalog field references synced catalog_id)
+        S->>B: Creative approval status
+    end
+
+    rect rgb(255, 250, 240)
+        Note over B,S: 4. Campaign launch
+        B->>S: create_media_buy (packages reference creatives)
+        S->>B: Campaign status
+    end
+```
+
+This is the same dependency order documented in [Account state](/docs/building/integration/account-state): `sync_catalogs` → `sync_creatives` → `create_media_buy`.
+
+### When to use sync_catalogs vs inline
+
+Not every workflow requires `sync_catalogs`. Use it when:
+
+- **Platform review is needed** — product catalogs that go through content policy checks (like Google Merchant Center)
+- **Feeds change frequently** — point to a URL and let the platform re-fetch on a schedule
+- **Multiple creatives share the same feed** — sync once, reference by `catalog_id` from many creatives
+- **The seller may already have the data** — use discovery mode to see what's already on the account
+
+For simple campaigns with a few items, inline catalogs on the creative's `catalog` field work fine — no sync step needed.
+
 ## Catalog types
 
 Catalog types fall into two categories: **structural** types that describe the data's role, and **vertical** types that define industry-specific item schemas.
@@ -796,6 +855,30 @@ For brands with multiple physical locations — restaurants, retail chains, job 
 ```
 
 Geo targets on offerings are about what the offering IS — the Amsterdam vacancy genuinely doesn't exist for someone in Rotterdam. Campaign-wide geo targeting belongs on `targeting_overlay` in the package.
+
+## Catalogs in the media buy lifecycle
+
+Catalogs flow through the entire media buy lifecycle — from product discovery to delivery reporting.
+
+### Catalog-driven discovery
+
+Pass a `catalog` on [`get_products`](/docs/media-buy/task-reference/get_products) to find products that match your catalog items. The seller matches catalog items against its inventory and returns products where matches exist. Products declare which catalog types they support via `catalog_types`.
+
+### Catalog-driven packages
+
+Include a `catalog` field on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to make it catalog-driven. One budget envelope promotes the entire catalog — the platform optimizes delivery across items based on performance. This is the AdCP equivalent of catalog-based campaign types like Google Performance Max or Meta Dynamic Product Ads.
+
+### Variants as catalog items
+
+For catalog-driven packages, each catalog item rendered as a distinct ad execution is a [creative variant](/docs/creative/task-reference/get_creative_delivery). The variant's manifest includes the catalog reference with the specific item rendered.
+
+### Per-item delivery reporting
+
+[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) returns `by_catalog_item` breakdowns within each package, showing per-item impressions, spend, clicks, conversions, and ROAS.
+
+### Conversion attribution
+
+Conversion events carry `content_ids` that identify which catalog items were involved. The catalog's `content_id_type` declares the identifier type. Attribution is broad — a user might click item A but convert on item B. The event fires with the actual `content_id`. See [conversion tracking](/docs/media-buy/conversion-tracking).
 
 ## Best practices
 

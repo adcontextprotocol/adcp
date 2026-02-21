@@ -80,14 +80,16 @@ The simplest commerce media product. The retailer renders the creative from the 
   "creative_policy": {
     "templates_available": true
   },
+  "catalog_types": ["product"],
   "catalog_match": {
     "matched_gtins": ["00013000006408", "00013000006415", "00013000006422"],
+    "matched_count": 3,
     "submitted_count": 1200
   }
 }
 ```
 
-The `catalog_match` field tells the buyer which of their GTINs are eligible on this retailer. Buyers use these values as catalog selectors (`gtins`, `ids`) when creating media buys — the same way `publisher_properties` lists available properties for refinement. Sellers can include `matched_gtins`, `matched_skus`, or both.
+The `catalog_types` field declares what catalog types this product supports. The `catalog_match` field tells the buyer which of their catalog items are eligible on this retailer. Buyers use these values as catalog selectors (`gtins`, `ids`) when creating media buys — the same way `publisher_properties` lists available properties for refinement. Sellers can include `matched_gtins`, `matched_ids`, or both.
 
 Key characteristics:
 - **CPC pricing** with auction-based bidding

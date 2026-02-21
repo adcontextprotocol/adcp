@@ -63,6 +63,9 @@ Products represent sellable advertising inventory with:
 
 Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products).
 
+### Catalog-driven discovery
+For catalog-driven campaigns (retail media, job boards, travel), pass a `catalog` on `get_products` to find products that match your catalog items. Products declare which catalog types they support via `catalog_types`, and the response includes `catalog_match` with matched item counts. See [Catalogs](/docs/creative/catalogs#catalogs-in-the-media-buy-lifecycle).
+
 ### Format Discovery Integration
 Product discovery works hand-in-hand with creative planning:
 

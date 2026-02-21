@@ -306,6 +306,14 @@ Once event sources are configured and events are flowing, conversion metrics app
 
 These metrics are reported per-package when the package has an `optimization_goal` set. Sellers that support `by_action_source` breakdowns can show conversions split by source (website, app, in_store, etc.).
 
+## Catalog-item attribution
+
+For catalog-driven packages, conversion events carry `content_ids` that identify which catalog items were involved. The catalog's `content_id_type` declares what identifier type to expect (`sku`, `gtin`, `job_id`, etc.).
+
+Attribution is broad by design: a user might click on one item (job A) but convert on another (apply to job B). The event fires with the actual `content_id` of the conversion, not the clicked item. Per-item click-to-conversion path analysis is a platform optimization concern, not a protocol concern.
+
+The `by_catalog_item` breakdown in [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) shows per-item metrics (impressions, spend, clicks, conversions).
+
 ## Related documentation
 
 - [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) — Configure event sources

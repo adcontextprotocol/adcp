@@ -21,7 +21,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Three-party billing model (brand, operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
 
-4. **Commerce Media** - `product_selectors` on `get_products` for commerce product discovery. `manifest_gtins` on promoted products for cross-retailer GTIN matching. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response aggregated totals and daily breakdown. See the [Commerce Media Guide](/docs/guides/commerce-media).
+4. **Commerce Media** - Catalog-driven product discovery (`catalog` on `get_products`), catalog-driven packages, per-catalog-item delivery reporting (`by_catalog_item`), store catchment targeting, and `catalog_types` on products. Cross-retailer GTIN matching via catalog selectors. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response. See the [Commerce Media Guide](/docs/guides/commerce-media) and [Catalogs](/docs/creative/catalogs).
 
 5. **Creative Delivery Reporting** - Per-creative metrics breakdown within `by_package` in delivery responses. New `get_creative_delivery` task on creative agents for variant-level delivery data with manifests. Three variant tiers: standard (1:1), asset group optimization, and generative creative. Format-level `reported_metrics` declare which metrics each format can provide.
 
