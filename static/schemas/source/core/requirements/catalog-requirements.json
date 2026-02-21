@@ -43,7 +43,8 @@
       "items": {
         "$ref": "/schemas/core/requirements/offering-asset-constraint.json"
       },
-      "minItems": 1
+      "minItems": 1,
+      "uniqueItems": true
     }
   },
   "required": ["catalog_type"],
