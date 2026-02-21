@@ -15,6 +15,7 @@ import {
   expandHouse,
   getEnrichmentCandidates,
   getBrandEnrichmentStats,
+  migrateLogosToHosted,
 } from '../../services/brand-enrichment.js';
 
 const logger = createLogger('admin-brand-enrichment');
@@ -150,6 +151,31 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
           error: 'Internal server error',
           message: 'Unable to enrich brand domain',
         });
+      }
+    }
+  );
+
+  // POST /api/admin/brand-enrichment/migrate-logos
+  // Finds all enriched brands with Brandfetch CDN URLs and re-downloads to our CDN
+  apiRouter.post(
+    '/brand-enrichment/migrate-logos',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const rawLimit = typeof req.body.limit === 'number' ? req.body.limit : 50;
+        const limit = Math.min(Math.max(1, Math.floor(rawLimit)), 200);
+        const delayMs = typeof req.body.delay_ms === 'number'
+          ? Math.max(0, Math.floor(req.body.delay_ms))
+          : 500;
+
+        logger.info({ limit, delayMs }, 'Starting logo migration to CDN');
+        const result = await migrateLogosToHosted({ limit, delayMs });
+        logger.info(result, 'Logo migration complete');
+        res.json(result);
+      } catch (error) {
+        logger.error({ err: error }, 'Error migrating logos');
+        res.status(500).json({ error: 'Internal server error', message: 'Unable to migrate logos' });
       }
     }
   );

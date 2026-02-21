@@ -75,6 +75,7 @@ import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
+import { getCachedLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
 import { createApiKeysRouter } from "./routes/api-keys.js";
 import { sendWelcomeEmail, sendUserSignupEmail, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -906,6 +907,37 @@ export class HTTPServer {
       } catch (error) {
         logger.error({ err: error, domain }, 'Failed to serve brand.json');
         return res.status(500).json({ error: 'Failed to retrieve brand' });
+      }
+    });
+
+    // Serve cached brand logos — public endpoint so agents can download them.
+    // Logos are stored in brand_logo_cache when brands are enriched via Brandfetch.
+    const logoDomainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+    this.app.get('/logos/brands/:domain/:idx', async (req, res) => {
+      const domain = req.params.domain.toLowerCase();
+      const idx = parseInt(req.params.idx, 10);
+      if (!logoDomainPattern.test(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      if (isNaN(idx) || idx < 0 || idx > 999) {
+        return res.status(400).json({ error: 'Invalid logo index' });
+      }
+      try {
+        const logo = await getCachedLogo(domain, idx);
+        if (!logo) {
+          return res.status(404).json({ error: 'Logo not found' });
+        }
+        if (!isAllowedLogoContentType(logo.content_type)) {
+          logger.error({ domain, idx, contentType: logo.content_type }, 'Cached logo has disallowed content-type');
+          return res.status(500).json({ error: 'Failed to retrieve logo' });
+        }
+        res.setHeader('Content-Type', logo.content_type);
+        res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30 days
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        return res.send(logo.data);
+      } catch (error) {
+        logger.error({ err: error, domain, idx }, 'Failed to serve logo');
+        return res.status(500).json({ error: 'Failed to retrieve logo' });
       }
     });
 
