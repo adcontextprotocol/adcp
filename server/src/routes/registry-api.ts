@@ -744,6 +744,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         hosted: brands.filter((b) => b.source === "hosted").length,
         community: brands.filter((b) => b.source === "community").length,
         enriched: brands.filter((b) => b.source === "enriched").length,
+        houses: brands.filter((b) => b.keller_type === "master" || b.keller_type === "independent").length,
+        sub_brands: brands.filter((b) => b.keller_type === "sub_brand" || b.keller_type === "endorsed").length,
       };
 
       return res.json({ brands, stats });
