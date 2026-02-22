@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.4/media-buy/get-products-request.json",
+  "title": "Get Products Request",
+  "description": "Request parameters for discovering available advertising products",
+  "type": "object",
+  "properties": {
+    "brief": {
+      "type": "string",
+      "description": "Natural language description of campaign requirements."
+    },
+    "brand": {
+      "$ref": "/schemas/3.0.0-beta.4/core/brand-ref.json",
+      "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
+    },
+    "catalog": {
+      "$ref": "/schemas/3.0.0-beta.4/core/catalog.json",
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
+    },
+    "campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-beta.4/core/product-filters.json"
+    },
+    "property_list": {
+      "$ref": "/schemas/3.0.0-beta.4/core/property-list-ref.json",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-beta.4/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [],
+  "dependencies": {
+    "catalog": ["brand"]
+  },
+  "additionalProperties": true
+}
