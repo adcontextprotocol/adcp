@@ -1,0 +1,2243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-beta.4/bundled/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this package"
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
+      "items": {
+        "title": "Format ID",
+        "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+          },
+          "duration_ms": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+          }
+        },
+        "required": [
+          "agent_url",
+          "id"
+        ],
+        "additionalProperties": true,
+        "dependencies": {
+          "width": [
+            "height"
+          ],
+          "height": [
+            "width"
+          ]
+        }
+      },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "title": "Pacing",
+      "description": "Budget pacing strategy",
+      "type": "string",
+      "enum": [
+        "even",
+        "asap",
+        "front_loaded"
+      ],
+      "enumDescriptions": {
+        "even": "Allocate remaining budget evenly over remaining campaign duration (default)",
+        "asap": "Spend remaining budget as quickly as possible",
+        "front_loaded": "Allocate more remaining budget earlier in the remaining campaign period"
+      }
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based CPM pricing (required if using cpm-auction-option)",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalog": {
+      "title": "Catalog",
+      "description": "Catalog this package promotes. Makes the package catalog-driven: one budget envelope, platform optimizes across items. Reference a synced catalog by catalog_id with optional selectors to narrow scope.",
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string",
+          "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam Store Locations')."
+        },
+        "type": {
+          "title": "Catalog Type",
+          "description": "Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (ecommerce entries), 'inventory' (stock per location), 'store' (physical locations), 'promotion' (deals and pricing). Vertical types: 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination', 'app' — each with an industry-specific item schema.",
+          "type": "string",
+          "enum": [
+            "offering",
+            "product",
+            "inventory",
+            "store",
+            "promotion",
+            "hotel",
+            "flight",
+            "job",
+            "vehicle",
+            "real_estate",
+            "education",
+            "destination",
+            "app"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to an external catalog feed. The platform fetches and resolves items from this URL. For offering-type catalogs, the feed contains an array of Offering objects. For other types, the feed format is determined by feed_format. When omitted with type 'product', the platform uses its synced copy of the brand's product catalog."
+        },
+        "feed_format": {
+          "title": "Feed Format",
+          "description": "Format of the external feed at url. Required when url points to a non-AdCP feed (e.g., Google Merchant Center XML, Meta Product Catalog). Omit for offering-type catalogs where the feed is native AdCP JSON.",
+          "type": "string",
+          "enum": [
+            "google_merchant_center",
+            "facebook_catalog",
+            "shopify",
+            "linkedin_jobs",
+            "custom"
+          ]
+        },
+        "update_frequency": {
+          "title": "Update Frequency",
+          "description": "How often the platform should re-fetch the feed from url. Only applicable when url is provided. Platforms may use this as a hint for polling schedules.",
+          "type": "string",
+          "enum": [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "description": "Inline catalog data. The item schema depends on the catalog type: Offering objects for 'offering', StoreItem for 'store', HotelItem for 'hotel', FlightItem for 'flight', JobItem for 'job', VehicleItem for 'vehicle', RealEstateItem for 'real_estate', EducationItem for 'education', DestinationItem for 'destination', AppItem for 'app', or freeform objects for 'product', 'inventory', and 'promotion'. Mutually exclusive with url — provide one or the other, not both. Implementations should validate items against the type-specific schema.",
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1
+        },
+        "ids": {
+          "type": "array",
+          "description": "Filter catalog to specific item IDs. For offering-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "gtins": {
+          "type": "array",
+          "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{8,14}$"
+          },
+          "minItems": 1
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "category": {
+          "type": "string",
+          "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+        },
+        "query": {
+          "type": "string",
+          "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')."
+        },
+        "conversion_events": {
+          "type": "array",
+          "description": "Event types that represent conversions for items in this catalog. Declares what events the platform should attribute to catalog items — e.g., a job catalog converts via submit_application, a product catalog via purchase. The event's content_ids field carries the item IDs that connect back to catalog items. Use content_id_type to declare what identifier type content_ids values represent.",
+          "items": {
+            "title": "Event Type",
+            "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+            "type": "string",
+            "enum": [
+              "page_view",
+              "view_content",
+              "select_content",
+              "select_item",
+              "search",
+              "share",
+              "add_to_cart",
+              "remove_from_cart",
+              "viewed_cart",
+              "add_to_wishlist",
+              "initiate_checkout",
+              "add_payment_info",
+              "purchase",
+              "refund",
+              "lead",
+              "qualify_lead",
+              "close_convert_lead",
+              "disqualify_lead",
+              "complete_registration",
+              "subscribe",
+              "start_trial",
+              "app_install",
+              "app_launch",
+              "contact",
+              "schedule",
+              "donate",
+              "submit_application",
+              "custom"
+            ],
+            "enumDescriptions": {
+              "page_view": "User viewed a page",
+              "view_content": "User viewed specific content (product, article, etc.)",
+              "select_content": "User selected or clicked on content (article, video, etc.)",
+              "select_item": "User selected a specific product or item from a list",
+              "search": "User performed a search",
+              "share": "User shared content via social or messaging",
+              "add_to_cart": "User added an item to cart",
+              "remove_from_cart": "User removed an item from cart",
+              "viewed_cart": "User viewed their shopping cart",
+              "add_to_wishlist": "User added an item to a wishlist",
+              "initiate_checkout": "User started checkout process",
+              "add_payment_info": "User added payment information",
+              "purchase": "User completed a purchase",
+              "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+              "lead": "User expressed interest (form submission, signup, etc.)",
+              "qualify_lead": "Lead qualified by sales or scoring criteria",
+              "close_convert_lead": "Lead converted to a customer or closed deal",
+              "disqualify_lead": "Lead disqualified or marked as not viable",
+              "complete_registration": "User completed account registration",
+              "subscribe": "User subscribed to a service or newsletter",
+              "start_trial": "User started a free trial",
+              "app_install": "User installed an application",
+              "app_launch": "User launched an application",
+              "contact": "User initiated contact (call, message, etc.)",
+              "schedule": "User scheduled an appointment or event",
+              "donate": "User made a donation",
+              "submit_application": "User submitted an application (loan, job, etc.)",
+              "custom": "Custom event type (specify in custom_event_name)"
+            }
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "content_id_type": {
+          "title": "Content ID Type",
+          "description": "Identifier type that the event's content_ids field should be matched against for items in this catalog. For example, 'gtin' means content_ids values are Global Trade Item Numbers, 'sku' means retailer SKUs. Omit when using a custom identifier scheme not listed in the enum.",
+          "type": "string",
+          "enum": [
+            "sku",
+            "gtin",
+            "offering_id",
+            "job_id",
+            "hotel_id",
+            "flight_id",
+            "vehicle_id",
+            "listing_id",
+            "store_id",
+            "program_id",
+            "destination_id",
+            "app_id"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true,
+      "examples": [
+        {
+          "description": "Synced product catalog from Google Merchant Center",
+          "data": {
+            "catalog_id": "gmc-primary",
+            "name": "Primary Product Feed",
+            "type": "product",
+            "url": "https://feeds.acmecorp.com/products.xml",
+            "feed_format": "google_merchant_center",
+            "update_frequency": "daily"
+          }
+        },
+        {
+          "description": "Inventory feed for store-level stock data",
+          "data": {
+            "catalog_id": "store-inventory",
+            "name": "Store Inventory",
+            "type": "inventory",
+            "url": "https://feeds.acmecorp.com/inventory.json",
+            "feed_format": "custom",
+            "update_frequency": "hourly"
+          }
+        },
+        {
+          "description": "Store locator feed",
+          "data": {
+            "catalog_id": "retail-locations",
+            "name": "Retail Locations",
+            "type": "store",
+            "url": "https://feeds.acmecorp.com/stores.json",
+            "feed_format": "custom",
+            "update_frequency": "weekly"
+          }
+        },
+        {
+          "description": "Promotional pricing feed",
+          "data": {
+            "catalog_id": "summer-sale",
+            "name": "Summer Sale Promotions",
+            "type": "promotion",
+            "url": "https://feeds.acmecorp.com/promotions.json",
+            "feed_format": "google_merchant_center",
+            "update_frequency": "daily"
+          }
+        },
+        {
+          "description": "Inline offering catalog (no sync needed)",
+          "data": {
+            "type": "offering",
+            "items": [
+              {
+                "offering_id": "summer-sale",
+                "name": "Summer Sale",
+                "landing_url": "https://acme.com/summer"
+              }
+            ]
+          }
+        },
+        {
+          "description": "Reference to a previously synced catalog by ID",
+          "data": {
+            "catalog_id": "gmc-primary",
+            "type": "product",
+            "ids": [
+              "SKU-12345",
+              "SKU-67890"
+            ]
+          }
+        },
+        {
+          "description": "Product catalog with GTIN cross-retailer matching and attribution",
+          "data": {
+            "type": "product",
+            "gtins": [
+              "00013000006040",
+              "00013000006057"
+            ],
+            "content_id_type": "gtin",
+            "conversion_events": [
+              "purchase",
+              "add_to_cart"
+            ]
+          }
+        },
+        {
+          "description": "Inline store catalog with catchment areas",
+          "data": {
+            "catalog_id": "retail-locations",
+            "name": "Retail Locations",
+            "type": "store",
+            "items": [
+              {
+                "store_id": "amsterdam-flagship",
+                "name": "Amsterdam Flagship",
+                "location": {
+                  "lat": 52.3676,
+                  "lng": 4.9041
+                },
+                "catchments": [
+                  {
+                    "catchment_id": "walk",
+                    "travel_time": {
+                      "value": 10,
+                      "unit": "min"
+                    },
+                    "transport_mode": "walking"
+                  },
+                  {
+                    "catchment_id": "drive",
+                    "travel_time": {
+                      "value": 15,
+                      "unit": "min"
+                    },
+                    "transport_mode": "driving"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "optimization_goal": {
+      "title": "Optimization Goal",
+      "description": "Conversion optimization goal for a package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the seller optimizes for maximum conversions within budget.",
+      "type": "object",
+      "properties": {
+        "event_source_id": {
+          "type": "string",
+          "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
+        },
+        "event_type": {
+          "title": "Event Type",
+          "description": "Event type to optimize for (e.g. purchase, lead)",
+          "type": "string",
+          "enum": [
+            "page_view",
+            "view_content",
+            "select_content",
+            "select_item",
+            "search",
+            "share",
+            "add_to_cart",
+            "remove_from_cart",
+            "viewed_cart",
+            "add_to_wishlist",
+            "initiate_checkout",
+            "add_payment_info",
+            "purchase",
+            "refund",
+            "lead",
+            "qualify_lead",
+            "close_convert_lead",
+            "disqualify_lead",
+            "complete_registration",
+            "subscribe",
+            "start_trial",
+            "app_install",
+            "app_launch",
+            "contact",
+            "schedule",
+            "donate",
+            "submit_application",
+            "custom"
+          ],
+          "enumDescriptions": {
+            "page_view": "User viewed a page",
+            "view_content": "User viewed specific content (product, article, etc.)",
+            "select_content": "User selected or clicked on content (article, video, etc.)",
+            "select_item": "User selected a specific product or item from a list",
+            "search": "User performed a search",
+            "share": "User shared content via social or messaging",
+            "add_to_cart": "User added an item to cart",
+            "remove_from_cart": "User removed an item from cart",
+            "viewed_cart": "User viewed their shopping cart",
+            "add_to_wishlist": "User added an item to a wishlist",
+            "initiate_checkout": "User started checkout process",
+            "add_payment_info": "User added payment information",
+            "purchase": "User completed a purchase",
+            "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+            "lead": "User expressed interest (form submission, signup, etc.)",
+            "qualify_lead": "Lead qualified by sales or scoring criteria",
+            "close_convert_lead": "Lead converted to a customer or closed deal",
+            "disqualify_lead": "Lead disqualified or marked as not viable",
+            "complete_registration": "User completed account registration",
+            "subscribe": "User subscribed to a service or newsletter",
+            "start_trial": "User started a free trial",
+            "app_install": "User installed an application",
+            "app_launch": "User launched an application",
+            "contact": "User initiated contact (call, message, etc.)",
+            "schedule": "User scheduled an appointment or event",
+            "donate": "User made a donation",
+            "submit_application": "User submitted an application (loan, job, etc.)",
+            "custom": "Custom event type (specify in custom_event_name)"
+          }
+        },
+        "target_roas": {
+          "type": "number",
+          "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent). Mutually exclusive with target_cpa.",
+          "exclusiveMinimum": 0
+        },
+        "target_cpa": {
+          "type": "number",
+          "description": "Target cost per acquisition in the buy currency. Mutually exclusive with target_roas.",
+          "exclusiveMinimum": 0
+        },
+        "attribution_window": {
+          "type": "object",
+          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. When omitted, the seller uses their default window.",
+          "properties": {
+            "click_through": {
+              "type": "string",
+              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            },
+            "view_through": {
+              "type": "string",
+              "description": "View-through attribution window (e.g. '1d', '7d')"
+            }
+          },
+          "required": [
+            "click_through"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "event_source_id",
+        "event_type"
+      ],
+      "additionalProperties": true
+    },
+    "targeting_overlay": {
+      "title": "Targeting Overlay",
+      "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance), age verification (alcohol, gambling), device platform (app compatibility), and language (localization).",
+      "type": "object",
+      "properties": {
+        "geo_countries": {
+          "type": "array",
+          "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "geo_countries_exclude": {
+          "type": "array",
+          "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "geo_regions": {
+          "type": "array",
+          "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+          },
+          "minItems": 1
+        },
+        "geo_regions_exclude": {
+          "type": "array",
+          "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+          },
+          "minItems": 1
+        },
+        "geo_metros": {
+          "type": "array",
+          "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "title": "Metro Area System",
+                "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')",
+                "type": "string",
+                "enum": [
+                  "nielsen_dma",
+                  "uk_itl1",
+                  "uk_itl2",
+                  "eurostat_nuts2",
+                  "custom"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "geo_metros_exclude": {
+          "type": "array",
+          "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "title": "Metro Area System",
+                "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')",
+                "type": "string",
+                "enum": [
+                  "nielsen_dma",
+                  "uk_itl1",
+                  "uk_itl2",
+                  "eurostat_nuts2",
+                  "custom"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "description": "Metro codes to exclude within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "geo_postal_areas": {
+          "type": "array",
+          "description": "Restrict delivery to specific postal areas. Each entry specifies the postal system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "title": "Postal Code System",
+                "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision.",
+                "type": "string",
+                "enum": [
+                  "us_zip",
+                  "us_zip_plus_four",
+                  "gb_outward",
+                  "gb_full",
+                  "ca_fsa",
+                  "ca_full",
+                  "de_plz",
+                  "fr_code_postal",
+                  "au_postcode"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "geo_postal_areas_exclude": {
+          "type": "array",
+          "description": "Exclude specific postal areas from delivery. Each entry specifies the postal system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "title": "Postal Code System",
+                "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision.",
+                "type": "string",
+                "enum": [
+                  "us_zip",
+                  "us_zip_plus_four",
+                  "gb_outward",
+                  "gb_full",
+                  "ca_fsa",
+                  "ca_full",
+                  "de_plz",
+                  "fr_code_postal",
+                  "au_postcode"
+                ]
+              },
+              "values": {
+                "type": "array",
+                "description": "Postal codes to exclude within the system (e.g., ['10001', '10002'] for us_zip)",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "daypart_targets": {
+          "type": "array",
+          "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+          "items": {
+            "title": "Daypart Target",
+            "description": "A time window for daypart targeting. Specifies days of week and an hour range. start_hour is inclusive, end_hour is exclusive (e.g., 6-10 = 6:00am to 10:00am). Follows the Google Ads AdScheduleInfo / DV360 DayPartTargeting pattern.",
+            "type": "object",
+            "properties": {
+              "days": {
+                "type": "array",
+                "description": "Days of week this window applies to. Use multiple days for compact targeting (e.g., monday-friday in one object).",
+                "items": {
+                  "title": "Day of Week",
+                  "description": "Days of the week for daypart targeting",
+                  "type": "string",
+                  "enum": [
+                    "monday",
+                    "tuesday",
+                    "wednesday",
+                    "thursday",
+                    "friday",
+                    "saturday",
+                    "sunday"
+                  ]
+                },
+                "minItems": 1
+              },
+              "start_hour": {
+                "type": "integer",
+                "description": "Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6:00pm.",
+                "minimum": 0,
+                "maximum": 23
+              },
+              "end_hour": {
+                "type": "integer",
+                "description": "End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must be greater than start_hour.",
+                "minimum": 1,
+                "maximum": 24
+              },
+              "label": {
+                "type": "string",
+                "description": "Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime Time')"
+              }
+            },
+            "required": [
+              "days",
+              "start_hour",
+              "end_hour"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "axe_include_segment": {
+          "type": "string",
+          "description": "AXE segment ID to include for targeting"
+        },
+        "axe_exclude_segment": {
+          "type": "string",
+          "description": "AXE segment ID to exclude from targeting"
+        },
+        "audience_include": {
+          "type": "array",
+          "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "audience_exclude": {
+          "type": "array",
+          "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "frequency_cap": {
+          "title": "Frequency Cap",
+          "description": "Frequency capping settings for package-level application",
+          "type": "object",
+          "properties": {
+            "suppress_minutes": {
+              "type": "number",
+              "description": "Minutes to suppress after impression",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "suppress_minutes"
+          ],
+          "additionalProperties": true
+        },
+        "property_list": {
+          "title": "Property List Reference",
+          "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false.",
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the agent managing the property list"
+            },
+            "list_id": {
+              "type": "string",
+              "description": "Identifier for the property list within the agent",
+              "minLength": 1
+            },
+            "auth_token": {
+              "type": "string",
+              "description": "JWT or other authorization token for accessing the list. Optional if the list is public or caller has implicit access."
+            }
+          },
+          "required": [
+            "agent_url",
+            "list_id"
+          ],
+          "additionalProperties": false
+        },
+        "age_restriction": {
+          "type": "object",
+          "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 13,
+              "maximum": 99,
+              "description": "Minimum age required"
+            },
+            "verification_required": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether verified age (not inferred) is required for compliance"
+            },
+            "accepted_methods": {
+              "type": "array",
+              "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
+              "items": {
+                "title": "Age Verification Method",
+                "description": "Methods for verifying user age for compliance. Does not include 'inferred' as it is not accepted for regulatory compliance.",
+                "type": "string",
+                "enum": [
+                  "facial_age_estimation",
+                  "id_document",
+                  "digital_id",
+                  "credit_card",
+                  "world_id"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "min"
+          ],
+          "additionalProperties": false
+        },
+        "device_platform": {
+          "type": "array",
+          "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV.",
+          "items": {
+            "title": "Device Platform",
+            "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV.",
+            "type": "string",
+            "enum": [
+              "ios",
+              "android",
+              "windows",
+              "macos",
+              "linux",
+              "chromeos",
+              "tvos",
+              "tizen",
+              "webos",
+              "fire_os",
+              "roku_os",
+              "unknown"
+            ]
+          },
+          "minItems": 1
+        },
+        "store_catchments": {
+          "type": "array",
+          "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "catalog_id": {
+                "type": "string",
+                "description": "Synced store-type catalog ID from sync_catalogs."
+              },
+              "store_ids": {
+                "type": "array",
+                "description": "Filter to specific stores within the catalog. Omit to target all stores.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "catchment_ids": {
+                "type": "array",
+                "description": "Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchment zones.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "catalog_id"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "language": {
+          "type": "array",
+          "description": "Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en', 'es', 'fr').",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2}$"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "items": {
+        "title": "Creative Assignment",
+        "description": "Assignment of a creative asset to a package with optional placement targeting. Used in create_media_buy and update_media_buy requests. Note: sync_creatives does not support placement_ids - use create/update_media_buy for placement-level targeting.",
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Delivery weight for this creative",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "placement_ids": {
+            "type": "array",
+            "description": "Optional array of placement IDs where this creative should run. When omitted, the creative runs on all placements in the package. References placement_id values from the product's placements array.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "creative_id"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "title": "Creative Asset",
+        "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party snippets",
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable creative name"
+          },
+          "format_id": {
+            "title": "Format ID",
+            "description": "Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats.",
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "duration_ms": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+              }
+            },
+            "required": [
+              "agent_url",
+              "id"
+            ],
+            "additionalProperties": true,
+            "dependencies": {
+              "width": [
+                "height"
+              ],
+              "height": [
+                "width"
+              ]
+            }
+          },
+          "catalogs": {
+            "type": "array",
+            "description": "Catalogs this creative renders. Each entry satisfies one of the format's catalog_requirements, matched by type. Each catalog can be inline (with items), a reference to a synced catalog (by catalog_id), or a URL to an external feed.",
+            "items": {
+              "title": "Catalog",
+              "description": "A typed data feed. Catalogs carry the items, locations, stock levels, or pricing that publishers use to render ads. They can be synced to a platform via sync_catalogs (managed lifecycle with approval), provided inline, or fetched from an external URL. The catalog type determines the item schema and can be structural (offering, product, inventory, store, promotion) or vertical-specific (hotel, flight, job, vehicle, real_estate, education, destination, app). Selectors (ids, tags, category, query) filter items regardless of sourcing method.",
+              "type": "object",
+              "properties": {
+                "catalog_id": {
+                  "type": "string",
+                  "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam Store Locations')."
+                },
+                "type": {
+                  "title": "Catalog Type",
+                  "description": "Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (ecommerce entries), 'inventory' (stock per location), 'store' (physical locations), 'promotion' (deals and pricing). Vertical types: 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination', 'app' — each with an industry-specific item schema.",
+                  "type": "string",
+                  "enum": [
+                    "offering",
+                    "product",
+                    "inventory",
+                    "store",
+                    "promotion",
+                    "hotel",
+                    "flight",
+                    "job",
+                    "vehicle",
+                    "real_estate",
+                    "education",
+                    "destination",
+                    "app"
+                  ]
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL to an external catalog feed. The platform fetches and resolves items from this URL. For offering-type catalogs, the feed contains an array of Offering objects. For other types, the feed format is determined by feed_format. When omitted with type 'product', the platform uses its synced copy of the brand's product catalog."
+                },
+                "feed_format": {
+                  "title": "Feed Format",
+                  "description": "Format of the external feed at url. Required when url points to a non-AdCP feed (e.g., Google Merchant Center XML, Meta Product Catalog). Omit for offering-type catalogs where the feed is native AdCP JSON.",
+                  "type": "string",
+                  "enum": [
+                    "google_merchant_center",
+                    "facebook_catalog",
+                    "shopify",
+                    "linkedin_jobs",
+                    "custom"
+                  ]
+                },
+                "update_frequency": {
+                  "title": "Update Frequency",
+                  "description": "How often the platform should re-fetch the feed from url. Only applicable when url is provided. Platforms may use this as a hint for polling schedules.",
+                  "type": "string",
+                  "enum": [
+                    "realtime",
+                    "hourly",
+                    "daily",
+                    "weekly"
+                  ]
+                },
+                "items": {
+                  "type": "array",
+                  "description": "Inline catalog data. The item schema depends on the catalog type: Offering objects for 'offering', StoreItem for 'store', HotelItem for 'hotel', FlightItem for 'flight', JobItem for 'job', VehicleItem for 'vehicle', RealEstateItem for 'real_estate', EducationItem for 'education', DestinationItem for 'destination', AppItem for 'app', or freeform objects for 'product', 'inventory', and 'promotion'. Mutually exclusive with url — provide one or the other, not both. Implementations should validate items against the type-specific schema.",
+                  "items": {
+                    "type": "object"
+                  },
+                  "minItems": 1
+                },
+                "ids": {
+                  "type": "array",
+                  "description": "Filter catalog to specific item IDs. For offering-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "gtins": {
+                  "type": "array",
+                  "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9]{8,14}$"
+                  },
+                  "minItems": 1
+                },
+                "tags": {
+                  "type": "array",
+                  "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1
+                },
+                "category": {
+                  "type": "string",
+                  "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+                },
+                "query": {
+                  "type": "string",
+                  "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')."
+                },
+                "conversion_events": {
+                  "type": "array",
+                  "description": "Event types that represent conversions for items in this catalog. Declares what events the platform should attribute to catalog items — e.g., a job catalog converts via submit_application, a product catalog via purchase. The event's content_ids field carries the item IDs that connect back to catalog items. Use content_id_type to declare what identifier type content_ids values represent.",
+                  "items": {
+                    "title": "Event Type",
+                    "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+                    "type": "string",
+                    "enum": [
+                      "page_view",
+                      "view_content",
+                      "select_content",
+                      "select_item",
+                      "search",
+                      "share",
+                      "add_to_cart",
+                      "remove_from_cart",
+                      "viewed_cart",
+                      "add_to_wishlist",
+                      "initiate_checkout",
+                      "add_payment_info",
+                      "purchase",
+                      "refund",
+                      "lead",
+                      "qualify_lead",
+                      "close_convert_lead",
+                      "disqualify_lead",
+                      "complete_registration",
+                      "subscribe",
+                      "start_trial",
+                      "app_install",
+                      "app_launch",
+                      "contact",
+                      "schedule",
+                      "donate",
+                      "submit_application",
+                      "custom"
+                    ],
+                    "enumDescriptions": {
+                      "page_view": "User viewed a page",
+                      "view_content": "User viewed specific content (product, article, etc.)",
+                      "select_content": "User selected or clicked on content (article, video, etc.)",
+                      "select_item": "User selected a specific product or item from a list",
+                      "search": "User performed a search",
+                      "share": "User shared content via social or messaging",
+                      "add_to_cart": "User added an item to cart",
+                      "remove_from_cart": "User removed an item from cart",
+                      "viewed_cart": "User viewed their shopping cart",
+                      "add_to_wishlist": "User added an item to a wishlist",
+                      "initiate_checkout": "User started checkout process",
+                      "add_payment_info": "User added payment information",
+                      "purchase": "User completed a purchase",
+                      "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+                      "lead": "User expressed interest (form submission, signup, etc.)",
+                      "qualify_lead": "Lead qualified by sales or scoring criteria",
+                      "close_convert_lead": "Lead converted to a customer or closed deal",
+                      "disqualify_lead": "Lead disqualified or marked as not viable",
+                      "complete_registration": "User completed account registration",
+                      "subscribe": "User subscribed to a service or newsletter",
+                      "start_trial": "User started a free trial",
+                      "app_install": "User installed an application",
+                      "app_launch": "User launched an application",
+                      "contact": "User initiated contact (call, message, etc.)",
+                      "schedule": "User scheduled an appointment or event",
+                      "donate": "User made a donation",
+                      "submit_application": "User submitted an application (loan, job, etc.)",
+                      "custom": "Custom event type (specify in custom_event_name)"
+                    }
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "content_id_type": {
+                  "title": "Content ID Type",
+                  "description": "Identifier type that the event's content_ids field should be matched against for items in this catalog. For example, 'gtin' means content_ids values are Global Trade Item Numbers, 'sku' means retailer SKUs. Omit when using a custom identifier scheme not listed in the enum.",
+                  "type": "string",
+                  "enum": [
+                    "sku",
+                    "gtin",
+                    "offering_id",
+                    "job_id",
+                    "hotel_id",
+                    "flight_id",
+                    "vehicle_id",
+                    "listing_id",
+                    "store_id",
+                    "program_id",
+                    "destination_id",
+                    "app_id"
+                  ]
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "additionalProperties": true,
+              "examples": [
+                {
+                  "description": "Synced product catalog from Google Merchant Center",
+                  "data": {
+                    "catalog_id": "gmc-primary",
+                    "name": "Primary Product Feed",
+                    "type": "product",
+                    "url": "https://feeds.acmecorp.com/products.xml",
+                    "feed_format": "google_merchant_center",
+                    "update_frequency": "daily"
+                  }
+                },
+                {
+                  "description": "Inventory feed for store-level stock data",
+                  "data": {
+                    "catalog_id": "store-inventory",
+                    "name": "Store Inventory",
+                    "type": "inventory",
+                    "url": "https://feeds.acmecorp.com/inventory.json",
+                    "feed_format": "custom",
+                    "update_frequency": "hourly"
+                  }
+                },
+                {
+                  "description": "Store locator feed",
+                  "data": {
+                    "catalog_id": "retail-locations",
+                    "name": "Retail Locations",
+                    "type": "store",
+                    "url": "https://feeds.acmecorp.com/stores.json",
+                    "feed_format": "custom",
+                    "update_frequency": "weekly"
+                  }
+                },
+                {
+                  "description": "Promotional pricing feed",
+                  "data": {
+                    "catalog_id": "summer-sale",
+                    "name": "Summer Sale Promotions",
+                    "type": "promotion",
+                    "url": "https://feeds.acmecorp.com/promotions.json",
+                    "feed_format": "google_merchant_center",
+                    "update_frequency": "daily"
+                  }
+                },
+                {
+                  "description": "Inline offering catalog (no sync needed)",
+                  "data": {
+                    "type": "offering",
+                    "items": [
+                      {
+                        "offering_id": "summer-sale",
+                        "name": "Summer Sale",
+                        "landing_url": "https://acme.com/summer"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "description": "Reference to a previously synced catalog by ID",
+                  "data": {
+                    "catalog_id": "gmc-primary",
+                    "type": "product",
+                    "ids": [
+                      "SKU-12345",
+                      "SKU-67890"
+                    ]
+                  }
+                },
+                {
+                  "description": "Product catalog with GTIN cross-retailer matching and attribution",
+                  "data": {
+                    "type": "product",
+                    "gtins": [
+                      "00013000006040",
+                      "00013000006057"
+                    ],
+                    "content_id_type": "gtin",
+                    "conversion_events": [
+                      "purchase",
+                      "add_to_cart"
+                    ]
+                  }
+                },
+                {
+                  "description": "Inline store catalog with catchment areas",
+                  "data": {
+                    "catalog_id": "retail-locations",
+                    "name": "Retail Locations",
+                    "type": "store",
+                    "items": [
+                      {
+                        "store_id": "amsterdam-flagship",
+                        "name": "Amsterdam Flagship",
+                        "location": {
+                          "lat": 52.3676,
+                          "lng": 4.9041
+                        },
+                        "catchments": [
+                          {
+                            "catchment_id": "walk",
+                            "travel_time": {
+                              "value": 10,
+                              "unit": "min"
+                            },
+                            "transport_mode": "walking"
+                          },
+                          {
+                            "catchment_id": "drive",
+                            "travel_time": {
+                              "value": 15,
+                              "unit": "min"
+                            },
+                            "transport_mode": "driving"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "minItems": 1
+          },
+          "assets": {
+            "type": "object",
+            "description": "Assets required by the format, keyed by asset_role",
+            "patternProperties": {
+              "^[a-zA-Z0-9_-]+$": {
+                "oneOf": [
+                  {
+                    "title": "Image Asset",
+                    "description": "Image asset with URL and dimensions",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the image asset"
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels"
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels"
+                      },
+                      "format": {
+                        "type": "string",
+                        "description": "Image file format (jpg, png, gif, webp, etc.)"
+                      },
+                      "alt_text": {
+                        "type": "string",
+                        "description": "Alternative text for accessibility",
+                        "x-accessibility": true
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Video Asset",
+                    "description": "Video asset with URL and technical specifications including audio track properties",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the video asset"
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels"
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels"
+                      },
+                      "duration_ms": {
+                        "type": "integer",
+                        "description": "Video duration in milliseconds",
+                        "minimum": 1
+                      },
+                      "file_size_bytes": {
+                        "type": "integer",
+                        "description": "File size in bytes",
+                        "minimum": 1
+                      },
+                      "container_format": {
+                        "type": "string",
+                        "description": "Video container format (mp4, webm, mov, etc.)"
+                      },
+                      "video_codec": {
+                        "type": "string",
+                        "description": "Video codec used (h264, h265, vp9, av1, prores, etc.)"
+                      },
+                      "video_bitrate_kbps": {
+                        "type": "integer",
+                        "description": "Video stream bitrate in kilobits per second",
+                        "minimum": 1
+                      },
+                      "frame_rate": {
+                        "type": "string",
+                        "description": "Frame rate as string to preserve precision (e.g., '23.976', '29.97', '30')"
+                      },
+                      "frame_rate_type": {
+                        "type": "string",
+                        "enum": [
+                          "constant",
+                          "variable"
+                        ],
+                        "description": "Whether the video uses constant (CFR) or variable (VFR) frame rate"
+                      },
+                      "scan_type": {
+                        "type": "string",
+                        "enum": [
+                          "progressive",
+                          "interlaced"
+                        ],
+                        "description": "Scan type of the video"
+                      },
+                      "color_space": {
+                        "type": "string",
+                        "enum": [
+                          "rec709",
+                          "rec2020",
+                          "rec2100",
+                          "srgb",
+                          "dci_p3"
+                        ],
+                        "description": "Color space of the video"
+                      },
+                      "hdr_format": {
+                        "type": "string",
+                        "enum": [
+                          "sdr",
+                          "hdr10",
+                          "hdr10_plus",
+                          "hlg",
+                          "dolby_vision"
+                        ],
+                        "description": "HDR format if applicable, or 'sdr' for standard dynamic range"
+                      },
+                      "chroma_subsampling": {
+                        "type": "string",
+                        "enum": [
+                          "4:2:0",
+                          "4:2:2",
+                          "4:4:4"
+                        ],
+                        "description": "Chroma subsampling format"
+                      },
+                      "video_bit_depth": {
+                        "type": "integer",
+                        "enum": [
+                          8,
+                          10,
+                          12
+                        ],
+                        "description": "Video bit depth"
+                      },
+                      "gop_interval_seconds": {
+                        "type": "number",
+                        "description": "GOP/keyframe interval in seconds"
+                      },
+                      "gop_type": {
+                        "type": "string",
+                        "enum": [
+                          "closed",
+                          "open"
+                        ],
+                        "description": "GOP structure type"
+                      },
+                      "moov_atom_position": {
+                        "type": "string",
+                        "enum": [
+                          "start",
+                          "end"
+                        ],
+                        "description": "Position of moov atom in MP4 container"
+                      },
+                      "has_audio": {
+                        "type": "boolean",
+                        "description": "Whether the video contains an audio track"
+                      },
+                      "audio_codec": {
+                        "type": "string",
+                        "description": "Audio codec used (aac, aac_lc, he_aac, pcm, mp3, ac3, eac3, etc.)"
+                      },
+                      "audio_sampling_rate_hz": {
+                        "type": "integer",
+                        "description": "Audio sampling rate in Hz (e.g., 44100, 48000)"
+                      },
+                      "audio_channels": {
+                        "type": "string",
+                        "enum": [
+                          "mono",
+                          "stereo",
+                          "5.1",
+                          "7.1"
+                        ],
+                        "description": "Audio channel configuration"
+                      },
+                      "audio_bit_depth": {
+                        "type": "integer",
+                        "enum": [
+                          16,
+                          24,
+                          32
+                        ],
+                        "description": "Audio bit depth"
+                      },
+                      "audio_bitrate_kbps": {
+                        "type": "integer",
+                        "description": "Audio bitrate in kilobits per second",
+                        "minimum": 1
+                      },
+                      "audio_loudness_lufs": {
+                        "type": "number",
+                        "description": "Integrated loudness in LUFS"
+                      },
+                      "audio_true_peak_dbfs": {
+                        "type": "number",
+                        "description": "True peak level in dBFS"
+                      },
+                      "captions_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to captions file (WebVTT, SRT, etc.)",
+                        "x-accessibility": true
+                      },
+                      "transcript_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to text transcript of the video content",
+                        "x-accessibility": true
+                      },
+                      "audio_description_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to audio description track for visually impaired users",
+                        "x-accessibility": true
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Audio Asset",
+                    "description": "Audio asset with URL and technical specifications",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to the audio asset"
+                      },
+                      "duration_ms": {
+                        "type": "integer",
+                        "description": "Audio duration in milliseconds",
+                        "minimum": 0
+                      },
+                      "file_size_bytes": {
+                        "type": "integer",
+                        "description": "File size in bytes",
+                        "minimum": 1
+                      },
+                      "container_format": {
+                        "type": "string",
+                        "description": "Audio container/file format (mp3, m4a, aac, wav, ogg, flac, etc.)"
+                      },
+                      "codec": {
+                        "type": "string",
+                        "description": "Audio codec used (aac, aac_lc, he_aac, pcm, mp3, vorbis, opus, flac, ac3, eac3, etc.)"
+                      },
+                      "sampling_rate_hz": {
+                        "type": "integer",
+                        "description": "Sampling rate in Hz (e.g., 44100, 48000, 96000)"
+                      },
+                      "channels": {
+                        "type": "string",
+                        "enum": [
+                          "mono",
+                          "stereo",
+                          "5.1",
+                          "7.1"
+                        ],
+                        "description": "Channel configuration"
+                      },
+                      "bit_depth": {
+                        "type": "integer",
+                        "enum": [
+                          16,
+                          24,
+                          32
+                        ],
+                        "description": "Bit depth"
+                      },
+                      "bitrate_kbps": {
+                        "type": "integer",
+                        "description": "Bitrate in kilobits per second",
+                        "minimum": 1
+                      },
+                      "loudness_lufs": {
+                        "type": "number",
+                        "description": "Integrated loudness in LUFS"
+                      },
+                      "true_peak_dbfs": {
+                        "type": "number",
+                        "description": "True peak level in dBFS"
+                      },
+                      "transcript_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL to text transcript of the audio content",
+                        "x-accessibility": true
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "Text Asset",
+                    "description": "Text content asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "Text content"
+                      },
+                      "language": {
+                        "type": "string",
+                        "description": "Language code (e.g., 'en', 'es', 'fr')"
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "HTML Asset",
+                    "description": "HTML content asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "HTML content"
+                      },
+                      "version": {
+                        "type": "string",
+                        "description": "HTML version (e.g., 'HTML5')"
+                      },
+                      "accessibility": {
+                        "type": "object",
+                        "description": "Self-declared accessibility properties for this opaque creative",
+                        "x-accessibility": true,
+                        "properties": {
+                          "alt_text": {
+                            "type": "string",
+                            "description": "Text alternative describing the creative content"
+                          },
+                          "keyboard_navigable": {
+                            "type": "boolean",
+                            "description": "Whether the creative can be fully operated via keyboard"
+                          },
+                          "motion_control": {
+                            "type": "boolean",
+                            "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+                          },
+                          "screen_reader_tested": {
+                            "type": "boolean",
+                            "description": "Whether the creative has been tested with screen readers"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "CSS Asset",
+                    "description": "CSS stylesheet asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "CSS content"
+                      },
+                      "media": {
+                        "type": "string",
+                        "description": "CSS media query context (e.g., 'screen', 'print')"
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "JavaScript Asset",
+                    "description": "JavaScript code asset",
+                    "type": "object",
+                    "properties": {
+                      "content": {
+                        "type": "string",
+                        "description": "JavaScript content"
+                      },
+                      "module_type": {
+                        "title": "JavaScript Module Type",
+                        "description": "JavaScript module type",
+                        "type": "string",
+                        "enum": [
+                          "esm",
+                          "commonjs",
+                          "script"
+                        ]
+                      },
+                      "accessibility": {
+                        "type": "object",
+                        "description": "Self-declared accessibility properties for this opaque creative",
+                        "x-accessibility": true,
+                        "properties": {
+                          "alt_text": {
+                            "type": "string",
+                            "description": "Text alternative describing the creative content"
+                          },
+                          "keyboard_navigable": {
+                            "type": "boolean",
+                            "description": "Whether the creative can be fully operated via keyboard"
+                          },
+                          "motion_control": {
+                            "type": "boolean",
+                            "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+                          },
+                          "screen_reader_tested": {
+                            "type": "boolean",
+                            "description": "Whether the creative has been tested with screen readers"
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "content"
+                    ],
+                    "additionalProperties": true
+                  },
+                  {
+                    "title": "VAST Asset",
+                    "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "url",
+                            "description": "Discriminator indicating VAST is delivered via URL endpoint"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL endpoint that returns VAST XML"
+                          },
+                          "vast_version": {
+                            "title": "VAST Version",
+                            "description": "VAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "2.0",
+                              "3.0",
+                              "4.0",
+                              "4.1",
+                              "4.2"
+                            ]
+                          },
+                          "vpaid_enabled": {
+                            "type": "boolean",
+                            "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected video duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "VAST Tracking Event",
+                              "description": "Standard VAST tracking events for video ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "click",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute",
+                                "fullscreen",
+                                "exitFullscreen",
+                                "playerExpand",
+                                "playerCollapse"
+                              ]
+                            },
+                            "description": "Tracking events supported by this VAST tag"
+                          },
+                          "captions_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to captions file (WebVTT, SRT, etc.)",
+                            "x-accessibility": true
+                          },
+                          "audio_description_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to audio description track for visually impaired users",
+                            "x-accessibility": true
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "url"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "inline",
+                            "description": "Discriminator indicating VAST is delivered as inline XML content"
+                          },
+                          "content": {
+                            "type": "string",
+                            "description": "Inline VAST XML content"
+                          },
+                          "vast_version": {
+                            "title": "VAST Version",
+                            "description": "VAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "2.0",
+                              "3.0",
+                              "4.0",
+                              "4.1",
+                              "4.2"
+                            ]
+                          },
+                          "vpaid_enabled": {
+                            "type": "boolean",
+                            "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected video duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "VAST Tracking Event",
+                              "description": "Standard VAST tracking events for video ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "click",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute",
+                                "fullscreen",
+                                "exitFullscreen",
+                                "playerExpand",
+                                "playerCollapse"
+                              ]
+                            },
+                            "description": "Tracking events supported by this VAST tag"
+                          },
+                          "captions_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to captions file (WebVTT, SRT, etc.)",
+                            "x-accessibility": true
+                          },
+                          "audio_description_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to audio description track for visually impaired users",
+                            "x-accessibility": true
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "content"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  {
+                    "title": "DAAST Asset",
+                    "description": "DAAST (Digital Audio Ad Serving Template) tag for third-party audio ad serving",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "url",
+                            "description": "Discriminator indicating DAAST is delivered via URL endpoint"
+                          },
+                          "url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL endpoint that returns DAAST XML"
+                          },
+                          "daast_version": {
+                            "title": "DAAST Version",
+                            "description": "DAAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "1.0",
+                              "1.1"
+                            ]
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected audio duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "DAAST Tracking Event",
+                              "description": "Standard DAAST tracking events for audio ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute"
+                              ]
+                            },
+                            "description": "Tracking events supported by this DAAST tag"
+                          },
+                          "companion_ads": {
+                            "type": "boolean",
+                            "description": "Whether companion display ads are included"
+                          },
+                          "transcript_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to text transcript of the audio content",
+                            "x-accessibility": true
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "url"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "delivery_type": {
+                            "type": "string",
+                            "const": "inline",
+                            "description": "Discriminator indicating DAAST is delivered as inline XML content"
+                          },
+                          "content": {
+                            "type": "string",
+                            "description": "Inline DAAST XML content"
+                          },
+                          "daast_version": {
+                            "title": "DAAST Version",
+                            "description": "DAAST specification version",
+                            "type": "string",
+                            "enum": [
+                              "1.0",
+                              "1.1"
+                            ]
+                          },
+                          "duration_ms": {
+                            "type": "integer",
+                            "description": "Expected audio duration in milliseconds (if known)",
+                            "minimum": 0
+                          },
+                          "tracking_events": {
+                            "type": "array",
+                            "items": {
+                              "title": "DAAST Tracking Event",
+                              "description": "Standard DAAST tracking events for audio ad playback and interaction",
+                              "type": "string",
+                              "enum": [
+                                "start",
+                                "firstQuartile",
+                                "midpoint",
+                                "thirdQuartile",
+                                "complete",
+                                "impression",
+                                "pause",
+                                "resume",
+                                "skip",
+                                "mute",
+                                "unmute"
+                              ]
+                            },
+                            "description": "Tracking events supported by this DAAST tag"
+                          },
+                          "companion_ads": {
+                            "type": "boolean",
+                            "description": "Whether companion display ads are included"
+                          },
+                          "transcript_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL to text transcript of the audio content",
+                            "x-accessibility": true
+                          }
+                        },
+                        "required": [
+                          "delivery_type",
+                          "content"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  {
+                    "title": "URL Asset",
+                    "description": "URL reference asset",
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL reference"
+                      },
+                      "url_type": {
+                        "title": "URL Asset Type",
+                        "description": "Type of URL asset: 'clickthrough' for user click destination (landing page), 'tracker_pixel' for impression/event tracking via HTTP request (fires GET, expects pixel/204 response), 'tracker_script' for measurement SDKs that must load as <script> tag (OMID verification, native event trackers using method:2)",
+                        "type": "string",
+                        "enum": [
+                          "clickthrough",
+                          "tracker_pixel",
+                          "tracker_script"
+                        ]
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Description of what this URL points to"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name for this preview variant"
+                },
+                "macros": {
+                  "type": "object",
+                  "description": "Macro values to apply for this preview",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "context_description": {
+                  "type": "string",
+                  "description": "Natural language description of the context for AI-generated content"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "tags": {
+            "type": "array",
+            "description": "User-defined tags for organization and searchability",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "title": "Creative Status",
+            "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state).",
+            "type": "string",
+            "enum": [
+              "processing",
+              "approved",
+              "rejected",
+              "pending_review",
+              "archived"
+            ],
+            "enumDescriptions": {
+              "processing": "Creative is being processed or transcoded",
+              "approved": "Creative has been approved and is ready for delivery",
+              "rejected": "Creative has been rejected due to policy or technical issues",
+              "pending_review": "Creative is under review",
+              "archived": "Creative has been archived and is excluded from default queries"
+            }
+          },
+          "weight": {
+            "type": "number",
+            "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "placement_ids": {
+            "type": "array",
+            "description": "Optional array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. References placement_id values from the product's placements array. If omitted, creative runs on all placements. Only used during upload to media buy - not stored in creative library.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "creative_id",
+          "name",
+          "format_id",
+          "assets"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-02-22T12:26:37.630Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
