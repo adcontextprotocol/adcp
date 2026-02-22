@@ -371,10 +371,10 @@ Manifests are submitted to the creative library using `sync_creatives`, then ref
             "agent_url": "https://creative.adcontextprotocol.org",
             "id": "native_responsive"
           },
-          "catalog": {
+          "catalogs": [{
             "catalog_id": "salmon-products",
             "type": "product"
-          },
+          }],
           "assets": {
             "headline": {
               "content": "Fresh Pacific Salmon - 20% Off Today"
@@ -431,7 +431,7 @@ See [Universal Macros](/docs/creative/universal-macros) for complete documentati
 
 ### Catalogs
 
-Manifests for catalog-driven formats (product carousels, dynamic product ads) reference their catalog via the `catalog` field on the creative object, not within the manifest's `assets`. See [Catalogs in Creatives](/docs/creative/catalogs#catalogs-in-creatives) for the workflow.
+Manifests for catalog-driven formats (product carousels, dynamic product ads) reference their catalogs via the `catalogs` field on the creative object, not within the manifest's `assets`. See [Catalogs in Creatives](/docs/creative/catalogs#catalogs-in-creatives) for the workflow.
 
 ### Repeatable Asset Groups
 

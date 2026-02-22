@@ -19,7 +19,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
 
-**Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.catalog` field.
+**Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.catalogs` field.
 
 ## Use Cases
 
@@ -43,9 +43,8 @@ For pure generation, provide a minimal source manifest with the required input a
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
-      "catalog_id": "winter-sale",
       "items": [
         {
           "offering_id": "winter-sale",
@@ -53,7 +52,7 @@ For pure generation, provide a minimal source manifest with the required input a
           "description": "50% off all winter items"
         }
       ]
-    },
+    }],
     "assets": {}
   }
 }
@@ -124,10 +123,10 @@ The response contains the transformed or generated creative manifest:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
       "catalog_id": "winter-sale"
-    },
+    }],
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -152,7 +151,7 @@ The response contains the transformed or generated creative manifest:
 
 - **creative_manifest**: The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
 - **format_id**: The target format (matches `target_format_id` from request)
-- **catalog**: Catalog of items this creative promotes (optional, for dynamic product ads)
+- **catalogs**: Catalogs this creative renders (optional, for dynamic product ads)
 - **assets**: Map of asset IDs to actual asset content, matching the format's `assets` specification
 
 ## Workflow Integration
@@ -171,10 +170,10 @@ The response contains the transformed or generated creative manifest:
   "brand": { "domain": "mybrand.com" },
   "creative_manifest": {
     "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
-    "catalog": {
+    "catalogs": [{
       "type": "product",
       "catalog_id": "winter-products"
-    }
+    }]
   }
 }
 
@@ -193,7 +192,7 @@ The response contains the transformed or generated creative manifest:
 }
 ```
 
-**Key insight**: The manifest carries everything. The `catalog` field (if the format renders catalog items) flows through from input to output, and is available for preview. No need to pass it separately at each step.
+**Key insight**: The manifest carries everything. The `catalogs` field (if the format renders catalog items) flows through from input to output, and is available for preview. No need to pass it separately at each step.
 
 ## Examples
 
@@ -217,16 +216,16 @@ Generate a creative from scratch using a generative format:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
-      "catalog_id": "winter-sale",
       "items": [
         {
+          "offering_id": "winter-sale",
           "name": "Winter Sale Collection",
           "description": "50% off all winter items"
         }
       ]
-    },
+    }],
     "assets": {}
   }
 }
@@ -241,10 +240,10 @@ Generate a creative from scratch using a generative format:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
       "catalog_id": "winter-sale"
-    },
+    }],
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -438,16 +437,16 @@ Generate a creative using structured campaign context via `brand` and `creative_
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
-      "catalog_id": "holiday-sale",
       "items": [
         {
+          "offering_id": "holiday-sale",
           "name": "Holiday Sale Collection",
           "description": "Up to 50% off select holiday items"
         }
       ]
-    },
+    }],
     "assets": {}
   }
 }
@@ -474,16 +473,16 @@ When reusing the same brief across multiple creatives, reference it by URL:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalog": {
+    "catalogs": [{
       "type": "offering",
-      "catalog_id": "brunch-menu",
       "items": [
         {
+          "offering_id": "brunch-menu",
           "name": "Weekend Brunch Menu",
           "description": "Fresh brunch items every Saturday and Sunday"
         }
       ]
-    },
+    }],
     "assets": {}
   }
 }
@@ -515,7 +514,7 @@ Both are optional. `brand` provides stable brand identity (colors, logos, tone) 
 
 ### Pure Generation vs Transformation
 
-- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, a `catalog` reference (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
+- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, a `catalogs` reference (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
 - **Transformation**: Provide complete `creative_manifest` with all existing assets. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
 
 ### Integration with Other Tasks

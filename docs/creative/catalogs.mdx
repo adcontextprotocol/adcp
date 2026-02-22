@@ -71,7 +71,7 @@ Not every workflow requires `sync_catalogs`. Use it when:
 - **Multiple creatives share the same feed** — sync once, reference by `catalog_id` from many creatives
 - **The seller may already have the data** — use discovery mode to see what's already on the account
 
-For simple campaigns with a few items, inline catalogs on the creative's `catalog` field work fine — no sync step needed.
+For simple campaigns with a few items, inline catalogs on the creative's `catalogs` field work fine — no sync step needed.
 
 ## Catalog types
 
@@ -190,12 +190,12 @@ Any catalog type can embed items directly via the `items` array. The item schema
 
 ```json
 {
-  "catalog": {
+  "catalogs": [{
     "type": "offering",
     "items": [
       {"offering_id": "summer-sale", "name": "Summer Sale", "landing_url": "https://acme.com/summer"}
     ]
-  }
+  }]
 }
 ```
 
@@ -203,7 +203,7 @@ Vertical types use their industry-specific item schema:
 
 ```json
 {
-  "catalog": {
+  "catalogs": [{
     "type": "hotel",
     "items": [
       {
@@ -215,7 +215,7 @@ Vertical types use their industry-specific item schema:
         "amenities": ["spa", "pool", "restaurant", "wifi"]
       }
     ]
-  }
+  }]
 }
 ```
 
@@ -225,13 +225,13 @@ For feeds managed outside AdCP, point to a URL and let the platform fetch:
 
 ```json
 {
-  "catalog": {
+  "catalogs": [{
     "catalog_id": "product-feed",
     "type": "product",
     "url": "https://feeds.acmecorp.com/products.xml",
     "feed_format": "google_merchant_center",
     "update_frequency": "daily"
-  }
+  }]
 }
 ```
 
@@ -241,11 +241,11 @@ For catalogs already on the account via `sync_catalogs`, reference by `catalog_i
 
 ```json
 {
-  "catalog": {
+  "catalogs": [{
     "catalog_id": "gmc-primary",
     "type": "product",
     "ids": ["SKU-123", "SKU-456"]
-  }
+  }]
 }
 ```
 
@@ -376,9 +376,9 @@ Buying agents check `catalog_requirements` after discovering formats, sync the r
 
 ## Catalogs in creatives
 
-Creatives reference catalogs via the `catalog` field on the creative object. This is a data reference — it tells the creative what items to render (products for a carousel, locations for a store locator). It is not a campaign expansion directive; campaign structure and budget allocation are handled by `create_media_buy` packages.
+Creatives reference catalogs via the `catalogs` field on the creative object. This is a data reference — it tells the creative what items to render (products for a carousel, locations for a store locator). It is not a campaign expansion directive; campaign structure and budget allocation are handled by `create_media_buy` packages.
 
-When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalog` field on the creative to reference the synced data.
+When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalogs` field on the creative to reference the synced data.
 
 ### Workflow
 
@@ -386,7 +386,7 @@ When a format declares `catalog_requirements`, the buying agent syncs the requir
 
 2. **Sync catalogs** — Use `sync_catalogs` to push the required feeds to the account. Wait for approval.
 
-3. **Submit the creative** — Reference the synced catalog by `catalog_id` on the creative's `catalog` field:
+3. **Submit the creative** — Reference the synced catalog by `catalog_id` in the creative's `catalogs` array:
 
 ```json
 {
@@ -397,11 +397,11 @@ When a format declares `catalog_requirements`, the buying agent syncs the requir
         "agent_url": "https://creative.retailer.com/adcp",
         "id": "product_carousel_with_inventory"
       },
-      "catalog": {
+      "catalogs": [{
         "catalog_id": "product-feed",
         "type": "product",
         "tags": ["summer"]
-      },
+      }],
       "assets": {
         "banner_image": {
           "url": "https://cdn.acmecorp.com/carousel-hero.jpg",
@@ -744,7 +744,7 @@ The buyer provides multiple offerings, each with their own creative asset pool. 
 ```json
 {
   "brand": { "domain": "acme.com" },
-  "catalog": {
+  "catalogs": [{
     "type": "offering",
     "items": [
       {
@@ -776,7 +776,7 @@ The buyer provides multiple offerings, each with their own creative asset pool. 
         ]
       }
     ]
-  }
+  }]
 }
 ```
 
@@ -787,11 +787,11 @@ For retail media, sync product and inventory feeds, then reference them in creat
 ```json
 {
   "brand": { "domain": "acmecorp.com" },
-  "catalog": {
+  "catalogs": [{
     "catalog_id": "product-feed",
     "type": "product",
     "tags": ["summer"]
-  }
+  }]
 }
 ```
 
@@ -804,7 +804,7 @@ No pre-built creatives — just offerings available for SI conversations. The br
 ```json
 {
   "brand": { "domain": "saas-company.com" },
-  "catalog": {
+  "catalogs": [{
     "type": "offering",
     "items": [
       {
@@ -820,7 +820,7 @@ No pre-built creatives — just offerings available for SI conversations. The br
         "keywords": ["trial", "free", "signup"]
       }
     ]
-  }
+  }]
 }
 ```
 
@@ -831,7 +831,7 @@ For brands with multiple physical locations — restaurants, retail chains, job 
 ```json
 {
   "brand": { "domain": "acme-restaurants.com" },
-  "catalog": {
+  "catalogs": [{
     "type": "offering",
     "items": [
       {
@@ -850,7 +850,7 @@ For brands with multiple physical locations — restaurants, retail chains, job 
         ]
       }
     ]
-  }
+  }]
 }
 ```
 
@@ -879,6 +879,39 @@ For catalog-driven packages, each catalog item rendered as a distinct ad executi
 ### Conversion attribution
 
 Conversion events carry `content_ids` that identify which catalog items were involved. The catalog's `content_id_type` declares the identifier type. Attribution is broad — a user might click item A but convert on item B. The event fires with the actual `content_id`. See [conversion tracking](/docs/media-buy/conversion-tracking).
+
+### Item-level tracking via macros
+
+For impression-level attribution (which item was clicked, which was viewed), use [catalog item macros](/docs/creative/universal-macros#catalog-item-macros) in your creative's tracker pixel URLs. The macros mirror the `content_id_type` enum — the same identifiers used at serve time that appear in conversion events:
+
+```json
+{
+  "impression_pixel": {
+    "url": "https://track.brand.com/imp?catalog={CATALOG_ID}&item={OFFERING_ID}&creative={CREATIVE_ID}&cb={CACHEBUSTER}",
+    "url_type": "tracker_pixel"
+  }
+}
+```
+
+At serve time, the platform substitutes `{OFFERING_ID}` with the specific offering being rendered. For a carousel showing 5 offerings, each item's impression fires with that item's identifier.
+
+Use the macro matching your catalog's `content_id_type`:
+
+| `content_id_type` | Macro |
+|---|---|
+| `sku` | `{SKU}` |
+| `gtin` | `{GTIN}` |
+| `offering_id` | `{OFFERING_ID}` |
+| `job_id` | `{JOB_ID}` |
+| `hotel_id` | `{HOTEL_ID}` |
+| `flight_id` | `{FLIGHT_ID}` |
+| `vehicle_id` | `{VEHICLE_ID}` |
+| `listing_id` | `{LISTING_ID}` |
+| `store_id` | `{STORE_ID}` |
+| `program_id` | `{PROGRAM_ID}` |
+| `destination_id` | `{DESTINATION_ID}` |
+
+This creates a closed attribution loop: the same identifiers appear in impression trackers (via macros at serve time), click trackers, and conversion events (via `content_ids` at event time).
 
 ## Best practices
 

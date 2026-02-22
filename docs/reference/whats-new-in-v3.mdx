@@ -288,9 +288,9 @@ The `promoted_offerings` creative asset type and `promoted_offering` string fiel
 
 | v2 field | v3 replacement |
 |----------|---------------|
-| `promoted_offerings` (creative asset) | `catalog` field on creative manifest |
+| `promoted_offerings` (creative asset) | `catalogs` field on creative manifest |
 | `promoted_offering` (string on media-buy) | Removed — use `brand` + `brief` |
-| `promoted_offering` (string on creative-manifest) | Removed — use `catalog` field |
+| `promoted_offering` (string on creative-manifest) | Removed — use `catalogs` field |
 
 <Card title="Catalogs deep dive" icon="arrow-right" href="/docs/reference/migration/catalogs">
   Before/after examples, sync_catalogs workflow, catalog_requirements discovery, and migration checklist.
@@ -316,9 +316,9 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `geo_postal_codes` | `geo_postal_areas` |
 | `fixed_rate` in pricing | `fixed_price` |
 | `price_guidance.floor` | `floor_price` (top-level) |
-| `promoted_offerings` asset type | `catalog` field on creative manifest |
+| `promoted_offerings` asset type | `catalogs` field on creative manifest |
 | `promoted_offering` on media-buy | Removed — use `brand` + `brief` |
-| `promoted_offering` on creative-manifest | `catalog` field |
+| `promoted_offering` on creative-manifest | `catalogs` field |
 
 ---
 
@@ -338,7 +338,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Update format parsing to use [`assets` array](/docs/reference/migration/creatives#asset-discovery)
     - [ ] Replace `preview_image` reads with [`format_card`](/docs/reference/migration/creatives#format-cards-replacing-preview_image) rendering
     - [ ] Replace `list_authorized_properties` calls with `get_adcp_capabilities` portfolio
-    - [ ] Remove `promoted_offerings` from creative manifest assets and replace with [`catalog` field](/docs/reference/migration/catalogs)
+    - [ ] Remove `promoted_offerings` from creative manifest assets and replace with [`catalogs` field](/docs/reference/migration/catalogs)
     - [ ] Remove `promoted_offering` string from media buy and creative manifest objects
     - [ ] Validate all requests/responses against v3 schemas
   </Accordion>
