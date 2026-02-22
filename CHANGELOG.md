@@ -1170,7 +1170,7 @@
   ```json
   {
     "media_buy_id": "mb_12345",
-    "buyer_ref": "campaign_ref",
+    "buyer_ref": "media_buy_ref",
     "creative_deadline": "2024-01-30T23:59:59Z",
     "packages": [
       {
