@@ -5,6 +5,7 @@ import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
+import { isWorkOSApiKeyFormat } from './api-key-format.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -160,8 +161,8 @@ async function validateWorkOSApiKey(req: Request): Promise<ValidatedApiKey | nul
 
   const token = authHeader.slice(7); // Remove 'Bearer ' prefix
 
-  // WorkOS API keys start with 'wos_api_key_'
-  if (!token.startsWith('wos_api_key_')) return null;
+  // WorkOS API keys use 'wos_api_key_' (legacy) or 'sk_' (current) prefix
+  if (!isWorkOSApiKeyFormat(token)) return null;
 
   try {
     const result = await workos.apiKeys.validateApiKey({ value: token });
@@ -343,7 +344,7 @@ function hasValidAdminApiKey(req: Request): boolean {
   if (!authHeader?.startsWith('Bearer ')) return false;
   const token = authHeader.slice(7);
   // Don't match WorkOS API keys - those are handled separately
-  if (token.startsWith('wos_api_key_')) return false;
+  if (isWorkOSApiKeyFormat(token)) return false;
   return token === ADMIN_API_KEY;
 }
 
@@ -983,8 +984,8 @@ function extractSealedSession(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
-    // WorkOS API keys start with 'wos_api_key_', sealed sessions don't
-    if (!token.startsWith('wos_api_key_')) {
+    // WorkOS API keys use known prefixes, sealed sessions don't
+    if (!isWorkOSApiKeyFormat(token)) {
       return token;
     }
   }
