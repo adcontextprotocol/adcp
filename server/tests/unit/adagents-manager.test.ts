@@ -7,6 +7,11 @@ import axios from 'axios';
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
 
+// Helper: simulate arraybuffer response (how axios delivers data with responseType: 'arraybuffer')
+function buf(data: unknown): Buffer {
+  return Buffer.from(JSON.stringify(data));
+}
+
 describe('AdAgentsManager', () => {
   let manager: AdAgentsManager;
 
@@ -34,7 +39,7 @@ describe('AdAgentsManager', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: validAdAgents,
+        data: buf(validAdAgents),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -50,14 +55,7 @@ describe('AdAgentsManager', () => {
     it('normalizes domain by removing protocol', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: [
-            {
-              url: 'https://agent.example.com',
-              authorized_for: 'Test',
-            },
-          ],
-        },
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -70,14 +68,7 @@ describe('AdAgentsManager', () => {
     it('normalizes domain by removing trailing slash', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: [
-            {
-              url: 'https://agent.example.com',
-              authorized_for: 'Test',
-            },
-          ],
-        },
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -130,9 +121,7 @@ describe('AdAgentsManager', () => {
     it('detects missing authorized_agents field', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
-        },
+        data: buf({ $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json' }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -145,9 +134,7 @@ describe('AdAgentsManager', () => {
     it('detects invalid authorized_agents type', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: 'not an array',
-        },
+        data: buf({ authorized_agents: 'not an array' }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -160,14 +147,7 @@ describe('AdAgentsManager', () => {
     it('warns about missing optional $schema field', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: [
-            {
-              url: 'https://agent.example.com',
-              authorized_for: 'Test',
-            },
-          ],
-        },
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -180,14 +160,7 @@ describe('AdAgentsManager', () => {
     it('warns about missing last_updated field', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: [
-            {
-              url: 'https://agent.example.com',
-              authorized_for: 'Test',
-            },
-          ],
-        },
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -202,13 +175,7 @@ describe('AdAgentsManager', () => {
     it('validates required url field', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
-          authorized_agents: [
-            {
-              authorized_for: 'Test',
-            },
-          ],
-        },
+        data: buf({ authorized_agents: [{ authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -221,14 +188,14 @@ describe('AdAgentsManager', () => {
     it('validates url is a valid URL', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'not-a-valid-url',
               authorized_for: 'Test',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -241,14 +208,14 @@ describe('AdAgentsManager', () => {
     it('requires HTTPS for agent URLs', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'http://agent.example.com',
               authorized_for: 'Test',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -261,13 +228,13 @@ describe('AdAgentsManager', () => {
     it('validates required authorized_for field', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -280,14 +247,14 @@ describe('AdAgentsManager', () => {
     it('validates authorized_for is not empty', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
               authorized_for: '',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -301,14 +268,14 @@ describe('AdAgentsManager', () => {
     it('validates authorized_for length constraint', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
               authorized_for: 'a'.repeat(501),
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -321,7 +288,7 @@ describe('AdAgentsManager', () => {
     it('validates property_ids is an array', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
@@ -329,7 +296,7 @@ describe('AdAgentsManager', () => {
               property_ids: 'not-an-array',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -342,7 +309,7 @@ describe('AdAgentsManager', () => {
     it('warns about duplicate agent URLs', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
@@ -353,7 +320,7 @@ describe('AdAgentsManager', () => {
               authorized_for: 'Scope 2',
             },
           ],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -594,13 +561,13 @@ describe('AdAgentsManager', () => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
-            data: referenceData,
+            data: buf(referenceData),
             headers: { 'content-type': 'application/json' },
           });
         } else if (url === 'https://cdn.example.com/adagents.json') {
           return Promise.resolve({
             status: 200,
-            data: authoritativeData,
+            data: buf(authoritativeData),
             headers: { 'content-type': 'application/json' },
           });
         }
@@ -617,9 +584,9 @@ describe('AdAgentsManager', () => {
     it('rejects non-HTTPS authoritative locations', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authoritative_location: 'http://insecure.example.com/adagents.json',
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -632,9 +599,9 @@ describe('AdAgentsManager', () => {
     it('rejects invalid authoritative locations', async () => {
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           authoritative_location: 'not-a-valid-url',
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -653,7 +620,7 @@ describe('AdAgentsManager', () => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
-            data: referenceData,
+            data: buf(referenceData),
             headers: { 'content-type': 'application/json' },
           });
         } else {
@@ -684,13 +651,13 @@ describe('AdAgentsManager', () => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
-            data: referenceData1,
+            data: buf(referenceData1),
             headers: { 'content-type': 'application/json' },
           });
         } else if (url === 'https://cdn.example.com/adagents.json') {
           return Promise.resolve({
             status: 200,
-            data: referenceData2,
+            data: buf(referenceData2),
             headers: { 'content-type': 'application/json' },
           });
         }
@@ -712,7 +679,7 @@ describe('AdAgentsManager', () => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
-            data: referenceData,
+            data: buf(referenceData),
             headers: { 'content-type': 'application/json' },
           });
         } else {
@@ -855,7 +822,7 @@ describe('AdAgentsManager', () => {
       it('validates a valid binary signal', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -867,7 +834,7 @@ describe('AdAgentsManager', () => {
                 category: 'purchase_intent',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -880,7 +847,7 @@ describe('AdAgentsManager', () => {
       it('validates a valid categorical signal', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -892,7 +859,7 @@ describe('AdAgentsManager', () => {
                 allowed_values: ['tesla', 'bmw', 'mercedes'],
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -905,7 +872,7 @@ describe('AdAgentsManager', () => {
       it('validates a valid numeric signal with range', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -917,7 +884,7 @@ describe('AdAgentsManager', () => {
                 range: { min: 0, max: 100, unit: 'score' },
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -930,7 +897,7 @@ describe('AdAgentsManager', () => {
       it('detects missing signal id', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -940,7 +907,7 @@ describe('AdAgentsManager', () => {
                 value_type: 'binary',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -953,7 +920,7 @@ describe('AdAgentsManager', () => {
       it('detects invalid signal id pattern', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -964,7 +931,7 @@ describe('AdAgentsManager', () => {
                 value_type: 'binary',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -977,7 +944,7 @@ describe('AdAgentsManager', () => {
       it('detects missing signal name', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -987,7 +954,7 @@ describe('AdAgentsManager', () => {
                 value_type: 'binary',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1000,7 +967,7 @@ describe('AdAgentsManager', () => {
       it('detects invalid value_type', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1011,7 +978,7 @@ describe('AdAgentsManager', () => {
                 value_type: 'invalid_type',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1024,7 +991,7 @@ describe('AdAgentsManager', () => {
       it('warns about categorical signal without allowed_values', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1035,7 +1002,7 @@ describe('AdAgentsManager', () => {
                 value_type: 'categorical',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1048,7 +1015,7 @@ describe('AdAgentsManager', () => {
       it('validates numeric signal range min > max', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1060,7 +1027,7 @@ describe('AdAgentsManager', () => {
                 range: { min: 100, max: 0 },
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1073,7 +1040,7 @@ describe('AdAgentsManager', () => {
       it('validates standard signal category', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1085,7 +1052,7 @@ describe('AdAgentsManager', () => {
                 category: 'purchase_intent',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1098,7 +1065,7 @@ describe('AdAgentsManager', () => {
       it('warns about non-standard signal category', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1110,7 +1077,7 @@ describe('AdAgentsManager', () => {
                 category: 'my_custom_category',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1123,7 +1090,7 @@ describe('AdAgentsManager', () => {
       it('errors when signal category is not a string', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1135,7 +1102,7 @@ describe('AdAgentsManager', () => {
                 category: 123,
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1150,7 +1117,7 @@ describe('AdAgentsManager', () => {
       it('validates valid signal_tags', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1160,7 +1127,7 @@ describe('AdAgentsManager', () => {
             signal_tags: {
               automotive: { name: 'Automotive', description: 'Vehicle-related signals' },
             },
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1172,14 +1139,14 @@ describe('AdAgentsManager', () => {
       it('warns about signal tags used but not defined', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
             signals: [
               { id: 'test', name: 'Test', value_type: 'binary', tags: ['undefined_tag'] },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1192,7 +1159,7 @@ describe('AdAgentsManager', () => {
       it('detects duplicate signal IDs', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               { url: 'https://agent.example.com', authorized_for: 'Test' },
             ],
@@ -1200,7 +1167,7 @@ describe('AdAgentsManager', () => {
               { id: 'duplicate_id', name: 'Signal 1', value_type: 'binary' },
               { id: 'duplicate_id', name: 'Signal 2', value_type: 'binary' },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1215,7 +1182,7 @@ describe('AdAgentsManager', () => {
       it('validates signal_ids authorization type', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               {
                 url: 'https://agent.example.com',
@@ -1227,7 +1194,7 @@ describe('AdAgentsManager', () => {
             signals: [
               { id: 'likely_tesla_buyers', name: 'Likely Tesla Buyers', value_type: 'binary' },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1240,7 +1207,7 @@ describe('AdAgentsManager', () => {
       it('validates signal_tags authorization type', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               {
                 url: 'https://agent.example.com',
@@ -1255,7 +1222,7 @@ describe('AdAgentsManager', () => {
             signal_tags: {
               automotive: { name: 'Automotive', description: 'Vehicle signals' },
             },
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1267,7 +1234,7 @@ describe('AdAgentsManager', () => {
       it('warns when signal_ids authorization has no matching signals', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               {
                 url: 'https://agent.example.com',
@@ -1279,7 +1246,7 @@ describe('AdAgentsManager', () => {
             signals: [
               { id: 'actual_signal', name: 'Actual Signal', value_type: 'binary' },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1292,7 +1259,7 @@ describe('AdAgentsManager', () => {
       it('warns when signal_ids authorization type but no signal_ids array', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               {
                 url: 'https://agent.example.com',
@@ -1300,7 +1267,7 @@ describe('AdAgentsManager', () => {
                 authorization_type: 'signal_ids',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 
@@ -1313,7 +1280,7 @@ describe('AdAgentsManager', () => {
       it('errors when signal_ids is not an array', async () => {
         mockedAxios.get.mockResolvedValue({
           status: 200,
-          data: {
+          data: buf({
             authorized_agents: [
               {
                 url: 'https://agent.example.com',
@@ -1321,7 +1288,7 @@ describe('AdAgentsManager', () => {
                 signal_ids: 'not-an-array',
               },
             ],
-          },
+          }),
           headers: { 'content-type': 'application/json' },
         });
 

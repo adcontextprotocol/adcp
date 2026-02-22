@@ -181,7 +181,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
   try {
     logger.info({ domain: normalizedDomain }, 'Fetching brand data from Brandfetch');
 
-    const response = await axios.get<BrandfetchResponse>(
+    const response = await axios.get(
       `${BRANDFETCH_API_URL}/domain/${normalizedDomain}`,
       {
         headers: {
@@ -190,6 +190,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
         },
         timeout: 10000,
         validateStatus: () => true,
+        responseType: 'arraybuffer',
       }
     );
 
@@ -213,7 +214,18 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
       };
     }
 
-    const data = response.data;
+    let data: BrandfetchResponse;
+    try {
+      const text = Buffer.from(response.data as Buffer).toString('utf-8');
+      data = JSON.parse(text) as BrandfetchResponse;
+    } catch {
+      logger.error({ domain: normalizedDomain }, 'Brandfetch returned invalid JSON');
+      return {
+        success: false,
+        domain: normalizedDomain,
+        error: 'Brandfetch returned invalid JSON',
+      };
+    }
     const result = mapToEnrichmentResult(normalizedDomain, data);
 
     // Cache successful results

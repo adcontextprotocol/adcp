@@ -38,7 +38,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValueOnce({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call - should fetch
@@ -91,7 +91,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call
@@ -101,6 +101,41 @@ describe('BrandManager caching', () => {
       // Second call with skipCache - should fetch again
       await manager.validateDomain('fresh.com', { skipCache: true });
       expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('UTF-8 encoding', () => {
+    it('preserves non-ASCII characters from brand.json', async () => {
+      const mockBrandJson = {
+        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'marabou.se',
+          name: 'Marabou',
+        },
+        brands: [
+          {
+            id: 'marabou',
+            names: [{ sv: 'Marabou' }],
+            keller_type: 'master',
+            brand_manifest: {
+              description: 'Sveriges mest älskade choklad för alla smaker och tillfällen.',
+            },
+          },
+        ],
+      };
+
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(mockBrandJson), 'utf-8'),
+      });
+
+      const result = await manager.validateDomain('marabou.se');
+      expect(result.valid).toBe(true);
+      const portfolio = result.raw_data as typeof mockBrandJson;
+      expect(portfolio.brands[0].brand_manifest.description).toBe(
+        'Sveriges mest älskade choklad för alla smaker och tillfällen.'
+      );
     });
   });
 
@@ -124,7 +159,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call - should fetch
@@ -179,7 +214,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call
@@ -213,7 +248,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // Initial state
@@ -252,7 +287,7 @@ describe('BrandManager caching', () => {
 
       mockedAxios.get.mockResolvedValue({
         status: 200,
-        data: mockBrandJson,
+        data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       await manager.validateDomain('clear.com');

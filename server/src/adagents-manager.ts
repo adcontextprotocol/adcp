@@ -144,7 +144,8 @@ export class AdAgentsManager {
           'Accept': 'application/json',
           'User-Agent': 'AdCP-Testing-Framework/1.0'
         },
-        validateStatus: () => true // Don't throw on non-2xx status codes
+        validateStatus: () => true, // Don't throw on non-2xx status codes
+        responseType: 'arraybuffer',
       });
 
       result.status_code = response.status;
@@ -163,11 +164,22 @@ export class AdAgentsManager {
         return result;
       }
 
-      // Only include raw data for successful responses
-      result.raw_data = response.data;
+      // Decode as UTF-8 regardless of Content-Type charset declaration
+      let adagentsData: unknown;
+      try {
+        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        adagentsData = JSON.parse(text);
+      } catch {
+        result.errors.push({
+          field: 'json',
+          message: `Invalid JSON response from ${url}`,
+          severity: 'error'
+        });
+        return result;
+      }
 
-      // Parse and validate JSON structure
-      let adagentsData = response.data;
+      // Only include raw data for successful responses
+      result.raw_data = adagentsData;
 
       // Check if this is a URL reference
       if (this.isUrlReference(adagentsData)) {
@@ -271,7 +283,8 @@ export class AdAgentsManager {
           'Accept': 'application/json',
           'User-Agent': 'AdCP-Testing-Framework/1.0'
         },
-        validateStatus: () => true
+        validateStatus: () => true,
+        responseType: 'arraybuffer',
       });
 
       if (response.status !== 200) {
@@ -286,7 +299,19 @@ export class AdAgentsManager {
         return null;
       }
 
-      const authData = response.data;
+      // Decode as UTF-8 regardless of Content-Type charset declaration
+      let authData: unknown;
+      try {
+        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        authData = JSON.parse(text);
+      } catch {
+        result.errors.push({
+          field: 'authoritative_location',
+          message: `Invalid JSON at authoritative location ${url}`,
+          severity: 'error'
+        });
+        return null;
+      }
 
       // Ensure the authoritative file is not also a reference (prevent infinite loops)
       if (this.isUrlReference(authData)) {
@@ -298,7 +323,7 @@ export class AdAgentsManager {
         return null;
       }
 
-      return authData;
+      return authData as AdAgentsJsonInline;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         result.errors.push({

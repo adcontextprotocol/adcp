@@ -170,6 +170,7 @@ export class BrandManager {
           'User-Agent': 'AdCP-Brand-Validator/1.0',
         },
         validateStatus: () => true,
+        responseType: 'arraybuffer',
       });
 
       result.status_code = response.status;
@@ -189,8 +190,20 @@ export class BrandManager {
         return result;
       }
 
-      result.raw_data = response.data;
-      const brandData = response.data;
+      let brandData: unknown;
+      try {
+        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        brandData = JSON.parse(text);
+      } catch {
+        result.errors.push({
+          field: 'json',
+          message: `Invalid JSON response from ${url}`,
+          severity: 'error',
+        });
+        this.failedLookupCache.set(cacheKey, result);
+        return result;
+      }
+      result.raw_data = brandData;
 
       // Determine which variant this is and validate
       const variant = this.detectVariant(brandData);
@@ -198,16 +211,16 @@ export class BrandManager {
 
       switch (variant) {
         case 'authoritative_location':
-          await this.validateAuthoritativeLocationVariant(brandData, result);
+          await this.validateAuthoritativeLocationVariant(brandData as AuthoritativeLocationVariant, result);
           break;
         case 'house_redirect':
-          this.validateHouseRedirectVariant(brandData, result);
+          this.validateHouseRedirectVariant(brandData as HouseRedirectVariant, result);
           break;
         case 'brand_agent':
-          this.validateBrandAgentVariant(brandData, result);
+          this.validateBrandAgentVariant(brandData as BrandAgentVariant, result);
           break;
         case 'house_portfolio':
-          this.validateHousePortfolioVariant(brandData, result);
+          this.validateHousePortfolioVariant(brandData as HousePortfolioVariant, result);
           break;
         default:
           result.errors.push({
