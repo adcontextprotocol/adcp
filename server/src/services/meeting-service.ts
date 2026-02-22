@@ -433,35 +433,27 @@ export async function handleRecordingCompleted(meetingUuid: string, zoomMeetingI
     return;
   }
 
+  const meetingCtx = { meetingId: meeting.id, meetingTitle: meeting.title, zoomMeetingId, meetingUuid };
+
   // Get transcript
   const transcriptText = await zoom.getTranscriptText(meetingUuid);
+  let hadTranscript = false;
   if (transcriptText) {
-    // Parse VTT to plain text and store
     const plainText = zoom.parseVttToText(transcriptText);
-    logger.info({ meetingId: meeting.id, transcriptLength: plainText.length }, 'Transcript retrieved');
-
-    await meetingsDb.updateMeeting(meeting.id, {
-      transcript_text: plainText,
-    });
-  } else {
-    logger.info({ meetingUuid, meetingId: meeting.id }, 'No transcript available');
+    await meetingsDb.updateMeeting(meeting.id, { transcript_text: plainText });
+    hadTranscript = true;
   }
 
-  // Fetch Zoom AI Companion meeting summary
-  try {
-    const zoomSummary = await zoom.getMeetingSummary(meetingUuid);
-    if (zoomSummary) {
-      const summary = zoom.formatMeetingSummaryAsMarkdown(zoomSummary);
-      await meetingsDb.updateMeeting(meeting.id, { summary });
-      logger.info({ meetingId: meeting.id }, 'Zoom AI Companion summary stored');
-    } else {
-      logger.info({ meetingId: meeting.id }, 'No Zoom AI Companion summary available');
-    }
-  } catch (error) {
-    logger.error({ err: error, meetingId: meeting.id }, 'Failed to fetch Zoom meeting summary');
+  // Fetch Zoom AI Companion meeting summary (getMeetingSummary handles errors internally and returns null)
+  let hadSummary = false;
+  const zoomSummary = await zoom.getMeetingSummary(meetingUuid);
+  if (zoomSummary) {
+    const summary = zoom.formatMeetingSummaryAsMarkdown(zoomSummary);
+    await meetingsDb.updateMeeting(meeting.id, { summary });
+    hadSummary = true;
   }
 
-  logger.info({ meetingUuid, meetingId: meeting.id }, 'Recording processing completed');
+  logger.info({ ...meetingCtx, hadTranscript, hadSummary }, 'Recording processing completed');
 }
 
 /**
