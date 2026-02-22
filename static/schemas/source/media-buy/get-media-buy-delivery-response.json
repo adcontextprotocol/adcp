@@ -141,9 +141,9 @@
             "type": "string",
             "description": "Buyer's reference identifier for this media buy"
           },
-          "campaign_ref": {
+          "buyer_campaign_ref": {
             "type": "string",
-            "description": "Buyer's campaign reference label from create_media_buy.campaign_ref. Groups related operations under a single campaign for CRM and ad server correlation; may be absent when not provided at creation time."
+            "description": "Buyer's campaign reference label from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign for CRM and ad server correlation; may be absent when not provided at creation time."
           },
           "status": {
             "type": "string",

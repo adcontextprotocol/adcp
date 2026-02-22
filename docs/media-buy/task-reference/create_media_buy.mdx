@@ -162,7 +162,7 @@ npx adcp \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyer_ref` | string | Yes | Your reference identifier for this media buy |
-| `campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
+| `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `account_id` | string | No | Account to bill. Required when the agent has access to multiple accounts; the seller infers the account when only one exists. |
 | `proposal_id` | string | No* | ID of a proposal from `get_products` to execute. Alternative to providing packages. |
 | `total_budget` | TotalBudget | No* | Total budget when executing a proposal. Publisher applies allocation percentages. |
@@ -208,7 +208,7 @@ npx adcp \
 |-------|-------------|
 | `media_buy_id` | Publisher's unique identifier |
 | `buyer_ref` | Your reference identifier |
-| `campaign_ref` | Buyer's campaign label (echoed from request) |
+| `buyer_campaign_ref` | Buyer's campaign label (echoed from request) |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `packages` | Array of created packages with complete state |
 

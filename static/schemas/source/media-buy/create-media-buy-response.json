@@ -18,7 +18,7 @@
           "type": "string",
           "description": "Buyer's reference identifier for this media buy"
         },
-        "campaign_ref": {
+        "buyer_campaign_ref": {
           "type": "string",
           "description": "Buyer's campaign reference label, echoed from the request"
         },

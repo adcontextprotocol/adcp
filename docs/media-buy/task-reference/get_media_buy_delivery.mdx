@@ -53,7 +53,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
 | `buyer_ref` | Buyer's reference identifier |
-| `campaign_ref` | Buyer campaign label echoed from `create_media_buy.campaign_ref` (when provided) |
+| `buyer_campaign_ref` | Buyer campaign label echoed from `create_media_buy.buyer_campaign_ref` (when provided) |
 | `status` | Current status (`pending_activation`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. |
 | `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
