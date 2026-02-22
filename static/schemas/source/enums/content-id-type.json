@@ -15,6 +15,7 @@
     "listing_id",
     "store_id",
     "program_id",
-    "destination_id"
+    "destination_id",
+    "app_id"
   ]
 }
