@@ -141,14 +141,15 @@
             "type": "string",
             "description": "Buyer's reference identifier for this media buy"
           },
-          "campaign_ref": {
+          "buyer_campaign_ref": {
             "type": "string",
-            "description": "Buyer's campaign reference label. Groups related operations under a single campaign for CRM and ad server correlation."
+            "description": "Buyer's campaign reference label from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign for CRM and ad server correlation; may be absent when not provided at creation time."
           },
           "status": {
             "type": "string",
-            "description": "Current media buy status. In webhook context, reporting_delayed indicates data temporarily unavailable.",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_activation`, `active`, `paused`, `completed`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_activation.",
             "enum": [
+              "pending_activation",
               "pending",
               "active",
               "paused",

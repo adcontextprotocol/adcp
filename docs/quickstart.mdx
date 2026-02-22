@@ -43,7 +43,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetProductsRequest, BrandRef
@@ -65,7 +65,7 @@ async def discover():
 asyncio.run(discover())
 ```
 
-```bash CLI
+```bash CLI test=false
 # Using npx (JavaScript/Node.js)
 npx @adcp/client \
   https://test-agent.adcontextprotocol.org/mcp \

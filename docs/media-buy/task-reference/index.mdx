@@ -19,6 +19,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Sync catalog feeds (products, stores, inventory) | Minutes-Days | Catalogs |
 | [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](/docs/media-buy/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
+| [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) | Retrieve media buy status, creative approvals, and delivery snapshots | ~1s | Monitoring |
 | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
 | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Submit performance signals for optimization | ~1s | Optimization |
 | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Configure event sources for conversion tracking | ~1s | Conversion Tracking |
@@ -32,6 +33,7 @@ AdCP tasks fall into four response time categories:
 **Simple lookups and event ingestion**
 - [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) - Format specifications
 - [`list_creatives`](/docs/media-buy/task-reference/list_creatives) - Creative library queries
+- [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission
 - [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) - Event source configuration
 - [`log_event`](/docs/media-buy/task-reference/log_event) - Event ingestion
@@ -77,7 +79,8 @@ Handle creative assets throughout their lifecycle.
 ### Performance & Optimization
 Monitor and optimize campaign performance.
 
-- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics
+- **[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys)** - Check campaign status, creative approvals, and near-real-time delivery snapshots
+- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics for reporting
 - **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)** - Submit performance signals for publisher optimization
 
 ### Conversion Tracking
@@ -98,6 +101,16 @@ All tasks include JSON schema definitions for requests and responses:
 Schemas are accessible at runtime via the documentation server for validation and tooling.
 
 ## Common Patterns
+
+### Task Naming Conventions
+Task names use snake_case and follow verb-first semantics consistently across Media Buy:
+- `get_*`: Retrieve current state or scoped datasets (for example `get_products`, `get_media_buys`, `get_media_buy_delivery`)
+- `list_*`: Enumerate collections with optional filtering (for example `list_creative_formats`, `list_creatives`)
+- `create_*`: Create new resources (`create_media_buy`)
+- `update_*`: Apply partial updates to existing resources (`update_media_buy`)
+- `sync_*`: Reconcile external state into seller systems with upsert-like behavior (`sync_catalogs`, `sync_creatives`, `sync_event_sources`)
+- `log_*`: Ingest append-only event records (`log_event`)
+- `provide_*`: Submit optimization or feedback signals (`provide_performance_feedback`)
 
 ### Error Handling
 All tasks follow consistent error patterns with:
@@ -125,7 +138,10 @@ Long-running tasks provide:
 4. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
 5. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
 6. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
-7. **Monitor Performance**: Track results with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+7. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
+8. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+
+For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
 
 ## Related Documentation
 

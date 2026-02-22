@@ -19,7 +19,7 @@ Create a media buy, then pause it:
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { CreateMediaBuyResponseSchema, UpdateMediaBuyResponseSchema } from '@adcp/client';
 
@@ -79,7 +79,7 @@ if ('errors' in updated && updated.errors) {
 console.log(`Campaign ${updated.media_buy_id} paused`);
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 import time
 from datetime import datetime, timedelta

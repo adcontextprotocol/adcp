@@ -18,7 +18,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `account_id` | string | No | Filter to a specific account. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
-| `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending"`, `"paused"`, `"completed"`, `"failed"`, `"all"`. Defaults to `["active"]` |
+| `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 
@@ -53,7 +53,8 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
 | `buyer_ref` | Buyer's reference identifier |
-| `status` | Current status (`pending`, `active`, `paused`, `completed`, `failed`) |
+| `buyer_campaign_ref` | Buyer campaign label echoed from `create_media_buy.buyer_campaign_ref` (when provided) |
+| `status` | Current status (`pending_activation`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. |
 | `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
 | `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
@@ -66,7 +67,7 @@ See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-de
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -128,7 +129,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -159,7 +160,7 @@ validated.media_buy_deliveries.forEach(delivery => {
 });
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
@@ -194,7 +195,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -234,7 +235,7 @@ if (validated.media_buy_deliveries.length > 0) {
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
@@ -425,7 +426,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -451,7 +452,7 @@ console.log(`${validated.aggregated_totals.media_buy_count} campaigns for accoun
 console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
@@ -505,7 +506,9 @@ asyncio.run(main())
 ### Status Filtering
 - Defaults to `["active"]` if not specified
 - Can be single string (`"active"`) or array (`["active", "paused"]`)
-- Use `"all"` to return media buys of any status
+- Valid filter values are media-buy lifecycle statuses: `pending_activation`, `active`, `paused`, `completed`
+- `reporting_delayed` and `failed` are delivery/reporting statuses returned in webhook contexts, not request filter values
+- Some legacy integrations may emit `pending`; treat it as equivalent to `pending_activation`
 
 ### Date Ranges
 - If dates not specified, returns campaign lifetime delivery data
@@ -539,7 +542,7 @@ asyncio.run(main())
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
 | `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_ids or buyer_refs explicitly |
-| `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: active, pending, paused, completed, failed, all |
+| `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: pending_activation, active, paused, completed |
 
 ## Package-Level Metrics
 
