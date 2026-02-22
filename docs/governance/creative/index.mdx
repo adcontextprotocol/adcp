@@ -99,6 +99,8 @@ A creative governance agent advertises its capabilities using the same feature d
 ```
 </CodeGroup>
 
+The orchestrator reads these declarations via `get_adcp_capabilities` before evaluating any creative. If a required feature is absent from an agent's declaration, the orchestrator surfaces the gap immediately rather than discovering it mid-evaluation.
+
 ### 2. Orchestrator evaluates a creative
 
 The orchestrator calls [`get_creative_features`](./get_creative_features) with a creative manifest:
@@ -144,13 +146,56 @@ The orchestrator evaluates the feature values against buyer-defined requirements
 
 ## Design principles
 
-**Reuses existing patterns.** Creative governance follows the same feature-based model as property governance. Agents declare features, return values, and keep detailed intelligence behind `detail_url` and `methodology_url`.
+**Feature IDs enforce strictness, not schema rigidity.** A categorization agent that declares `iab_casinos_gambling` using IAB Content Taxonomy 3.1 ID 181 is as strict as any custom schema — the discipline lives in the agent's methodology, not in the wire format. An orchestrator that requires `iab_casinos_gambling: false` gets a binary pass/fail answer regardless of how the agent detected the content. The feature ID is the contract. The protocol staying schema-agnostic means adding a new IAB category or scanning technique does not require a protocol change.
 
-**Vendor-agnostic features.** The protocol doesn't define which features exist. Vendors declare their own feature catalogs. A security vendor and a creative quality vendor both use `get_creative_features` — the protocol doesn't need to know the difference.
+**Confidence is opt-in, not mandatory.** The `confidence` field on a feature result is optional. Security scanners typically omit it — a creative either contains a credential harvesting pattern or it does not. Categorization agents include it because content detection is probabilistic: a creative may be 94% likely to contain gambling content. The agent decides what to disclose. An orchestrator that cannot tolerate ambiguity requires `value: false` and ignores confidence entirely; an orchestrator that wants to threshold probabilistic results uses it. This is the same field that exists on `property-feature-value` for property governance.
 
-**Opaque results.** Feature values on the wire are pass/fail (binary) or scores (quantitative). Detailed methodology, detection techniques, and threat intelligence stay behind the vendor's access-controlled URLs.
+**Orchestrator-enforced consistency.** An orchestrator that requires `iab_casinos_gambling` from its categorization agent discovers at capability-check time — before any creative is evaluated — whether the agent supports that feature. If it does not, the orchestrator fails fast and surfaces the gap. This mirrors how property governance works: IAS and DoubleVerify evaluate different property features; the orchestrator determines which features are required and routes accordingly. Mandating a fixed feature set in the protocol schema would mean every new IAB category or custom brand requirement requires a protocol revision. The protocol defines the enforcement mechanism; the orchestrator defines the requirements.
 
-**Orchestrator decides.** Agents return values, orchestrators evaluate against requirements. The separation of measurement from decision-making is the same as property governance.
+**Opaque detailed intelligence.** Feature values on the wire are pass/fail (binary) or scores (quantitative). Detection methodology, threat intelligence, and detailed scoring breakdowns stay behind the vendor's access-controlled `detail_url` and `methodology_url`.
+
+## Multi-agent collaboration
+
+Creative governance evaluations typically involve multiple specialist agents working in parallel — the same pattern property governance uses for sustainability, quality, and suitability agents.
+
+| Agent | Features returned | Orchestrator requirement |
+|-------|------------------|------------------------|
+| Security scanner | `auto_redirect`, `cloaking` | Block if any are `true` |
+| Creative quality platform | `brand_consistency`, `platform_optimized` | Block if score below threshold |
+| Content categorizer | `iab_casinos_gambling`, `iab_automotive` | Block if excluded category is `true` |
+
+Each agent uses the same `get_creative_features` task. The orchestrator calls them in parallel, collects independent result sets, and applies its requirements across all of them. No agent needs to know about the others.
+
+This means a buyer can:
+- Add a new specialist agent without changing existing agents or the evaluation protocol
+- Apply different confidence thresholds per agent type
+- Replace one vendor with another without changing the evaluation logic for other agents
+
+The orchestrator's feature requirements — not the protocol schema — define what "complete" creative governance means for a given campaign.
+
+```mermaid
+flowchart TB
+    subgraph Orchestrator["ORCHESTRATOR"]
+        O1[Calls get_creative_features on each agent]
+        O2[Aggregates results]
+        O3[Applies feature requirements]
+    end
+
+    subgraph Agents["CREATIVE GOVERNANCE AGENTS"]
+        SEC["Security Scanner<br/>auto_redirect<br/>cloaking<br/>credential_harvest"]
+        QUA["Creative Quality<br/>brand_consistency<br/>platform_optimized"]
+        CAT["Content Categorizer<br/>iab_casinos_gambling<br/>iab_automotive"]
+    end
+
+    Creative["Creative Manifest"] --> O1
+    O1 --> SEC
+    O1 --> QUA
+    O1 --> CAT
+    SEC --> O2
+    QUA --> O2
+    CAT --> O2
+    O2 --> O3
+```
 
 ## Async evaluation
 
