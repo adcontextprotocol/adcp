@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/app-item.json",
   "title": "App Item",
-  "description": "A mobile application within an app-type catalog. Carries the app metadata and store identifiers that platforms use for app install campaigns and re-engagement ads. Maps to Google App Campaigns (package_name / apple_id), Apple Search Ads (adam_id), Meta App Ads (app_id), TikTok App Campaigns, and Snapchat App Install Ads. Each item represents one app on one platform — iOS and Android variants are separate items.",
+  "description": "A mobile application within an app-type catalog. Carries the app metadata and store identifiers that platforms use for app install campaigns and re-engagement ads. Maps to Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, and Snapchat App Install Ads. Each item represents one app on one platform — iOS and Android variants are separate items.",
   "type": "object",
   "properties": {
     "app_id": {
@@ -20,7 +20,7 @@
     },
     "bundle_id": {
       "type": "string",
-      "description": "Reverse-domain bundle identifier (e.g., 'com.acmegames.puzzlequest'). Required for Android. Also used for iOS MMP attribution, SKAN matching, and app-ads.txt verification."
+      "description": "Reverse-domain bundle identifier (e.g., 'com.acmegames.puzzlequest'). The universal store identifier: required for Android (Google Play), also used for iOS MMP attribution, SKAN matching, and app-ads.txt verification. Distinct from app_id, which is a buyer-assigned catalog key."
     },
     "apple_id": {
       "type": "string",
