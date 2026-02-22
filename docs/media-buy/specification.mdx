@@ -141,9 +141,11 @@ Create a media buy from selected packages or execute a proposal.
 Modify an existing media buy's budget, targeting, or settings.
 
 **Requirements:**
-- Orchestrators MUST include `media_buy_id`
-- Sales agents MUST validate that the media buy exists and is modifiable
-- Sales agents MUST NOT allow modifications to completed or cancelled media buys
+- Orchestrators MUST include either `media_buy_id` or `buyer_ref`
+- Sales agents MUST apply PATCH semantics: only specified fields are updated; omitted fields remain unchanged
+- Sales agents MUST reject updates to media buys with status `completed` with error code `INVALID_STATE`
+- Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
+- When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
 - Sales agents SHOULD return the updated media buy state
 
 ### list_creatives
@@ -244,6 +246,7 @@ Common error codes:
 - `PRODUCT_NOT_FOUND`: Referenced product does not exist
 - `BUDGET_EXCEEDED`: Operation would exceed allocated budget
 - `CREATIVE_REJECTED`: Creative failed validation or approval
+- `INVALID_STATE`: Operation is not permitted for the media buy's current status (e.g., updating a completed media buy)
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `UNAUTHORIZED`: Insufficient permissions for the operation
 
@@ -290,7 +293,7 @@ A conformant Media Buy Protocol orchestrator MUST:
 1. Authenticate with sales agents
 2. Include required fields as defined in request schemas
 3. Handle asynchronous responses (submitted, working, pending_approval)
-4. Use `media_buy_id` for all operations on created media buys
+4. Use `media_buy_id` or `buyer_ref` to reference media buys in subsequent operations
 5. Respect `creative_deadline` for creative uploads
 
 ## Implementation Notes

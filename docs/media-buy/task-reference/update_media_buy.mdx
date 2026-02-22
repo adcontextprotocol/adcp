@@ -590,14 +590,21 @@ Some updates require seller approval and return pending status:
 - **Targeting changes** that alter campaign scope
 - **Creative changes** requiring policy review
 
-When approval is needed, `implementation_date` will be `null`:
+When approval is needed, `implementation_date` will be `null` and `affected_packages` contains the proposed state of each package that would be modified:
 
 ```json
 {
   "media_buy_id": "mb_12345",
   "buyer_ref": "summer_campaign_2025",
   "implementation_date": null,
-  "affected_packages": []
+  "affected_packages": [
+    {
+      "package_id": "pkg_abc123",
+      "buyer_ref": "ctv_package",
+      "budget": 50000,
+      "status": "pending_activation"
+    }
+  ]
 }
 ```
 
@@ -635,13 +642,30 @@ Updates may be asynchronous, especially with seller approval.
 
 ### Response Patterns
 
-**Synchronous (completed immediately)**:
+**Synchronous (completed immediately)** — campaign-level update (e.g., `paused: true`):
 ```json
 {
   "media_buy_id": "mb_12345",
   "buyer_ref": "summer_campaign_2025",
   "implementation_date": "2025-06-15T10:00:00Z",
   "affected_packages": []
+}
+```
+
+**Synchronous (completed immediately)** — package-level update:
+```json
+{
+  "media_buy_id": "mb_12345",
+  "buyer_ref": "summer_campaign_2025",
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": [
+    {
+      "package_id": "pkg_abc123",
+      "buyer_ref": "ctv_package",
+      "budget": 50000,
+      "status": "active"
+    }
+  ]
 }
 ```
 
