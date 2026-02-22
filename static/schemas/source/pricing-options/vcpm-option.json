@@ -30,6 +30,11 @@
       "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
       "minimum": 0
     },
+    "max_bid": {
+      "type": "boolean",
+      "description": "When true, bid_price is interpreted as the buyer's maximum willingness to pay (ceiling) rather than an exact price. Sellers may optimize actual clearing prices between floor_price and bid_price based on delivery pacing. When false or absent, bid_price (if provided) is the exact bid/price to honor.",
+      "default": false
+    },
     "price_guidance": {
       "description": "Optional pricing guidance for auction-based bidding",
       "$ref": "/schemas/pricing-options/price-guidance.json"

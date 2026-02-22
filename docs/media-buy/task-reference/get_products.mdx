@@ -188,7 +188,7 @@ Returns an array of `products` and optionally `proposals`.
 | `format_ids` | FormatID[] | Supported creative format IDs |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | How delivery is measured (impressions, views, etc.) |
-| `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.) |
+| `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
 
 ### Proposals Array (Optional)

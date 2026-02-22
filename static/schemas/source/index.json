@@ -647,7 +647,7 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional).",
+      "description": "Individual pricing model schemas. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional). Bid-based auction models may also include max_bid as a boolean signal to interpret bid_price as a buyer ceiling instead of an exact honored price.",
       "schemas": {
         "cpm-option": {
           "$ref": "/schemas/pricing-options/cpm-option.json",

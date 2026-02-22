@@ -226,6 +226,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
   "pricing_model": "cpc",
   "currency": "USD",
   "floor_price": 0.50,
+  "max_bid": true,
   "price_guidance": {
     "p50": 1.20,
     "p75": 2.00
@@ -440,7 +441,8 @@ Publishers can offer the same product in multiple currencies:
 
 ### Auction Pricing (`fixed_price` absent)
 - Final price determined through auction
-- Publisher provides `floor_price` (hard constraint) and `price_guidance` (percentile hints)
+- Publisher provides `floor_price` (hard minimum) and optional `price_guidance` (percentile hints)
+- Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include optional `max_bid: true` to explicitly signal `bid_price` is treated as buyer maximum willingness to pay (ceiling mode)
 - Common for non-guaranteed inventory
 - Buyer submits `bid_price` in media buy request
 
@@ -451,6 +453,7 @@ Publishers can offer the same product in multiple currencies:
   "pricing_model": "cpcv",
   "currency": "USD",
   "floor_price": 0.08,
+  "max_bid": true,
   "price_guidance": {
     "p25": 0.10,
     "p50": 0.12,
@@ -489,7 +492,7 @@ Each package specifies its own pricing option, which determines currency and pri
 1. Package selects `pricing_option_id` from product (e.g., "cpcv_usd_auction")
 2. Pricing option determines currency, pricing model, and fixed vs auction
 3. Package `budget` is in the pricing option's currency
-4. Auction-based pricing requires `bid_price`
+4. Auction-based pricing requires `bid_price`; it is the exact honored price unless `max_bid: true`, which switches it to a maximum-willingness-to-pay ceiling
 5. Sellers validate currency compatibility across packages
 
 ## Reporting Metrics by Pricing Model

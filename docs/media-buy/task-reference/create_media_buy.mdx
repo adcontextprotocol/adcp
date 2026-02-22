@@ -41,7 +41,7 @@ const result = await testAgent.createMediaBuy({
     {
       buyer_ref: 'display_package_1',
       product_id: 'prod_d979b543',
-      pricing_option_id: 'cpm_usd_fixed',
+      pricing_option_id: 'cpm_usd_auction',
       format_ids: [
         {
           agent_url: 'https://creative.adcontextprotocol.org',
@@ -54,7 +54,7 @@ const result = await testAgent.createMediaBuy({
     {
       buyer_ref: 'display_package_2',
       product_id: 'prod_e8fd6012',
-      pricing_option_id: 'cpm_usd_fixed',
+      pricing_option_id: 'cpm_usd_auction',
       format_ids: [
         {
           agent_url: 'https://creative.adcontextprotocol.org',
@@ -108,7 +108,7 @@ async def create_campaign():
             {
                 'buyer_ref': 'ctv_package',
                 'product_id': 'prod_d979b543',
-                'pricing_option_id': 'cpm_usd_fixed',
+                'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [
                     {
                         'agent_url': 'https://creative.adcontextprotocol.org',
@@ -121,7 +121,7 @@ async def create_campaign():
             {
                 'buyer_ref': 'audio_package',
                 'product_id': 'prod_e8fd6012',
-                'pricing_option_id': 'cpm_usd_fixed',
+                'pricing_option_id': 'cpm_usd_auction',
                 'format_ids': [
                     {
                         'agent_url': 'https://creative.adcontextprotocol.org',
@@ -151,7 +151,7 @@ asyncio.run(create_campaign())
 npx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   create_media_buy \
-  '{"buyer_ref":"summer_campaign_2025","brand":{"domain":"acmecorp.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_fixed","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"buyer_ref":"summer_campaign_2025","brand":{"domain":"acmecorp.com"},"packages":[{"buyer_ref":"display_package_1","product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"buyer_ref":"display_package_2","product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -194,7 +194,7 @@ npx adcp \
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
-| `bid_price` | number | No | Bid price for auction pricing (required when pricing option has no `fixed_price`) |
+| `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goal` | [OptimizationGoal](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
@@ -244,7 +244,7 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_regional',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_fixed',
+    pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
@@ -295,7 +295,7 @@ async def create_targeted_campaign():
         packages=[{
             'buyer_ref': 'ctv_regional',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_fixed',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
@@ -493,7 +493,7 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_fixed',
+    pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
@@ -552,7 +552,7 @@ async def create_with_creatives():
         packages=[{
             'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_fixed',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
@@ -611,7 +611,7 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     buyer_ref: 'ctv_package',
     product_id: 'prod_d979b543',
-    pricing_option_id: 'cpm_usd_fixed',
+    pricing_option_id: 'cpm_usd_auction',
     format_ids: [{
       agent_url: 'https://creative.adcontextprotocol.org',
       id: 'display_300x250_image'
@@ -664,7 +664,7 @@ async def create_with_reporting():
         packages=[{
             'buyer_ref': 'ctv_package',
             'product_id': 'prod_d979b543',
-            'pricing_option_id': 'cpm_usd_fixed',
+            'pricing_option_id': 'cpm_usd_auction',
             'format_ids': [{
                 'agent_url': 'https://creative.adcontextprotocol.org',
                 'id': 'display_300x250_image'
