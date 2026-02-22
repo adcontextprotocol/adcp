@@ -35,7 +35,7 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based CPM pricing (required if using cpm-auction-option)",
+      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
       "minimum": 0
     },
     "impressions": {

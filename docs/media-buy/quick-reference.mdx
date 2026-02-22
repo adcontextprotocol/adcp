@@ -314,11 +314,13 @@ The `agent_url` specifies which creative agent defines the format. Use `https://
 
 Products include `pricing_options` array. Each option has:
 - `pricing_option_id`: Use this in `create_media_buy`
-- `pricing_model`: "cpm", "cpm-auction", "flat-fee", etc.
-- `price`: Base price (for fixed pricing)
-- `floor`: Minimum bid (for auction)
+- `pricing_model`: Pricing unit (for example, `cpm`, `cpcv`, `cpp`, `time`)
+- `fixed_price`: Price for fixed-rate options
+- `floor_price`: Minimum bid for auction options
+- `max_bid`: Optional boolean for bid-based auction options (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`); when `true`, it switches `bid_price` from exact price to buyer max-willingness ceiling mode
+- `price_guidance`: Optional auction percentile hints (`p25`, `p50`, `p75`, `p90`)
 
-For auction pricing, include `bid_price` in your package.
+For auction pricing, `bid_price` is the exact honored price by default. If the pricing option sets `max_bid: true`, `bid_price` is treated as a ceiling instead.
 
 ### Asynchronous Operations
 

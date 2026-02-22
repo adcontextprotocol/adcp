@@ -62,7 +62,7 @@ Each pricing option includes:
 }
 ```
 
-For auction-based pricing (no `fixed_price`), use `floor_price` for hard constraint and optional `price_guidance` for hints:
+For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpm-option.json",
@@ -70,6 +70,7 @@ For auction-based pricing (no `fixed_price`), use `floor_price` for hard constra
   "pricing_model": "cpm",
   "currency": "USD",
   "floor_price": 10.00,
+  "max_bid": true,
   "price_guidance": {
     "p25": 12.50,
     "p50": 15.00,
