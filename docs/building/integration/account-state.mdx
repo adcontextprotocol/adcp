@@ -105,7 +105,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 
 ### 4. Sync creatives
 
-`sync_creatives` submits creative assets that reference the catalogs synced in step 2. For catalog-driven formats, the creative's `catalog` field references synced catalogs by `catalog_id` instead of embedding items inline.
+`sync_creatives` submits creative assets that reference the catalogs synced in step 2. For catalog-driven formats, the creative's `catalogs` field references synced catalogs by `catalog_id` instead of embedding items inline.
 
 ```json
 {
@@ -116,11 +116,11 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
       "agent_url": "https://creative.retailer.com/adcp",
       "id": "product_carousel_with_inventory"
     },
-    "catalog": {
+    "catalogs": [{
       "catalog_id": "product-feed",
       "type": "product",
       "tags": ["summer"]
-    },
+    }],
     "assets": {
       "banner_image": {
         "url": "https://cdn.acmecorp.com/carousel-hero.jpg",

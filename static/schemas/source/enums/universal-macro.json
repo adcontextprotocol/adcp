@@ -58,7 +58,20 @@
     "SHOW_NAME",
     "EPISODE_ID",
     "AUDIO_DURATION",
-    "AXEM"
+    "AXEM",
+    "CATALOG_ID",
+    "SKU",
+    "GTIN",
+    "OFFERING_ID",
+    "JOB_ID",
+    "HOTEL_ID",
+    "FLIGHT_ID",
+    "VEHICLE_ID",
+    "LISTING_ID",
+    "STORE_ID",
+    "PROGRAM_ID",
+    "DESTINATION_ID",
+    "CREATIVE_VARIANT_ID"
   ],
   "enumDescriptions": {
     "MEDIA_BUY_ID": "AdCP media buy identifier",
@@ -114,6 +127,19 @@
     "SHOW_NAME": "Program or show name",
     "EPISODE_ID": "Podcast episode identifier",
     "AUDIO_DURATION": "Audio content duration in seconds",
-    "AXEM": "AXE contextual metadata (encoded blob)"
+    "AXEM": "AXE contextual metadata (encoded blob)",
+    "CATALOG_ID": "Buyer-defined catalog identifier from the catalog's catalog_id field",
+    "SKU": "Product SKU identifier for the catalog item being rendered",
+    "GTIN": "Global Trade Item Number for the catalog item being rendered",
+    "OFFERING_ID": "AdCP offering identifier for the catalog item being rendered",
+    "JOB_ID": "Job posting identifier for the catalog item being rendered",
+    "HOTEL_ID": "Hotel property identifier for the catalog item being rendered",
+    "FLIGHT_ID": "Flight route identifier for the catalog item being rendered",
+    "VEHICLE_ID": "Vehicle listing identifier for the catalog item being rendered",
+    "LISTING_ID": "Real estate listing identifier for the catalog item being rendered",
+    "STORE_ID": "Store location identifier for the catalog item being rendered",
+    "PROGRAM_ID": "Education program identifier for the catalog item being rendered",
+    "DESTINATION_ID": "Travel destination identifier for the catalog item being rendered",
+    "CREATIVE_VARIANT_ID": "Seller-assigned creative variant identifier, passed through at serve time"
   }
 }
