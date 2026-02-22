@@ -71,7 +71,8 @@
     "STORE_ID",
     "PROGRAM_ID",
     "DESTINATION_ID",
-    "CREATIVE_VARIANT_ID"
+    "CREATIVE_VARIANT_ID",
+    "APP_ITEM_ID"
   ],
   "enumDescriptions": {
     "MEDIA_BUY_ID": "AdCP media buy identifier",
@@ -140,6 +141,7 @@
     "STORE_ID": "Store location identifier for the catalog item being rendered",
     "PROGRAM_ID": "Education program identifier for the catalog item being rendered",
     "DESTINATION_ID": "Travel destination identifier for the catalog item being rendered",
-    "CREATIVE_VARIANT_ID": "Seller-assigned creative variant identifier, passed through at serve time"
+    "CREATIVE_VARIANT_ID": "Seller-assigned creative variant identifier, passed through at serve time",
+    "APP_ITEM_ID": "Mobile app identifier for the catalog item being rendered"
   }
 }

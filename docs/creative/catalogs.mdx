@@ -1,7 +1,7 @@
 ---
 title: Catalogs
 description: Typed data feeds — products, hotels, jobs, vehicles, stores, and more — that provide the items publishers render in ads
-keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hotel, flight, job, vehicle, real estate, education, destination, sync_catalogs, catalog requirements]
+keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hotel, flight, job, vehicle, real estate, education, destination, app, mobile app, sync_catalogs, catalog requirements]
 ---
 
 # Catalogs
@@ -100,6 +100,7 @@ Each vertical type has a defined AdCP item schema, so formats can declare `catal
 | `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/v1/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
 | `education` | [EducationItem](https://adcontextprotocol.org/schemas/v1/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
 | `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/v1/core/destination-item.json) | Meta destination catalogs, Google travel ads |
+| `app` | [AppItem](https://adcontextprotocol.org/schemas/v1/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
 
 ## The Catalog object
 
@@ -135,7 +136,7 @@ interface Catalog {
 |-------|------|----------|-------------|
 | `catalog_id` | string | For sync | Buyer's identifier. Required for `sync_catalogs`. When used in creatives, references a synced catalog. |
 | `name` | string | No | Human-readable name |
-| `type` | CatalogType | Yes | Structural: `"offering"`, `"product"`, `"inventory"`, `"store"`, `"promotion"`. Vertical: `"hotel"`, `"flight"`, `"job"`, `"vehicle"`, `"real_estate"`, `"education"`, `"destination"`. |
+| `type` | CatalogType | Yes | Structural: `"offering"`, `"product"`, `"inventory"`, `"store"`, `"promotion"`. Vertical: `"hotel"`, `"flight"`, `"job"`, `"vehicle"`, `"real_estate"`, `"education"`, `"destination"`, `"app"`. |
 | `url` | uri | No | External feed URL. Mutually exclusive with `items`. |
 | `feed_format` | FeedFormat | No | Format of external feed (`google_merchant_center`, `facebook_catalog`, `shopify`, `linkedin_jobs`, `custom`) |
 | `update_frequency` | string | No | Re-fetch schedule (`realtime`, `hourly`, `daily`, `weekly`) |
@@ -166,6 +167,7 @@ Natural mappings by vertical:
 | `real_estate` | `lead`, `schedule` (viewing) |
 | `education` | `submit_application`, `complete_registration` |
 | `destination` | `purchase` (booking) |
+| `app` | `app_install`, `app_launch` |
 
 These mappings are not enforced by the schema — they're declared by the buyer when syncing a catalog. A job catalog that also tracks `lead` events alongside `submit_application` is perfectly valid.
 
@@ -910,6 +912,7 @@ Use the macro matching your catalog's `content_id_type`:
 | `store_id` | `{STORE_ID}` |
 | `program_id` | `{PROGRAM_ID}` |
 | `destination_id` | `{DESTINATION_ID}` |
+| `app_id` | `{APP_ITEM_ID}` |
 
 This creates a closed attribution loop: the same identifiers appear in impression trackers (via macros at serve time), click trackers, and conversion events (via `content_ids` at event time).
 
