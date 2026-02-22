@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/overlay.json",
+  "title": "Overlay",
+  "description": "A publisher-controlled element that renders on top of buyer creative content within the ad placement. Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Identifier for this overlay (e.g., 'play_pause', 'volume', 'publisher_logo', 'carousel_prev', 'carousel_next')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable explanation of what this overlay is and how buyers should account for it"
+    },
+    "visual": {
+      "type": "object",
+      "description": "Optional visual reference for this overlay element. Useful for creative agents compositing previews and for buyers understanding what will appear over their content. Must include at least one of: url, light, or dark.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to a theme-neutral overlay graphic (SVG or PNG). Use when a single file works for all backgrounds, e.g. an SVG using CSS custom properties or currentColor."
+        },
+        "light": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the overlay graphic for use on light/bright backgrounds (SVG or PNG)"
+        },
+        "dark": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the overlay graphic for use on dark backgrounds (SVG or PNG)"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "bounds": {
+      "type": "object",
+      "description": "Position and size of the overlay relative to the asset's own top-left corner. For 'px' unit: x and y are pixel offsets from the asset's top-left corner; width and height are in pixels. For 'fraction' unit: x and y are the overlay's top-left corner as a fraction of asset width/height (0.0 = asset edge, 1.0 = opposite edge); width and height are fractions of asset dimensions (0.12 = 12%). Negative x/y values indicate the overlay extends outside the asset boundary.",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Horizontal offset from the asset's left edge"
+        },
+        "y": {
+          "type": "number",
+          "description": "Vertical offset from the asset's top edge"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Width of the overlay"
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Height of the overlay"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["px", "fraction"],
+          "description": "'px' = absolute pixels. 'fraction' = proportional to asset dimensions (0.0–1.0 for in-bounds; values outside this range indicate overflow past the asset edge)."
+        }
+      },
+      "required": ["x", "y", "width", "height", "unit"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["id", "bounds"],
+  "additionalProperties": false
+}

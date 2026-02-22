@@ -383,6 +383,46 @@ This tells creative agents: "Build HTML that works in a SafeFrame container with
 
 See [Display Ads - HTML Display Formats](/docs/creative/channels/display#html-display-formats-with-execution-context) for complete examples.
 
+### Asset Overlays
+
+Some formats include publisher-controlled elements that render on top of buyer creative content — video player controls, publisher logos, and similar chrome. Formats declare these as `overlays` on the relevant asset so creative agents and buyers know which areas will be covered and can compose accordingly.
+
+Overlay bounds are expressed relative to the asset's own top-left corner. The `unit` field is either `"px"` (absolute pixels) or `"fraction"` (proportional to asset dimensions: for `x`/`y`, 0.0 is the asset's own edge; for `width`/`height`, 0.12 means 12% of the asset dimension). Different overlays on the same asset may use different units — creative agents must handle each independently.
+
+```json
+{
+  "item_type": "individual",
+  "asset_id": "video",
+  "asset_type": "video",
+  "required": true,
+  "requirements": {
+    "aspect_ratio": "16:9",
+    "max_duration_ms": 15000
+  },
+  "overlays": [
+    {
+      "id": "play_pause",
+      "description": "Play/pause control — avoid placing CTA, copy, or logos here",
+      "bounds": { "x": 0, "y": 285, "width": 120, "height": 120, "unit": "px" },
+      "visual": {
+        "url": "https://publisher.example.com/controls/play.svg"
+      }
+    },
+    {
+      "id": "volume",
+      "description": "Volume control",
+      "bounds": { "x": 0.88, "y": 0.85, "width": 0.12, "height": 0.15, "unit": "fraction" },
+      "visual": {
+        "light": "https://publisher.example.com/controls/volume-light.svg",
+        "dark": "https://publisher.example.com/controls/volume-dark.svg"
+      }
+    }
+  ]
+}
+```
+
+The `visual` field is optional but strongly recommended — it allows creative agents to composite accurate previews showing buyer content with publisher chrome in place. Use `url` for a theme-neutral graphic (e.g., an SVG using `currentColor`), or provide `light`/`dark` variants for separate theme-specific assets.
+
 ### Rendered Outputs and Dimensions
 
 Formats describe one or more rendered outputs, each with defined dimensions and semantic roles.
