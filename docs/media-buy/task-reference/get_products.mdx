@@ -121,7 +121,8 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `brief` | string | No | Natural language description of campaign requirements. |
+| `buying_mode` | string | No | `"brief"` or `"wholesale"`. When `"wholesale"`, publisher returns raw inventory for buyer-directed targeting — `brief` must not be provided and proposals are omitted. |
+| `brief` | string | No | Natural language description of campaign requirements. Must not be provided when `buying_mode` is `"wholesale"`. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
@@ -240,8 +241,9 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 ```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
-// No brief = standard catalog products for maximum reach
+// wholesale mode: buyer applies their own audiences, no publisher curation
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -260,8 +262,9 @@ import asyncio
 from adcp.testing import test_agent
 
 async def discover_standard_catalog():
-    # No brief = standard catalog products for maximum reach
+    # wholesale mode: buyer applies their own audiences, no publisher curation
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
