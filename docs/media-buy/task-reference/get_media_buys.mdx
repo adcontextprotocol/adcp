@@ -42,7 +42,7 @@ Returns an array of media buys with current status, creative approval state, and
 |-------|-------------|
 | `media_buy_id` | Publisher's media buy identifier |
 | `buyer_ref` | Buyer's reference identifier |
-| `campaign_ref` | Campaign grouping label |
+| `campaign_ref` | Buyer campaign label echoed from `create_media_buy.campaign_ref` (when provided) |
 | `status` | Current status (`pending_activation`, `active`, `paused`, `completed`) |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Total campaign budget (in `currency`) |

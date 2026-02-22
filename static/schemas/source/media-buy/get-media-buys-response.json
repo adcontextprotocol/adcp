@@ -21,7 +21,7 @@
           },
           "campaign_ref": {
             "type": "string",
-            "description": "Buyer's campaign reference label. Groups related operations under a single campaign."
+            "description": "Buyer's campaign reference label from create_media_buy.campaign_ref. Groups related operations under a single campaign; may be absent when not provided at creation time."
           },
           "account": {
             "$ref": "/schemas/core/account.json",
