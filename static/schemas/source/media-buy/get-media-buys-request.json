@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-media-buys-request.json",
+  "title": "Get Media Buys Request",
+  "description": "Request parameters for retrieving media buy status, creative approval state, and optional delivery snapshots",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Filter to a specific account. When omitted, returns media buys across all accessible accounts. Optional if the agent has a single account."
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Array of publisher media buy IDs to retrieve. When omitted along with buyer_refs, returns all accessible media buys matching status_filter.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "buyer_refs": {
+      "type": "array",
+      "description": "Array of buyer reference IDs to retrieve",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "status_filter": {
+      "oneOf": [
+        {
+          "$ref": "/schemas/enums/media-buy-status.json"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/enums/media-buy-status.json"
+          },
+          "minItems": 1
+        }
+      ],
+      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"]."
+    },
+    "include_snapshot": {
+      "type": "boolean",
+      "description": "When true, include a near-real-time delivery snapshot for each package. Snapshots reflect the latest available entity-level stats from the platform (e.g., updated every ~15 minutes on GAM, ~1 hour on batch-only platforms). The staleness_seconds field on each snapshot indicates data freshness. Defaults to false.",
+      "default": false
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

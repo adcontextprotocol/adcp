@@ -384,6 +384,10 @@
           "$ref": "/schemas/enums/creative-status.json",
           "description": "Status of a creative asset"
         },
+        "creative-approval-status": {
+          "$ref": "/schemas/enums/creative-approval-status.json",
+          "description": "Approval state of a creative on a specific package"
+        },
         "pacing": {
           "$ref": "/schemas/enums/pacing.json",
           "description": "Budget pacing strategy"
@@ -783,6 +787,16 @@
           "response": {
             "$ref": "/schemas/media-buy/update-media-buy-response.json",
             "description": "Response payload for update_media_buy task"
+          }
+        },
+        "get-media-buys": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-media-buys-request.json",
+            "description": "Request parameters for retrieving media buy status, creative approvals, and delivery snapshots"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-media-buys-response.json",
+            "description": "Response payload for get_media_buys task"
           }
         },
         "get-media-buy-delivery": {

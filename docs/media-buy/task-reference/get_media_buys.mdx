@@ -1,0 +1,340 @@
+---
+title: get_media_buys
+testable: true
+---
+
+
+Retrieve the current operational state of media buys: configuration, creative approval status, missing assets, and optional near-real-time delivery snapshots.
+
+**Response Time**: ~1 second
+
+**Request Schema**: [`/schemas/v2/media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-request.json)
+**Response Schema**: [`/schemas/v2/media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-response.json)
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account_id` | string | No | Filter to a specific account. When omitted, returns data across all accessible accounts. |
+| `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
+| `buyer_refs` | string[] | No* | Array of buyer reference IDs |
+| `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending_activation"`, `"paused"`, `"completed"`. Defaults to `["active"]` |
+| `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
+
+*Either `media_buy_ids` or `buyer_refs` can be provided. If neither provided, returns all accessible media buys matching `status_filter`.
+
+## Response
+
+Returns an array of media buys with current status, creative approval state, and optionally delivery snapshots:
+
+| Field | Description |
+|-------|-------------|
+| `media_buys` | Array of media buy objects |
+| `errors` | Task-specific errors (e.g., media buy not found) |
+
+### Media Buy Object
+
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Publisher's media buy identifier |
+| `buyer_ref` | Buyer's reference identifier |
+| `campaign_ref` | Campaign grouping label |
+| `status` | Current status (`pending_activation`, `active`, `paused`, `completed`) |
+| `total_budget` | Total campaign budget |
+| `creative_deadline` | Creative upload deadline (ISO 8601) |
+| `packages` | Array of packages with creative status and optional snapshots |
+
+### Package Object
+
+| Field | Description |
+|-------|-------------|
+| `package_id` | Publisher's package identifier |
+| `buyer_ref` | Buyer's reference for this package |
+| `bid_price` | Current bid price for auction-based packages |
+| `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
+| `end_time` | Flight end time (ISO 8601) |
+| `paused` | Whether buyer has paused this package |
+| `creative_approvals` | Array of creative approval states (see below) |
+| `format_ids_pending` | Format IDs from `format_ids_to_provide` not yet uploaded |
+| `snapshot` | Near-real-time delivery snapshot (when `include_snapshot: true`) |
+
+### Creative Approval Object
+
+| Field | Description |
+|-------|-------------|
+| `creative_id` | Creative identifier |
+| `approval_status` | `pending_review`, `approved`, or `rejected` |
+| `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
+
+### Snapshot Object
+
+| Field | Description |
+|-------|-------------|
+| `as_of` | ISO 8601 timestamp when the platform captured this snapshot |
+| `staleness_seconds` | Maximum data age in seconds. Use this to interpret zero delivery: 900 (15 min) means zero is likely real; 14400 (4 hr) means reporting may still be catching up. |
+| `impressions` | Total impressions delivered since package start |
+| `spend` | Total spend since package start |
+| `clicks` | Total clicks since package start (when available) |
+| `pacing_index` | Delivery pace (1.0 = on track, \<1.0 = behind, \>1.0 = ahead) |
+| `delivery_status` | `delivering`, `not_delivering`, `completed`, `budget_exhausted`, `flight_ended`, `goal_met` |
+
+**`not_delivering`** means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle. Implementers must not return `not_delivering` until `staleness_seconds` have elapsed since package activation — a new package with no impressions in its first minutes is expected, not a problem. Check `start_time` to confirm the package is within its flight before acting on this status.
+
+## Common Scenarios
+
+### Check creative approval status
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/client';
+
+const result = await testAgent.getMediaBuys({
+  media_buy_ids: ['mb_12345']
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuysResponseSchema.parse(result.data);
+
+if (validated.errors?.length > 0) {
+  throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const mediaBuy of validated.media_buys) {
+  for (const pkg of mediaBuy.packages) {
+    // Check for missing creatives
+    if (pkg.format_ids_pending?.length > 0) {
+      console.log(`Package ${pkg.package_id}: missing formats ${pkg.format_ids_pending.map(f => f.id).join(', ')}`);
+    }
+
+    // Check approval states
+    for (const approval of pkg.creative_approvals ?? []) {
+      if (approval.approval_status === 'rejected') {
+        console.log(`Creative ${approval.creative_id} rejected: ${approval.rejection_reason}`);
+      } else if (approval.approval_status === 'pending_review') {
+        console.log(`Creative ${approval.creative_id} pending review`);
+      }
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import GetMediaBuysRequest
+
+async def main():
+    result = await test_agent.get_media_buys(
+        GetMediaBuysRequest(media_buy_ids=['mb_12345'])
+    )
+
+    if result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    for media_buy in result.media_buys:
+        for pkg in media_buy.packages:
+            # Check for missing creatives
+            if pkg.format_ids_pending:
+                ids = [f.id for f in pkg.format_ids_pending]
+                print(f"Package {pkg.package_id}: missing formats {', '.join(ids)}")
+
+            # Check approval states
+            for approval in pkg.creative_approvals or []:
+                if approval.approval_status == 'rejected':
+                    print(f"Creative {approval.creative_id} rejected: {approval.rejection_reason}")
+                elif approval.approval_status == 'pending_review':
+                    print(f"Creative {approval.creative_id} pending review")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Monitor delivery with snapshots
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/client';
+
+const result = await testAgent.getMediaBuys({
+  status_filter: 'active',
+  include_snapshot: true
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuysResponseSchema.parse(result.data);
+
+for (const mediaBuy of validated.media_buys) {
+  for (const pkg of mediaBuy.packages) {
+    const snap = pkg.snapshot;
+    if (!snap) continue;
+
+    if (snap.delivery_status === 'not_delivering') {
+      console.log(`Package ${pkg.package_id}: zero delivery (data up to ${snap.staleness_seconds}s old)`);
+    } else if (snap.pacing_index !== undefined && snap.pacing_index < 0.8) {
+      console.log(`Package ${pkg.package_id}: underpacing at ${(snap.pacing_index * 100).toFixed(0)}%`);
+    } else {
+      console.log(`Package ${pkg.package_id}: ${snap.impressions.toLocaleString()} impressions, pacing ${snap.pacing_index?.toFixed(2)}`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import GetMediaBuysRequest
+
+async def main():
+    result = await test_agent.get_media_buys(
+        GetMediaBuysRequest(
+            status_filter='active',
+            include_snapshot=True
+        )
+    )
+
+    if result.errors:
+        raise Exception(f"Query failed: {result.errors}")
+
+    for media_buy in result.media_buys:
+        for pkg in media_buy.packages:
+            snap = pkg.snapshot
+            if not snap:
+                continue
+
+            if snap.delivery_status == 'not_delivering':
+                print(f"Package {pkg.package_id}: zero delivery (data up to {snap.staleness_seconds}s old)")
+            elif snap.pacing_index is not None and snap.pacing_index < 0.8:
+                print(f"Package {pkg.package_id}: underpacing at {snap.pacing_index * 100:.0f}%")
+            else:
+                print(f"Package {pkg.package_id}: {snap.impressions:,} impressions, pacing {snap.pacing_index:.2f}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Campaign readiness check
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/client';
+
+const result = await testAgent.getMediaBuys({
+  media_buy_ids: ['mb_12345']
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuysResponseSchema.parse(result.data);
+const [mediaBuy] = validated.media_buys;
+const issues = [];
+
+for (const pkg of mediaBuy.packages) {
+  if (pkg.format_ids_pending?.length > 0) {
+    issues.push(`Package ${pkg.package_id}: ${pkg.format_ids_pending.length} format(s) not yet uploaded`);
+  }
+
+  const rejected = (pkg.creative_approvals ?? []).filter(a => a.approval_status === 'rejected');
+  if (rejected.length > 0) {
+    issues.push(`Package ${pkg.package_id}: ${rejected.length} creative(s) rejected`);
+  }
+}
+
+if (issues.length === 0) {
+  console.log('Campaign ready to launch');
+} else {
+  console.log('Campaign has blocking issues:');
+  issues.forEach(issue => console.log(`  - ${issue}`));
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import GetMediaBuysRequest
+
+async def main():
+    result = await test_agent.get_media_buys(
+        GetMediaBuysRequest(media_buy_ids=['mb_12345'])
+    )
+
+    media_buy = result.media_buys[0]
+    issues = []
+
+    for pkg in media_buy.packages:
+        if pkg.format_ids_pending:
+            issues.append(f"Package {pkg.package_id}: {len(pkg.format_ids_pending)} format(s) not yet uploaded")
+
+        rejected = [a for a in (pkg.creative_approvals or []) if a.approval_status == 'rejected']
+        if rejected:
+            issues.append(f"Package {pkg.package_id}: {len(rejected)} creative(s) rejected")
+
+    if not issues:
+        print("Campaign ready to launch")
+    else:
+        print("Campaign has blocking issues:")
+        for issue in issues:
+            print(f"  - {issue}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Snapshot vs. `get_media_buy_delivery`
+
+| | `get_media_buys` (with snapshot) | `get_media_buy_delivery` |
+|---|---|---|
+| **Purpose** | Operational monitoring | Reporting and reconciliation |
+| **Freshness** | Minutes (entity-level stats) | Hours (batch report jobs) |
+| **Accuracy** | Best-effort | Authoritative, billing-grade |
+| **Date range** | Always "since campaign start" | Configurable period |
+| **Daily breakdown** | No | Yes |
+| **Creative status** | Yes | No |
+| **Missing assets** | Yes | No |
+
+Use `get_media_buys` to answer "what is the current state of my campaigns?" and `get_media_buy_delivery` for "how did my campaigns perform over a period?"
+
+## Data Freshness
+
+Snapshot `staleness_seconds` varies by platform:
+
+| Platform type | Typical `staleness_seconds` |
+|---|---|
+| Entity-level stats (e.g., GAM LineItemService) | 900 (15 min) |
+| Near-real-time insights API | 60–300 |
+| Batch-only reporting | 14400 (4 hr) |
+
+When the platform only has batch reporting, the seller agent should return the most recent cached data with the appropriate `staleness_seconds`.
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `MEDIA_BUY_NOT_FOUND` | Media buy ID does not exist | Verify `media_buy_id` |
+| `CONTEXT_REQUIRED` | No media buys found and no IDs provided | Provide `media_buy_ids` or `buyer_refs` |
+| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+
+When `include_snapshot: true` is requested but a platform only supports batch reporting, the seller agent returns the media buy without a `snapshot` field rather than an error. Check for the presence of `snapshot` before accessing it.
+
+## Next Steps
+
+- **Upload missing creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for formats in `format_ids_pending`
+- **Investigate zero delivery**: Check `delivery_status: "not_delivering"` and `start_time` to confirm the flight is active, then use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to adjust pricing or targeting
+- **Detailed reporting**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for date-range reporting and daily breakdowns
+- **Optimize campaigns**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) to share results with the seller
