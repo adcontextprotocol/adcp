@@ -166,7 +166,7 @@ export async function serveHtmlWithConfig(
   const html = await fs.readFile(filePath, "utf-8");
   const injectedHtml = injectConfigIntoHtml(html, req.user);
 
-  res.setHeader("Content-Type", "text/html");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -345,7 +345,7 @@ export async function serveHtmlWithMetaTags(
   // Then inject app config
   html = injectConfigIntoHtml(html, req.user);
 
-  res.setHeader("Content-Type", "text/html");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");

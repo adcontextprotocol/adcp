@@ -24,6 +24,11 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
     connectionTimeoutMillis: config.connectionTimeoutMillis || 5000,
   });
 
+  // Ensure every connection uses UTF-8 encoding regardless of server defaults
+  pool.on("connect", (client) => {
+    client.query("SET client_encoding = 'UTF8'");
+  });
+
   pool.on("error", (err) => {
     console.error("Unexpected database pool error:", err);
   });

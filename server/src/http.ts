@@ -721,7 +721,7 @@ export class HTTPServer {
           html = html.replace('<body', `${configScript}\n<body`);
         }
 
-        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -771,7 +771,7 @@ export class HTTPServer {
         html = html.replace('<body', `${configScript}\n<body`);
       }
 
-      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -1402,7 +1402,7 @@ export class HTTPServer {
         }
 
         // Prevent caching to ensure template variables are always fresh
-        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -1439,7 +1439,7 @@ export class HTTPServer {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
 
-        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
@@ -6124,7 +6124,7 @@ Disallow: /api/admin/
 </html>
         `;
 
-        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(html);
       } catch (error) {
         logger.error({ err: error }, 'Get agreement error:');

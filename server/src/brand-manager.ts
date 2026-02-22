@@ -169,6 +169,7 @@ export class BrandManager {
           Accept: 'application/json',
           'User-Agent': 'AdCP-Brand-Validator/1.0',
         },
+        responseEncoding: 'utf8',
         validateStatus: () => true,
       });
 

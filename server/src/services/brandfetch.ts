@@ -189,6 +189,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
           Accept: 'application/json',
         },
         timeout: 10000,
+        responseEncoding: 'utf8',
         validateStatus: () => true,
       }
     );
