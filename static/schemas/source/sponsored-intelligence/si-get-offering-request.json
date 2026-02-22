@@ -7,7 +7,7 @@
   "properties": {
     "offering_id": {
       "type": "string",
-      "description": "Offering identifier from promoted offerings to get details for"
+      "description": "Offering identifier from the catalog to get details for"
     },
     "context": {
       "type": "string",

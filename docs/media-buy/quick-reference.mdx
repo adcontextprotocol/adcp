@@ -15,6 +15,7 @@ Use the `call_adcp_agent` tool to execute these tasks against any AdCP sales age
 | `list_creative_formats` | View creative specifications | ~1s |
 | `create_media_buy` | Create campaigns | Minutes-Days |
 | `update_media_buy` | Modify campaigns | Minutes-Days |
+| `sync_catalogs` | Sync catalog feeds to account | Minutes-Days |
 | `sync_creatives` | Upload creative assets | Minutes-Days |
 | `list_creatives` | Query creative library | ~1s |
 | `get_media_buy_delivery` | Get performance data | ~60s |
@@ -23,10 +24,11 @@ Use the `call_adcp_agent` tool to execute these tasks against any AdCP sales age
 
 1. **Discover capabilities**: `get_adcp_capabilities` to understand what the agent supports
 2. **Discover products**: `get_products` with a natural language brief
-3. **Review formats**: `list_creative_formats` to understand creative requirements
-4. **Create campaign**: `create_media_buy` with selected products and budget
-5. **Upload creatives**: `sync_creatives` to add creative assets
-6. **Monitor delivery**: `get_media_buy_delivery` to track performance
+3. **Review formats**: `list_creative_formats` to understand creative and catalog requirements
+4. **Sync catalogs**: `sync_catalogs` to push product feeds, inventory, or store data to the account
+5. **Upload creatives**: `sync_creatives` to add creative assets (referencing synced catalogs)
+6. **Create campaign**: `create_media_buy` with selected products and budget
+7. **Monitor delivery**: `get_media_buy_delivery` to track performance
 
 ---
 
@@ -162,6 +164,40 @@ Modify an existing campaign.
 **Key fields:**
 - `media_buy_id` (string, required): The campaign to update
 - `updates` (object): Changes to apply - budget_change, end_time, status, targeting, etc.
+
+---
+
+### sync_catalogs
+
+Sync catalog feeds to a seller account. Supports product feeds, inventory, stores, and industry-vertical catalogs.
+
+```json
+{
+  "account_id": "acct_acmecorp",
+  "catalogs": [
+    {
+      "catalog_id": "product-feed",
+      "name": "Acme Product Catalog",
+      "type": "product",
+      "url": "https://feeds.acmecorp.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `catalogs` (array): Catalog feeds to sync. Omit for discovery mode.
+  - `catalog_id`: Your unique identifier for this catalog
+  - `type`: Catalog type (`product`, `offering`, `store`, `inventory`, `hotel`, `job`, etc.)
+  - `url`: External feed URL (or use `items` for inline data)
+  - `feed_format`: Feed format (`google_merchant_center`, `facebook_catalog`, `shopify`, `linkedin_jobs`, `custom`)
+- `dry_run` (boolean): Preview changes without applying
+- `delete_missing` (boolean): Remove buyer-managed catalogs not in this sync
+
+**Response contains:**
+- `catalogs`: Per-catalog results with `action`, `item_count`, `items_approved`, `items_rejected`, and `item_issues`
 
 ---
 

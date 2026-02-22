@@ -610,6 +610,58 @@ Each creative entry includes:
 
 For deeper creative analytics including variant-level delivery data (asset combination optimization, generative creative), use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) on the creative agent.
 
+## Catalog-item reporting
+
+For catalog-driven packages (packages with a `catalog` field), the seller can return per-catalog-item delivery in the `by_catalog_item` array within each package.
+
+Each entry identifies the catalog item and includes standard delivery metrics:
+
+| Field | Description |
+|-------|-------------|
+| `content_id` | The item identifier (SKU, GTIN, job ID, etc.) |
+| `content_id_type` | Identifier type (`sku`, `gtin`, `job_id`, etc.) matching the catalog's `content_id_type` |
+| Standard metrics | `impressions`, `spend`, `clicks`, `ctr`, `conversions`, `roas`, and other delivery metrics |
+
+This is optional. Sellers that support item-level reporting populate `by_catalog_item`; sellers that do not simply omit it.
+
+```json
+{
+  "by_package": [
+    {
+      "package_id": "pkg_001",
+      "spend": 5000,
+      "impressions": 100000,
+      "pricing_model": "cpc",
+      "rate": 1.20,
+      "currency": "USD",
+      "delivery_status": "delivering",
+      "by_catalog_item": [
+        {
+          "content_id": "SKU-12345",
+          "content_id_type": "sku",
+          "impressions": 45000,
+          "spend": 2250,
+          "clicks": 1800,
+          "ctr": 0.04,
+          "conversions": 90,
+          "roas": 4.2
+        },
+        {
+          "content_id": "SKU-67890",
+          "content_id_type": "sku",
+          "impressions": 55000,
+          "spend": 2750,
+          "clicks": 2200,
+          "ctr": 0.04,
+          "conversions": 110,
+          "roas": 3.8
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Best Practices
 
 **1. Check Date Range Support**

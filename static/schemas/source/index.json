@@ -110,10 +110,6 @@
           "$ref": "/schemas/core/reference-asset.json",
           "description": "A reference asset with semantic role for creative context"
         },
-        "promoted-products": {
-          "$ref": "/schemas/core/promoted-products.json",
-          "description": "Product or offering selection for campaigns with multiple selection methods"
-        },
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
@@ -134,13 +130,57 @@
           "$ref": "/schemas/core/forecast-point.json",
           "description": "A single point on a budget-to-outcome curve"
         },
-        "promoted-offerings": {
-          "$ref": "/schemas/core/promoted-offerings.json",
-          "description": "Complete offering specification combining brand reference, product selectors, and asset filters"
+        "catalog": {
+          "$ref": "/schemas/core/catalog.json",
+          "description": "A typed data feed — structural (offering, product, inventory, store, promotion) or vertical (hotel, flight, job, vehicle, real_estate, education, destination). Can be synced, inline, or fetched from a URL."
         },
         "offering": {
           "$ref": "/schemas/core/offering.json",
-          "description": "A promotable offering from a brand with optional SI endpoint for conversational experiences"
+          "description": "A promotable offering from a brand with structured asset groups and optional conversational SI experiences"
+        },
+        "offering-asset-group": {
+          "$ref": "/schemas/core/offering-asset-group.json",
+          "description": "A structured group of creative assets within an offering, identified by group ID and asset type"
+        },
+        "store-item": {
+          "$ref": "/schemas/core/store-item.json",
+          "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"
+        },
+        "catchment": {
+          "$ref": "/schemas/core/catchment.json",
+          "description": "A catchment area definition using travel time (isochrone), simple radius, or pre-computed GeoJSON geometry"
+        },
+        "price": {
+          "$ref": "/schemas/core/price.json",
+          "description": "A monetary amount with currency and optional billing period for catalog item pricing"
+        },
+        "hotel-item": {
+          "$ref": "/schemas/core/hotel-item.json",
+          "description": "A hotel or lodging property for hotel-type catalogs"
+        },
+        "flight-item": {
+          "$ref": "/schemas/core/flight-item.json",
+          "description": "A flight route for flight-type catalogs"
+        },
+        "job-item": {
+          "$ref": "/schemas/core/job-item.json",
+          "description": "A job posting for job-type catalogs"
+        },
+        "vehicle-item": {
+          "$ref": "/schemas/core/vehicle-item.json",
+          "description": "A vehicle listing for vehicle-type catalogs"
+        },
+        "real-estate-item": {
+          "$ref": "/schemas/core/real-estate-item.json",
+          "description": "A property listing for real-estate-type catalogs"
+        },
+        "education-item": {
+          "$ref": "/schemas/core/education-item.json",
+          "description": "An educational program or course for education-type catalogs"
+        },
+        "destination-item": {
+          "$ref": "/schemas/core/destination-item.json",
+          "description": "A travel destination for destination-type catalogs"
         },
         "start-timing": {
           "$ref": "/schemas/core/start-timing.json",
@@ -310,9 +350,13 @@
             "$ref": "/schemas/core/requirements/daast-asset-requirements.json",
             "description": "Requirements for DAAST creative assets"
           },
-          "promoted-offerings-asset-requirements": {
-            "$ref": "/schemas/core/requirements/promoted-offerings-asset-requirements.json",
-            "description": "Requirements for promoted offerings creative assets"
+          "catalog-requirements": {
+            "$ref": "/schemas/core/requirements/catalog-requirements.json",
+            "description": "Format-level declaration of what catalog feeds a creative requires"
+          },
+          "offering-asset-constraint": {
+            "$ref": "/schemas/core/requirements/offering-asset-constraint.json",
+            "description": "Per-group creative requirements that each offering must satisfy within a catalog"
           },
           "webhook-asset-requirements": {
             "$ref": "/schemas/core/requirements/webhook-asset-requirements.json",
@@ -516,6 +560,10 @@
           "$ref": "/schemas/enums/update-frequency.json",
           "description": "Frequency of product catalog updates"
         },
+        "content-id-type": {
+          "$ref": "/schemas/enums/content-id-type.json",
+          "description": "Identifier type for matching conversion event content_ids to catalog items (sku, gtin, or vertical-specific IDs)"
+        },
         "auth-scheme": {
           "$ref": "/schemas/enums/auth-scheme.json",
           "description": "Authentication schemes for push notifications"
@@ -576,9 +624,25 @@
           "$ref": "/schemas/enums/wcag-level.json",
           "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
         },
-        "promoted-offerings-requirement": {
-          "$ref": "/schemas/enums/promoted-offerings-requirement.json",
-          "description": "Content requirements that a creative format can impose on promoted offerings"
+        "catalog-type": {
+          "$ref": "/schemas/enums/catalog-type.json",
+          "description": "Catalog feed types: offering, product, inventory, store, promotion, hotel, flight, job, vehicle, real_estate, education, destination"
+        },
+        "catalog-action": {
+          "$ref": "/schemas/enums/catalog-action.json",
+          "description": "Actions taken on catalogs during sync (created, updated, unchanged, failed, deleted)"
+        },
+        "catalog-item-status": {
+          "$ref": "/schemas/enums/catalog-item-status.json",
+          "description": "Approval status of individual catalog items (approved, pending, rejected, warning)"
+        },
+        "transport-mode": {
+          "$ref": "/schemas/enums/transport-mode.json",
+          "description": "Transportation modes for isochrone-based catchment area calculations (walking, cycling, driving, public_transport)"
+        },
+        "distance-unit": {
+          "$ref": "/schemas/enums/distance-unit.json",
+          "description": "Units of distance measurement for radius-based catchment areas (km, mi, m)"
         }
       }
     },
@@ -769,6 +833,16 @@
           "response": {
             "$ref": "/schemas/media-buy/sync-audiences-response.json",
             "description": "Response payload for sync_audiences task"
+          }
+        },
+        "sync-catalogs": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-catalogs-request.json",
+            "description": "Request parameters for syncing catalog feeds (products, inventory, stores, promotions, offerings) with approval workflow"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-catalogs-response.json",
+            "description": "Response payload for sync_catalogs task with per-catalog results and item-level approval status"
           }
         }
       }

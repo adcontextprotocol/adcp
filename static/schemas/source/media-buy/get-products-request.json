@@ -13,9 +13,9 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
-    "product_selectors": {
-      "$ref": "/schemas/core/promoted-products.json",
-      "description": "Selectors to filter the brand's product catalog for product discovery. When provided, sellers should only return advertising products where the selected catalog items have matches. Uses the same selection methods as promoted-offerings."
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json",
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
     },
     "account_id": {
       "type": "string",
@@ -44,7 +44,7 @@
   },
   "required": [],
   "dependencies": {
-    "product_selectors": ["brand"]
+    "catalog": ["brand"]
   },
   "additionalProperties": true
 }

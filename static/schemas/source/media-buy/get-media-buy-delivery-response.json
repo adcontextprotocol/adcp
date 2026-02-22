@@ -244,6 +244,35 @@
                       "type": "boolean",
                       "description": "Whether this package is currently paused by the buyer"
                     },
+                    "by_catalog_item": {
+                      "type": "array",
+                      "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "content_id": {
+                                "type": "string",
+                                "description": "Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)"
+                              },
+                              "content_id_type": {
+                                "$ref": "/schemas/enums/content-id-type.json",
+                                "description": "Identifier type for this content_id"
+                              }
+                            },
+                            "required": [
+                              "content_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
                     "by_creative": {
                       "type": "array",
                       "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",

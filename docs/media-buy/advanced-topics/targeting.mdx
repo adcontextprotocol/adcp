@@ -438,6 +438,29 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
 - **Use cases**: Localized creative, language-specific campaigns
 
+### store_catchments
+- **Description**: Target users within store catchment areas from a synced store catalog
+- **Format**: Array of objects, each referencing a store-type catalog synced via `sync_catalogs`
+- **Required fields**: `catalog_id`
+- **Optional fields**: `store_ids` (narrow to specific stores), `catchment_ids` (narrow to specific zones like `"walk"` or `"drive"`)
+- **Use cases**: Drive-to-store campaigns, local inventory ads, proximity targeting
+
+```json
+{
+  "targeting_overlay": {
+    "store_catchments": [
+      {
+        "catalog_id": "retail-locations",
+        "store_ids": ["store_nyc_001", "store_nyc_002"],
+        "catchment_ids": ["drive"]
+      }
+    ]
+  }
+}
+```
+
+When `store_ids` is omitted, all stores in the catalog are targeted. When `catchment_ids` is omitted, all catchment zones are targeted. The seller must declare support for store catchment targeting in `get_adcp_capabilities`.
+
 ## Benefits for Different Stakeholders
 
 ### For Buyers

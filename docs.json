@@ -67,7 +67,8 @@
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
-                  "docs/reference/migration/creatives"
+                  "docs/reference/migration/creatives",
+                  "docs/reference/migration/catalogs"
                 ]
               }
             ]
@@ -94,6 +95,7 @@
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
                   "docs/building/integration/authentication",
+                  "docs/building/integration/account-state",
                   "docs/building/integration/accounts-and-agents"
                 ]
               },
@@ -214,6 +216,7 @@
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
+                  "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/list_creatives",
                   "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
@@ -286,7 +289,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
-              "docs/creative/promoted-offerings",
+              "docs/creative/catalogs",
               "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
@@ -543,7 +546,8 @@
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
-                  "docs/reference/migration/creatives"
+                  "docs/reference/migration/creatives",
+                  "docs/reference/migration/catalogs"
                 ]
               }
             ]
@@ -570,6 +574,7 @@
                   "docs/protocol/get_adcp_capabilities",
                   "docs/building/integration/context-sessions",
                   "docs/building/integration/authentication",
+                  "docs/building/integration/account-state",
                   "docs/building/integration/accounts-and-agents"
                 ]
               },
@@ -690,6 +695,7 @@
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
+                  "docs/media-buy/task-reference/sync_catalogs",
                   "docs/media-buy/task-reference/list_creatives",
                   "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
@@ -762,7 +768,7 @@
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
-              "docs/creative/promoted-offerings",
+              "docs/creative/catalogs",
               "docs/creative/accessibility",
               {
                 "group": "Channel Guides",
@@ -864,6 +870,10 @@
     {
       "source": "/docs/creative/brand-manifest",
       "destination": "/docs/brand-protocol/brand-json"
+    },
+    {
+      "source": "/docs/creative/promoted-offerings",
+      "destination": "/docs/creative/catalogs"
     }
   ],
   "modeToggle": {

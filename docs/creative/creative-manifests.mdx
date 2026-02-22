@@ -20,7 +20,7 @@ For an overview of how formats, manifests, and creative agents work together, se
     agent_url: string;         // Creative agent URL
     id: string;                // Format identifier
   };
-  promoted_offering?: string;  // Product being advertised (maps to create_media_buy)
+  catalog?: Catalog;           // Catalog of items this creative promotes
   assets: {
     [asset_id: string]: {      // Keyed by asset_id from format's assets
       // Asset type is determined by format specification, not declared here
@@ -36,7 +36,6 @@ For an overview of how formats, manifests, and creative agents work together, se
       // JavaScript: content, module_type
       // VAST: url or content, vast_version, vpaid_enabled, duration_ms, tracking_events
       // DAAST: url or content, daast_version, duration_ms, tracking_events, companion_ads
-      // Promoted Offerings: brand, product_selectors, offerings, asset_selectors
       // Webhook: url, method, timeout_ms, response_type, security, supported_macros, required_macros
     }
   };
@@ -105,7 +104,6 @@ Here's a complete creative manifest showing the current structure without redund
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250"
   },
-  "promoted_offering": "Premium Dog Food",
   "assets": {
     "banner_image": {
       "url": "https://cdn.example.com/banner.jpg",
@@ -226,7 +224,6 @@ Digital Out-of-Home (DOOH) creatives use impression tracking just like other for
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "dooh_billboard_1920x1080"
   },
-  "promoted_offering": "Premium Coffee Blend",
   "assets": {
     "billboard_image": {
       "url": "https://cdn.example.com/billboard-1920x1080.jpg",
@@ -267,7 +264,6 @@ Construct manifests directly by pairing format requirements with your assets:
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "native_responsive"
   },
-  "promoted_offering": "Premium Salmon Formula",
   "assets": {
     "hero_image": {
       "url": "https://cdn.example.com/salmon-hero.jpg",
@@ -375,7 +371,10 @@ Manifests are submitted to the creative library using `sync_creatives`, then ref
             "agent_url": "https://creative.adcontextprotocol.org",
             "id": "native_responsive"
           },
-          "promoted_offering": "Fresh Pacific Salmon",
+          "catalog": {
+            "catalog_id": "salmon-products",
+            "type": "product"
+          },
           "assets": {
             "headline": {
               "content": "Fresh Pacific Salmon - 20% Off Today"
@@ -429,6 +428,10 @@ See [Universal Macros](/docs/creative/universal-macros) for complete documentati
 5. **Organize Libraries**: Use creative libraries for asset management
 
 ## Advanced Topics
+
+### Catalogs
+
+Manifests for catalog-driven formats (product carousels, dynamic product ads) reference their catalog via the `catalog` field on the creative object, not within the manifest's `assets`. See [Catalogs in Creatives](/docs/creative/catalogs#catalogs-in-creatives) for the workflow.
 
 ### Repeatable Asset Groups
 

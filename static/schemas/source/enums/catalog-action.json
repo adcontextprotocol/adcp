@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/catalog-action.json",
+  "title": "Catalog Action",
+  "description": "Action taken on a catalog during sync operation",
+  "type": "string",
+  "enum": [
+    "created",
+    "updated",
+    "unchanged",
+    "failed",
+    "deleted"
+  ]
+}

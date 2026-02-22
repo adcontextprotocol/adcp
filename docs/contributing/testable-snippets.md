@@ -116,17 +116,16 @@ const client = new AdcpClient({
 });
 
 const products = await client.getProducts({
-  promoted_offering: 'Nike Air Max 2024'
+  brief: 'Nike Air Max 2024'
 });
 
 console.log('Success:', products.products.length > 0);
 ```
 
-**Bad Example (incomplete):**
+**Bad Example (incomplete — no imports, no client setup, no output):**
 ```javascript
-// Don't mark this for testing - it's incomplete
 const products = await client.getProducts({
-  promoted_offering: 'Nike Air Max 2024'
+  brief: 'Premium CTV inventory'
 });
 ```
 

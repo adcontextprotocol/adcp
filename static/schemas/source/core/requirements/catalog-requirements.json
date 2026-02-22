@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/requirements/catalog-requirements.json",
+  "title": "Catalog Requirements",
+  "description": "Format-level declaration of what catalog feeds a creative needs. Formats that render product listings, store locators, or promotional content declare which catalog types must be synced and what fields each catalog must provide. Buyers use this to ensure the right catalogs are synced before submitting creatives.",
+  "type": "object",
+  "properties": {
+    "catalog_type": {
+      "$ref": "/schemas/enums/catalog-type.json",
+      "description": "The catalog type this requirement applies to"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this catalog type must be present. When true, creatives using this format must reference a synced catalog of this type.",
+      "default": true
+    },
+    "min_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of items the catalog must contain for this format to render properly (e.g., a carousel might require at least 3 products)"
+    },
+    "required_fields": {
+      "type": "array",
+      "description": "Fields that must be present and non-empty on every item in the catalog. Field names are catalog-type-specific (e.g., 'title', 'price', 'image_url' for product catalogs; 'store_id', 'quantity' for inventory feeds).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "feed_formats": {
+      "type": "array",
+      "description": "Accepted feed formats for this catalog type. When specified, the synced catalog must use one of these formats. When omitted, any format is accepted.",
+      "items": {
+        "$ref": "/schemas/enums/feed-format.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "offering_asset_constraints": {
+      "type": "array",
+      "description": "Per-offering creative requirements. Only applicable when catalog_type is 'offering'. Declares what asset groups (headlines, images, videos) each offering must provide, along with count bounds and per-asset technical constraints.",
+      "items": {
+        "$ref": "/schemas/core/requirements/offering-asset-constraint.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": ["catalog_type"],
+  "additionalProperties": true
+}

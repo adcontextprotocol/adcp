@@ -23,7 +23,7 @@ Start with a natural language description of your campaign objectives:
 *"Mike's Plumbing Services needs to reach homeowners in the Denver, Colorado area who might need plumbing services. We have $8,000 USD to spend from October 15-31, 2024. Looking for display and native formats to drive phone calls."*
 
 ### 2. Discover Products  
-Use [`get_products`](/docs/media-buy/task-reference/get_products) to find matching inventory based on your brief and promoted offering.
+Use [`get_products`](/docs/media-buy/task-reference/get_products) to find matching inventory based on your brief and brand.
 
 ### 3. Evaluate Results
 Review returned products for:
@@ -62,6 +62,9 @@ Products represent sellable advertising inventory with:
 - **Delivery characteristics** (guaranteed reach vs best-effort)
 
 Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products).
+
+### Catalog-driven discovery
+For catalog-driven campaigns (retail media, job boards, travel), pass a `catalog` on `get_products` to find products that match your catalog items. Products declare which catalog types they support via `catalog_types`, and the response includes `catalog_match` with matched item counts. See [Catalogs](/docs/creative/catalogs#catalogs-in-the-media-buy-lifecycle).
 
 ### Format Discovery Integration
 Product discovery works hand-in-hand with creative planning:

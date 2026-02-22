@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/offering.json",
   "title": "Offering",
-  "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings can be promoted via traditional creatives (using portfolio_ref or assets) or conversational SI experiences (via si_agent_url at the promoted-offerings level).",
+  "description": "A promotable offering from a brand. Can represent a campaign, product promotion, service, or any other thing the brand wants to make available. Offerings carry structured asset groups for creative assembly and can be promoted via traditional creatives or conversational SI experiences (via the brand's SI agent).",
   "type": "object",
   "properties": {
     "offering_id": {
@@ -39,21 +39,87 @@
     "landing_url": {
       "type": "string",
       "format": "uri",
-      "description": "Landing page URL for this offering."
+      "description": "Landing page URL for this offering. For catalog-driven creatives, this is the per-item click-through destination that platforms map to the ad's link-out URL. Every offering in a catalog should have a landing_url unless the format provides its own destination logic."
     },
     "assets": {
       "type": "array",
-      "description": "Assets specific to this offering (images, videos, copy)",
+      "description": "Structured asset groups for this offering. Each group carries a typed pool of creative assets (headlines, images, videos, etc.) identified by a group ID that matches format-level vocabulary.",
       "items": {
-        "type": "object",
-        "description": "Asset definition using standard asset structure",
-        "additionalProperties": true
+        "$ref": "/schemas/core/offering-asset-group.json"
       }
     },
-    "portfolio_ref": {
-      "type": "string",
-      "format": "uri",
-      "description": "Reference to a creative portfolio for this offering. Portfolios contain organized creative assets across formats, enabling consistent ad delivery for this specific offering."
+    "geo_targets": {
+      "type": "object",
+      "description": "Geographic scope of this offering. Declares where the offering is relevant — for location-specific offerings such as job vacancies, in-store promotions, or local events. Platforms use this to target geographically appropriate audiences and to filter out offerings irrelevant to a user's location. Uses the same geographic structures as targeting_overlay in create_media_buy.",
+      "properties": {
+        "countries": {
+          "type": "array",
+          "description": "Countries where this offering is relevant. ISO 3166-1 alpha-2 codes (e.g., 'US', 'NL', 'DE').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "regions": {
+          "type": "array",
+          "description": "Regions or states where this offering is relevant. ISO 3166-2 subdivision codes (e.g., 'NL-NH', 'US-CA').",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+          },
+          "minItems": 1
+        },
+        "metros": {
+          "type": "array",
+          "description": "Metro areas where this offering is relevant. Each entry specifies the classification system and target values.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "/schemas/enums/metro-system.json",
+                "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+              },
+              "values": {
+                "type": "array",
+                "description": "Metro codes within the system",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["system", "values"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "postal_areas": {
+          "type": "array",
+          "description": "Postal areas where this offering is relevant. Each entry specifies the postal system and target values.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "/schemas/enums/postal-system.json",
+                "description": "Postal code system (e.g., 'us_zip', 'de_plz')"
+              },
+              "values": {
+                "type": "array",
+                "description": "Postal codes within the system",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["system", "values"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
     },
     "keywords": {
       "type": "array",
@@ -102,28 +168,48 @@
       }
     },
     {
-      "description": "Offering with creative portfolio",
+      "description": "Location-specific offering with geo targets",
       "data": {
-        "offering_id": "summer-sale-2025",
-        "name": "Summer Sale",
-        "description": "Up to 50% off summer collection",
-        "valid_from": "2025-06-01T00:00:00Z",
-        "valid_to": "2025-08-31T23:59:59Z",
-        "landing_url": "https://brand.com/summer-sale",
-        "portfolio_ref": "https://brand.com/portfolios/summer-2025.json"
+        "offering_id": "vacancy-amsterdam-chef-42",
+        "name": "Head Chef — Amsterdam",
+        "description": "Full-time head chef position at our Amsterdam location",
+        "landing_url": "https://careers.acme.com/vacancies/42",
+        "geo_targets": {
+          "countries": ["NL"],
+          "regions": ["NL-NH"]
+        }
       }
     },
     {
-      "description": "Offering with inline assets",
+      "description": "Offering with structured asset groups",
       "data": {
-        "offering_id": "product-launch",
-        "name": "New Product Launch",
-        "description": "Introducing our latest innovation",
+        "offering_id": "summer-sale",
+        "name": "Summer Sale",
+        "description": "Up to 50% off summer collection",
+        "landing_url": "https://acme.com/summer",
         "assets": [
           {
-            "asset_id": "launch-hero",
+            "asset_group_id": "headlines",
+            "asset_type": "text",
+            "items": [
+              {"content": "Shop the Summer Sale"},
+              {"content": "50% Off Everything"},
+              {"content": "Summer Savings Event"}
+            ]
+          },
+          {
+            "asset_group_id": "images_landscape",
             "asset_type": "image",
-            "url": "https://cdn.brand.com/launch-hero.jpg"
+            "items": [
+              {"url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+            ]
+          },
+          {
+            "asset_group_id": "images_square",
+            "asset_type": "image",
+            "items": [
+              {"url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+            ]
           }
         ]
       }

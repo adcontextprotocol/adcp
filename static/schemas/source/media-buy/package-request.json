@@ -48,6 +48,10 @@
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json",
+      "description": "Catalog this package promotes. Makes the package catalog-driven: one budget envelope, platform optimizes across items. Reference a synced catalog by catalog_id with optional selectors to narrow scope."
+    },
     "optimization_goal": {
       "$ref": "/schemas/core/optimization-goal.json"
     },

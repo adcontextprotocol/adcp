@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-catalogs-request.json",
+  "title": "Sync Catalogs Request",
+  "description": "Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across multiple catalog types (products, inventory, stores, promotions, offerings). Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs is omitted, the call is discovery-only: returns all catalogs on the account without modification.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account that owns these catalogs. Required if the agent has multiple accounts and the seller cannot route automatically."
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Array of catalog feeds to sync (create or update). When omitted, the call is discovery-only and returns all existing catalogs on the account without modification.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "catalog_ids": {
+      "type": "array",
+      "description": "Optional filter to limit sync scope to specific catalog IDs. When provided, only these catalogs will be created/updated. Other catalogs on the account are unaffected.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 50
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, buyer-managed catalogs on the account not included in this sync will be removed. Does not affect seller-managed catalogs. Do not combine with an omitted catalogs array or all buyer-managed catalogs will be deleted."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+    },
+    "validation_mode": {
+      "$ref": "/schemas/enums/validation-mode.json",
+      "default": "strict",
+      "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid catalogs and reports errors."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (common for large feeds requiring platform review)."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "if": {
+    "properties": { "delete_missing": { "const": true } },
+    "required": ["delete_missing"]
+  },
+  "then": {
+    "required": ["catalogs"],
+    "errorMessage": "catalogs is required when delete_missing is true — omitting it would delete all buyer-managed catalogs on the account"
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Sync product and inventory feeds for a retail media campaign",
+      "data": {
+        "account_id": "acct_acmecorp",
+        "catalogs": [
+          {
+            "catalog_id": "product-feed",
+            "name": "Acme Product Catalog",
+            "type": "product",
+            "url": "https://feeds.acmecorp.com/products.xml",
+            "feed_format": "google_merchant_center",
+            "update_frequency": "daily"
+          },
+          {
+            "catalog_id": "inventory-feed",
+            "name": "Store Inventory",
+            "type": "inventory",
+            "url": "https://feeds.acmecorp.com/inventory.json",
+            "feed_format": "custom",
+            "update_frequency": "hourly"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Sync inline offerings for a recruitment campaign",
+      "data": {
+        "account_id": "acct_restaurants",
+        "catalogs": [
+          {
+            "catalog_id": "chef-vacancies",
+            "name": "Chef Position Vacancies",
+            "type": "offering",
+            "items": [
+              {
+                "offering_id": "chef-amsterdam-42",
+                "name": "Head Chef - Amsterdam",
+                "description": "Lead our kitchen team in central Amsterdam",
+                "landing_url": "https://jobs.acme-restaurants.com/chef-amsterdam-42",
+                "geo_targets": {
+                  "countries": ["NL"],
+                  "regions": ["NL-NH"]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Discovery-only: list all catalogs on the account",
+      "data": {
+        "account_id": "acct_acmecorp"
+      }
+    }
+  ]
+}

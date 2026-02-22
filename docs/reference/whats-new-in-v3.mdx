@@ -14,6 +14,7 @@ AdCP v3 expands the protocol beyond media buying into brand identity, governance
 | **Governance** | No brand suitability protocol | Property lists, content standards, and brand calibration |
 | **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
 | **Accounts** | No formal account model | `sync_accounts` with billing models and trust levels |
+| **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 12 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
 | **Channel model** | 9 channels | 19 planning-oriented channels |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
@@ -107,6 +108,18 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 
 <Card title="Accounts and agents" icon="arrow-right" href="/docs/building/integration/accounts-and-agents">
   Complete documentation including operator authorization via brand.json.
+</Card>
+
+---
+
+### Catalogs
+
+First-class catalog lifecycle with `sync_catalogs`. Twelve catalog types: structural (`offering`, `product`, `inventory`, `store`, `promotion`) and industry-vertical (`hotel`, `flight`, `job`, `vehicle`, `real_estate`, `education`, `destination`). Vertical types have canonical item schemas drawn from Google Ads, Meta, LinkedIn, and Microsoft feed specs.
+
+Formats declare what catalogs they need via `catalog_requirements`. Creatives reference synced catalogs by `catalog_id` instead of embedding items in assets. Catalogs declare `conversion_events` and `content_id_type` for attribution alignment.
+
+<Card title="Catalogs" icon="arrow-right" href="/docs/creative/catalogs">
+  Complete documentation including catalog types, sync workflow, format requirements, and conversion events.
 </Card>
 
 ---
@@ -269,6 +282,22 @@ Formats now use an `assets` array with `required` boolean instead of `assets_req
 
 ---
 
+### Catalogs replace promoted_offerings
+
+The `promoted_offerings` creative asset type and `promoted_offering` string field are removed. Catalogs are now first-class protocol objects with their own sync lifecycle (`sync_catalogs`), format-level requirements (`catalog_requirements`), and conversion event alignment.
+
+| v2 field | v3 replacement |
+|----------|---------------|
+| `promoted_offerings` (creative asset) | `catalog` field on creative manifest |
+| `promoted_offering` (string on media-buy) | Removed — use `brand` + `brief` |
+| `promoted_offering` (string on creative-manifest) | Removed — use `catalog` field |
+
+<Card title="Catalogs deep dive" icon="arrow-right" href="/docs/reference/migration/catalogs">
+  Before/after examples, sync_catalogs workflow, catalog_requirements discovery, and migration checklist.
+</Card>
+
+---
+
 ### Privacy and consent
 
 AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, US Privacy String) should be passed via the brief's `ext` field or through transport-level headers. Sellers that require consent signals should declare this in `get_adcp_capabilities` using the extension mechanism.
@@ -287,6 +316,9 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `geo_postal_codes` | `geo_postal_areas` |
 | `fixed_rate` in pricing | `fixed_price` |
 | `price_guidance.floor` | `floor_price` (top-level) |
+| `promoted_offerings` asset type | `catalog` field on creative manifest |
+| `promoted_offering` on media-buy | Removed — use `brand` + `brief` |
+| `promoted_offering` on creative-manifest | `catalog` field |
 
 ---
 
@@ -306,6 +338,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Update format parsing to use [`assets` array](/docs/reference/migration/creatives#asset-discovery)
     - [ ] Replace `preview_image` reads with [`format_card`](/docs/reference/migration/creatives#format-cards-replacing-preview_image) rendering
     - [ ] Replace `list_authorized_properties` calls with `get_adcp_capabilities` portfolio
+    - [ ] Remove `promoted_offerings` from creative manifest assets and replace with [`catalog` field](/docs/reference/migration/catalogs)
+    - [ ] Remove `promoted_offering` string from media buy and creative manifest objects
     - [ ] Validate all requests/responses against v3 schemas
   </Accordion>
 
@@ -317,6 +351,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement `sync_accounts` for account provisioning
     - [ ] Return proposals with delivery forecasts from `get_products` when applicable
     - [ ] Support property list filtering in `get_products` if integrating with governance agents
+    - [ ] Handle catalogs synced via [`sync_catalogs`](/docs/reference/migration/catalogs) with approval workflow
   </Accordion>
 
   <Accordion title="Buyer agents and orchestrators (DSPs, agencies, brands)">
@@ -329,6 +364,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Use the [Registry API](/docs/registry) for brand/property resolution and agent discovery
     - [ ] Pass property lists to filter inventory when working with governance agents
     - [ ] Invoke SI sessions when connecting users with brand agents
+    - [ ] Sync catalogs via [`sync_catalogs`](/docs/reference/migration/catalogs) before submitting creatives
+    - [ ] Add `conversion_events` to catalogs for attribution tracking
   </Accordion>
 
   <Accordion title="Signals agents (data providers, measurement vendors)">
@@ -357,6 +394,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
     - [ ] Replace `preview_image` with `format_card` rendering
     - [ ] Resolve brand manifests via `brand.json` for on-brand creative generation
+    - [ ] Support `catalog` field on creative manifests (replaces [`promoted_offerings`](/docs/reference/migration/catalogs) asset)
+    - [ ] Declare `catalog_requirements` on formats that render catalog items
     - [ ] Update schema references from v2 to v3
   </Accordion>
 

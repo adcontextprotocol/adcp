@@ -110,6 +110,15 @@
       "default": false,
       "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
     },
+    "catalog_types": {
+      "type": "array",
+      "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",
+      "items": {
+        "$ref": "/schemas/enums/catalog-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
     "conversion_tracking": {
       "type": "object",
       "description": "Conversion tracking for this product. Presence indicates the product supports conversion-optimized delivery. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
@@ -140,26 +149,31 @@
     },
     "catalog_match": {
       "type": "object",
-      "description": "When the buyer provides a brand with product_catalog, indicates which of the buyer's catalog items are eligible for this product. Enables buyers to make informed product_selector choices in create_media_buy. Only present for products where catalog matching is relevant (e.g. sponsored product listings on retail media). Sellers SHOULD include at least one of matched_gtins or matched_skus.",
+      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads).",
       "properties": {
         "matched_gtins": {
           "type": "array",
-          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Buyers can use these values in product_selectors.manifest_gtins when creating media buys. Standard GTIN formats (GTIN-8 through GTIN-14).",
+          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
           "items": {
             "type": "string",
             "pattern": "^[0-9]{8,14}$"
           }
         },
-        "matched_skus": {
+        "matched_ids": {
           "type": "array",
-          "description": "SKUs from the buyer's catalog that are eligible on this product's inventory. Buyers can use these values in product_selectors.manifest_skus when creating media buys.",
+          "description": "Item IDs from the buyer's catalog that matched this product's inventory. The ID type depends on the catalog type and content_id_type (e.g., SKUs for product catalogs, job_ids for job catalogs, offering_ids for offering catalogs).",
           "items": {
             "type": "string"
           }
         },
+        "matched_count": {
+          "type": "integer",
+          "description": "Number of catalog items that matched this product's inventory.",
+          "minimum": 0
+        },
         "submitted_count": {
           "type": "integer",
-          "description": "Total catalog items evaluated from the buyer's feed.",
+          "description": "Total catalog items evaluated from the buyer's catalog.",
           "minimum": 0
         }
       },

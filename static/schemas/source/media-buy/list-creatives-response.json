@@ -81,6 +81,10 @@
             "format": "date-time",
             "description": "When the creative was last modified"
           },
+          "catalog": {
+            "$ref": "/schemas/core/catalog.json",
+            "description": "Catalog referenced by this creative, if any"
+          },
           "assets": {
             "type": "object",
             "description": "Assets for this creative, keyed by asset_role",
@@ -113,9 +117,6 @@
                   },
                   {
                     "$ref": "/schemas/core/assets/daast-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/promoted-offerings.json"
                   },
                   {
                     "$ref": "/schemas/core/assets/url-asset.json"

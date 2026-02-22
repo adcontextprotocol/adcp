@@ -412,6 +412,65 @@ asyncio.run(create_optimized_campaign())
 
 </CodeGroup>
 
+### Catalog-driven packages
+
+A catalog-driven package allocates a single budget envelope to an entire catalog of items. Instead of creating separate packages per item, the platform optimizes delivery across all catalog items based on performance. This is the AdCP equivalent of catalog-based campaign types such as Google Performance Max or Meta Dynamic Product Ads.
+
+Include the `catalog` field in a package to make it catalog-driven. The referenced catalog must already be synced via [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
+
+**Job campaign with synced job catalog:**
+
+```json test=false
+{
+  "buyer_ref": "recruitment_q1",
+  "brand": { "domain": "acme-restaurants.com" },
+  "packages": [{
+    "buyer_ref": "chef_vacancies",
+    "product_id": "prod_job_board",
+    "pricing_option_id": "cpc_eur_auction",
+    "budget": 5000,
+    "bid_price": 2.50,
+    "catalog": {
+      "catalog_id": "chef-vacancies",
+      "type": "job"
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-06-30T23:59:59Z"
+}
+```
+
+**Retail media with product catalog and store catchment targeting:**
+
+```json test=false
+{
+  "buyer_ref": "summer_promo",
+  "brand": { "domain": "acmecorp.com" },
+  "packages": [{
+    "buyer_ref": "sponsored_products",
+    "product_id": "prod_retail_sp",
+    "pricing_option_id": "cpc_usd_auction",
+    "budget": 10000,
+    "bid_price": 1.20,
+    "catalog": {
+      "catalog_id": "gmc-primary",
+      "type": "product",
+      "tags": ["summer"]
+    },
+    "targeting_overlay": {
+      "store_catchments": [{
+        "catalog_id": "retail-locations",
+        "catchment_ids": ["drive"]
+      }]
+    }
+  }],
+  "start_time": "asap",
+  "end_time": "2026-09-30T23:59:59Z"
+}
+```
+
+The platform distributes budget across catalog items based on performance. For per-item reporting, use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) which returns `by_catalog_item` breakdowns. Creative variants for catalog-driven packages represent individual catalog items rendered as ads.
+
 ### Campaign with Inline Creatives
 
 Upload creatives at the same time as creating the campaign:

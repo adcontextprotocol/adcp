@@ -115,6 +115,7 @@ asyncio.run(main())
 | `name`        | string   | Yes      | Human-readable name                                                |
 | `format_id`   | FormatId | Yes      | Format specification (structured object with `agent_url` and `id`) |
 | `assets`      | object   | Yes      | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`)    |
+| `catalog`     | Catalog  | No       | Catalog reference for catalog-driven creatives (e.g., product carousels, job listings). Reference a synced catalog by `catalog_id` or provide inline items. See [Catalogs](/docs/creative/catalogs). |
 | `tags`        | string[] | No       | Searchable tags for creative organization                          |
 
 ### Asset Structure

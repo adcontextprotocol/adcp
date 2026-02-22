@@ -25,6 +25,10 @@
       "type": "boolean",
       "description": "Supports sync_audiences task and audience_include/audience_exclude in targeting overlays for first-party CRM audience management"
     },
+    "catalog_management": {
+      "type": "boolean",
+      "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+    },
     "sandbox": {
       "type": "boolean",
       "description": "Supports sandbox mode for operations without real platform calls or spend"

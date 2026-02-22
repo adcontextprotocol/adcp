@@ -137,21 +137,32 @@ It's not a single filter—it's a collection of filter criteria for product cata
 
 Formats are abstract specifications that work across all ad platforms. The `_ids` suffix indicates these are references—use `list_creative_formats` to get full format objects.
 
-### Q: The old docs mentioned `promoted_offering` - where is that field?
+### Q: How do I specify what's being promoted?
 
-**A:** That was a documentation error from earlier versions. **This field doesn't exist** in the actual API.
+**A:** There are two mechanisms depending on the context:
 
-The correct mechanism is:
-- **Advertiser identity** → `brand.domain` (required, resolves via `/.well-known/brand.json`)
-- **What's being promoted** → Described in the `brief` field (optional)
+- **Advertiser identity** → `brand.domain` (required on `get_products` and `create_media_buy`, resolves via `/.well-known/brand.json`)
+- **What's being promoted** → Described in the `brief` field for product discovery, or provided via a `catalog` on creatives
 
-Example:
+For product discovery:
 ```json
 {
   "brand": {
     "domain": "nike.com"
   },
   "brief": "Nike Air Max 2024 - latest innovation in cushioning technology targeting runners and fitness enthusiasts"
+}
+```
+
+For catalog-driven creatives, reference a synced catalog:
+```json test=false
+{
+  "creative_id": "product-carousel",
+  "format_id": { "agent_url": "...", "id": "product_carousel" },
+  "catalog": {
+    "catalog_id": "product-feed",
+    "type": "product"
+  }
 }
 ```
 

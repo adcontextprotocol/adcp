@@ -83,6 +83,26 @@
       "title": "SyncCreativesAsyncSubmitted",
       "description": "Acknowledgment for submitted sync_creatives",
       "$ref": "/schemas/media-buy/sync-creatives-async-response-submitted.json"
+    },
+    {
+      "title": "SyncCatalogsResponse",
+      "description": "Response for completed or failed sync_catalogs",
+      "$ref": "/schemas/media-buy/sync-catalogs-response.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncWorking",
+      "description": "Progress data for working sync_catalogs",
+      "$ref": "/schemas/media-buy/sync-catalogs-async-response-working.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncInputRequired",
+      "description": "Input requirements for sync_catalogs needing buyer input",
+      "$ref": "/schemas/media-buy/sync-catalogs-async-response-input-required.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncSubmitted",
+      "description": "Acknowledgment for submitted sync_catalogs",
+      "$ref": "/schemas/media-buy/sync-catalogs-async-response-submitted.json"
     }
   ]
 }
