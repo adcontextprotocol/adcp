@@ -14,12 +14,12 @@ import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import {
-  runAgentTests,
-  formatTestResults,
+  testAllScenarios,
+  formatSuiteResults,
   setAgentTesterLogger,
-  createTestClient,
+  type OrchestratorOptions,
+  type SuiteResult,
   type TestScenario,
-  type TestOptions,
 } from '@adcp/client/testing';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import {
@@ -515,13 +515,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'test_adcp_agent',
     description:
-      'Run end-to-end tests against an AdCP agent to verify it works correctly. Tests the full workflow: discover products, create media buys, sync creatives, etc. By default runs in dry-run mode - set dry_run=false for real testing. IMPORTANT: For agents requiring authentication (including the public test agent), users must first set up the agent. Use setup_test_agent for the public test agent, or save_agent for custom agents.',
-    usage_hints: 'use for "test my agent", "run the full flow", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". If testing the public test agent and auth fails, suggest setup_test_agent first.',
+      'Run end-to-end tests against an AdCP agent to verify it works correctly. Automatically discovers the agent\'s capabilities and runs all applicable scenarios (discovery, media buy creation, creative sync, signals, governance, etc.). By default runs in dry-run mode - set dry_run=false for real testing. IMPORTANT: For agents requiring authentication (including the public test agent), users must first set up the agent. Use setup_test_agent for the public test agent, or save_agent for custom agents.',
+    usage_hints: 'use for "test my agent", "run the full test suite", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". If testing the public test agent and auth fails, suggest setup_test_agent first.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
-        scenario: { type: 'string', enum: ['health_check', 'discovery', 'create_media_buy', 'full_sales_flow', 'creative_sync', 'creative_inline', 'creative_reference', 'pricing_models', 'creative_flow', 'signals_flow', 'error_handling', 'validation', 'pricing_edge_cases', 'temporal_validation', 'behavior_analysis', 'response_consistency'], description: 'Test scenario' },
+        scenarios: { type: 'array', items: { type: 'string', enum: ['health_check', 'discovery', 'create_media_buy', 'full_sales_flow', 'creative_sync', 'creative_inline', 'creative_reference', 'pricing_models', 'creative_flow', 'signals_flow', 'error_handling', 'validation', 'pricing_edge_cases', 'temporal_validation', 'behavior_analysis', 'response_consistency', 'governance_property_lists', 'governance_content_standards', 'si_session_lifecycle', 'si_availability', 'capability_discovery', 'sync_audiences'] }, description: 'Scenarios to run (defaults to all applicable scenarios based on agent capabilities)' },
         brief: { type: 'string', description: 'Custom brief' },
         budget: { type: 'number', description: 'Budget in dollars (default: 1000)' },
         dry_run: { type: 'boolean', description: 'Dry-run mode (default: true)' },
@@ -1992,13 +1992,13 @@ export function createMemberToolHandlers(
   // ============================================
   handlers.set('test_adcp_agent', async (input) => {
     const agentUrl = input.agent_url as string;
-    const scenario = (input.scenario as TestScenario) || 'discovery';
+    const scenarios = input.scenarios as TestScenario[] | undefined;
     const brief = input.brief as string | undefined;
     const budget = input.budget as number | undefined;
     const dryRun = input.dry_run as boolean | undefined;
     const channels = input.channels as string[] | undefined;
     const pricingModels = input.pricing_models as string[] | undefined;
-    const brandManifest = input.brand_manifest as TestOptions['brand_manifest'];
+    const brandManifest = input.brand_manifest as OrchestratorOptions['brand_manifest'];
     let authToken = input.auth_token as string | undefined;
 
     // Look up saved token for organization
@@ -2065,7 +2065,7 @@ export function createMemberToolHandlers(
       url: 'https://nike.com',
     };
 
-    const options: TestOptions = {
+    const options: OrchestratorOptions = {
       test_session_id: `addie-test-${Date.now()}`,
       dry_run: dryRun, // undefined means default to true
       brand_manifest: brandManifest || defaultBrandManifest,
@@ -2075,43 +2075,48 @@ export function createMemberToolHandlers(
     if (channels) options.channels = channels;
     if (pricingModels) options.pricing_models = pricingModels;
     if (authToken) options.auth = { type: 'bearer', token: authToken };
+    if (scenarios) options.scenarios = scenarios;
 
     try {
-      const result = await runAgentTests(agentUrl, scenario, options);
+      const suite: SuiteResult = await testAllScenarios(agentUrl, options);
 
-      // If user is authenticated and agent test succeeded, update the saved context
+      // If user is authenticated, update the saved context
       if (organizationId) {
         try {
           const context = await agentContextDb.getByOrgAndUrl(
             organizationId,
             agentUrl
           );
-          if (context && result.agent_profile) {
-            // Update with discovered tools and test results
-            const tools = result.agent_profile.tools || [];
+          if (context) {
+            const tools = suite.agent_profile.tools || [];
+
+            // Record one history entry per scenario (each call also stomps last_test_* fields)
+            for (const result of suite.results) {
+              await agentContextDb.recordTest({
+                agent_context_id: context.id,
+                scenario: result.scenario,
+                overall_passed: result.overall_passed,
+                steps_passed: result.steps.filter((s) => s.passed).length,
+                steps_failed: result.steps.filter((s) => !s.passed).length,
+                total_duration_ms: result.total_duration_ms,
+                summary: result.summary,
+                dry_run: options.dry_run !== false,
+                brief: options.brief,
+                triggered_by: 'user',
+                user_id: memberContext?.workos_user?.workos_user_id,
+                steps_json: result.steps,
+                agent_profile_json: result.agent_profile,
+              });
+            }
+
+            // Overwrite with suite-level summary after the loop
+            // (recordTest updates last_test_* per-scenario; this restores the aggregate)
             await agentContextDb.update(context.id, {
               tools_discovered: tools,
               agent_type: agentContextDb.inferAgentType(tools),
-              last_test_scenario: scenario,
-              last_test_passed: result.overall_passed,
-              last_test_summary: result.summary,
-            });
-
-            // Record test history
-            await agentContextDb.recordTest({
-              agent_context_id: context.id,
-              scenario,
-              overall_passed: result.overall_passed,
-              steps_passed: result.steps.filter((s) => s.passed).length,
-              steps_failed: result.steps.filter((s) => !s.passed).length,
-              total_duration_ms: result.total_duration_ms,
-              summary: result.summary,
-              dry_run: options.dry_run !== false,
-              brief: options.brief,
-              triggered_by: 'user',
-              user_id: memberContext?.workos_user?.workos_user_id,
-              steps_json: result.steps,
-              agent_profile_json: result.agent_profile,
+              last_test_scenario: suite.scenarios_run.join(','),
+              last_test_passed: suite.overall_passed,
+              last_test_summary: `${suite.passed_count}/${suite.results.length} scenarios passed`,
             });
           }
         } catch (error) {
@@ -2120,7 +2125,7 @@ export function createMemberToolHandlers(
         }
       }
 
-      let output = formatTestResults(result);
+      let output = formatSuiteResults(suite);
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
       } else if (usingSavedOAuthToken) {
@@ -2130,7 +2135,7 @@ export function createMemberToolHandlers(
       }
 
       // If tests failed, offer to help file a GitHub issue
-      const failedSteps = result.steps.filter((s) => !s.passed);
+      const failedSteps = suite.results.flatMap((r) => r.steps.filter((s) => !s.passed));
       if (failedSteps.length > 0) {
         // First, check if this looks like a bug in the @adcp/client testing library itself
         const clientLibraryBug = detectClientLibraryBug(failedSteps);
@@ -2160,7 +2165,7 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl, scenario }, 'Addie: test_adcp_agent failed');
+      logger.error({ error, agentUrl, scenarios }, 'Addie: test_adcp_agent failed');
       return `Failed to test agent ${agentUrl}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
