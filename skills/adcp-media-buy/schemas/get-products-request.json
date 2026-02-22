@@ -8,11 +8,11 @@
     "buying_mode": {
       "type": "string",
       "enum": ["brief", "wholesale"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief (default when brief is present). 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided. When buying_mode is 'wholesale', publishers return only products that support buyer-directed targeting and omit proposals."
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided. When buying_mode is 'wholesale', publishers return only products that support buyer-directed targeting and omit proposals."
     },
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. Must not be provided when buying_mode is 'wholesale'."
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'."
     },
     "brand": {
       "$ref": "/schemas/latest/core/brand-ref.json",
@@ -47,6 +47,30 @@
       "$ref": "/schemas/latest/core/ext.json"
     }
   },
-  "required": [],
+  "required": ["buying_mode"],
+  "oneOf": [
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "brief"
+        }
+      },
+      "required": [
+        "buying_mode",
+        "brief"
+      ]
+    },
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "wholesale"
+        },
+        "brief": false
+      },
+      "required": [
+        "buying_mode"
+      ]
+    }
+  ],
   "additionalProperties": true
 }

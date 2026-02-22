@@ -41,6 +41,7 @@ Discover advertising products using natural language briefs.
 **Request:**
 ```json
 {
+  "buying_mode": "brief",
   "brief": "Looking for premium video inventory for a tech brand targeting developers",
   "brand": {
     "domain": "example.com"
@@ -53,6 +54,7 @@ Discover advertising products using natural language briefs.
 ```
 
 **Key fields:**
+- `buying_mode` (string): Required discriminator - `"brief"` or `"wholesale"`
 - `brief` (string): Natural language description of campaign requirements
 - `brand` (object): Brand identity - `{ "domain": "acmecorp.com" }`
 - `filters` (object, optional): Filter by channels, budget, delivery_type, format_types

@@ -191,6 +191,7 @@ const exampleData = {
   
   // Request/Response examples
   getProductsRequest: {
+    "buying_mode": "brief",
     "brief": "Nike Air Max 2024 - Premium video inventory for sports fans"
   },
   

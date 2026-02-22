@@ -36,13 +36,14 @@ The `brief` field describes **what is being promoted** and **campaign requiremen
 
 ```json
 {
+  "buying_mode": "brief",
   "brief": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
 }
 ```
 
 ## When Briefs Are Optional
 
-The `brief` field is **optional**. For catalog discovery without publisher curation, use `buying_mode: "wholesale"` explicitly instead of omitting the brief:
+The `brief` field is **optional only when `buying_mode` is `"wholesale"`**. For catalog discovery without publisher curation, set `buying_mode: "wholesale"` explicitly:
 
 ### Wholesale Buying Mode
 
@@ -62,7 +63,7 @@ When the buyer will apply their own audience targeting and does not want publish
 }
 ```
 
-`buying_mode` and `brief` are mutually exclusive — providing both is an error.
+`buying_mode: "wholesale"` and `brief` are mutually exclusive — providing both is an error. If `buying_mode: "brief"` is set explicitly, `brief` is required.
 
 When a publisher receives `buying_mode: "wholesale"`:
 1. Returns products that support buyer-directed targeting
@@ -70,12 +71,6 @@ When a publisher receives `buying_mode: "wholesale"`:
 3. Does not return proposals
 4. Buyer applies their own audiences, e.g. through AXE
 
-### Other Scenarios for No Brief
-
-These scenarios omit the brief but do not require `buying_mode: "wholesale"`:
-1. **Initial exploration** — Understanding what a publisher offers before committing
-2. **Direct product selection** — Already know specific product IDs
-3. **Always-on campaigns** — Replenishing existing campaigns
 ## Core Brief Components
 
 When a `brief` IS provided, it should include these essential elements:
@@ -222,6 +217,7 @@ Publishers should handle briefs at different completeness levels:
 ```json
 {
   "brand": {"domain": "acmecorp.com"},
+  "buying_mode": "brief",
   "brief": "Reach business decision makers"
 }
 ```
@@ -231,6 +227,7 @@ Publishers should handle briefs at different completeness levels:
 ```json
 {
   "brand": {"domain": "acmecorp.com"},
+  "buying_mode": "brief",
   "brief": "Acme Corp project management software - cloud-based solution for remote teams. Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
 }
 ```
@@ -240,6 +237,7 @@ Publishers should handle briefs at different completeness levels:
 ```json
 {
   "brand": {"domain": "acmecorp.com"},
+  "buying_mode": "brief",
   "brief": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation. Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
 }
 ```
