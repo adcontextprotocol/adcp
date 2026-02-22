@@ -266,7 +266,8 @@ export async function getTranscriptText(meetingUuid: string): Promise<string | n
     );
 
     if (!transcriptFile?.download_url) {
-      logger.info({ meetingUuid }, 'No transcript file found');
+      const fileTypes = recording.recording_files?.map(f => f.file_type) ?? [];
+      logger.warn({ meetingUuid, fileTypes }, 'No transcript file in recording — audio transcription may not be enabled in Zoom account settings');
       return null;
     }
 
@@ -279,7 +280,7 @@ export async function getTranscriptText(meetingUuid: string): Promise<string | n
     });
 
     if (!response.ok) {
-      logger.error({ status: response.status }, 'Failed to download transcript');
+      logger.error({ status: response.status, meetingUuid }, 'Failed to download transcript');
       return null;
     }
 
@@ -287,7 +288,12 @@ export async function getTranscriptText(meetingUuid: string): Promise<string | n
     logger.info({ meetingUuid, length: transcript.length }, 'Retrieved transcript');
     return transcript;
   } catch (error) {
-    logger.error({ err: error, meetingUuid }, 'Error getting transcript');
+    // zoomRequest throws errors in the format "Zoom API error: {status} - ..."
+    if (error instanceof Error && /Zoom API error: 404\b/.test(error.message)) {
+      logger.warn({ meetingUuid }, 'Recording not found (404) — cloud recording may not be enabled in Zoom account settings');
+    } else {
+      logger.error({ err: error, meetingUuid }, 'Error getting transcript');
+    }
     return null;
   }
 }
