@@ -24,6 +24,11 @@
         "required": {
           "type": "boolean",
           "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
+        },
+        "overlays": {
+          "type": "array",
+          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds. Note: chrome that applies at the format level rather than the asset level (e.g., carousel navigation arrows spanning all slides) is not yet expressible here.",
+          "items": { "$ref": "/schemas/core/overlay.json" }
         }
       },
       "required": ["item_type", "asset_id", "asset_type", "required"]
