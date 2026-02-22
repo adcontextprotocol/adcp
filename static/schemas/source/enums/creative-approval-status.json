@@ -12,6 +12,6 @@
   "enumDescriptions": {
     "pending_review": "Creative has been submitted and is awaiting platform review",
     "approved": "Creative has been approved and is eligible for delivery",
-    "rejected": "Creative was rejected by the platform; see rejection_reason for details"
+    "rejected": "Creative was rejected by the platform, including change requests; see rejection_reason for required fixes and re-upload via sync_creatives"
   }
 }

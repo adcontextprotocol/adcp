@@ -141,6 +141,8 @@ Long-running tasks provide:
 7. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
 8. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 
+For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
+
 ## Related Documentation
 
 - **[Product Discovery](/docs/media-buy/product-discovery/)** - Natural language inventory discovery

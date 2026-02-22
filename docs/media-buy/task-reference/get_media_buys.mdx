@@ -73,6 +73,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `approval_status` | `pending_review`, `approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 
+Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected assets via [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives).
+
 ### Snapshot Object
 
 | Field | Description |
@@ -85,6 +87,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `clicks` | Total clicks since package start (when available) |
 | `pacing_index` | Delivery pace (1.0 = on track, \<1.0 = behind, \>1.0 = ahead) |
 | `delivery_status` | `delivering`, `not_delivering`, `completed`, `budget_exhausted`, `flight_ended`, `goal_met` |
+| `ext` | Optional extension object for seller-specific operational fields |
 
 **`not_delivering`** means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle. Implementers must not return `not_delivering` until `staleness_seconds` have elapsed since package activation — a new package with no impressions in its first minutes is expected, not a problem. Check `start_time` to confirm the package is within its flight before acting on this status.
 
@@ -320,6 +323,8 @@ asyncio.run(main())
 
 Use `get_media_buys` to answer "what is the current state of my campaigns?" and `get_media_buy_delivery` for "how did my campaigns perform over a period?"
 
+Status taxonomy is shared for lifecycle filters across both tasks (`pending_activation`, `active`, `paused`, `completed`). `get_media_buy_delivery` may additionally return reporting-only statuses (`reporting_delayed`, `failed`) in webhook contexts.
+
 ## Data Freshness
 
 Snapshot `staleness_seconds` varies by platform:
@@ -351,6 +356,7 @@ Use cursor pagination for broad status queries to avoid large payloads:
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `MEDIA_BUY_NOT_FOUND` | Media buy ID does not exist | Verify `media_buy_id` |
+| `BUYER_REF_NOT_FOUND` | Buyer reference does not map to an accessible media buy | Verify `buyer_ref` value and account scope |
 | `CONTEXT_REQUIRED` | No media buys found for the requested scope | Provide valid IDs/refs or broaden `status_filter`/pagination scope |
 | `AUTH_REQUIRED` | Authentication needed | Provide credentials |
 

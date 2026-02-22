@@ -198,6 +198,10 @@
                         "flight_ended",
                         "goal_met"
                       ]
+                    },
+                    "ext": {
+                      "$ref": "/schemas/core/ext.json",
+                      "description": "Optional extension object for seller-specific snapshot fields."
                     }
                   },
                   "required": [
