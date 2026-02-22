@@ -26,7 +26,9 @@ export function initializeDatabase(config: DatabaseConfig): Pool {
 
   // Ensure every connection uses UTF-8 encoding regardless of server defaults
   pool.on("connect", (client) => {
-    client.query("SET client_encoding = 'UTF8'");
+    client.query("SET client_encoding = 'UTF8'").catch((err) => {
+      console.error("Failed to set client_encoding on new connection:", err);
+    });
   });
 
   pool.on("error", (err) => {
