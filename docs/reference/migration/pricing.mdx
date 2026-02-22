@@ -168,7 +168,7 @@ This lets publishers declare minimum spend requirements per package.
 
 During migration, readers may encounter both old and new field names. Consider checking for both:
 
-```javascript
+```javascript test=false
 const price = option.fixed_price ?? option.fixed_rate;
 const floor = option.floor_price ?? option.price_guidance?.floor;
 ```

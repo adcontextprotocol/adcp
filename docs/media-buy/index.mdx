@@ -7,7 +7,7 @@ keywords: [media buy protocol, advertising automation, AI advertising workflows,
 
 AI is buying ads. The Media Buy protocol ensures it can buy yours.
 
-This is AdCP's core advertising automation interface, providing 11 standardized tasks for managing the complete advertising lifecycle—from inventory discovery through conversion tracking.
+This is AdCP's core advertising automation interface, providing standardized tasks for managing the complete advertising lifecycle—from inventory discovery through conversion tracking.
 
 ## Protocol Access
 
@@ -18,7 +18,7 @@ Media Buy tasks are accessible through multiple protocols:
 
 All protocols provide identical functionality - choose based on your integration needs. See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for guidance.
 
-## The 11 Core Media Buy Tasks
+## Core Media Buy Tasks
 
 The Media Buy protocol provides these essential operations:
 
@@ -39,6 +39,7 @@ The Media Buy protocol provides these essential operations:
 - **[`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)**: Upload and synchronize creative assets across platforms
 
 ### Performance Optimization
+- **[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys)**: Check campaign state, creative approvals, missing formats, and optional near-real-time delivery snapshots
 - **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)**: Track performance metrics and campaign delivery
 - **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)**: Submit performance signals to enable publisher optimization
 
@@ -73,7 +74,7 @@ The Media Buy protocol provides these essential operations:
 
 The Media Buy protocol is designed as a **timely but not real-time** protocol. Response times fall into four categories:
 
-- **Simple database lookups** (~1 second): Format and creative listings
+- **Simple database lookups** (~1 second): Format, creative, and media buy status lookups
 - **Inference/RAG operations** (~60 seconds): Product discovery, signal discovery with AI/LLM processing  
 - **Reporting queries** (~60 seconds): Delivery metrics with data aggregation
 - **Asynchronous operations** (minutes to days): Campaign creation/updates, creative sync, signal activation with potential human-in-the-loop approval

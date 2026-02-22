@@ -18,6 +18,7 @@ Use the `call_adcp_agent` tool to execute these tasks against any AdCP sales age
 | `sync_catalogs` | Sync catalog feeds to account | Minutes-Days |
 | `sync_creatives` | Upload creative assets | Minutes-Days |
 | `list_creatives` | Query creative library | ~1s |
+| `get_media_buys` | Check media buy status and creative approvals | ~1s |
 | `get_media_buy_delivery` | Get performance data | ~60s |
 
 ## Typical Workflow
@@ -28,7 +29,8 @@ Use the `call_adcp_agent` tool to execute these tasks against any AdCP sales age
 4. **Sync catalogs**: `sync_catalogs` to push product feeds, inventory, or store data to the account
 5. **Upload creatives**: `sync_creatives` to add creative assets (referencing synced catalogs)
 6. **Create campaign**: `create_media_buy` with selected products and budget
-7. **Monitor delivery**: `get_media_buy_delivery` to track performance
+7. **Monitor operational state**: `get_media_buys` for campaign status, creative approvals, and missing formats
+8. **Monitor delivery**: `get_media_buy_delivery` for reporting metrics and time-series performance
 
 ---
 
@@ -255,6 +257,37 @@ Query the creative library with filtering.
   "limit": 20
 }
 ```
+
+---
+
+### get_media_buys
+
+Retrieve current media buy operational state, including package status, creative approval outcomes, missing required formats, and optional delivery snapshots.
+
+```json
+{
+  "status_filter": "active",
+  "include_snapshot": true,
+  "pagination": {
+    "max_results": 50
+  }
+}
+```
+
+**Key fields:**
+- `media_buy_ids` (array, optional): Restrict response to specific media buy IDs
+- `buyer_refs` (array, optional): Query by buyer-side references
+- `status_filter` (string or array, optional): Filter by media buy status (`active`, `paused`, `completed`, etc.). Default `["active"]` applies only when no IDs/refs are provided.
+- `include_snapshot` (boolean, optional): Include near-real-time package delivery snapshots
+- `pagination` (object, optional): Cursor pagination controls for broad account-level queries
+
+**Response contains:**
+- `media_buys`: Campaign configuration and current status
+- `pagination`: `has_more`/`cursor` metadata for fetching additional pages
+- `packages[].creative_approvals`: Approval status per assigned creative
+- `packages[].format_ids_pending`: Required formats still missing from creative uploads
+- `packages[].snapshot`: Latest package-level delivery stats when requested
+- `packages[].snapshot_unavailable_reason`: Why snapshot was omitted (`SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, `SNAPSHOT_PERMISSION_DENIED`)
 
 ---
 

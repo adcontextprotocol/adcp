@@ -30,9 +30,14 @@
           "status": {
             "$ref": "/schemas/enums/media-buy-status.json"
           },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",
+            "pattern": "^[A-Z]{3}$"
+          },
           "total_budget": {
             "type": "number",
-            "description": "Total budget amount across all packages",
+            "description": "Total budget amount across all packages, denominated in media_buy.currency",
             "minimum": 0
           },
           "creative_deadline": {
@@ -70,12 +75,17 @@
                 },
                 "budget": {
                   "type": "number",
-                  "description": "Package budget amount",
+                  "description": "Package budget amount, denominated in package.currency when present, otherwise media_buy.currency",
                   "minimum": 0
+                },
+                "currency": {
+                  "type": "string",
+                  "description": "ISO 4217 currency code for monetary values at this package level (budget, bid_price, snapshot.spend). When absent, inherit media_buy.currency.",
+                  "pattern": "^[A-Z]{3}$"
                 },
                 "bid_price": {
                   "type": "number",
-                  "description": "Current bid price for auction-based packages. Relevant for automated price optimization loops.",
+                  "description": "Current bid price for auction-based packages. Denominated in package.currency when present, otherwise media_buy.currency. Relevant for automated price optimization loops.",
                   "minimum": 0
                 },
                 "impressions": {
@@ -129,6 +139,15 @@
                     "$ref": "/schemas/core/format-id.json"
                   }
                 },
+                "snapshot_unavailable_reason": {
+                  "type": "string",
+                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package.",
+                  "enum": [
+                    "SNAPSHOT_UNSUPPORTED",
+                    "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
+                    "SNAPSHOT_PERMISSION_DENIED"
+                  ]
+                },
                 "snapshot": {
                   "type": "object",
                   "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
@@ -150,8 +169,13 @@
                     },
                     "spend": {
                       "type": "number",
-                      "description": "Total spend since package start",
+                      "description": "Total spend since package start, denominated in snapshot.currency when present, otherwise package.currency or media_buy.currency",
                       "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency.",
+                      "pattern": "^[A-Z]{3}$"
                     },
                     "clicks": {
                       "type": "number",
@@ -201,6 +225,7 @@
         "required": [
           "media_buy_id",
           "status",
+          "currency",
           "total_budget",
           "packages"
         ],
@@ -213,6 +238,10 @@
       "items": {
         "$ref": "/schemas/core/error.json"
       }
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-response.json",
+      "description": "Pagination metadata for the media_buys array."
     },
     "sandbox": {
       "type": "boolean",

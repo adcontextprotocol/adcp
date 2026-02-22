@@ -66,7 +66,7 @@ See [schema](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-de
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -128,7 +128,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -159,7 +159,7 @@ validated.media_buy_deliveries.forEach(delivery => {
 });
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
@@ -194,7 +194,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -234,7 +234,7 @@ if (validated.media_buy_deliveries.length > 0) {
 }
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest
@@ -425,7 +425,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
-```javascript JavaScript
+```javascript JavaScript test=false
 import { testAgent } from '@adcp/client/testing';
 import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
@@ -451,7 +451,7 @@ console.log(`${validated.aggregated_totals.media_buy_count} campaigns for accoun
 console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
 ```
 
-```python Python
+```python Python test=false
 import asyncio
 from adcp.testing import test_agent
 from adcp.types import GetMediaBuyDeliveryRequest

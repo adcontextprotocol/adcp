@@ -87,7 +87,7 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 
 ## Tasks
 
-The Media Buy Protocol defines ten tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines twelve tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -148,6 +148,21 @@ Modify an existing media buy's budget, targeting, or settings.
 - When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
 - Sales agents SHOULD return the updated media buy state
 
+### sync_catalogs
+
+**Schema**: [`media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-request.json) / [`media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-response.json)
+
+**Reference**: [`sync_catalogs` task](/docs/media-buy/task-reference/sync_catalogs)
+
+Synchronize catalogs (products, inventory, stores, and vertical feeds) on a seller account.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- When `catalogs` is provided, it MUST contain at least one catalog
+- When `catalogs` is omitted, the call is discovery-only and returns existing catalogs without modification
+- Sales agents MUST return per-catalog outcomes, including what action was taken and any item-level issues
+- Sales agents SHOULD support `dry_run` for validation without applying changes
+
 ### list_creatives
 
 **Schema**: [`media-buy/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-request.json) / [`media-buy/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-response.json)
@@ -174,6 +189,24 @@ Upload and synchronize creative assets.
 - Sales agents MUST validate creatives against format specifications
 - Sales agents MUST return validation errors for non-compliant creatives
 - Sales agents MAY require approval before creatives are available for use
+
+### get_media_buys
+
+**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-response.json)
+
+**Reference**: [`get_media_buys` task](/docs/media-buy/task-reference/get_media_buys)
+
+Retrieve operational media buy state, including package status, creative approvals, missing formats, and optional delivery snapshots.
+
+**Requirements:**
+- Orchestrators MAY filter by `account_id`, `media_buy_ids`, `buyer_refs`, and `status_filter`
+- Orchestrators SHOULD use cursor pagination (`pagination.max_results` / `pagination.cursor`) for broad scope queries
+- Sales agents MUST return current media buy status and package-level operational state for each matched media buy
+- Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
+- Sales agents SHOULD include creative approval outcomes and pending format requirements when available
+- If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
+- When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
+- Default `status_filter: ["active"]` applies only when `media_buy_ids` and `buyer_refs` are both omitted
 
 ### get_media_buy_delivery
 
