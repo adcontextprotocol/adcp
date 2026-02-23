@@ -1081,7 +1081,7 @@ async function handleUserMessage({
 
   // Fetch conversation history from database for context
   // This ensures Claude has context from previous turns in the DM thread
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -1538,7 +1538,7 @@ async function handleAppMention({
 
   // Fetch conversation history from database for context
   // This ensures Claude remembers what Addie said in previous turns
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -2023,7 +2023,7 @@ async function handleDirectMessage(
   }
 
   // Fetch conversation history from database for context
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -2324,7 +2324,7 @@ async function handleActiveThreadReply({
 
   // Fetch conversation history from database for context
   // This ensures Claude remembers what Addie said in previous turns
-  const MAX_DB_HISTORY_MESSAGES = 10;
+  const MAX_DB_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -3308,7 +3308,7 @@ async function handleReactionAdded({
   }
 
   // Fetch conversation history from database for context
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {

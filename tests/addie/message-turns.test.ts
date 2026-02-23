@@ -99,16 +99,16 @@ describe('buildMessageTurns', () => {
     expect(result[6]).toEqual({ role: 'user', content: 'Question 4' });
   });
 
-  it('should limit to last 10 messages from thread context', () => {
-    // Create 15 messages
+  it('should limit to last 20 messages from thread context', () => {
+    // Create 25 messages
     const threadContext: ThreadContextEntry[] = [];
-    for (let i = 1; i <= 15; i++) {
+    for (let i = 1; i <= 25; i++) {
       threadContext.push({ user: i % 2 === 1 ? 'User' : 'Addie', text: `Message ${i}` });
     }
 
     const result = buildMessageTurns('Current', threadContext);
 
-    // Should only include messages 6-15 (last 10) plus current
+    // Should only include messages 6-25 (last 20) plus current
     // Message 6 is from Addie (even index in 1-based), so placeholder is added
     const firstHistoryMessage = result.find(m => m.content.includes('Message'));
     expect(firstHistoryMessage?.content).toContain('Message 6');
