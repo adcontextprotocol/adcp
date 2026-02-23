@@ -174,14 +174,14 @@
           {
             "group": "Accounts Protocol",
             "pages": [
-              "docs/commerce/overview",
+              "docs/accounts/overview",
               "docs/building/integration/accounts-and-agents",
               {
                 "group": "Tasks",
                 "pages": [
-                  "docs/commerce/tasks/sync_accounts",
-                  "docs/commerce/tasks/list_accounts",
-                  "docs/commerce/tasks/report_usage"
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage"
                 ]
               }
             ]
@@ -676,14 +676,14 @@
           {
             "group": "Accounts Protocol",
             "pages": [
-              "docs/commerce/overview",
+              "docs/accounts/overview",
               "docs/building/integration/accounts-and-agents",
               {
                 "group": "Tasks",
                 "pages": [
-                  "docs/commerce/tasks/sync_accounts",
-                  "docs/commerce/tasks/list_accounts",
-                  "docs/commerce/tasks/report_usage"
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage"
                 ]
               }
             ]
