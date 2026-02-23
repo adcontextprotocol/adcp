@@ -39,8 +39,13 @@
       "$ref": "/schemas/core/catalog.json",
       "description": "Update the catalog this package promotes. Replaces the current catalog reference."
     },
-    "optimization_goal": {
-      "$ref": "/schemas/core/optimization-goal.json"
+    "optimization_goals": {
+      "type": "array",
+      "description": "Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged.",
+      "items": {
+        "$ref": "/schemas/core/optimization-goal.json"
+      },
+      "minItems": 1
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"

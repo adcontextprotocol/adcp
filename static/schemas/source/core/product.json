@@ -133,10 +133,17 @@
         },
         "supported_optimization_strategies": {
           "type": "array",
-          "description": "Optimization strategies this product supports when an optimization_goal is set on a package",
+          "description": "Optimization strategies this product supports when optimization_goals are set on a package. Metric strategies (target_cpc, target_cpv, target_cpcv) apply to kind:metric goals; conversion strategies (maximize_conversions, target_cpa, target_roas) apply to kind:event goals.",
           "items": {
             "type": "string",
-            "enum": ["maximize_conversions", "target_cpa", "target_roas"]
+            "enum": [
+              "maximize_conversions",
+              "target_cpa",
+              "target_roas",
+              "target_cpc",
+              "target_cpv",
+              "target_cpcv"
+            ]
           },
           "minItems": 1
         },

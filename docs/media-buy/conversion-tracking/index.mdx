@@ -32,7 +32,7 @@ sequenceDiagram
 
     rect rgb(255, 248, 240)
         Note over B,S: Optimization
-        B->>S: create_media_buy (with optimization_goal)
+        B->>S: create_media_buy (with optimization_goals)
         S->>S: Optimize delivery toward conversions
         B->>S: get_media_buy_delivery
         S->>B: Conversion metrics (ROAS, CPA)
@@ -228,55 +228,112 @@ Where the conversion event originated:
 
 ## Optimization goals
 
-An optimization goal tells the seller which conversions to optimize delivery against. Set it on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization) to move beyond impression-based delivery.
+Optimization goals tell the seller what to optimize delivery toward. Set them on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization). A package accepts an array of goals — each with an optional `priority` (1 = highest).
 
 **Schema**: [`/schemas/v2/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v2/core/optimization-goal.json)
 
-**ROAS target** (optimize for return on ad spend):
+There are two kinds of goals, discriminated by `kind`:
+
+### kind: event
+
+Optimize for an advertiser-tracked conversion event. Requires an event source registered via `sync_event_sources`.
+
+**ROAS target**:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/optimization-goal.json",
+  "kind": "event",
   "event_source_id": "website_pixel",
   "event_type": "purchase",
-  "target_roas": 4.0,
-  "attribution_window": {
-    "click_through": "28d",
-    "view_through": "1d"
-  }
+  "target": { "kind": "roas", "value": 4.0 },
+  "attribution_window": { "click_through": "28d", "view_through": "1d" },
+  "priority": 1
 }
 ```
 
-**CPA target** (optimize for cost per conversion):
+**CPA target**:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/optimization-goal.json",
+  "kind": "event",
   "event_source_id": "website_pixel",
   "event_type": "lead",
-  "target_cpa": 25.00
+  "target": { "kind": "cpa", "value": 25.00 },
+  "priority": 1
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `kind` | `"event"` | Yes | Discriminator |
 | `event_source_id` | string | Yes | Event source to optimize against (must be configured via `sync_event_sources`) |
-| `event_type` | [EventType](#event-types) | Yes | Event type to optimize for (e.g., `purchase`, `lead`) |
-| `target_roas` | number | No | Target return on ad spend (e.g., 4.0 = $4 conversion value per $1 spent). Mutually exclusive with `target_cpa`. |
-| `target_cpa` | number | No | Target cost per acquisition in buy currency. Mutually exclusive with `target_roas`. |
+| `event_type` | [EventType](#event-types) | Yes | Event type to optimize for (e.g., `purchase`, `lead`, `app_install`) |
+| `target.kind` | `"cpa"` \| `"roas"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
+| `target.value` | number | Yes (if target set) | CPA in buy currency, or ROAS multiplier (e.g., 4.0) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
-### Choosing a strategy
+### kind: metric
 
-| Strategy | When to use | What you set |
-|----------|-------------|-------------|
-| Max conversions | You want as many conversions as possible within budget | `event_source_id` + `event_type` only |
-| Target ROAS | You need a specific return on ad spend | Add `target_roas` (e.g., 4.0) |
-| Target CPA | You need a specific cost per conversion | Add `target_cpa` (e.g., 25.00) |
+Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively. Use when buying on CPM but wanting to optimize toward a click or view cost target.
+
+**CPC target**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "clicks",
+  "target": { "kind": "cpc", "value": 2.00 },
+  "priority": 2
+}
+```
+
+**CPV target**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "views",
+  "target": { "kind": "cpv", "value": 0.02 },
+  "priority": 2
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | `"metric"` | Yes | Discriminator |
+| `metric` | `"clicks"` \| `"views"` \| `"completed_views"` | Yes | Seller-native metric to optimize for |
+| `target.kind` | `"cpc"` \| `"cpv"` \| `"cpcv"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
+| `target.value` | number | Yes (if target set) | Target cost per metric unit in buy currency |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+### Multiple goals and priority
+
+A package can have multiple goals. Priority controls which the seller treats as primary. A common pattern is to use metric goals as proxy signals when event data is sparse:
+
+```json
+"optimization_goals": [
+  {
+    "kind": "metric",
+    "metric": "clicks",
+    "target": { "kind": "cpc", "value": 2.00 },
+    "priority": 2
+  },
+  {
+    "kind": "event",
+    "event_source_id": "mobile_sdk",
+    "event_type": "app_install",
+    "target": { "kind": "cpa", "value": 10.00 },
+    "priority": 1
+  }
+]
+```
+
+The seller focuses on the `priority: 1` goal (installs at $10 CPA) and uses clicks as a proxy signal until install data accumulates.
 
 ### Prerequisites
 
-Before setting an optimization goal:
+Before setting event optimization goals:
 
 1. **Configure event sources** — Call [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) to set up the event source referenced in `event_source_id`
 2. **Check seller support** — The product must declare support in `conversion_tracking.supported_optimization_strategies` (returned by [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities))
@@ -304,7 +361,7 @@ Once event sources are configured and events are flowing, conversion metrics app
 - **`roas`** — Return on ad spend (conversion_value / spend)
 - **`cost_per_acquisition`** — Cost per conversion (spend / conversions)
 
-These metrics are reported per-package when the package has an `optimization_goal` set. Sellers that support `by_action_source` breakdowns can show conversions split by source (website, app, in_store, etc.).
+These metrics are reported per-package when the package has `optimization_goals` set. Sellers that support `by_action_source` breakdowns can show conversions split by source (website, app, in_store, etc.).
 
 ## Catalog-item attribution
 

@@ -56,8 +56,13 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
-    "optimization_goal": {
-      "$ref": "/schemas/core/optimization-goal.json"
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/core/optimization-goal.json"
+      },
+      "minItems": 1
     },
     "paused": {
       "type": "boolean",

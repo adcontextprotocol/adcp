@@ -255,7 +255,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
-**Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goal`, which controls delivery optimization.
+**Billing**: Charged a fixed price when the specified `event_type` fires. The pricing option declares what event triggers billing — this is independent of `optimization_goals`, which controls delivery optimization.
 
 **Parameters**:
 - `event_type` (required): The conversion event that triggers billing. Uses the standard event type enum (e.g., `purchase`, `lead`, `app_install`, `add_to_cart`, `subscribe`).
@@ -285,7 +285,7 @@ Buyers should verify the measurement provider meets their campaign requirements 
 }
 ```
 
-**Pricing vs. optimization**: The CPA pricing option's `event_type` (what triggers billing) is independent of the package's `optimization_goal` (what the platform optimizes delivery toward). For example, a package can use CPA pricing on `lead` events while setting `optimization_goal.event_type: "purchase"` with `target_roas: 4.0` — billing fires on leads, but delivery is optimized for downstream purchase ROAS.
+**Pricing vs. optimization**: The CPA pricing option's `event_type` (what triggers billing) is independent of the package's `optimization_goals` (what the platform optimizes delivery toward). For example, a package can use CPA pricing on `lead` events while setting an event goal with `event_type: "purchase"` and `target: { kind: "roas", value: 4.0 }` — billing fires on leads, but delivery is optimized for downstream purchase ROAS.
 
 **Refunds and adjustments**: Refund handling and conversion adjustment policies are commercial terms between buyer and seller. The protocol does not govern clawbacks or billing credits for refunded conversions.
 

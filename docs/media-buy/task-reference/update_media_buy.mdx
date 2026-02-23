@@ -172,7 +172,7 @@ Configure automated delivery reporting for this media buy:
 | `impressions` | number | Updated impression goal for this package |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goal` | OptimizationGoal | Updated conversion optimization goal (event source, event type, target ROAS/CPA) |
+| `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |

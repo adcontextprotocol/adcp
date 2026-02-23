@@ -2,49 +2,117 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/optimization-goal.json",
   "title": "Optimization Goal",
-  "description": "Conversion optimization goal for a package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the seller optimizes for maximum conversions within budget.",
-  "type": "object",
-  "properties": {
-    "event_source_id": {
-      "type": "string",
-      "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
-    },
-    "event_type": {
-      "$ref": "/schemas/enums/event-type.json",
-      "description": "Event type to optimize for (e.g. purchase, lead)"
-    },
-    "target_roas": {
-      "type": "number",
-      "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent). Mutually exclusive with target_cpa.",
-      "exclusiveMinimum": 0
-    },
-    "target_cpa": {
-      "type": "number",
-      "description": "Target cost per acquisition in the buy currency. Mutually exclusive with target_roas.",
-      "exclusiveMinimum": 0
-    },
-    "attribution_window": {
-      "type": "object",
-      "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. When omitted, the seller uses their default window.",
+  "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
+  "oneOf": [
+    {
+      "description": "Optimize for a seller-tracked delivery metric. No event source required — the seller tracks clicks, views, and completed views natively.",
       "properties": {
-        "click_through": {
+        "kind": { "type": "string", "const": "metric" },
+        "metric": {
           "type": "string",
-          "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+          "enum": ["clicks", "views", "completed_views"],
+          "description": "Seller-native metric to optimize for"
         },
-        "view_through": {
-          "type": "string",
-          "description": "View-through attribution window (e.g. '1d', '7d')"
+        "target": {
+          "description": "Target cost per metric unit. When omitted, the seller optimizes for maximum metric volume within budget.",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": { "type": "string", "const": "cpc" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per click in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "properties": {
+                "kind": { "type": "string", "const": "cpv" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per view in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "properties": {
+                "kind": { "type": "string", "const": "cpcv" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per completed view in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
         }
       },
-      "required": [
-        "click_through"
-      ],
+      "required": ["kind", "metric"],
+      "additionalProperties": true
+    },
+    {
+      "description": "Optimize for an advertiser-tracked conversion event. Requires an event source registered via sync_event_sources.",
+      "properties": {
+        "kind": { "type": "string", "const": "event" },
+        "event_source_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
+        },
+        "event_type": {
+          "$ref": "/schemas/enums/event-type.json",
+          "description": "Event type to optimize for (e.g. purchase, lead, app_install). Use 'custom' with custom_event_name for platform-specific events."
+        },
+        "custom_event_name": {
+          "type": "string",
+          "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
+        },
+        "target": {
+          "description": "Target cost or return for this event. When omitted, the seller optimizes for maximum conversions within budget.",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": { "type": "string", "const": "cpa" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per acquisition in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "properties": {
+                "kind": { "type": "string", "const": "roas" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent)" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "attribution_window": {
+          "type": "object",
+          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
+          "properties": {
+            "click_through": {
+              "type": "string",
+              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            },
+            "view_through": {
+              "type": "string",
+              "description": "View-through attribution window (e.g. '1d', '7d')"
+            }
+          },
+          "required": ["click_through"],
+          "additionalProperties": true
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
+        }
+      },
+      "required": ["kind", "event_source_id", "event_type"],
       "additionalProperties": true
     }
-  },
-  "required": [
-    "event_source_id",
-    "event_type"
-  ],
-  "additionalProperties": true
+  ]
 }

@@ -195,7 +195,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goal` | [OptimizationGoal](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Conversion optimization goal - event source, event type, and optional target ROAS or CPA. Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
+| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion event with optional CPA/ROAS target) or `kind: "metric"` (seller-native metric with optional CPC/CPV/CPCV target). Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
@@ -348,11 +348,13 @@ const result = await testAgent.createMediaBuy({
     pricing_option_id: 'cpc_usd_auction',
     budget: 10000,
     bid_price: 1.20,
-    optimization_goal: {
+    optimization_goals: [{
+      kind: 'event',
       event_source_id: 'retailer_sales',
       event_type: 'purchase',
-      target_roas: 4.0
-    }
+      target: { kind: 'roas', value: 4.0 },
+      priority: 1
+    }]
   }],
   start_time: 'asap',
   end_time: endDate.toISOString()
@@ -392,11 +394,13 @@ async def create_optimized_campaign():
             'pricing_option_id': 'cpc_usd_auction',
             'budget': 10000,
             'bid_price': 1.20,
-            'optimization_goal': {
+            'optimization_goals': [{
+                'kind': 'event',
                 'event_source_id': 'retailer_sales',
                 'event_type': 'purchase',
-                'target_roas': 4.0
-            }
+                'target': { 'kind': 'roas', 'value': 4.0 },
+                'priority': 1
+            }]
         }],
         start_time='asap',
         end_time=end_date.isoformat().replace('+00:00', 'Z')
