@@ -10,9 +10,15 @@ import type { AddieTool } from '../types.js';
 import { AdAgentsManager } from '../../adagents-manager.js';
 import { PropertyDatabase } from '../../db/property-db.js';
 import { registryRequestsDb } from '../../db/registry-requests-db.js';
+import { PropertyCheckService } from '../../services/property-check.js';
+import { PropertyCheckDatabase } from '../../db/property-check-db.js';
+import { enhanceProperty } from '../../services/property-enhancement.js';
+import { AAO_HOST } from '../../config/aao.js';
 
 const adagentsManager = new AdAgentsManager();
 const propertyDb = new PropertyDatabase();
+const propertyCheckService = new PropertyCheckService();
+const propertyCheckDb = new PropertyCheckDatabase();
 
 /**
  * Property tool definitions for Addie
@@ -133,6 +139,37 @@ export const PROPERTY_TOOLS: AddieTool[] = [
           description: 'Maximum results (default: 20)',
         },
       },
+    },
+  },
+  {
+    name: 'check_property_list',
+    description: 'Check a list of publisher domains against the AAO registry. Returns a summary of issues and a report URL for full details. Domains are automatically normalized (www/m stripped), duplicates removed, and known ad tech infrastructure flagged.',
+    usage_hints: 'Use when a member wants to validate their property include/exclude list, or after receiving a property list to audit before use in targeting. Returns a compact summary to avoid overwhelming the context window — full details are in the report_url.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Publisher domains to check (up to 10,000)',
+        },
+      },
+      required: ['domains'],
+    },
+  },
+  {
+    name: 'enhance_property',
+    description: 'Analyze an unknown publisher domain and submit it to the registry as a pending entry for review. Checks domain age (flags < 90 days as high risk), validates adagents.json presence, and uses AI to assess whether it\'s a real publisher and its likely inventory types.',
+    usage_hints: 'Use for domains in the assess bucket from check_property_list that a member wants added to the registry. Run one domain at a time.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Publisher domain to analyze and submit to the registry',
+        },
+      },
+      required: ['domain'],
     },
   },
 ];
@@ -346,6 +383,73 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     }));
 
     return JSON.stringify({ missing_properties: result, count: result.length }, null, 2);
+  });
+
+  handlers.set('check_property_list', async (args) => {
+    const domains = args.domains as string[];
+    if (!Array.isArray(domains)) {
+      return JSON.stringify({ error: 'domains array is required' });
+    }
+    if (domains.length > 10000) {
+      return JSON.stringify({ error: 'Maximum 10,000 domains per request' });
+    }
+
+    const results = await propertyCheckService.check(domains);
+    const { id: reportId } = await propertyCheckDb.saveReport(results);
+    const reportUrl = `https://${AAO_HOST}/api/properties/check/${reportId}`;
+
+    return JSON.stringify({
+      summary: results.summary,
+      report_url: reportUrl,
+    }, null, 2);
+  });
+
+  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
+  handlers.set('enhance_property', async (args) => {
+    const rawDomain = args.domain as string;
+    if (!rawDomain) {
+      return JSON.stringify({ error: 'domain is required' });
+    }
+
+    // Normalize and validate format before any external calls
+    const domain = rawDomain
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/[/?#].*$/, '')
+      .replace(/\.$/, '')
+      .replace(/\/$/, '')
+      .toLowerCase()
+      .replace(/^www\./, '')
+      .replace(/^m\./, '');
+
+    if (!domain || !DOMAIN_RE.test(domain)) {
+      return JSON.stringify({ error: 'Invalid domain format', hint: 'Provide a bare domain like "example.com"' });
+    }
+
+    const result = await enhanceProperty(domain);
+
+    if (result.already_exists) {
+      return JSON.stringify({
+        domain,
+        already_in_registry: true,
+        property_id: result.property_id,
+        hint: 'This domain is already in the registry. Use resolve_property for details.',
+      }, null, 2);
+    }
+
+    return JSON.stringify({
+      domain,
+      has_adagents: result.has_adagents,
+      risk: result.risk,
+      domain_age_days: result.domain_age_days,
+      ai_analysis: result.ai_analysis,
+      submitted_to_registry: result.submitted_to_registry,
+      property_id: result.property_id,
+      message: result.submitted_to_registry
+        ? 'Domain submitted to registry as pending. Addie will review and approve if it looks legitimate.'
+        : 'Domain analysis complete but submission failed.',
+    }, null, 2);
   });
 
   return handlers;

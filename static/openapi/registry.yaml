@@ -1106,6 +1106,188 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/properties/check:
+    post:
+      operationId: checkPropertyList
+      summary: Check property list
+      description: |-
+        Check a list of publisher domains against the AAO registry. Normalizes domains (strips www/m prefixes), removes duplicates, flags known ad tech infrastructure, and identifies domains not yet in the registry.
+
+        Returns four buckets:
+        - **remove**: duplicates or known blocked domains (ad servers, CDNs, trackers, intermediaries)
+        - **modify**: domains that were normalized (e.g. www.example.com → example.com)
+        - **assess**: unknown domains not in registry, not blocked
+        - **ok**: domains found in registry with no changes needed
+
+        Results are stored for 7 days and retrievable via the `report_id`.
+      tags:
+        - Property Resolution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                domains:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10000
+                  example:
+                    - www.nytimes.com
+                    - googlesyndication.com
+                    - wsj.com
+              required:
+                - domains
+      responses:
+        "200":
+          description: Property list check results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      remove:
+                        type: integer
+                      modify:
+                        type: integer
+                      assess:
+                        type: integer
+                      ok:
+                        type: integer
+                    required:
+                      - total
+                      - remove
+                      - modify
+                      - assess
+                      - ok
+                  remove:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: string
+                        canonical:
+                          type: string
+                        reason:
+                          type: string
+                          enum:
+                            - duplicate
+                            - blocked
+                        domain_type:
+                          type: string
+                        blocked_reason:
+                          type: string
+                      required:
+                        - input
+                        - canonical
+                        - reason
+                  modify:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        input:
+                          type: string
+                        canonical:
+                          type: string
+                        reason:
+                          type: string
+                      required:
+                        - input
+                        - canonical
+                        - reason
+                  assess:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        domain:
+                          type: string
+                      required:
+                        - domain
+                  ok:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        domain:
+                          type: string
+                        source:
+                          type: string
+                      required:
+                        - domain
+                        - source
+                  report_id:
+                    type: string
+                    description: UUID for retrieving this report later
+                required:
+                  - summary
+                  - remove
+                  - modify
+                  - assess
+                  - ok
+                  - report_id
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/properties/check/{reportId}:
+    get:
+      operationId: getPropertyCheckReport
+      summary: Get property check report
+      description: Retrieve a previously stored property check report by ID. Reports expire after 7 days.
+      tags:
+        - Property Resolution
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: reportId
+          in: path
+      responses:
+        "200":
+          description: Property check report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      remove:
+                        type: integer
+                      modify:
+                        type: integer
+                      assess:
+                        type: integer
+                      ok:
+                        type: integer
+                    required:
+                      - total
+                      - remove
+                      - modify
+                      - assess
+                      - ok
+                required:
+                  - summary
+        "404":
+          description: Report not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents:
     get:
       operationId: listAgents

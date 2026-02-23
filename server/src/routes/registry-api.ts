@@ -39,8 +39,12 @@ import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
 import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
+import { PropertyCheckService } from "../services/property-check.js";
+import { PropertyCheckDatabase } from "../db/property-check-db.js";
 
 const logger = createLogger("registry-api");
+const propertyCheckService = new PropertyCheckService();
+const propertyCheckDb = new PropertyCheckDatabase();
 
 // ── Config ──────────────────────────────────────────────────────
 
@@ -349,6 +353,59 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Cannot edit authoritative property", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/properties/check",
+  operationId: "checkPropertyList",
+  summary: "Check property list",
+  description:
+    "Check a list of publisher domains against the AAO registry. Normalizes domains (strips www/m prefixes), removes duplicates, flags known ad tech infrastructure, and identifies domains not yet in the registry.\n\nReturns four buckets:\n- **remove**: duplicates or known blocked domains (ad servers, CDNs, trackers, intermediaries)\n- **modify**: domains that were normalized (e.g. www.example.com → example.com)\n- **assess**: unknown domains not in registry, not blocked\n- **ok**: domains found in registry with no changes needed\n\nResults are stored for 7 days and retrievable via the `report_id`.",
+  tags: ["Property Resolution"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            domains: z.array(z.string()).max(10000).openapi({ example: ["www.nytimes.com", "googlesyndication.com", "wsj.com"] }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Property list check results",
+      content: {
+        "application/json": {
+          schema: z.object({
+            summary: z.object({ total: z.number().int(), remove: z.number().int(), modify: z.number().int(), assess: z.number().int(), ok: z.number().int() }),
+            remove: z.array(z.object({ input: z.string(), canonical: z.string(), reason: z.enum(["duplicate", "blocked"]), domain_type: z.string().optional(), blocked_reason: z.string().optional() })),
+            modify: z.array(z.object({ input: z.string(), canonical: z.string(), reason: z.string() })),
+            assess: z.array(z.object({ domain: z.string() })),
+            ok: z.array(z.object({ domain: z.string(), source: z.string() })),
+            report_id: z.string().openapi({ description: "UUID for retrieving this report later" }),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid request", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/properties/check/{reportId}",
+  operationId: "getPropertyCheckReport",
+  summary: "Get property check report",
+  description: "Retrieve a previously stored property check report by ID. Reports expire after 7 days.",
+  tags: ["Property Resolution"],
+  request: { params: z.object({ reportId: z.string() }) },
+  responses: {
+    200: { description: "Property check report", content: { "application/json": { schema: z.object({ summary: z.object({ total: z.number().int(), remove: z.number().int(), modify: z.number().int(), assess: z.number().int(), ok: z.number().int() }) }) } } },
+    404: { description: "Report not found or expired", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -1236,6 +1293,47 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to save property");
       return res.status(500).json({ error: "Failed to save property" });
+    }
+  });
+
+  // ── Property List Check ────────────────────────────────────────
+
+  const REPORT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
+    try {
+      const { domains } = req.body;
+      if (!Array.isArray(domains)) {
+        return res.status(400).json({ error: "domains array is required" });
+      }
+      if (domains.length > 10000) {
+        return res.status(400).json({ error: "Maximum 10,000 domains per request" });
+      }
+
+      const results = await propertyCheckService.check(domains);
+      const { id: report_id } = await propertyCheckDb.saveReport(results);
+
+      return res.json({ ...results, report_id });
+    } catch (error) {
+      logger.error({ error }, "Failed to check property list");
+      return res.status(500).json({ error: "Failed to check property list" });
+    }
+  });
+
+  router.get("/properties/check/:reportId", async (req, res) => {
+    try {
+      const { reportId } = req.params;
+      if (!REPORT_UUID_RE.test(reportId)) {
+        return res.status(404).json({ error: "Report not found or expired" });
+      }
+      const results = await propertyCheckDb.getReport(reportId);
+      if (!results) {
+        return res.status(404).json({ error: "Report not found or expired" });
+      }
+      return res.json(results);
+    } catch (error) {
+      logger.error({ error }, "Failed to retrieve property check report");
+      return res.status(500).json({ error: "Failed to retrieve report" });
     }
   });
 
