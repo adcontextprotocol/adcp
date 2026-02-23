@@ -95,6 +95,14 @@
       },
       "minItems": 1
     },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this app. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (promotional hero), 'images_vertical' (9:16 for Snap, Stories), 'images_square' (1:1 for display), 'video' (gameplay or demo video). Supplements icon_url and screenshots for platform-specific format requirements.",
+      "items": {
+        "$ref": "/schemas/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

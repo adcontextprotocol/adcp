@@ -83,6 +83,14 @@
     "content_id_type": {
       "$ref": "/schemas/enums/content-id-type.json",
       "description": "Identifier type that the event's content_ids field should be matched against for items in this catalog. For example, 'gtin' means content_ids values are Global Trade Item Numbers, 'sku' means retailer SKUs. Omit when using a custom identifier scheme not listed in the enum."
+    },
+    "feed_field_mappings": {
+      "type": "array",
+      "description": "Declarative normalization rules for external feeds. Maps non-standard feed field names, date formats, price encodings, and image URLs to the AdCP catalog item schema. Applied during sync_catalogs ingestion. Supports field renames, named transforms (date, divide, boolean, split), static literal injection, and assignment of image URLs to typed asset pools.",
+      "items": {
+        "$ref": "/schemas/core/catalog-field-mapping.json"
+      },
+      "minItems": 1
     }
   },
   "required": ["type"],
