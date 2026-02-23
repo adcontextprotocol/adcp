@@ -315,6 +315,8 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       publisher_domain: publisherDomain,
       adagents_json: adagentsJson,
       source_type: sourceType as 'community' | 'enriched',
+      is_public: true,
+      review_status: 'approved',
     });
 
     return JSON.stringify({

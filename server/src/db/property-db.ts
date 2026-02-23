@@ -59,8 +59,8 @@ export class PropertyDatabase {
         input.publisher_domain.toLowerCase(),
         JSON.stringify(input.adagents_json),
         input.source_type || 'community',
-        input.is_public ?? true,
-        input.review_status ?? 'approved',
+        input.is_public ?? false,
+        input.review_status ?? 'pending',
       ]
     );
     return this.deserializeHostedProperty(result.rows[0]);
