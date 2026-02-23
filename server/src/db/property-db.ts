@@ -12,6 +12,7 @@ export interface CreateHostedPropertyInput {
   adagents_json: Record<string, unknown>;
   source_type?: 'community' | 'enriched';
   is_public?: boolean;
+  review_status?: 'pending' | 'approved';
 }
 
 /**
@@ -48,8 +49,8 @@ export class PropertyDatabase {
     const result = await query<HostedProperty>(
       `INSERT INTO hosted_properties (
         workos_organization_id, created_by_user_id, created_by_email,
-        publisher_domain, adagents_json, source_type, is_public
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        publisher_domain, adagents_json, source_type, is_public, review_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *`,
       [
         input.workos_organization_id || null,
@@ -58,7 +59,8 @@ export class PropertyDatabase {
         input.publisher_domain.toLowerCase(),
         JSON.stringify(input.adagents_json),
         input.source_type || 'community',
-        input.is_public ?? true,
+        input.is_public ?? false,
+        input.review_status ?? 'pending',
       ]
     );
     return this.deserializeHostedProperty(result.rows[0]);
@@ -84,6 +86,42 @@ export class PropertyDatabase {
       [domain.toLowerCase()]
     );
     return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
+  }
+
+  /**
+   * Check which of the given domains have a hosted or discovered property.
+   * Returns a map of domain → source ('hosted' | 'adagents_json').
+   * Uses ANY($1) to avoid N+1 queries for large lists.
+   */
+  async checkDomainsInRegistry(domains: string[]): Promise<Map<string, 'hosted' | 'adagents_json'>> {
+    if (domains.length === 0) return new Map();
+
+    const lower = domains.map(d => d.toLowerCase());
+    const map = new Map<string, 'hosted' | 'adagents_json'>();
+
+    const [hostedResult, discoveredResult] = await Promise.all([
+      query<{ publisher_domain: string }>(
+        `SELECT publisher_domain FROM hosted_properties
+         WHERE publisher_domain = ANY($1) AND is_public = true
+           AND (review_status IS NULL OR review_status = 'approved')`,
+        [lower]
+      ),
+      query<{ publisher_domain: string }>(
+        `SELECT DISTINCT publisher_domain FROM discovered_properties
+         WHERE publisher_domain = ANY($1)`,
+        [lower]
+      ),
+    ]);
+
+    for (const row of discoveredResult.rows) {
+      map.set(row.publisher_domain, 'adagents_json');
+    }
+    // hosted takes precedence over discovered
+    for (const row of hostedResult.rows) {
+      map.set(row.publisher_domain, 'hosted');
+    }
+
+    return map;
   }
 
   /**
