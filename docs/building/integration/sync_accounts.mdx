@@ -3,7 +3,9 @@ title: sync_accounts
 testable: false
 ---
 
-Declare an agent's advertiser portfolio to a seller with upsert semantics. Each call specifies which brands the agent represents, who operates each seat, and the desired billing model. The seller responds with per-account status — whether each account was created, already existed, or requires further setup.
+Declare an agent's advertiser portfolio to a vendor agent with upsert semantics. Each call specifies which brands the agent represents, who operates each seat, and the desired billing model. The vendor agent responds with per-account status — whether each account was created, already existed, or requires further setup.
+
+`sync_accounts` is used across all vendor protocols: media buy agents, signals agents, governance agents, and creative agents. The `account_id` returned is what you pass to protocol tasks like `create_media_buy`, `get_signals`, `activate_signal`, and `report_usage`.
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
@@ -86,13 +88,13 @@ asyncio.run(main())
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `house` | string | Yes | House domain where `brand.json` is hosted (e.g. `acme-corp.com`, `unilever.com`). For single-brand houses, this alone identifies the brand. |
+| `house` | string | Yes | House domain where [`brand.json`](/docs/brand-protocol/brand-json) is hosted (e.g. `acme-corp.com`, `unilever.com`). This is the brand registry identifier — vendor agents look up the brand's verified identity from this domain. For single-brand houses, this alone identifies the brand. |
 | `brand_id` | string | No | Brand ID within the house portfolio (e.g. `dove`, `tide`). Required when the house has multiple brands. |
 | `operator` | string | No | Domain of the entity operating the seat (e.g. `groupm.com`). Omit if the brand operates its own seat. |
-| `billing` | string | No | Desired billing model: `brand`, `operator`, or `agent`. Omit to accept the seller's default. The seller may return a different billing model — always check the response. |
+| `billing` | string | No | Desired billing model: `brand`, `operator`, or `agent`. Omit to accept the vendor agent's default. The vendor agent may return a different billing model — always check the response. |
 | `sandbox` | boolean | No | When true, provision a sandbox account for testing. |
 
-**Natural key**: The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. The seller uses this key for upsert matching across sync calls. `{house: "acme-corp.com"}` (direct) is a different account from `{house: "acme-corp.com", operator: "groupm.com"}` (via agency).
+**Natural key**: The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. The vendor agent uses this key for upsert matching across sync calls. `{house: "acme-corp.com"}` (direct) is a different account from `{house: "acme-corp.com", operator: "groupm.com"}` (via agency).
 
 ## Response
 
@@ -111,17 +113,17 @@ asyncio.run(main())
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Seller's identifier for this account. Use this on all subsequent operations. |
+| `account_id` | Vendor agent's identifier for this account. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). |
 | `house` | Echoed from request |
 | `brand_id` | Echoed from request (when provided) |
 | `operator` | Echoed from request (when provided) |
-| `name` | Seller's display name for the account |
+| `name` | Vendor agent's display name for the account |
 | `action` | What happened in this sync (see [Action Values](#action-values)) |
 | `status` | Current durable state of the account (see [Account Status](#account-status)) |
 | `billing` | Actual billing model applied. May differ from requested — always check this field. |
 | `parent_account_id` | Parent account when billing is consolidated through an agent or operator house account |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, and `message` explaining what's needed. |
-| `rate_card` | Seller-assigned rate card identifier (when applicable) |
+| `rate_card` | Vendor-assigned rate card identifier (when applicable) |
 | `payment_terms` | Net terms (e.g. `net_30`) |
 | `credit_limit` | Maximum outstanding balance |
 | `errors` | Per-account errors (only when `action: "failed"`) |
@@ -140,10 +142,10 @@ asyncio.run(main())
 
 | Status | Meaning | Next step |
 |--------|---------|-----------|
-| `active` | Ready to use | Place buys with this `account_id` |
-| `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll `list_accounts` for updates. |
+| `active` | Ready to use | Use `account_id` in protocol operations |
+| `pending_approval` | Vendor reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll `list_accounts` for updates. |
 | `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. Route spend to other accounts. |
-| `suspended` | Was active, now paused | Contact seller to resolve |
+| `suspended` | Was active, now paused | Contact vendor to resolve |
 | `closed` | Terminated | — |
 
 ## Common Scenarios
@@ -292,7 +294,7 @@ asyncio.run(main())
 
 ### Handling billing negotiation
 
-The seller may return a different billing model than requested. Always check the returned `billing` value:
+The vendor agent may return a different billing model than requested. Always check the returned `billing` value:
 
 <CodeGroup>
 
@@ -410,14 +412,14 @@ asyncio.run(main())
 |------------|-------------|------------|
 | `ACCOUNT_NOT_FOUND` | Referenced account does not exist or is not accessible | Check `account_id` or re-sync |
 | `PAYMENT_REQUIRED` | Account has reached its credit limit | Add funds or route to another account |
-| `ACCOUNT_SUSPENDED` | Account is suspended | Contact seller to resolve |
+| `ACCOUNT_SUSPENDED` | Account is suspended | Contact vendor to resolve |
 | `BRAND_REQUIRED` | Billable operation attempted without brand reference | Include `house` in the account entry |
 
 Per-account failures appear in the account entry with `action: "failed"` and a per-account `errors` array — they do not cause the entire request to fail.
 
 ## Next Steps
 
-- [list_accounts](/docs/media-buy/task-reference/list_accounts) — Poll for status changes on pending accounts
-- [Accounts and Agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) — Use `account_id` from sync_accounts on media buy operations
+- [list_accounts](/docs/building/integration/list_accounts) — Poll for status changes on pending accounts
+- [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the `house` domain
 - [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) — Discover `supported_billing` and `required_for_products` before syncing

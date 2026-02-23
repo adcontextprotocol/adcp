@@ -3,7 +3,9 @@ title: list_accounts
 testable: false
 ---
 
-Returns all accounts the authenticated agent can operate on this seller. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in media buy operations.
+Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
+
+`list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
 
 **Response Time**: ~1s.
 
@@ -77,9 +79,9 @@ All parameters are optional. An empty request returns all accounts.
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Seller's identifier. Use this in `create_media_buy`, `get_products`, and other operations. |
-| `name` | Seller's display name for the account |
-| `house` | Brand's house domain |
+| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. |
+| `name` | Vendor agent's display name for the account |
+| `house` | Brand's house domain (the [brand registry](/docs/brand-protocol/brand-json) identifier) |
 | `brand_id` | Brand ID within the house (when applicable) |
 | `operator` | Operator domain (when applicable) |
 | `status` | Current account state: `active`, `pending_approval`, `payment_required`, `suspended`, or `closed` |
@@ -204,6 +206,6 @@ asyncio.run(main())
 
 ## Next Steps
 
-- [sync_accounts](/docs/media-buy/task-reference/sync_accounts) — Declare new accounts or update existing ones
-- [Accounts and Agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
-- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) — Use `account_id` from list_accounts in media buy operations
+- [sync_accounts](/docs/building/integration/sync_accounts) — Declare new accounts or update existing ones
+- [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the `house` domain
