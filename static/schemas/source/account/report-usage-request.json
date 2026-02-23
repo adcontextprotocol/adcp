@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/report-usage-request.json",
+  "title": "Report Usage Request",
+  "description": "Reports how a vendor's service was consumed. Called by orchestrators after delivery to inform a vendor agent (signals, governance, creative) what was used and what they are owed. Supports batching multiple campaigns in a single request. Any vendor protocol that participates in transactions should implement this task.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "The caller's account with this vendor agent"
+    },
+    "operator_id": {
+      "type": "string",
+      "description": "The operator (agency or buyer) on whose behalf usage is being reported. Characterizes billing responsibility."
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "Date range for the usage report. All periods use UTC timezone.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 start timestamp in UTC"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 end timestamp in UTC"
+        }
+      },
+      "required": ["start", "end"],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "array",
+      "description": "Usage records for this reporting period. Each item describes consumption of one vendor service unit. Multiple campaigns can be included in a single request by varying buyer_campaign_ref across records.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "buyer_campaign_ref": {
+            "type": "string",
+            "description": "The buyer's campaign reference for this usage record. Allows batching usage for multiple campaigns in a single request."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Type of vendor service consumed. Determines which protocol-specific fields are present.",
+            "enum": ["signal", "content_standards", "creative"]
+          },
+          "vendor_cost": {
+            "type": "number",
+            "description": "Amount owed to the vendor for this usage record, in currency",
+            "minimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code for vendor_cost and media_spend",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "impressions": {
+            "type": "number",
+            "description": "Impressions delivered for this usage record. Required for signal kind.",
+            "minimum": 0
+          },
+          "media_spend": {
+            "type": "number",
+            "description": "Media spend associated with these impressions, in currency. Required when vendor pricing is percent_of_media.",
+            "minimum": 0
+          },
+          "signal_agent_segment_id": {
+            "type": "string",
+            "description": "Signal identifier from get_signals. Required when kind='signal'."
+          },
+          "pricing_option_id": {
+            "type": "string",
+            "description": "Pricing option identifier from get_signals. Required when kind='signal'. The signals agent uses this to verify the correct rate was applied."
+          },
+          "standards_id": {
+            "type": "string",
+            "description": "Content standards configuration identifier. Required when kind='content_standards'."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": ["kind", "vendor_cost", "currency"],
+        "if": {
+          "properties": { "kind": { "type": "string", "const": "signal" } },
+          "required": ["kind"]
+        },
+        "then": {
+          "required": ["signal_agent_segment_id", "pricing_option_id", "impressions"]
+        },
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "account_id",
+    "operator_id",
+    "reporting_period",
+    "usage"
+  ],
+  "additionalProperties": true
+}

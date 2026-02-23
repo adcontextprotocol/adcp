@@ -18,6 +18,8 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 |-----------|------|----------|-------------|
 | `signal_spec` | string | Yes | Natural language description of the desired signals |
 | `deliver_to` | DeliverTo | Yes | Deployment targets where signals need to be activated (see Deliver To Object below) |
+| `account_id` | string | No | The caller's account with this signals agent. When provided, returns per-account pricing options if configured. |
+| `buyer_campaign_ref` | string | No | The buyer's campaign reference. Used to correlate discovery with `report_usage` calls. |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 | `pagination` | object | No | Pagination: `cursor` (opaque cursor from previous response) for paging through large result sets |
@@ -55,7 +57,8 @@ Each deployment target uses a `type` field to discriminate between platform-base
 |-----------|------|----------|-------------|
 | `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
 | `data_providers` | string[] | No | Filter by specific data providers |
-| `max_cpm` | number | No | Maximum CPM price filter |
+| `max_cpm` | number | No | Maximum effective CPM filter. Applies to CPM-priced signals and to percent-of-media signals that have a `max_cpm` cap set. |
+| `max_percent` | number | No | Maximum percent-of-media filter (0–100). Applies only to signals with `model='percent_of_media'`. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
 ## Response Structure
@@ -94,10 +97,17 @@ The response structure is identical across protocols, with only the transport wr
           "estimated_activation_duration_minutes": "number"
         }
       ],
-      "pricing": {
-        "cpm": "number",
-        "currency": "string"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "string",
+          "pricing": {
+            "model": "cpm | percent_of_media",
+            "cpm": "number (when model=cpm)",
+            "percent": "number (when model=percent_of_media)",
+            "currency": "string"
+          }
+        }
+      ]
     }
   ]
 }
@@ -116,11 +126,14 @@ The response structure is identical across protocols, with only the transport wr
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
     - **is_live**: Whether signal is currently active on this deployment
-    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this deployment has `requester=true` in the request.**
+    - **activation_key**: The key to use for targeting (see Activation Key below). Only present when `is_live=true` and the authenticated caller has access to this deployment.
     - **estimated_activation_duration_minutes**: Time to activate if not live
-  - **pricing**: Pricing information
-    - **cpm**: Cost per thousand impressions
-    - **currency**: Currency code
+  - **pricing_options**: Array of available pricing options for this signal
+    - **pricing_option_id**: Opaque identifier; pass this back in `report_usage` to reference which option was applied
+    - **pricing.model**: Pricing model — `"cpm"` or `"percent_of_media"`
+    - **pricing.cpm**: Cost per thousand impressions (present when `model="cpm"`)
+    - **pricing.percent**: Percentage of media spend, e.g. `15` = 15% (present when `model="percent_of_media"`)
+    - **pricing.currency**: ISO 4217 currency code
 
 ### Activation Key Object
 
@@ -203,10 +216,12 @@ Because the authenticated caller matches the deployment target, the response inc
           }
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_lux_auto_cpm",
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+        }
+      ]
     }
   ]
 }
@@ -279,10 +294,12 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
           "estimated_activation_duration_minutes": 60
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_lux_auto_cpm",
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+        }
+      ]
     }
   ]
 }
@@ -376,10 +393,12 @@ A2A returns results as artifacts with the same data structure:
                     "estimated_activation_duration_minutes": 60
                   }
                 ],
-                "pricing": {
-                  "cpm": 3.50,
-                  "currency": "USD"
-                }
+                "pricing_options": [
+                  {
+                    "pricing_option_id": "po_lux_auto_cpm",
+                    "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+                  }
+                ]
               }
             ]
           }
@@ -466,10 +485,12 @@ Discover all available deployments across platforms:
         "estimated_activation_duration_minutes": 60
       }
     ],
-    "pricing": {
-      "cpm": 2.50,
-      "currency": "USD"
-    }
+    "pricing_options": [
+      {
+        "pricing_option_id": "po_peer39_lux_auto_cpm",
+        "pricing": { "model": "cpm", "cpm": 2.50, "currency": "USD" }
+      }
+    ]
   }]
 }
 ```
@@ -491,9 +512,12 @@ Discover all available deployments across platforms:
     - **scope** (string): "platform-wide" or "account-specific"
     - **decisioning_platform_segment_id** (string): Platform-specific ID to use
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
-  - **pricing** (object): Pricing information
-    - **cpm** (number): Cost per thousand impressions
-    - **currency** (string): Currency code
+  - **pricing_options** (array): Available pricing options for this signal
+    - **pricing_option_id** (string): Pass this back in `report_usage` to identify which option was applied
+    - **pricing.model** (string): Pricing model — `"cpm"` or `"percent_of_media"`
+    - **pricing.cpm** (number): Cost per thousand impressions (present when `model="cpm"`)
+    - **pricing.percent** (number): Percentage of media spend, e.g. `15` = 15% (present when `model="percent_of_media"`)
+    - **pricing.currency** (string): ISO 4217 currency code
 
 ## Error Codes
 
@@ -548,10 +572,12 @@ Discover all available deployments across platforms:
           "decisioning_platform_segment_id": "ox_agency123_affluent_789"
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_acme_aff_cpm",
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+        }
+      ]
     }
     // ... more signals
   ]
@@ -582,10 +608,12 @@ Discover all available deployments across platforms:
           "decisioning_platform_segment_id": "ttd_exp_auto_premium"
         }
       ],
-      "pricing": {
-        "cpm": 4.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_exp_auto_cpm",
+          "pricing": { "model": "cpm", "cpm": 4.50, "currency": "USD" }
+        }
+      ]
     }
   ],
   "errors": [

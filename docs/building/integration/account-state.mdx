@@ -219,7 +219,55 @@ Not everything requires account state. Some tasks are stateless queries:
 | `get_signals` — discover signals | `activate_signal` — activate signals |
 | `get_adcp_capabilities` — discover features | `sync_catalogs` — upload catalogs |
 
-The pattern: **discovery is stateless, execution is stateful**. You can browse a seller's inventory without an account. You need an account to buy.
+The pattern: **discovery is stateless, execution is stateful**. You can browse a seller's inventory without an account. You need an account to buy. Some discovery tasks accept an optional `account_id` to return per-account pricing or personalized results — but an account is never required for discovery.
+
+## Vendor settlement
+
+Vendor protocols — signals, governance, creative — use two shared tasks for post-campaign settlement. These tasks run between an orchestrator and a vendor agent (not a buying platform), using the `account_id` from the vendor relationship established via `sync_accounts` or `activate_signal`.
+
+### report_usage
+
+**Schema**: [`account/report-usage-request.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-request.json) / [`account/report-usage-response.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-response.json)
+
+Orchestrators call `report_usage` to inform a vendor agent how their service was used after delivery. Multiple campaigns can be batched in a single request by varying `buyer_campaign_ref` across records. The vendor agent uses this data to track earned revenue and verify billing.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `account_id` | string | Yes | The caller's account with this vendor agent |
+| `operator_id` | string | Yes | The operator (agency or buyer) on whose behalf usage is reported. Characterizes billing responsibility. |
+| `reporting_period` | object | Yes | `start` and `end` as ISO 8601 date-time in UTC |
+| `usage` | UsageRecord[] | Yes | One record per service unit consumed (see below) |
+
+Each usage record requires `kind`, `vendor_cost`, and `currency`. Signal records additionally require `signal_agent_segment_id`, `pricing_option_id`, and `impressions`; include `media_spend` for percent-of-media cost verification. Include `buyer_campaign_ref` per record to associate it with a specific campaign.
+
+```json
+{
+  "account_id": "acct_pinnacle_signals",
+  "operator_id": "pinnacle-media.com",
+  "reporting_period": {
+    "start": "2025-03-01T00:00:00Z",
+    "end": "2025-03-31T23:59:59Z"
+  },
+  "usage": [
+    {
+      "buyer_campaign_ref": "mb_spring_launch_001",
+      "kind": "signal",
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "pricing_option_id": "po_lux_auto_cpm",
+      "impressions": 4200000,
+      "media_spend": 21000.00,
+      "vendor_cost": 2100.00,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+The response confirms how many records were accepted. Partial acceptance is valid — accepted records are stored even if some records fail validation.
+
+```json
+{ "accepted": 1 }
+```
 
 ## Related documentation
 

@@ -52,26 +52,13 @@
               "$ref": "/schemas/core/deployment.json"
             }
           },
-          "pricing": {
-            "type": "object",
-            "description": "Pricing information",
-            "properties": {
-              "cpm": {
-                "type": "number",
-                "description": "Cost per thousand impressions",
-                "minimum": 0
-              },
-              "currency": {
-                "type": "string",
-                "description": "Currency code",
-                "pattern": "^[A-Z]{3}$"
-              }
+          "pricing_options": {
+            "type": "array",
+            "description": "Available pricing options for this signal. Each option has a pricing_option_id that the buyer references in report_usage.",
+            "items": {
+              "$ref": "/schemas/core/signal-pricing-option.json"
             },
-            "required": [
-              "cpm",
-              "currency"
-            ],
-            "additionalProperties": true
+            "minItems": 1
           }
         },
         "required": [
@@ -82,7 +69,7 @@
           "data_provider",
           "coverage_percentage",
           "deployments",
-          "pricing"
+          "pricing_options"
         ],
         "additionalProperties": true
       }

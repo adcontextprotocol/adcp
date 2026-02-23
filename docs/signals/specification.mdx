@@ -4,7 +4,7 @@ sidebarTitle: Specification
 ---
 
 **Status**: Request for Comments
-**Last Updated**: January 25, 2026
+**Last Updated**: February 22, 2026
 
 This document defines the Signals Protocol specification. The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
@@ -19,8 +19,9 @@ The Signals Protocol provides:
 - Natural language signal discovery based on marketing objectives
 - Multi-platform signal discovery in a single request
 - Signal activation for specific platforms and accounts
-- Transparent pricing with CPM and revenue share models
-- Signal size reporting with unit types (individuals, devices, households)
+- Transparent pricing with CPM and percent-of-media models
+- Signal usage reporting for post-delivery settlement
+- Signal revenue visibility for data providers and orchestrators
 
 ## Transport Requirements
 
@@ -64,13 +65,22 @@ Every signal request involves two roles:
 
 ### Identifiers
 
-- **`signal_agent_segment_id`**: Unique identifier for a signal. Signal agents MUST return this for each signal. Orchestrators MUST use this in `activate_signal` requests.
+- **`signal_agent_segment_id`**: Unique identifier for a signal. Signal agents MUST return this for each signal. Orchestrators MUST use this in `activate_signal` and `report_usage` requests.
 
 - **`activation_key`**: Key for campaign targeting. Signal agents MUST return this when `is_live: true` AND the caller has access to the deployment. Orchestrators MUST use this for targeting (not `signal_agent_segment_id`).
 
+### Pricing Models
+
+Signals use one of two pricing models expressed via the `model` field on the `pricing` object:
+
+- **`cpm`**: Fixed cost per thousand impressions. The `cpm` field specifies the rate.
+- **`percent_of_media`**: A percentage of media spend. The `percent` field specifies the rate (e.g., `15` = 15%). An optional `max_cpm` cap may also be set — when present, the effective rate is `min(percent × media_spend_per_mille, max_cpm)`, which is the pricing model used by platforms like The Trade Desk.
+
+Both models require a `currency` field.
+
 ## Tasks
 
-The Signals Protocol defines two tasks. See task reference pages for complete request/response schemas and examples.
+The Signals Protocol defines two protocol-specific tasks. Usage reporting uses the generic [report_usage](/docs/building/integration/account-state) task shared across all vendor protocols.
 
 ### get_signals
 
@@ -81,7 +91,7 @@ The Signals Protocol defines two tasks. See task reference pages for complete re
 Discover signals matching campaign criteria.
 
 **Requirements:**
-- Orchestrators MUST include `signal_spec` and `deliver_to`
+- Orchestrators MUST include `deliver_to` and either `signal_spec` or `signal_ids`
 - Signal agents MUST return all required fields per response schema
 - Signal agents MUST include `activation_key` when `is_live: true` AND caller has deployment access
 
@@ -91,13 +101,26 @@ Discover signals matching campaign criteria.
 
 **Reference**: [`activate_signal` task](/docs/signals/tasks/activate_signal)
 
-Activate a signal for use on a decisioning platform.
+Activate a signal for use on a decisioning platform. The `buyer_campaign_ref` field links this activation to a specific media buy, enabling the signals agent to correlate subsequent `report_usage` calls.
 
 **Requirements:**
 - Orchestrators MUST include `signal_agent_segment_id` and `deployments`
+- Orchestrators SHOULD include `account_id` and `buyer_campaign_ref` to establish transaction context
 - On success, signal agents MUST return a `deployments` array with `is_live` for each deployment
 - Signal agents MUST return `activation_key` when `is_live: true` AND caller has deployment access
 - On failure, signal agents MUST return an `errors` array (with no `deployments` array)
+
+### report_usage (account management)
+
+**Schema**: [`account/report-usage-request.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-request.json) / [`account/report-usage-response.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-response.json)
+
+Report signal data consumption after campaign delivery. Usage records use `kind: "signal"` with `signal_agent_segment_id`. See [report_usage](/docs/building/integration/account-state) for full reference.
+
+**Requirements:**
+- Orchestrators SHOULD call this task at regular intervals and upon campaign completion
+- Usage records for signals MUST include `signal_agent_segment_id`, `pricing_option_id`, `impressions`, `media_spend`, `vendor_cost`, and `currency`
+- Signal agents MUST return the count of `accepted` records
+- Signal agents MUST support partial acceptance
 
 ## Error Handling
 
@@ -122,6 +145,7 @@ All Signals Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 - Signal agents MUST only return `activation_key` to authenticated callers with deployment access
 - Signal agents MUST NOT return activation keys for deployments the caller cannot access
 
+
 ### Data Minimization
 
 - Signal agents MUST NOT return signals the principal is not authorized to access
@@ -138,6 +162,10 @@ A conformant Signals Protocol agent MUST:
 4. Use specified error codes
 5. Enforce access control for private signals and activation keys
 
+A conformant Signals Protocol agent that supports settlement MUST additionally:
+
+6. Implement `report_usage` with partial acceptance semantics
+
 ### Orchestrator Conformance
 
 A conformant Signals Protocol orchestrator MUST:
@@ -146,6 +174,11 @@ A conformant Signals Protocol orchestrator MUST:
 2. Include required fields as defined in request schemas
 3. Handle async activation responses
 4. Use `activation_key` for campaign targeting
+
+An orchestrator that manages signal billing SHOULD additionally:
+
+5. Include `account_id` and `buyer_campaign_ref` in `get_signals` requests
+6. Call `report_usage` at regular intervals and upon campaign completion, referencing the `pricing_option_id` from discovery
 
 ## Implementation Notes
 
@@ -163,6 +196,10 @@ Signal activation is typically asynchronous:
 
 Orchestrators MUST NOT assume immediate availability after activation request.
 
+### Settlement Cadence
+
+Orchestrators SHOULD report campaign usage monthly at minimum. For campaigns with significant spend, weekly reporting is recommended to give signals agents timely visibility into earned revenue.
+
 ## Schema Reference
 
 | Schema | Description |
@@ -171,5 +208,9 @@ Orchestrators MUST NOT assume immediate availability after activation request.
 | [`signals/get-signals-response.json`](https://adcontextprotocol.org/schemas/v2/signals/get-signals-response.json) | get_signals response |
 | [`signals/activate-signal-request.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-request.json) | activate_signal request |
 | [`signals/activate-signal-response.json`](https://adcontextprotocol.org/schemas/v2/signals/activate-signal-response.json) | activate_signal response |
+| [`account/report-usage-request.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-request.json) | report_usage request |
+| [`account/report-usage-response.json`](https://adcontextprotocol.org/schemas/v2/account/report-usage-response.json) | report_usage response |
+| [`core/signal-pricing.json`](https://adcontextprotocol.org/schemas/v2/core/signal-pricing.json) | Signal pricing model |
+| [`core/signal-pricing-option.json`](https://adcontextprotocol.org/schemas/v2/core/signal-pricing-option.json) | Signal pricing option (id + pricing) |
 | [`core/deployment.json`](https://adcontextprotocol.org/schemas/v2/core/deployment.json) | Deployment target |
 | [`core/activation-key.json`](https://adcontextprotocol.org/schemas/v2/core/activation-key.json) | Activation key |

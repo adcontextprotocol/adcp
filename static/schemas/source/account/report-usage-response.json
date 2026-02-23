@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/report-usage-response.json",
+  "title": "Report Usage Response",
+  "description": "Response payload for report_usage task. Confirms how many usage records were accepted and reports any validation errors.",
+  "type": "object",
+  "properties": {
+    "accepted": {
+      "type": "integer",
+      "description": "Number of usage records successfully accepted",
+      "minimum": 0
+    },
+    "errors": {
+      "type": "array",
+      "description": "Validation errors for individual usage records. Partial acceptance is valid — accepted records are stored even when some records error.",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "accepted"
+  ],
+  "additionalProperties": true
+}

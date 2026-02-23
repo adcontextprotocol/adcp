@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-pricing-option.json",
+  "title": "Signal Pricing Option",
+  "description": "A specific pricing option offered by a signals agent for a signal. The pricing_option_id is returned in get_signals and referenced in report_usage to identify which pricing option was applied.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Opaque identifier for this pricing option, unique within the signals agent. Returned in get_signals; passed back in report_usage for reconciliation."
+    },
+    "pricing": {
+      "$ref": "/schemas/core/signal-pricing.json"
+    }
+  },
+  "required": ["pricing_option_id", "pricing"],
+  "additionalProperties": true
+}

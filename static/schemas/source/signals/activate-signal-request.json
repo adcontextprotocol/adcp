@@ -17,6 +17,14 @@
       },
       "minItems": 1
     },
+    "account_id": {
+      "type": "string",
+      "description": "The caller's account with the signals agent. Associates this activation with a commercial relationship established via sync_accounts."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's reference for the campaign or media buy this signal is being activated for. Enables the signals agent to correlate activations with subsequent report_usage calls."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

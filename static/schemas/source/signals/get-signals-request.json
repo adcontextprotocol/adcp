@@ -5,6 +5,14 @@
   "description": "Request parameters for discovering signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both (signal_ids take precedence for exact matches, signal_spec provides additional discovery context).",
   "type": "object",
   "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "The caller's account with this signals agent. When provided, the signals agent returns per-account pricing options if configured."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's campaign or media buy reference. Used to correlate signal discovery with subsequent report_usage calls."
+    },
     "signal_spec": {
       "type": "string",
       "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."

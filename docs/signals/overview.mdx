@@ -25,29 +25,35 @@ The Signals Protocol provides:
 - Natural language signal discovery based on marketing objectives
 - Multi-platform signal discovery in a single request
 - Signal activation for specific platforms and accounts
-- Transparent pricing with CPM and revenue share models
-- Signal size reporting with unit types (individuals, devices, households)
+- Transparent pricing with CPM and percent-of-media models (including CPM caps)
+- Campaign usage reporting for post-delivery settlement
 
 ## Tasks
 
-| Task | Purpose |
-|------|---------|
-| [`get_signals`](/docs/signals/tasks/get_signals) | Discover signals matching campaign criteria |
-| [`activate_signal`](/docs/signals/tasks/activate_signal) | Activate a signal for use in campaigns |
+The Signals Protocol has two protocol-specific tasks. Transaction reporting uses the generic [account management tasks](/docs/building/integration/account-state) shared across all vendor protocols.
 
-## Agent Integration
+| Task | Domain | Purpose |
+|------|--------|---------|
+| [`get_signals`](/docs/signals/tasks/get_signals) | signals | Discover signals with pricing options |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | signals | Activate a custom signal for use in campaigns |
+| [`report_usage`](/docs/building/integration/account-state) | account | Report how signal data was used after delivery |
 
-The Signals Protocol operates within the broader [AdCP Ecosystem](/docs/intro#the-adcp-ecosystem-layers), enabling signal agents to integrate directly with decisioning platforms (DSPs, orchestration platforms).
+## Transaction Model
 
-### Direct Integration Model
+The standard signal transaction flow:
 
-Signal agents contract directly with decisioning platforms, eliminating intermediary reporting and usage tracking. Once signals are activated on a decisioning platform, all usage reporting, billing, and campaign metrics are handled directly by that platform.
+1. **`sync_accounts`** — Establish the commercial relationship with the signals agent, receiving an `account_id` and billing terms.
+2. **`get_signals`** — Discover signals. Pass `account_id` and `buyer_campaign_ref` to receive per-account pricing options. Each signal returns `pricing_options[]`, each with a `pricing_option_id` and rate.
+3. **Campaign runs** — Use the signals via the platform's standard targeting interface.
+4. **`report_usage`** — Report actual consumption (impressions, media spend, vendor cost) referencing the `signal_agent_segment_id` and `pricing_option_id` chosen at discovery time.
+
+`activate_signal` is for custom signals that require explicit DSP-side activation (e.g., audience lists that need to be pushed to a specific platform before use).
 
 ## Getting Started
 
-1. **Discover signals** using `get_signals` with a natural language brief
-2. **Review pricing** and signal sizes in the response
-3. **Activate signals** using `activate_signal` for your target platform
-4. **Use in campaigns** via the platform's standard targeting interface
+1. **Discover signals** using `get_signals` with a natural language brief and your `account_id`
+2. **Review pricing options** and signal sizes in the response
+3. **Use in campaigns** via the platform's standard targeting interface
+4. **Report usage** using `report_usage` after delivery
 
 See the [Protocol Specification](/docs/signals/specification) for complete technical details.
