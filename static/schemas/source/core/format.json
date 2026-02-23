@@ -27,7 +27,7 @@
         },
         "overlays": {
           "type": "array",
-          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds. Note: chrome that applies at the format level rather than the asset level (e.g., carousel navigation arrows spanning all slides) is not yet expressible here.",
+          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds.",
           "items": { "$ref": "/schemas/core/overlay.json" }
         }
       },
@@ -48,6 +48,11 @@
           "type": "boolean",
           "description": "Whether this asset is required within each repetition of the group",
           "default": false
+        },
+        "overlays": {
+          "type": "array",
+          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., carousel navigation arrows, slide indicators). Creative agents should avoid placing critical content within overlay bounds.",
+          "items": { "$ref": "/schemas/core/overlay.json" }
         }
       },
       "required": ["asset_id", "asset_type", "required"]
