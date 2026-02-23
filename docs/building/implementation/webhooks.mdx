@@ -139,13 +139,16 @@ If the task completes synchronously (initial response is already `completed` or 
 | `failed` | Task failed with error details |
 | `canceled` | Task was canceled |
 
-## Webhook payload format
+## Webhook payload formats
+
+### MCP
 
 ```json
 {
   "task_id": "task_456",
-  "operation_id": "op_abc123",
+  "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",
   "task_type": "create_media_buy",
+  "domain": "media-buy",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
   "message": "Media buy created successfully",
@@ -159,10 +162,50 @@ If the task completes synchronously (initial response is already `completed` or 
 }
 ```
 
-The `result` field contains status-specific data:
+### A2A
 
-| Status | `result` contains |
-|--------|------------------|
+A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). The AdCP result data is in `status.message.parts[].data`:
+
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "kind": "text", "text": "Media buy created successfully" },
+        {
+          "kind": "data",
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "campaign_q1",
+            "packages": [
+              { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+### Protocol comparison
+
+| | MCP | A2A |
+|---|---|---|
+| **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
+| **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
+| **Result location** | `result` field | `status.message.parts[].data` |
+| **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
+
+### Status-specific result data
+
+| Status | `result` / `data` contains |
+|--------|---------------------------|
 | `completed` / `failed` | Full task response |
 | `working` | Progress: `percentage`, `current_step`, `total_steps` |
 | `input-required` | Reason and any validation errors |
@@ -257,6 +300,15 @@ async function processWebhook(payload) {
 ```
 
 **Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
+
+## Best practices
+
+1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
+2. **Handle duplicates** — use `task_id` + `timestamp` to skip already-processed or out-of-order events
+3. **Verify signatures** — always validate `X-ADCP-Signature` before processing
+4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
+5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
 
 ## Reporting webhooks
 
