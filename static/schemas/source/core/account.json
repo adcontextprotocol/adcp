@@ -69,6 +69,32 @@
       },
       "required": ["amount", "currency"]
     },
+    "parent_account_id": {
+      "type": "string",
+      "description": "Parent account ID when this account is a sub-account under a shared billing account."
+    },
+    "setup": {
+      "type": "object",
+      "description": "Present when status is 'pending_approval'. Contains next steps for completing account activation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable description of what's needed."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this setup link expires."
+        }
+      },
+      "required": ["message"],
+      "additionalProperties": true
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."

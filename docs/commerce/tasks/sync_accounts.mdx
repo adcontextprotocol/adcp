@@ -83,6 +83,7 @@ asyncio.run(main())
 | `accounts` | [Account](#account-object)[] | Yes | Accounts to declare. Each entry identifies a brand-operator-billing relationship. |
 | `delete_missing` | boolean | No | When true, deactivates accounts previously synced by this agent that are not in the current request. Scoped to this agent only — does not affect other agents' accounts. Default: false. |
 | `dry_run` | boolean | No | Preview what would happen without making changes. Returns the same response structure with a `dry_run: true` field. Default: false. |
+| `push_notification_config` | object | No | Webhook for async notifications when account status changes (e.g., `pending_approval` → `active`). |
 
 ### Account Object
 
@@ -113,7 +114,7 @@ asyncio.run(main())
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier for this account. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). |
+| `account_id` | Vendor agent's identifier for this account. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). Absent when `action: "failed"`. |
 | `house` | Echoed from request |
 | `brand_id` | Echoed from request (when provided) |
 | `operator` | Echoed from request (when provided) |
