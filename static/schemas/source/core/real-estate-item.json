@@ -133,6 +133,14 @@
       },
       "minItems": 1
     },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this property listing. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (exterior/interior hero), 'images_vertical' (9:16 for Stories), 'images_square' (1:1). Enables formats to declare typed image requirements that map unambiguously to the right asset regardless of platform.",
+      "items": {
+        "$ref": "/schemas/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

@@ -102,6 +102,48 @@ Each vertical type has a defined AdCP item schema, so formats can declare `catal
 | `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/v1/core/destination-item.json) | Meta destination catalogs, Google travel ads |
 | `app` | [AppItem](https://adcontextprotocol.org/schemas/v1/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
 
+## Typed catalog assets
+
+Vertical catalog items support an `assets` array using the same `OfferingAssetGroup` structure as offering-type catalogs. This solves a concrete problem: standard catalog feeds have a single `image_url` field, but a hotel ad on Snap needs a 1080×1920 vertical image, a display banner needs a 1920×1080 landscape hero, and the advertiser's logo goes in a separate slot. Without typed pools, a creative agent has to guess which image to use for which slot.
+
+By providing assets grouped by role, each catalog item self-describes the images it carries:
+
+```json
+{
+  "hotel_id": "grand-amsterdam",
+  "name": "Grand Hotel Amsterdam",
+  "price": { "amount": 289, "currency": "EUR", "period": "night" },
+  "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
+  "assets": [
+    {
+      "asset_group_id": "images_landscape",
+      "asset_type": "image",
+      "items": [
+        { "url": "https://images.acmehotels.com/grand-amsterdam/landscape.jpg", "width": 1920, "height": 1080 }
+      ]
+    },
+    {
+      "asset_group_id": "images_vertical",
+      "asset_type": "image",
+      "items": [
+        { "url": "https://images.acmehotels.com/grand-amsterdam/vertical.jpg", "width": 1080, "height": 1920 }
+      ]
+    },
+    {
+      "asset_group_id": "logo",
+      "asset_type": "image",
+      "items": [
+        { "url": "https://images.acmehotels.com/logo.png", "width": 400, "height": 200 }
+      ]
+    }
+  ]
+}
+```
+
+The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in `catalog_requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`.
+
+Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-requirements)) to explicitly declare which template slot maps to which asset group.
+
 ## The Catalog object
 
 **Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/v1/core/catalog.json)
@@ -129,6 +171,9 @@ interface Catalog {
   // Integration
   conversion_events?: EventType[]; // Events to attribute to catalog items
   content_id_type?: ContentIdType; // Identifier type for event attribution
+
+  // Feed normalization (for external feeds via url)
+  feed_field_mappings?: CatalogFieldMapping[]; // Map non-standard feed fields to AdCP schema
 }
 ```
 
@@ -148,6 +193,7 @@ interface Catalog {
 | `query` | string | No | Natural language filter |
 | `conversion_events` | EventType[] | No | Event types that represent conversions for items in this catalog (e.g., `submit_application` for job catalogs, `purchase` for product catalogs) |
 | `content_id_type` | ContentIdType | No | Identifier type for matching conversion event `content_ids` to catalog items. Values: `sku`, `gtin`, or vertical-specific IDs (`job_id`, `hotel_id`, etc.). Omit for custom identifier schemes. |
+| `feed_field_mappings` | CatalogFieldMapping[] | No | Normalization rules for external feeds. Maps non-standard field names, date formats, price encodings, and image URLs to the AdCP catalog item schema. See [Feed field mappings](#feed-field-mappings). |
 
 ## Conversion events
 
@@ -347,6 +393,51 @@ Omit `catalogs` to list all catalogs on the account without modification:
 
 This matters because sellers may already have brand data from other sources — a retailer might have the brand's product catalog from their commerce platform. Discovery lets the buyer build on existing state rather than re-uploading everything.
 
+## Feed field mappings
+
+External feeds rarely match the AdCP catalog item schema exactly. Field names differ, dates use platform-specific formats, prices may be encoded as integer cents, and images arrive as untyped URLs. `feed_field_mappings` provides a declarative normalization layer — included on the catalog object in the `sync_catalogs` request — so buyers can describe the translation without preprocessing every feed.
+
+```json
+{
+  "catalog_id": "hotel-feed",
+  "type": "hotel",
+  "url": "https://feeds.partner.com/hotels.xml",
+  "feed_format": "custom",
+  "feed_field_mappings": [
+    { "feed_field": "hotel_name",      "catalog_field": "name" },
+    { "feed_field": "nightly_cents",   "catalog_field": "price.amount",   "transform": "divide", "by": 100 },
+    { "catalog_field": "price.currency", "value": "USD" },
+    { "feed_field": "avail_date",      "catalog_field": "valid_from",     "transform": "date", "format": "YYYYMMDD", "timezone": "UTC" },
+    { "feed_field": "primary_photo",   "asset_group_id": "images_landscape" },
+    { "feed_field": "snap_photo",      "asset_group_id": "images_vertical" },
+    { "feed_field": "logo_url",        "asset_group_id": "logo" },
+    { "feed_field": "facility_list",   "catalog_field": "amenities",      "transform": "split", "separator": "," },
+    { "feed_field": "star_class",      "catalog_field": "star_rating",    "default": 0 }
+  ]
+}
+```
+
+Each mapping entry is one of:
+
+| Pattern | What it does |
+|---------|-------------|
+| `feed_field` + `catalog_field` | Renames a feed field to its schema equivalent (dot notation for nested fields) |
+| `feed_field` + `asset_group_id` | Places a URL into a typed asset pool on the item's `assets` array |
+| `value` + `catalog_field` | Injects a static literal — useful for fields the feed omits (e.g., currency when always USD) |
+| Any of the above + `transform` | Applies a named coercion before writing |
+| Any of the above + `default` | Fallback when the feed field is absent or null |
+
+### Supported transforms
+
+| Transform | Parameters | Example |
+|-----------|-----------|---------|
+| `date` | `format` (input date pattern), `timezone` (IANA, default UTC) | `"YYYYMMDD"` → `"2025-03-01"` |
+| `divide` | `by` (divisor, must be > 0) | `1000` ÷ `100` → `10.00` |
+| `boolean` | — | `"yes"` / `"1"` / `"true"` → `true` |
+| `split` | `separator` (default `,`) | `"spa,pool,wifi"` → `["spa", "pool", "wifi"]` |
+
+Multiple mappings can assemble a nested object. The `price.amount` and `price.currency` mappings above each write one field of the `price` object independently.
+
 ## Format catalog requirements
 
 Formats that render product listings, store locators, or promotional content declare what catalog feeds they need via `catalog_requirements`. This tells buying agents which catalogs to sync before submitting creatives.
@@ -375,6 +466,59 @@ Formats that render product listings, store locators, or promotional content dec
 ```
 
 Buying agents check `catalog_requirements` after discovering formats, sync the required catalogs via `sync_catalogs`, then submit creatives that reference those catalogs.
+
+### Field bindings
+
+Formats can declare `field_bindings` inside each `catalog_requirements` entry to explicitly map template slots to catalog item fields or asset pools. This makes the format self-describing — creative agents don't have to guess which catalog field maps to which template slot.
+
+```json
+{
+  "catalog_requirements": [
+    {
+      "catalog_type": "hotel",
+      "required": true,
+      "required_fields": ["name", "price.amount"],
+      "offering_asset_constraints": [
+        { "asset_group_id": "images_landscape", "asset_type": "image", "required": true, "min_count": 1 },
+        { "asset_group_id": "images_vertical",  "asset_type": "image", "required": true, "min_count": 1 }
+      ],
+      "field_bindings": [
+        { "asset_id": "headline",       "catalog_field": "name" },
+        { "asset_id": "price_badge",    "catalog_field": "price.amount" },
+        { "asset_id": "hero_image",     "asset_group_id": "images_landscape" },
+        { "asset_id": "snap_background","asset_group_id": "images_vertical" },
+        { "asset_id": "logo",           "asset_group_id": "logo" }
+      ]
+    }
+  ]
+}
+```
+
+For repeatable groups (carousels where each slide is one catalog item), use `format_group_id` with `catalog_item: true`:
+
+```json
+{
+  "field_bindings": [
+    {
+      "format_group_id": "slide",
+      "catalog_item": true,
+      "per_item_bindings": [
+        { "asset_id": "title",  "catalog_field": "name" },
+        { "asset_id": "price",  "catalog_field": "price.amount" },
+        { "asset_id": "image",  "asset_group_id": "images_landscape" }
+      ]
+    }
+  ]
+}
+```
+
+Field bindings are **optional** — creative agents can still infer mappings from field names and asset types when bindings are absent. Providing them removes ambiguity and enables pre-render validation.
+
+| Binding variant | Required fields | What it does |
+|----------------|----------------|-------------|
+| Scalar | `asset_id` + `catalog_field` | Maps individual template asset to catalog item field (dot notation) |
+| Asset pool | `asset_id` + `asset_group_id` | Maps individual template asset to typed asset pool on the catalog item |
+| Catalog group | `format_group_id` + `catalog_item: true` | Iterates a format repeatable_group over catalog items |
 
 ## Catalogs in creatives
 

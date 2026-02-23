@@ -115,6 +115,24 @@
       },
       "minItems": 1
     },
+    "valid_from": {
+      "type": "string",
+      "format": "date",
+      "description": "Date from which this item is available or this rate applies (ISO 8601, e.g., '2025-03-01'). Used for seasonal availability windows in feed imports."
+    },
+    "valid_to": {
+      "type": "string",
+      "format": "date",
+      "description": "Date until which this item is available or this rate applies (ISO 8601, e.g., '2025-09-30'). Used for seasonal availability windows in feed imports."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this hotel. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (16:9 hero images), 'images_vertical' (9:16 for Snap, Stories), 'images_square' (1:1), 'logo'. Enables formats to declare typed image requirements that map unambiguously to the right asset regardless of platform.",
+      "items": {
+        "$ref": "/schemas/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
