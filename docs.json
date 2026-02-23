@@ -220,6 +220,8 @@
                 "group": "Task Reference",
                 "pages": [
                   "docs/media-buy/task-reference/index",
+                  "docs/media-buy/task-reference/sync_accounts",
+                  "docs/media-buy/task-reference/list_accounts",
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
@@ -707,6 +709,8 @@
                 "group": "Task Reference",
                 "pages": [
                   "docs/media-buy/task-reference/index",
+                  "docs/media-buy/task-reference/sync_accounts",
+                  "docs/media-buy/task-reference/list_accounts",
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",

@@ -1,0 +1,423 @@
+---
+title: sync_accounts
+testable: false
+---
+
+Declare an agent's advertiser portfolio to a seller with upsert semantics. Each call specifies which brands the agent represents, who operates each seat, and the desired billing model. The seller responds with per-account status — whether each account was created, already existed, or requires further setup.
+
+**Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
+
+**Request Schema**: [`/schemas/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/account/sync-accounts-request.json)
+**Response Schema**: [`/schemas/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/account/sync-accounts-response.json)
+
+## Quick Start
+
+Declare a single advertiser and check the resulting account status:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      house: "acme-corp.com",
+      billing: "brand",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("accounts" in validated) {
+  for (const account of validated.accounts) {
+    console.log(`${account.house}: ${account.action} (${account.status})`);
+    if (account.status === "pending_approval" && account.setup?.url) {
+      console.log(`  Complete setup at: ${account.setup.url}`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[{
+            'house': 'acme-corp.com',
+            'billing': 'brand',
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.house}: {account.action} ({account.status})")
+        if account.status == 'pending_approval' and hasattr(account, 'setup') and account.setup:
+            print(f"  Complete setup at: {account.setup.url}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `accounts` | [Account](#account-object)[] | Yes | Accounts to declare. Each entry identifies a brand-operator-billing relationship. |
+| `delete_missing` | boolean | No | When true, deactivates accounts previously synced by this agent that are not in the current request. Scoped to this agent only — does not affect other agents' accounts. Default: false. |
+| `dry_run` | boolean | No | Preview what would happen without making changes. Returns the same response structure with a `dry_run: true` field. Default: false. |
+
+### Account Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `house` | string | Yes | House domain where `brand.json` is hosted (e.g. `acme-corp.com`, `unilever.com`). For single-brand houses, this alone identifies the brand. |
+| `brand_id` | string | No | Brand ID within the house portfolio (e.g. `dove`, `tide`). Required when the house has multiple brands. |
+| `operator` | string | No | Domain of the entity operating the seat (e.g. `groupm.com`). Omit if the brand operates its own seat. |
+| `billing` | string | No | Desired billing model: `brand`, `operator`, or `agent`. Omit to accept the seller's default. The seller may return a different billing model — always check the response. |
+| `sandbox` | boolean | No | When true, provision a sandbox account for testing. |
+
+**Natural key**: The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. The seller uses this key for upsert matching across sync calls. `{house: "acme-corp.com"}` (direct) is a different account from `{house: "acme-corp.com", operator: "groupm.com"}` (via agency).
+
+## Response
+
+**Success Response:**
+
+- `accounts` — Per-account results. Each has `action` (what happened in this sync) and `status` (the durable account state).
+- `dry_run` — `true` when the request used `dry_run: true`. No changes were made.
+
+**Error Response:**
+
+- `errors` — Array of operation-level errors (auth failure, invalid request).
+
+**Note:** Responses use discriminated unions — you get either success fields OR errors, never both.
+
+**Each account in the success response includes:**
+
+| Field | Description |
+|-------|-------------|
+| `account_id` | Seller's identifier for this account. Use this on all subsequent operations. |
+| `house` | Echoed from request |
+| `brand_id` | Echoed from request (when provided) |
+| `operator` | Echoed from request (when provided) |
+| `name` | Seller's display name for the account |
+| `action` | What happened in this sync (see [Action Values](#action-values)) |
+| `status` | Current durable state of the account (see [Account Status](#account-status)) |
+| `billing` | Actual billing model applied. May differ from requested — always check this field. |
+| `parent_account_id` | Parent account when billing is consolidated through an agent or operator house account |
+| `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, and `message` explaining what's needed. |
+| `rate_card` | Seller-assigned rate card identifier (when applicable) |
+| `payment_terms` | Net terms (e.g. `net_30`) |
+| `credit_limit` | Maximum outstanding balance |
+| `errors` | Per-account errors (only when `action: "failed"`) |
+| `warnings` | Non-fatal notices (e.g. billing model was remapped) |
+
+### Action Values
+
+| Action | Meaning |
+|--------|---------|
+| `created` | New account provisioned in this sync |
+| `updated` | Existing account updated (e.g. operator or billing changed) |
+| `unchanged` | Account already exists with matching data — no changes made |
+| `failed` | Account could not be provisioned. See per-account `errors` for details. |
+
+### Account Status
+
+| Status | Meaning | Next step |
+|--------|---------|-----------|
+| `active` | Ready to use | Place buys with this `account_id` |
+| `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll `list_accounts` for updates. |
+| `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. Route spend to other accounts. |
+| `suspended` | Was active, now paused | Contact seller to resolve |
+| `closed` | Terminated | — |
+
+## Common Scenarios
+
+### Agency syncing multiple advertisers
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      house: "nova-brands.com",
+      brand_id: "spark",
+      operator: "pinnacle-media.com",
+      billing: "agent",
+    },
+    {
+      house: "nova-brands.com",
+      brand_id: "glow",
+      operator: "pinnacle-media.com",
+      billing: "agent",
+    },
+    {
+      house: "acme-corp.com",
+      billing: "brand",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("accounts" in validated) {
+  const active = validated.accounts.filter(a => a.status === "active");
+  const pending = validated.accounts.filter(a => a.status === "pending_approval");
+  console.log(`Active: ${active.length}, Pending: ${pending.length}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[
+            {
+                'house': 'nova-brands.com',
+                'brand_id': 'spark',
+                'operator': 'pinnacle-media.com',
+                'billing': 'agent',
+            },
+            {
+                'house': 'nova-brands.com',
+                'brand_id': 'glow',
+                'operator': 'pinnacle-media.com',
+                'billing': 'agent',
+            },
+            {
+                'house': 'acme-corp.com',
+                'billing': 'brand',
+            },
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    active = [a for a in result.accounts if a.status == 'active']
+    pending = [a for a in result.accounts if a.status == 'pending_approval']
+    print(f"Active: {len(active)}, Pending: {len(pending)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Direct brand purchase
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      house: "acme-corp.com",
+      billing: "brand",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("accounts" in validated) {
+  const account = validated.accounts[0];
+  if (account.status === "active") {
+    console.log(`Ready: account_id = ${account.account_id}`);
+  } else if (account.status === "pending_approval") {
+    console.log(`Setup required: ${account.setup?.url}`);
+    // Poll list_accounts until status becomes active
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[{'house': 'acme-corp.com', 'billing': 'brand'}]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    account = result.accounts[0]
+    if account.status == 'active':
+        print(f"Ready: account_id = {account.account_id}")
+    elif account.status == 'pending_approval':
+        print(f"Setup required: {account.setup.url}")
+        # Poll list_accounts until status becomes active
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Handling billing negotiation
+
+The seller may return a different billing model than requested. Always check the returned `billing` value:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAccountsResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      house: "acme-corp.com",
+      billing: "brand", // requested
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("accounts" in validated) {
+  for (const account of validated.accounts) {
+    if (account.warnings?.length) {
+      console.warn(`Billing remapped: ${account.warnings.join(", ")}`);
+      console.log(`Applied billing: ${account.billing}`); // may differ from request
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[{'house': 'acme-corp.com', 'billing': 'brand'}]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        warnings = getattr(account, 'warnings', None)
+        if warnings:
+            print(f"Billing remapped: {', '.join(warnings)}")
+            print(f"Applied billing: {account.billing}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Preview with dry_run
+
+Use `dry_run: true` to see what would happen before committing, especially before using `delete_missing: true`:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAccountsResponseSchema } from "@adcp/client";
+
+// Preview which accounts would be deactivated
+const preview = await testAgent.syncAccounts({
+  accounts: [
+    { house: "acme-corp.com", billing: "brand" },
+  ],
+  delete_missing: true,
+  dry_run: true,
+});
+
+if (!preview.success) {
+  throw new Error(`Request failed: ${preview.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(preview.data);
+
+if ("accounts" in validated) {
+  console.log("dry_run:", validated.dry_run); // true
+  for (const account of validated.accounts) {
+    console.log(`${account.house}: would be ${account.action}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    preview = await test_agent.simple.sync_accounts(
+        accounts=[{'house': 'acme-corp.com', 'billing': 'brand'}],
+        delete_missing=True,
+        dry_run=True,
+    )
+
+    if hasattr(preview, 'errors') and preview.errors:
+        raise Exception(f"Operation failed: {preview.errors}")
+
+    print(f"dry_run: {preview.dry_run}")  # True
+    for account in preview.accounts:
+        print(f"{account.house}: would be {account.action}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | Referenced account does not exist or is not accessible | Check `account_id` or re-sync |
+| `PAYMENT_REQUIRED` | Account has reached its credit limit | Add funds or route to another account |
+| `ACCOUNT_SUSPENDED` | Account is suspended | Contact seller to resolve |
+| `BRAND_REQUIRED` | Billable operation attempted without brand reference | Include `house` in the account entry |
+
+Per-account failures appear in the account entry with `action: "failed"` and a per-account `errors` array — they do not cause the entire request to fail.
+
+## Next Steps
+
+- [list_accounts](/docs/media-buy/task-reference/list_accounts) — Poll for status changes on pending accounts
+- [Accounts and Agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
+- [create_media_buy](/docs/media-buy/task-reference/create_media_buy) — Use `account_id` from sync_accounts on media buy operations
+- [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) — Discover `supported_billing` and `required_for_products` before syncing
