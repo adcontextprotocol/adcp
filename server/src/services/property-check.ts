@@ -1,4 +1,4 @@
-import { BlockedDomainsDatabase } from '../db/blocked-domains-db.js';
+import { DomainClassificationsDatabase } from '../db/domain-classifications-db.js';
 import { PropertyDatabase } from '../db/property-db.js';
 
 export interface CheckResultRemove {
@@ -38,7 +38,7 @@ export interface CheckResult {
   ok: CheckResultOk[];
 }
 
-const blockedDomainsDb = new BlockedDomainsDatabase();
+const domainClassificationsDb = new DomainClassificationsDatabase();
 const propertyDb = new PropertyDatabase();
 
 interface NormalizeResult {
@@ -114,8 +114,8 @@ export class PropertyCheckService {
       };
     }
 
-    // Step 2: batch check against blocked domains
-    const blocked = await blockedDomainsDb.checkDomains(toCheck);
+    // Step 2: batch check against domain classifications
+    const blocked = await domainClassificationsDb.checkDomains(toCheck);
     const afterBlockedCheck: string[] = [];
 
     for (const canonical of toCheck) {

@@ -5,7 +5,7 @@
 Add property list check and enhancement to the AAO registry API.
 
 Registry:
-- New `blocked_domains` table with typed entries (`ad_server`, `intermediary`, `cdn`, `tracker`), seeded with ~60 known ad tech infrastructure domains
+- New `domain_classifications` table with typed entries (`ad_server`, `intermediary`, `cdn`, `tracker`), seeded with ~60 known ad tech infrastructure domains
 - New `property_check_reports` table stores full check results by UUID for 7 days
 
 API:

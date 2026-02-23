@@ -1,7 +1,7 @@
--- Blocked domains registry: known ad tech infrastructure that should not appear
+-- Domain classifications: known ad tech infrastructure that should not appear
 -- in publisher property lists. Maintained server-side so every implementor benefits.
 
-CREATE TABLE IF NOT EXISTS blocked_domains (
+CREATE TABLE IF NOT EXISTS domain_classifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   domain TEXT NOT NULL UNIQUE,
   domain_type TEXT NOT NULL CHECK (domain_type IN ('ad_server', 'intermediary', 'cdn', 'tracker')),
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS blocked_domains (
 );
 
 -- Seed: ad servers
-INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
+INSERT INTO domain_classifications (domain, domain_type, reason) VALUES
   ('googlesyndication.com', 'ad_server', 'Google ad serving'),
   ('doubleclick.net', 'ad_server', 'Google ad serving (DoubleClick)'),
   ('googleadservices.com', 'ad_server', 'Google ad services'),
@@ -46,7 +46,7 @@ INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
 ON CONFLICT (domain) DO NOTHING;
 
 -- Seed: known intermediaries (obfuscate actual publisher supply)
-INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
+INSERT INTO domain_classifications (domain, domain_type, reason) VALUES
   ('microsoftadvertising.com', 'intermediary', 'Microsoft advertising intermediary — obscures actual publisher'),
   ('advertising.microsoft.com', 'intermediary', 'Microsoft advertising intermediary'),
   ('ads.microsoft.com', 'intermediary', 'Microsoft advertising intermediary'),
@@ -58,7 +58,7 @@ INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
 ON CONFLICT (domain) DO NOTHING;
 
 -- Seed: CDNs
-INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
+INSERT INTO domain_classifications (domain, domain_type, reason) VALUES
   ('cloudfront.net', 'cdn', 'AWS CloudFront CDN'),
   ('fastly.net', 'cdn', 'Fastly CDN'),
   ('fastly.com', 'cdn', 'Fastly CDN'),
@@ -76,7 +76,7 @@ INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
 ON CONFLICT (domain) DO NOTHING;
 
 -- Seed: trackers/measurement
-INSERT INTO blocked_domains (domain, domain_type, reason) VALUES
+INSERT INTO domain_classifications (domain, domain_type, reason) VALUES
   ('scorecardresearch.com', 'tracker', 'comScore measurement'),
   ('quantserve.com', 'tracker', 'Quantcast measurement'),
   ('chartbeat.com', 'tracker', 'Chartbeat analytics'),

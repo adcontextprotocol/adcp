@@ -1,6 +1,6 @@
 import { query } from './client.js';
 
-export interface BlockedDomain {
+export interface DomainClassification {
   id: string;
   domain: string;
   domain_type: 'ad_server' | 'intermediary' | 'cdn' | 'tracker';
@@ -9,29 +9,29 @@ export interface BlockedDomain {
   created_at: Date;
 }
 
-export class BlockedDomainsDatabase {
+export class DomainClassificationsDatabase {
   /**
-   * Check which domains in the given list are blocked.
-   * Returns a map of domain → blocked entry for matched domains only.
+   * Check which domains in the given list have a known classification.
+   * Returns a map of domain → classification for matched domains only.
    */
-  async checkDomains(domains: string[]): Promise<Map<string, BlockedDomain>> {
+  async checkDomains(domains: string[]): Promise<Map<string, DomainClassification>> {
     if (domains.length === 0) return new Map();
 
-    const result = await query<BlockedDomain>(
-      `SELECT * FROM blocked_domains WHERE domain = ANY($1)`,
+    const result = await query<DomainClassification>(
+      `SELECT * FROM domain_classifications WHERE domain = ANY($1)`,
       [domains]
     );
 
-    const map = new Map<string, BlockedDomain>();
+    const map = new Map<string, DomainClassification>();
     for (const row of result.rows) {
       map.set(row.domain, row);
     }
     return map;
   }
 
-  async getAll(): Promise<BlockedDomain[]> {
-    const result = await query<BlockedDomain>(
-      `SELECT * FROM blocked_domains ORDER BY domain_type, domain`
+  async getAll(): Promise<DomainClassification[]> {
+    const result = await query<DomainClassification>(
+      `SELECT * FROM domain_classifications ORDER BY domain_type, domain`
     );
     return result.rows;
   }
@@ -41,9 +41,9 @@ export class BlockedDomainsDatabase {
     domain_type: 'ad_server' | 'intermediary' | 'cdn' | 'tracker';
     reason?: string;
     added_by?: string;
-  }): Promise<BlockedDomain> {
-    const result = await query<BlockedDomain>(
-      `INSERT INTO blocked_domains (domain, domain_type, reason, added_by)
+  }): Promise<DomainClassification> {
+    const result = await query<DomainClassification>(
+      `INSERT INTO domain_classifications (domain, domain_type, reason, added_by)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (domain) DO UPDATE SET
          domain_type = EXCLUDED.domain_type,
