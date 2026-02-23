@@ -89,10 +89,12 @@ export function isRetryableError(error: unknown): boolean {
       return true;
     }
 
-    // Check error body for overloaded_error type
-    // The error object contains the parsed JSON response
+    // Check error body for retryable error types.
+    // Streaming errors deliver errors in the SSE stream body (HTTP 200),
+    // so error.status is undefined — we must check the error body.
     const errorBody = error.error as { type?: string; error?: { type?: string } } | undefined;
-    if (errorBody?.type === 'overloaded_error' || errorBody?.error?.type === 'overloaded_error') {
+    const errorType = errorBody?.type ?? errorBody?.error?.type;
+    if (errorType === 'overloaded_error' || errorType === 'api_error') {
       return true;
     }
   }
