@@ -16,7 +16,7 @@ import type { OAuthRegisteredClientsStore } from '@modelcontextprotocol/sdk/serv
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { OAuthClientInformationFull, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { InvalidTokenError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, decodeJwt } from 'jose';
 import { createLogger } from '../logger.js';
 import * as mcpClientsDb from '../db/mcp-clients-db.js';
 import * as mcpOAuthStateDb from '../db/mcp-oauth-state-db.js';
@@ -97,6 +97,28 @@ async function verifyAccessTokenJWT(token: string): Promise<AuthInfo> {
       payload,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Token utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract remaining seconds until expiry from a JWT access token.
+ * Returns undefined if the token can't be decoded or has no exp claim.
+ */
+function getExpiresIn(accessToken: string): number | undefined {
+  try {
+    // decodeJwt skips signature verification — safe here because the token was
+    // just issued by WorkOS and hasn't crossed a trust boundary.
+    const payload = decodeJwt(accessToken);
+    if (typeof payload.exp === 'number') {
+      return Math.max(0, payload.exp - Math.floor(Date.now() / 1000));
+    }
+  } catch {
+    // ignore decode errors
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +214,7 @@ class MCPOAuthProvider implements OAuthServerProvider {
       access_token: data.accessToken,
       token_type: 'bearer',
       refresh_token: data.refreshToken,
+      expires_in: getExpiresIn(data.accessToken),
     };
   }
 
@@ -207,6 +230,7 @@ class MCPOAuthProvider implements OAuthServerProvider {
       access_token: result.accessToken,
       token_type: 'bearer',
       refresh_token: result.refreshToken,
+      expires_in: getExpiresIn(result.accessToken),
     };
   }
 
