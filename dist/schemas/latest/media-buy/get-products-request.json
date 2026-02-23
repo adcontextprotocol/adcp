@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/get-products-request.json",
+  "$id": "/schemas/latest/media-buy/get-products-request.json",
   "title": "Get Products Request",
   "description": "Request parameters for discovering available advertising products",
   "type": "object",
@@ -15,36 +15,36 @@
       "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'."
     },
     "brand": {
-      "$ref": "/schemas/core/brand-ref.json",
+      "$ref": "/schemas/latest/core/brand-ref.json",
       "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
     "catalog": {
-      "$ref": "/schemas/core/catalog.json",
-      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
+      "$ref": "/schemas/latest/core/catalog.json",
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist."
     },
     "account_id": {
       "type": "string",
-      "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
+      "description": "Account ID for product lookup. Returns products with pricing specific to this account's rate card."
     },
-    "buyer_campaign_ref": {
+    "campaign_ref": {
       "type": "string",
-      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation."
     },
     "filters": {
-      "$ref": "/schemas/core/product-filters.json"
+      "$ref": "/schemas/latest/core/product-filters.json"
     },
     "property_list": {
-      "$ref": "/schemas/core/property-list-ref.json",
+      "$ref": "/schemas/latest/core/property-list-ref.json",
       "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
     },
     "pagination": {
-      "$ref": "/schemas/core/pagination-request.json"
+      "$ref": "/schemas/latest/core/pagination-request.json"
     },
     "context": {
-      "$ref": "/schemas/core/context.json"
+      "$ref": "/schemas/latest/core/context.json"
     },
     "ext": {
-      "$ref": "/schemas/core/ext.json"
+      "$ref": "/schemas/latest/core/ext.json"
     }
   },
   "required": ["buying_mode"],
@@ -72,8 +72,5 @@
       ]
     }
   ],
-  "dependencies": {
-    "catalog": ["brand"]
-  },
   "additionalProperties": true
 }

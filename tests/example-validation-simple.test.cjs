@@ -124,6 +124,7 @@ async function runTests() {
   // Test request/response examples
   await validateExample(
     {
+      "buying_mode": "brief",
       "brand": {
         "domain": "nikeinc.com",
         "brand_id": "nike"
