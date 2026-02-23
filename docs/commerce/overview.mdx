@@ -1,10 +1,10 @@
 ---
-title: Commerce Protocol
+title: Accounts Protocol
 sidebarTitle: Overview
 description: The commercial infrastructure connecting buyers, brands, and vendor agents across all AdCP protocols
 ---
 
-The Commerce Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Commerce Protocol establishes that relationship and closes the financial loop through post-delivery settlement.
+The Accounts Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Accounts Protocol establishes that relationship and closes the financial loop through post-delivery settlement.
 
 ## The commercial model
 
@@ -18,7 +18,7 @@ Three questions underlie every AdCP transaction:
 
 ## Scope
 
-The Commerce Protocol applies across all vendor protocols. An orchestrator syncs accounts once per vendor agent and reuses the same `account_id` across all interactions with that agent:
+The Accounts Protocol applies across all vendor protocols. An orchestrator syncs accounts once per vendor agent and reuses the same `account_id` across all interactions with that agent:
 
 | Vendor Protocol | account_id used for |
 |---|---|
@@ -46,7 +46,7 @@ The Commerce Protocol applies across all vendor protocols. An orchestrator syncs
 
 ## Principals
 
-The Commerce Protocol operates with four principal types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+The Accounts Protocol operates with four principal types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
 
 | Principal | Role | Identified by |
 |-----------|------|---------------|
@@ -67,7 +67,7 @@ The Commerce Protocol operates with four principal types. See [Accounts and agen
 
 The `house` field in `sync_accounts` is not an arbitrary identifier — it is the brand's domain, resolvable to a `brand.json` file that declares the brand's canonical identity, sub-brands, authorized operators, and properties.
 
-Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Commerce Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
+Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Accounts Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
 
 See the [Brand Protocol](/docs/brand-protocol/index) for how brand identity resolution works.
 

@@ -172,7 +172,7 @@
             ]
           },
           {
-            "group": "Commerce Protocol",
+            "group": "Accounts Protocol",
             "pages": [
               "docs/commerce/overview",
               "docs/building/integration/accounts-and-agents",
@@ -674,7 +674,7 @@
             ]
           },
           {
-            "group": "Commerce Protocol",
+            "group": "Accounts Protocol",
             "pages": [
               "docs/commerce/overview",
               "docs/building/integration/accounts-and-agents",
