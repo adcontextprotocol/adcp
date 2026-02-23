@@ -483,11 +483,11 @@ Formats can declare `field_bindings` inside each `catalog_requirements` entry to
         { "asset_group_id": "images_vertical",  "asset_type": "image", "required": true, "min_count": 1 }
       ],
       "field_bindings": [
-        { "asset_id": "headline",       "catalog_field": "name" },
-        { "asset_id": "price_badge",    "catalog_field": "price.amount" },
-        { "asset_id": "hero_image",     "asset_group_id": "images_landscape" },
-        { "asset_id": "snap_background","asset_group_id": "images_vertical" },
-        { "asset_id": "logo",           "asset_group_id": "logo" }
+        { "kind": "scalar",     "asset_id": "headline",        "catalog_field": "name" },
+        { "kind": "scalar",     "asset_id": "price_badge",     "catalog_field": "price.amount" },
+        { "kind": "asset_pool", "asset_id": "hero_image",      "asset_group_id": "images_landscape" },
+        { "kind": "asset_pool", "asset_id": "snap_background", "asset_group_id": "images_vertical" },
+        { "kind": "asset_pool", "asset_id": "logo",            "asset_group_id": "logo" }
       ]
     }
   ]
@@ -500,12 +500,13 @@ For repeatable groups (carousels where each slide is one catalog item), use `for
 {
   "field_bindings": [
     {
+      "kind": "catalog_group",
       "format_group_id": "slide",
       "catalog_item": true,
       "per_item_bindings": [
-        { "asset_id": "title",  "catalog_field": "name" },
-        { "asset_id": "price",  "catalog_field": "price.amount" },
-        { "asset_id": "image",  "asset_group_id": "images_landscape" }
+        { "kind": "scalar",     "asset_id": "title",  "catalog_field": "name" },
+        { "kind": "scalar",     "asset_id": "price",  "catalog_field": "price.amount" },
+        { "kind": "asset_pool", "asset_id": "image",  "asset_group_id": "images_landscape" }
       ]
     }
   ]
@@ -514,11 +515,11 @@ For repeatable groups (carousels where each slide is one catalog item), use `for
 
 Field bindings are **optional** — creative agents can still infer mappings from field names and asset types when bindings are absent. Providing them removes ambiguity and enables pre-render validation.
 
-| Binding variant | Required fields | What it does |
-|----------------|----------------|-------------|
-| Scalar | `asset_id` + `catalog_field` | Maps individual template asset to catalog item field (dot notation) |
-| Asset pool | `asset_id` + `asset_group_id` | Maps individual template asset to typed asset pool on the catalog item |
-| Catalog group | `format_group_id` + `catalog_item: true` | Iterates a format repeatable_group over catalog items |
+| `kind` | Required fields | What it does |
+|--------|----------------|-------------|
+| `"scalar"` | `asset_id` + `catalog_field` | Maps individual template asset to catalog item field (dot notation) |
+| `"asset_pool"` | `asset_id` + `asset_group_id` | Maps individual template asset to typed asset pool on the catalog item |
+| `"catalog_group"` | `format_group_id` + `catalog_item: true` | Iterates a format repeatable_group over catalog items |
 
 ## Catalogs in creatives
 
