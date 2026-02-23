@@ -346,7 +346,7 @@ export type { MessageTurn };
  * Options for building message turns
  */
 export interface BuildMessageTurnsOptions {
-  /** Maximum number of messages to include (default: 10, 0 = unlimited) */
+  /** Maximum number of messages to include (default: 20, 0 = unlimited) */
   maxMessages?: number;
   /** Token limit for conversation history (default: calculated from model limit) */
   tokenLimit?: number;
@@ -400,7 +400,7 @@ export function buildMessageTurnsWithMetadata(
   threadContext?: ThreadContextEntry[],
   options?: BuildMessageTurnsOptions
 ): BuildMessageTurnsResult {
-  const maxMessages = options?.maxMessages ?? 10;
+  const maxMessages = options?.maxMessages ?? 20;
   // Pass toolCount for more accurate token budget when available
   const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model, options?.toolCount);
 
