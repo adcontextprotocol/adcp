@@ -65,6 +65,10 @@
       "format": "date-time",
       "description": "Campaign end date/time in ISO 8601 format"
     },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending — the publisher echoes it back in webhook payloads for correlation."
+    },
     "reporting_webhook": {
       "$ref": "/schemas/core/reporting-webhook.json",
       "description": "Optional webhook configuration for automated reporting delivery"

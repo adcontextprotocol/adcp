@@ -7,7 +7,7 @@
   "properties": {
     "operation_id": {
       "type": "string",
-      "description": "Publisher-defined operation identifier correlating a sequence of task updates across webhooks."
+      "description": "Client-generated identifier that was embedded in the webhook URL by the buyer. Publishers echo this back in webhook payloads so clients can correlate notifications without parsing URL paths. Typically generated as a unique ID per task invocation."
     },
     "task_id": {
       "type": "string",
