@@ -1,0 +1,80 @@
+---
+title: Commerce Protocol
+sidebarTitle: Overview
+description: The commercial infrastructure connecting buyers, brands, and vendor agents across all AdCP protocols
+---
+
+The Commerce Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Commerce Protocol establishes that relationship and closes the financial loop through post-delivery settlement.
+
+## The commercial model
+
+Three questions underlie every AdCP transaction:
+
+| Question | Answered by | Mechanism |
+|----------|-------------|-----------|
+| Who is the advertiser? | Brand registry | `house` domain resolves to `brand.json` |
+| Who has commercial terms? | Account | `sync_accounts` binds buyer and vendor to billing terms |
+| What is owed? | Settlement | `report_usage` reports consumption for reconciliation |
+
+## Scope
+
+The Commerce Protocol applies across all vendor protocols. An orchestrator syncs accounts once per vendor agent and reuses the same `account_id` across all interactions with that agent:
+
+| Vendor Protocol | account_id used for |
+|---|---|
+| Media Buy | Rate cards, invoicing, campaign attribution |
+| Signals | Per-account pricing options, activation, usage settlement |
+| Governance | Content standards billing |
+| Creative | Creative service billing |
+
+## Transaction lifecycle
+
+```
+1. Resolve brand identity
+   Fetch house.com/.well-known/brand.json → canonical brand (house, brand_id)
+
+2. Establish account
+   sync_accounts(house, brand_id, operator, billing) → account_id
+
+3. Execute
+   Protocol tasks use account_id to apply correct rates and terms
+   Examples: get_signals(account_id), create_media_buy(account_id)
+
+4. Settle
+   report_usage(account_id, operator_id, usage[]) → vendor tracks what they earned
+```
+
+## Principals
+
+The Commerce Protocol operates with four principal types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+
+| Principal | Role | Identified by |
+|-----------|------|---------------|
+| Brand | Whose products are advertised | `house` domain + `brand_id` via brand.json |
+| Operator | Who drives the buys | Domain (e.g., `pinnacle-media.com`) |
+| Agent | What software places the buys | Authenticated session |
+| Vendor agent | The seller's AdCP agent | `agent_url` |
+
+## Tasks
+
+| Task | Purpose |
+|------|---------|
+| [`sync_accounts`](/docs/commerce/tasks/sync_accounts) | Declare advertiser portfolio; receive `account_id` per brand |
+| [`list_accounts`](/docs/commerce/tasks/list_accounts) | Query account status; retrieve active `account_id` values |
+| [`report_usage`](/docs/commerce/tasks/report_usage) | Report service consumption for post-delivery settlement |
+
+## Brand registry connection
+
+The `house` field in `sync_accounts` is not an arbitrary identifier — it is the brand's domain, resolvable to a `brand.json` file that declares the brand's canonical identity, sub-brands, authorized operators, and properties.
+
+Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Commerce Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
+
+See the [Brand Protocol](/docs/brand-protocol/index) for how brand identity resolution works.
+
+## Settlement model
+
+`report_usage` is buyer-reported: the orchestrator computes and reports what was consumed. The vendor agent uses the reported `pricing_option_id` to verify the correct rate was applied and track earned revenue.
+
+Partial acceptance is valid — a `report_usage` call can include records for multiple campaigns and multiple vendor services (`kind: "signal"`, `kind: "content_standards"`, `kind: "creative"`). The response confirms how many records were accepted and which (if any) failed validation.
+
+The `operator_id` field identifies the billing party — the agency or brand on whose behalf usage is being reported. This determines which entity receives the invoice.

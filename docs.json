@@ -96,9 +96,7 @@
                   "docs/building/integration/context-sessions",
                   "docs/building/integration/authentication",
                   "docs/building/integration/account-state",
-                  "docs/building/integration/accounts-and-agents",
-                  "docs/building/integration/sync_accounts",
-                  "docs/building/integration/list_accounts"
+                  "docs/building/integration/accounts-and-agents"
                 ]
               },
               {
@@ -171,6 +169,21 @@
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/brand-json"
+            ]
+          },
+          {
+            "group": "Commerce Protocol",
+            "pages": [
+              "docs/commerce/overview",
+              "docs/building/integration/accounts-and-agents",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/commerce/tasks/sync_accounts",
+                  "docs/commerce/tasks/list_accounts",
+                  "docs/commerce/tasks/report_usage"
+                ]
+              }
             ]
           },
           {
@@ -658,6 +671,21 @@
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/brand-json"
+            ]
+          },
+          {
+            "group": "Commerce Protocol",
+            "pages": [
+              "docs/commerce/overview",
+              "docs/building/integration/accounts-and-agents",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/commerce/tasks/sync_accounts",
+                  "docs/commerce/tasks/list_accounts",
+                  "docs/commerce/tasks/report_usage"
+                ]
+              }
             ]
           },
           {
