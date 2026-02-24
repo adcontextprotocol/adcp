@@ -693,6 +693,12 @@ export class HTTPServer {
     this.app.use(async (req, res, next) => {
       const urlPath = req.path;
 
+      // Skip paths that have their own route handlers which manage auth and config injection
+      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth)
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard')) {
+        return next();
+      }
+
       // Determine the file path to check
       let filePath: string;
       if (urlPath.endsWith('.html')) {
@@ -770,7 +776,7 @@ export class HTTPServer {
           const devUser = getDevUser(req);
           isManage = devUser?.isManage ?? false;
         } else if (user.id) {
-          isManage = await isWebUserAAOCouncil(user.id);
+          isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
         }
       }
 
@@ -1422,7 +1428,7 @@ export class HTTPServer {
             const devUser = getDevUser(req);
             isManage = devUser?.isManage ?? false;
           } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id);
+            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
           }
         }
 
@@ -1471,7 +1477,7 @@ export class HTTPServer {
             const devUser = getDevUser(req);
             isManage = devUser?.isManage ?? false;
           } else if (user.id) {
-            isManage = await isWebUserAAOCouncil(user.id);
+            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
           }
         }
 
@@ -3966,9 +3972,9 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
 
     // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/prospects'));
-    this.app.get('/admin/accounts', (req, res) => res.redirect(301, '/manage/accounts'));
-    this.app.get('/admin/analytics', (req, res) => res.redirect(301, '/manage/analytics'));
+    this.app.get('/admin/prospects', (req, res) => res.redirect(302, '/manage/prospects'));
+    this.app.get('/admin/accounts', (req, res) => res.redirect(302, '/manage/accounts'));
+    this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -4803,10 +4809,6 @@ Disallow: /api/admin/
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
-    });
-
-    this.app.get('/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-analytics.html');
     });
 
     this.app.get('/admin/audit', requireAuth, requireAdmin, async (req, res) => {

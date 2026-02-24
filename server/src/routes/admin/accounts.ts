@@ -88,17 +88,9 @@ export function setupAccountRoutes(
 ): void {
 
   // Page route for unified account list
-  pageRouter.get(
-    "/accounts",
-    requireAuth,
-    requireAdmin,
-    (req, res) => {
-      serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
-        logger.error({ err }, "Error serving admin accounts page");
-        res.status(500).send("Internal server error");
-      });
-    }
-  );
+  pageRouter.get("/accounts", (req, res) => {
+    res.redirect(301, "/manage/accounts");
+  });
 
   // Page route for domain discovery tool
   pageRouter.get(
