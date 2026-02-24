@@ -99,7 +99,16 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account_id", "name", "status"],
+  "required": ["name", "status"],
+  "if": {
+    "not": {
+      "properties": { "status": { "const": "rejected" } },
+      "required": ["status"]
+    }
+  },
+  "then": {
+    "required": ["account_id"]
+  },
   "additionalProperties": true,
   "examples": [
     {

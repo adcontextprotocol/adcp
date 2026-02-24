@@ -79,7 +79,7 @@ All parameters are optional. An empty request returns all accounts.
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. |
+| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. May be absent when `status: "rejected"`. |
 | `name` | Vendor agent's display name for the account |
 | `house` | Brand's house domain (the [brand registry](/docs/brand-protocol/brand-json) identifier) |
 | `brand_id` | Brand ID within the house (when applicable) |

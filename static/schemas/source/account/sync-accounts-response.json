@@ -146,6 +146,23 @@
               "action",
               "status"
             ],
+            "if": {
+              "not": {
+                "anyOf": [
+                  {
+                    "properties": { "action": { "const": "failed" } },
+                    "required": ["action"]
+                  },
+                  {
+                    "properties": { "status": { "const": "rejected" } },
+                    "required": ["status"]
+                  }
+                ]
+              }
+            },
+            "then": {
+              "required": ["account_id"]
+            },
             "additionalProperties": true
           }
         },
@@ -235,6 +252,22 @@
               "message": "Credit application required for direct billing",
               "expires_at": "2026-03-10T00:00:00Z"
             }
+          }
+        ]
+      }
+    },
+    {
+      "description": "Rejected account — no account_id assigned",
+      "data": {
+        "accounts": [
+          {
+            "house": "acme-corp.com",
+            "brand_id": "clearance",
+            "action": "created",
+            "status": "rejected",
+            "warnings": [
+              "Account request declined: advertiser category not accepted on this platform."
+            ]
           }
         ]
       }
