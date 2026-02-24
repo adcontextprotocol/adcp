@@ -15,6 +15,7 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import { COMMITTEE_TYPE_LABELS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
@@ -60,6 +61,7 @@ import {
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
   createChannel,
+  getSlackChannels,
   setChannelPurpose,
 } from '../../slack/client.js';
 import {
@@ -740,6 +742,30 @@ Returns a list of organizations with open or draft invoices.`,
       type: 'object',
       properties: {},
       required: [],
+    },
+  },
+
+  // ============================================
+  // COMMITTEE TOOLS
+  // ============================================
+  {
+    name: 'create_committee',
+    description: 'Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.',
+    usage_hints: 'Use when an admin wants to create a new working group, council, or governance body.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Committee name' },
+        committee_type: {
+          type: 'string',
+          enum: ['working_group', 'council', 'governance'],
+          description: 'Type of committee. Default: working_group',
+        },
+        description: { type: 'string', description: 'What the committee is for' },
+        is_private: { type: 'boolean', description: 'Whether the group is private (invite-only). Default: false' },
+        slack_channel_name: { type: 'string', description: 'Existing Slack channel name (without #) to link. Leave blank to skip.' },
+      },
+      required: ['name'],
     },
   },
 
@@ -3992,6 +4018,83 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error listing industry gatherings');
       return '❌ Failed to list industry gatherings. Please try again.';
+    }
+  });
+
+  // ============================================
+  // WORKING GROUP HANDLERS
+  // ============================================
+
+  handlers.set('create_committee', async (input) => {
+
+    const name = (input.name as string)?.trim();
+    const committeeType = ((input.committee_type as string) || 'working_group') as 'working_group' | 'council' | 'governance';
+    const description = input.description as string | undefined;
+    const isPrivate = (input.is_private as boolean) ?? false;
+    const slackChannelName = (input.slack_channel_name as string)?.trim();
+    const typeLabel = COMMITTEE_TYPE_LABELS[committeeType];
+
+    if (!name) {
+      return '❌ Please provide a committee name.';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    if (!slug) {
+      return '❌ Committee name must contain at least one letter or number.';
+    }
+
+    try {
+      // Check for duplicate
+      const existing = await wgDb.getWorkingGroupBySlug(slug);
+      if (existing) {
+        return `⚠️ A committee with slug "${slug}" already exists: **${existing.name}**`;
+      }
+
+      let channelId: string | undefined;
+      let channelUrl: string | undefined;
+      let channelMention = '';
+
+      if (slackChannelName) {
+        const allChannels = await getSlackChannels({ types: 'public_channel,private_channel', exclude_archived: true });
+        const normalized = slackChannelName.toLowerCase().replace(/^#/, '');
+        const found = allChannels.find((c) => c.name.toLowerCase() === normalized);
+        if (!found) {
+          return `❌ Could not find a Slack channel named "#${normalized}". Check the channel name and try again.`;
+        }
+        channelId = found.id;
+        channelUrl = `https://app.slack.com/archives/${found.id}`;
+        channelMention = `<#${found.id}>`;
+      }
+
+      const wg = await wgDb.createWorkingGroup({
+        name,
+        slug,
+        description,
+        is_private: isPrivate,
+        committee_type: committeeType,
+        slack_channel_id: channelId,
+        slack_channel_url: channelUrl,
+      });
+
+      logger.info({ wgId: wg.id, name: wg.name, committeeType, isPrivate, channelId }, 'Addie: Created committee');
+
+      let response = `✅ Created **${name}** (${typeLabel})!\n\n`;
+      response += `**Slug:** ${slug}\n`;
+      response += `**Privacy:** ${isPrivate ? 'Private (invite-only)' : 'Public'}\n`;
+      if (channelMention) {
+        response += `**Slack Channel:** ${channelMention}\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, committeeType }, 'Error creating committee');
+      return `❌ Failed to create ${typeLabel}. Please try again.`;
     }
   });
 
