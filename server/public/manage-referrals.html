@@ -229,6 +229,116 @@
       font-size: var(--text-sm);
       padding: var(--space-4) 0;
     }
+
+    /* Company typeahead */
+    .company-search {
+      position: relative;
+    }
+
+    .company-search__dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      z-index: 100;
+      overflow: hidden;
+    }
+
+    .company-search__dropdown.open {
+      display: block;
+    }
+
+    .company-search__item {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+    }
+
+    .company-search__item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__item-name {
+      font-weight: 500;
+      color: var(--color-text-body);
+    }
+
+    .company-search__item-domain {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .company-search__create {
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      border-top: 1px solid var(--color-border-subtle);
+    }
+
+    .company-search__create:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__empty {
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    /* Inline create-company form */
+    .create-company-form {
+      display: none;
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      gap: var(--space-2);
+      flex-direction: column;
+    }
+
+    .create-company-form.open {
+      display: flex;
+    }
+
+    .create-company-form__title {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .create-company-form__fields {
+      display: flex;
+      gap: var(--space-2);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .create-company-form__fields input {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-page);
+      color: var(--color-text-body);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--color-bg-subtle);
+    }
   </style>
 </head>
 <body>
@@ -250,26 +360,24 @@
       </div>
 
       <form id="createForm" onsubmit="handleCreateCode(event)">
-        <div class="create-form">
+        <div class="create-form" style="grid-template-columns: 1fr;">
           <div class="form-group">
             <label for="targetCompany">Target company (optional)</label>
-            <input type="text" id="targetCompany" placeholder="e.g. Acme Corp" maxlength="200">
-          </div>
-          <div class="form-group">
-            <label for="discountPercent">Discount %</label>
-            <input type="number" id="discountPercent" placeholder="e.g. 10" min="1" max="100">
-          </div>
-          <div class="form-group">
-            <label for="maxUses">Max uses</label>
-            <input type="number" id="maxUses" placeholder="Unlimited" min="1">
-          </div>
-          <div class="form-group">
-            <label for="customCode">Custom code (optional)</label>
-            <input type="text" id="customCode" placeholder="e.g. ACME2026" maxlength="40">
-          </div>
-          <div class="form-group">
-            <label for="expiresAt">Expires (optional)</label>
-            <input type="date" id="expiresAt">
+            <div class="company-search">
+              <input type="text" id="targetCompany" placeholder="Search prospects…" maxlength="200" autocomplete="off">
+              <div class="company-search__dropdown" id="companyDropdown"></div>
+            </div>
+            <div class="create-company-form" id="createCompanyForm">
+              <div class="create-company-form__title">Create prospect</div>
+              <div class="create-company-form__fields">
+                <input type="text" id="newCompanyName" placeholder="Company name">
+                <input type="text" id="newCompanyDomain" placeholder="domain.com">
+                <button type="button" class="btn btn-primary" id="addCompanyBtn" onclick="handleAddCompany()">Create</button>
+                <button type="button" class="btn btn-secondary" onclick="cancelCreateCompany()">Cancel</button>
+              </div>
+              <span class="form-error" id="addCompanyError"></span>
+            </div>
+            <div class="form-hint" id="selectedProspectHint" style="display:none; font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);"></div>
           </div>
         </div>
         <div class="form-actions">
@@ -285,8 +393,7 @@
             <tr>
               <th>Code</th>
               <th>Target</th>
-              <th>Discount</th>
-              <th>Uses</th>
+              <th>Used</th>
               <th>Status</th>
               <th>Expires</th>
               <th></th>
@@ -377,14 +484,13 @@
       tbody.innerHTML = Array.from(byCodeId.values()).map(row => `
         <tr>
           <td>
-            <div class="code-cell">${row.code}</div>
-            <button class="copy-link" data-copy="${row.code}" onclick="copyJoinLink('${row.code}')">
+            <div class="code-cell">${escapeHtml(row.code)}</div>
+            <button class="copy-link" data-copy="${escapeHtml(row.code)}" onclick="copyJoinLink('${escapeHtml(row.code)}')">
               Copy join link
             </button>
           </td>
-          <td>${row.target_company_name || '—'}</td>
-          <td>${row.discount_percent != null ? row.discount_percent + '%' : '—'}</td>
-          <td>${row.used_count}${row.max_uses != null ? ' / ' + row.max_uses : ''}</td>
+          <td>${row.target_company_name ? escapeHtml(row.target_company_name) : '—'}</td>
+          <td>${row.used_count > 0 ? '✓ Used' : 'Unused'}</td>
           <td>${statusBadge(row.code_status)}</td>
           <td>${formatDate(row.expires_at)}</td>
           <td>
@@ -416,10 +522,10 @@
 
       tbody.innerHTML = used.map(row => `
         <tr>
-          <td class="code-cell">${row.code}</td>
-          <td>${row.referrer_org_name || '—'}</td>
-          <td>${row.target_company_name || '—'}</td>
-          <td>${row.referred_org_name || row.referred_company_name || '—'}</td>
+          <td class="code-cell">${escapeHtml(row.code)}</td>
+          <td>${row.referrer_org_name ? escapeHtml(row.referrer_org_name) : '—'}</td>
+          <td>${row.target_company_name ? escapeHtml(row.target_company_name) : '—'}</td>
+          <td>${(row.referred_org_name || row.referred_company_name) ? escapeHtml(row.referred_org_name || row.referred_company_name) : '—'}</td>
           <td>${statusBadge(row.referral_status || 'pending')}</td>
           <td>${formatDate(row.converted_at)}</td>
         </tr>
@@ -433,7 +539,8 @@
       try {
         const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`);
         if (res.ok) {
-          renderMyCodes(await res.json());
+          const data = await res.json();
+          renderMyCodes(data.referral_codes || []);
         } else {
           document.getElementById('myCodesLoading').textContent = 'Failed to load codes.';
         }
@@ -465,17 +572,7 @@
       btn.disabled = true;
 
       const body = {};
-      const target = document.getElementById('targetCompany').value.trim();
-      const discount = document.getElementById('discountPercent').value;
-      const maxUses = document.getElementById('maxUses').value;
-      const custom = document.getElementById('customCode').value.trim();
-      const expires = document.getElementById('expiresAt').value;
-
-      if (target) body.target_company_name = target;
-      if (discount) body.discount_percent = parseInt(discount, 10);
-      if (maxUses) body.max_uses = parseInt(maxUses, 10);
-      if (custom) body.custom_code = custom;
-      if (expires) body.expires_at = expires;
+      if (selectedProspectId) body.target_org_id = selectedProspectId;
 
       try {
         const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`, {
@@ -489,6 +586,9 @@
           errorEl.textContent = data.error || 'Failed to create code';
         } else {
           document.getElementById('createForm').reset();
+          document.getElementById('createCompanyForm').classList.remove('open');
+          document.getElementById('selectedProspectHint').style.display = 'none';
+          selectedProspectId = null;
           await loadMyCodes();
           await loadAllActivity();
         }
@@ -515,6 +615,157 @@
       }
     }
 
+    // ── Prospect typeahead ─────────────────────────────────────────────────
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = String(str || '');
+      return div.innerHTML;
+    }
+
+    let companySearchTimer;
+    let selectedProspectId = null;
+
+    const STATUS_LABELS = {
+      prospect: 'Prospect', contacted: 'Contacted', responded: 'Responded',
+      interested: 'Interested', negotiating: 'Negotiating',
+    };
+
+    function prospectStatusBadge(status) {
+      const label = STATUS_LABELS[status] || status;
+      return '<span class="company-search__item-domain">' + escapeHtml(label) + '</span>';
+    }
+
+    function selectProspect(id, name) {
+      selectedProspectId = id;
+      document.getElementById('targetCompany').value = name;
+      const hint = document.getElementById('selectedProspectHint');
+      hint.textContent = 'Prospect selected: ' + name;
+      hint.style.display = 'block';
+    }
+
+    function setupCompanySearch() {
+      const input = document.getElementById('targetCompany');
+      const dropdown = document.getElementById('companyDropdown');
+
+      input.addEventListener('input', function () {
+        clearTimeout(companySearchTimer);
+        selectedProspectId = null;
+        document.getElementById('selectedProspectHint').style.display = 'none';
+        const q = input.value.trim();
+        if (q.length < 2) {
+          dropdown.classList.remove('open');
+          return;
+        }
+        companySearchTimer = setTimeout(() => searchProspects(q), 280);
+      });
+
+      input.addEventListener('blur', function () {
+        setTimeout(() => dropdown.classList.remove('open'), 180);
+      });
+
+      input.addEventListener('focus', function () {
+        if (input.value.trim().length >= 2 && !selectedProspectId) {
+          searchProspects(input.value.trim());
+        }
+      });
+    }
+
+    async function searchProspects(q) {
+      const dropdown = document.getElementById('companyDropdown');
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospects/typeahead?q=' + encodeURIComponent(q));
+        const prospects = res.ok ? await res.json() : [];
+
+        let html = '';
+        if (prospects.length > 0) {
+          prospects.forEach(function (p) {
+            html += '<div class="company-search__item" data-id="' + escapeHtml(p.workos_organization_id) + '" data-name="' + escapeHtml(p.name) + '">' +
+              '<span class="company-search__item-name">' + escapeHtml(p.name) + '</span>' +
+              prospectStatusBadge(p.prospect_status) +
+              '</div>';
+          });
+        } else {
+          html += '<div class="company-search__empty">No matching prospects</div>';
+        }
+
+        html += '<div class="company-search__create" data-query="' + escapeHtml(q) + '">+ Create "' + escapeHtml(q) + '" as prospect</div>';
+
+        dropdown.innerHTML = html;
+        dropdown.classList.add('open');
+
+        dropdown.querySelectorAll('.company-search__item').forEach(function (el) {
+          el.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            selectProspect(el.dataset.id, el.dataset.name);
+            dropdown.classList.remove('open');
+          });
+        });
+
+        dropdown.querySelector('.company-search__create').addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          dropdown.classList.remove('open');
+          openCreateCompany(q);
+        });
+      } catch (err) {
+        dropdown.innerHTML = '<div class="company-search__empty">Search failed</div>';
+        dropdown.classList.add('open');
+      }
+    }
+
+    function openCreateCompany(name) {
+      document.getElementById('newCompanyName').value = name;
+      document.getElementById('newCompanyDomain').value = '';
+      document.getElementById('addCompanyError').textContent = '';
+      document.getElementById('createCompanyForm').classList.add('open');
+      document.getElementById('newCompanyDomain').focus();
+    }
+
+    function cancelCreateCompany() {
+      document.getElementById('createCompanyForm').classList.remove('open');
+    }
+
+    async function handleAddCompany() {
+      const name = document.getElementById('newCompanyName').value.trim();
+      const domain = document.getElementById('newCompanyDomain').value.trim();
+      const errorEl = document.getElementById('addCompanyError');
+      const btn = document.getElementById('addCompanyBtn');
+      errorEl.textContent = '';
+
+      if (!name || !domain) {
+        errorEl.textContent = 'Name and domain are required';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, domain, prospect_source: 'referral' }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 409 && data.organization) {
+            // Already exists — select it
+            selectProspect(data.organization.workos_organization_id, data.organization.name);
+            document.getElementById('createCompanyForm').classList.remove('open');
+            return;
+          }
+          errorEl.textContent = data.error || 'Failed to create prospect';
+          return;
+        }
+        selectProspect(data.workos_organization_id, data.name);
+        document.getElementById('createCompanyForm').classList.remove('open');
+      } catch (err) {
+        errorEl.textContent = 'Network error — please try again';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── End prospect typeahead ─────────────────────────────────────────────
+
     async function init() {
       try {
         const res = await fetch('/api/me', { credentials: 'include' });
@@ -537,6 +788,7 @@
         currentOrgId = org.id;
         document.getElementById('orgName').textContent = org.name;
 
+        setupCompanySearch();
         await Promise.all([loadMyCodes(), loadAllActivity()]);
       } catch (err) {
         console.error('Init error:', err);

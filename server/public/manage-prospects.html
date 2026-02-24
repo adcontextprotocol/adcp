@@ -296,6 +296,14 @@
       background: var(--color-success-50);
       color: var(--color-success-700);
     }
+    .stakeholder-badge.watching {
+      background: var(--color-info-bg);
+      color: var(--color-info);
+    }
+    .stakeholder-badge.connected {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+    }
 
     /* Owner cell with inline actions */
     .owner-cell {
@@ -1380,7 +1388,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       // Show filters (hidden for domain discovery, prospect search, and cleanup)
       document.querySelector('.filters').style.display = 'flex';
-      updateTableHeaders(false);
+      updateTableHeaders(view);
 
       // Fetch data for view
       // open_invoices is filtered client-side since we already have the data
@@ -1590,6 +1598,20 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
             <th>Details</th>
             <th>Location</th>
             <th>Status</th>
+            <th></th>
+          </tr>
+        `;
+      } else if (viewType === 'my_accounts') {
+        // My Accounts view — includes a Role column showing the current user's stakeholder role
+        header.innerHTML = `
+          <tr>
+            <th class="col-company">Company</th>
+            <th>🔥</th>
+            <th class="col-domain">Domain</th>
+            <th class="col-users">Users</th>
+            <th class="col-activity">Last Activity</th>
+            <th>Role</th>
+            <th>Owner</th>
             <th></th>
           </tr>
         `;
@@ -3149,6 +3171,19 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           watchHtml = `<button class="watch-btn ${watchClass}" onclick="toggleWatch('${prospect.workos_organization_id}', ${isWatching})" title="${watchTitle}">${watchIcon}</button>`;
         }
 
+        // Role badge for My Accounts view
+        let roleHtml = '';
+        if (currentView === 'my_accounts') {
+          const role = prospect.user_stakeholder_role;
+          if (role === 'owner') {
+            roleHtml = `<span class="stakeholder-badge owner">owner</span>`;
+          } else if (role === 'interested') {
+            roleHtml = `<span class="stakeholder-badge watching">watching</span>`;
+          } else if (role === 'connected') {
+            roleHtml = `<span class="stakeholder-badge connected">connected</span>`;
+          }
+        }
+
         return `
           <tr>
             <td>${companyHtml}</td>
@@ -3156,6 +3191,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
             <td>${domainHtml}</td>
             <td>${usersHtml}</td>
             <td>${activityHtml}</td>
+            ${currentView === 'my_accounts' ? `<td>${roleHtml}</td>` : ''}
             <td>${ownerHtml}</td>
             <td>
               ${watchHtml}

@@ -2574,11 +2574,12 @@ export function createOrganizationsRouter(): Router {
   // =========================================================================
 
   // POST /api/organizations/:orgId/referral-codes - Create a referral code
+  // Each code is single-use and expires in 30 days.
   router.post('/:orgId/referral-codes', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
       const { orgId } = req.params;
-      const { target_company_name, discount_percent, max_uses, expires_at, custom_code } = req.body;
+      const { target_org_id } = req.body;
 
       const memberships = await workos!.userManagement.listOrganizationMemberships({
         userId: user.id,
@@ -2595,52 +2596,52 @@ export function createOrganizationsRouter(): Router {
         }
       }
 
-      if (discount_percent !== undefined) {
-        if (typeof discount_percent !== 'number' || discount_percent < 1 || discount_percent > 100) {
-          return res.status(400).json({ error: 'discount_percent must be a number between 1 and 100' });
+      // Look up target org name when a prospect org is specified
+      let target_company_name: string | undefined;
+      if (target_org_id) {
+        const pool = getPool();
+        const orgResult = await pool.query<{ name: string; prospect_status: string | null }>(
+          `SELECT name, prospect_status FROM organizations WHERE workos_organization_id = $1`,
+          [target_org_id]
+        );
+        if (orgResult.rows.length === 0) {
+          return res.status(400).json({ error: 'Target organization not found' });
         }
+        if (!orgResult.rows[0].prospect_status) {
+          return res.status(400).json({ error: 'Target organization is not a prospect' });
+        }
+        target_company_name = orgResult.rows[0].name;
       }
 
-      if (max_uses !== undefined) {
-        if (!Number.isInteger(max_uses) || max_uses < 1) {
-          return res.status(400).json({ error: 'max_uses must be a positive integer' });
-        }
-      }
-
-      if (expires_at !== undefined) {
-        const expiry = new Date(expires_at);
-        if (isNaN(expiry.getTime())) {
-          return res.status(400).json({ error: 'expires_at must be a valid date' });
-        }
-        if (expiry <= new Date()) {
-          return res.status(400).json({ error: 'expires_at must be a future date' });
-        }
-      }
-
-      if (custom_code) {
-        const normalized = String(custom_code).toUpperCase();
-        if (!/^[A-Z0-9_-]{2,40}$/.test(normalized)) {
-          return res.status(400).json({ error: 'Custom code must be 2–40 characters: letters, numbers, hyphens, or underscores only' });
-        }
-      }
+      // Hardcode: single-use, 30-day expiry
+      const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
       const code = await referralDb.createReferralCode({
         referrer_org_id: orgId,
         referrer_user_id: user.id,
         referrer_user_name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         referrer_user_email: user.email,
-        target_company_name: target_company_name || undefined,
-        discount_percent: discount_percent || undefined,
-        max_uses: max_uses || undefined,
-        expires_at: expires_at ? new Date(expires_at) : undefined,
-        custom_code: custom_code || undefined,
+        target_company_name,
+        target_org_id: target_org_id || undefined,
+        max_uses: 1,
+        expires_at,
       });
+
+      // Add creator as "interested" stakeholder on the target prospect (best-effort)
+      if (target_org_id) {
+        const pool = getPool();
+        const notes = `Created referral code ${code.code}`;
+        const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+        pool.query(
+          `INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
+           VALUES ($1, $2, $3, $4, 'interested', $5)
+           ON CONFLICT (organization_id, user_id) DO NOTHING`,
+          [target_org_id, user.id, userName, user.email || null, notes]
+        ).catch(err => logger.warn({ err }, 'Failed to add stakeholder on referral code creation'));
+      }
 
       res.json({ referral_code: code });
     } catch (error) {
-      if (error instanceof Error && error.message.includes('duplicate key')) {
-        return res.status(409).json({ error: 'That code is already in use — try a different one' });
-      }
       logger.error({ err: error }, 'Error creating referral code');
       res.status(500).json({ error: 'Failed to create referral code' });
     }

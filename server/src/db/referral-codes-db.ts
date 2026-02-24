@@ -78,10 +78,9 @@ export interface CreateReferralCodeInput {
   referrer_user_name: string;
   referrer_user_email?: string;
   target_company_name?: string;
-  discount_percent?: number;
+  target_org_id?: string;
   max_uses?: number;
   expires_at?: Date;
-  custom_code?: string;
 }
 
 function generateCode(): string {
@@ -94,12 +93,12 @@ function generateCode(): string {
 }
 
 export async function createReferralCode(input: CreateReferralCodeInput): Promise<ReferralCode> {
-  const code = input.custom_code?.toUpperCase() || generateCode();
+  const code = generateCode();
 
   const result = await query<ReferralCode>(
     `INSERT INTO referral_codes
        (code, referrer_org_id, referrer_user_id, referrer_user_name, referrer_user_email,
-        target_company_name, discount_percent, max_uses, expires_at)
+        target_company_name, target_org_id, max_uses, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
@@ -109,7 +108,7 @@ export async function createReferralCode(input: CreateReferralCodeInput): Promis
       input.referrer_user_name,
       input.referrer_user_email || null,
       input.target_company_name || null,
-      input.discount_percent || null,
+      input.target_org_id || null,
       input.max_uses || null,
       input.expires_at || null,
     ]
