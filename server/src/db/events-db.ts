@@ -12,6 +12,7 @@ import type {
   EventSponsorDisplay,
   SponsorshipTier,
   RegistrationStatus,
+  EventInvite,
 } from '../types.js';
 
 /**
@@ -46,11 +47,12 @@ export class EventsDatabase {
         featured_image_url,
         sponsorship_enabled, sponsorship_tiers, stripe_product_id,
         status, max_attendees, require_rsvp_approval,
+        visibility, access_rules,
         created_by_user_id, organization_id, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34
       )
       RETURNING *`,
       [
@@ -83,6 +85,8 @@ export class EventsDatabase {
         input.status || 'draft',
         input.max_attendees || null,
         input.require_rsvp_approval ?? false,
+        input.visibility || 'public',
+        JSON.stringify(input.access_rules || {}),
         input.created_by_user_id || null,
         input.organization_id || null,
         JSON.stringify(input.metadata || {}),
@@ -150,6 +154,8 @@ export class EventsDatabase {
       published_at: 'published_at',
       max_attendees: 'max_attendees',
       require_rsvp_approval: 'require_rsvp_approval',
+      visibility: 'visibility',
+      access_rules: 'access_rules',
       metadata: 'metadata',
     };
 
@@ -162,7 +168,7 @@ export class EventsDatabase {
       if (!columnName) continue;
 
       setClauses.push(`${columnName} = $${paramIndex++}`);
-      if (key === 'metadata' || key === 'sponsorship_tiers') {
+      if (key === 'metadata' || key === 'sponsorship_tiers' || key === 'access_rules') {
         params.push(JSON.stringify(value));
       } else {
         params.push(value);
@@ -203,6 +209,12 @@ export class EventsDatabase {
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIndex = 1;
+
+    // Exclude invite_unlisted events from public-facing queries
+    // Admin queries pass include_invite_unlisted: true to override this
+    if (!options.include_invite_unlisted) {
+      conditions.push(`visibility != 'invite_unlisted'`);
+    }
 
     // Support querying multiple statuses at once
     if (options.statuses && options.statuses.length > 0) {
@@ -304,6 +316,116 @@ export class EventsDatabase {
       status: 'published',
       published_at: new Date(),
     });
+  }
+
+  // =====================================================
+  // EVENT ACCESS CONTROL & INVITES
+  // =====================================================
+
+  /**
+   * Check if a user has access to an invite-only event.
+   * A user has access if:
+   * - Their email is on the event's invite list, OR
+   * - Their org is in access_rules.organizations, OR
+   * - access_rules.membership_required is true and their org has a member_profile
+   */
+  async checkUserAccess(eventId: string, userEmail?: string, userOrgId?: string): Promise<boolean> {
+    // Check explicit invite by email
+    if (userEmail) {
+      const inviteResult = await query(
+        `SELECT 1 FROM event_invites
+         WHERE event_id = $1 AND LOWER(email) = LOWER($2)
+         LIMIT 1`,
+        [eventId, userEmail]
+      );
+      if (inviteResult.rows.length > 0) return true;
+    }
+
+    // Load access_rules
+    const rulesResult = await query<{ access_rules: string | object }>(
+      'SELECT access_rules FROM events WHERE id = $1',
+      [eventId]
+    );
+    if (!rulesResult.rows[0]) return false;
+
+    const rules = typeof rulesResult.rows[0].access_rules === 'string'
+      ? JSON.parse(rulesResult.rows[0].access_rules)
+      : rulesResult.rows[0].access_rules || {};
+
+    // Check org allow-list
+    if (userOrgId && rules.organizations && Array.isArray(rules.organizations)) {
+      if (rules.organizations.includes(userOrgId)) return true;
+    }
+
+    // Check membership_required: user's org must have a member_profile
+    if (rules.membership_required && userOrgId) {
+      const memberResult = await query(
+        `SELECT 1 FROM member_profiles WHERE workos_organization_id = $1 LIMIT 1`,
+        [userOrgId]
+      );
+      if (memberResult.rows.length > 0) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Get all invites for an event
+   */
+  async getEventInvites(eventId: string): Promise<EventInvite[]> {
+    const result = await query<EventInvite>(
+      `SELECT * FROM event_invites WHERE event_id = $1 ORDER BY created_at ASC`,
+      [eventId]
+    );
+    return result.rows.map(row => ({
+      ...row,
+      created_at: new Date(row.created_at),
+    }));
+  }
+
+  /**
+   * Add emails to the invite list for an event.
+   * Silently ignores duplicate emails (ON CONFLICT DO NOTHING).
+   * Returns the number of new invites added.
+   */
+  async addInvites(eventId: string, emails: string[], invitedByUserId?: string): Promise<number> {
+    if (emails.length === 0) return 0;
+
+    const values = emails.map((_, i) => `($1, $${i + 2}, $${emails.length + 2})`).join(', ');
+    const params: unknown[] = [eventId, ...emails.map(e => e.toLowerCase().trim()), invitedByUserId || null];
+
+    const result = await query(
+      `INSERT INTO event_invites (event_id, email, invited_by_user_id)
+       VALUES ${values}
+       ON CONFLICT (event_id, email) DO NOTHING`,
+      params
+    );
+    return result.rowCount || 0;
+  }
+
+  /**
+   * Remove an email from the invite list for an event.
+   */
+  async removeInvite(eventId: string, email: string): Promise<boolean> {
+    const result = await query(
+      `DELETE FROM event_invites WHERE event_id = $1 AND LOWER(email) = LOWER($2)`,
+      [eventId, email]
+    );
+    return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Get the WorkOS organization ID for a user from their org membership.
+   * Returns null if the user has no org membership.
+   */
+  async getUserOrgId(workosUserId: string): Promise<string | null> {
+    const result = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_memberships
+       WHERE workos_user_id = $1
+       LIMIT 1`,
+      [workosUserId]
+    );
+    return result.rows[0]?.workos_organization_id ?? null;
   }
 
   // =====================================================
@@ -696,6 +818,7 @@ export class EventsDatabase {
        WHERE status = 'published'
          AND venue_city ILIKE $1
          AND start_time > NOW()
+         AND visibility != 'invite_unlisted'
        ORDER BY start_time ASC
        LIMIT 10`,
       [city]
@@ -708,6 +831,7 @@ export class EventsDatabase {
          AND venue_city ILIKE $1
          AND start_time < NOW()
          AND start_time > NOW() - INTERVAL '6 months'
+         AND visibility != 'invite_unlisted'
        ORDER BY start_time DESC
        LIMIT 5`,
       [city]
@@ -800,6 +924,10 @@ export class EventsDatabase {
       metadata: typeof row.metadata === 'string'
         ? JSON.parse(row.metadata)
         : row.metadata || {},
+      access_rules: typeof row.access_rules === 'string'
+        ? JSON.parse(row.access_rules)
+        : row.access_rules || {},
+      visibility: row.visibility || 'public',
       start_time: new Date(row.start_time),
       end_time: row.end_time ? new Date(row.end_time) : undefined,
       published_at: row.published_at ? new Date(row.published_at) : undefined,
@@ -878,7 +1006,7 @@ export class EventsDatabase {
   ): Promise<{ upcoming: Event[]; past: Event[] }> {
     const statusCondition = options.includeUnpublished
       ? ''
-      : "AND e.status = 'published'";
+      : "AND e.status = 'published' AND e.visibility != 'invite_unlisted'";
 
     const upcomingResult = await query<Event>(
       `SELECT e.* FROM events e
