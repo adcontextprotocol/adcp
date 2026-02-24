@@ -398,11 +398,11 @@
               <div class="company-search__dropdown" id="companyDropdown"></div>
             </div>
             <div class="create-company-form" id="createCompanyForm">
-              <div class="create-company-form__title">Create prospect</div>
+              <div class="create-company-form__title" id="createFormTitle">Enter company domain</div>
               <div class="create-company-form__fields">
-                <input type="text" id="newCompanyName" placeholder="Company name">
                 <input type="text" id="newCompanyDomain" placeholder="domain.com">
-                <button type="button" class="btn btn-primary" id="addCompanyBtn" onclick="handleAddCompany()">Create</button>
+                <input type="text" id="newCompanyName" placeholder="Company name" style="display:none;">
+                <button type="button" class="btn btn-primary" id="addCompanyBtn" onclick="handleAddCompany()" style="display:none;">Create</button>
                 <button type="button" class="btn btn-secondary" onclick="cancelCreateCompany()">Cancel</button>
               </div>
               <span class="form-error" id="addCompanyError"></span>
@@ -701,28 +701,10 @@
         }
       });
 
-      // When domain is entered in the manual create form, auto-fill name via enrichment
+      // Domain blur in manual create form: look up company via enrichment
       const domainInput = document.getElementById('newCompanyDomain');
-      domainInput.addEventListener('blur', async function () {
-        if (!lushaConfigured) return;
-        const domain = domainInput.value.trim();
-        const nameInput = document.getElementById('newCompanyName');
-        if (!domain || nameInput.value.trim()) return;
-        try {
-          const res = await ManageSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.suggested?.companyName && !nameInput.value.trim()) {
-              nameInput.value = data.suggested.companyName;
-            }
-          }
-        } catch (_err) {
-          // best-effort
-        }
+      domainInput.addEventListener('blur', function () {
+        handleDomainLookup();
       });
     }
 
@@ -871,12 +853,70 @@
       }
     }
 
-    function openCreateCompany() {
-      document.getElementById('newCompanyName').value = '';
-      document.getElementById('newCompanyDomain').value = '';
-      document.getElementById('addCompanyError').textContent = '';
-      document.getElementById('createCompanyForm').classList.add('open');
+    async function handleDomainLookup() {
+      if (!lushaConfigured) return;
+      const domain = document.getElementById('newCompanyDomain').value.trim();
+      if (!domain) return;
+      // Skip if already in manual-entry mode
+      if (document.getElementById('newCompanyName').style.display !== 'none') return;
+
+      const errorEl = document.getElementById('addCompanyError');
+      errorEl.textContent = 'Looking up…';
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          errorEl.textContent = '';
+          const company = {
+            companyName: data.suggested?.companyName || data.enrichment?.companyName || domain,
+            domain,
+            mainIndustry: data.enrichment?.industry,
+            subIndustry: data.enrichment?.subIndustry,
+            revenue: data.enrichment?.revenue,
+            revenueRange: data.enrichment?.revenueRange,
+            employeeCount: data.enrichment?.employeeCount,
+            employeeCountRange: data.enrichment?.employeeCountRange,
+            foundedYear: data.enrichment?.foundedYear,
+            country: data.enrichment?.country,
+            city: data.enrichment?.city,
+            linkedinUrl: data.enrichment?.linkedinUrl,
+            description: data.enrichment?.description,
+          };
+          document.getElementById('createCompanyForm').classList.remove('open');
+          await importLushaCompany(company);
+          return;
+        }
+      } catch (_err) {
+        // fall through to manual
+      }
+
+      // Company not found — reveal name field for manual entry
+      errorEl.textContent = '';
+      document.getElementById('createFormTitle').textContent = 'Create prospect';
+      document.getElementById('newCompanyName').style.display = '';
+      document.getElementById('addCompanyBtn').style.display = '';
       document.getElementById('newCompanyName').focus();
+    }
+
+    function openCreateCompany() {
+      document.getElementById('newCompanyDomain').value = '';
+      document.getElementById('newCompanyName').value = '';
+      document.getElementById('newCompanyName').style.display = 'none';
+      document.getElementById('addCompanyBtn').style.display = 'none';
+      document.getElementById('addCompanyError').textContent = '';
+      document.getElementById('createFormTitle').textContent = lushaConfigured ? 'Enter company domain' : 'Create prospect';
+      document.getElementById('createCompanyForm').classList.add('open');
+      if (!lushaConfigured) {
+        document.getElementById('newCompanyName').style.display = '';
+        document.getElementById('addCompanyBtn').style.display = '';
+      }
+      document.getElementById('newCompanyDomain').focus();
     }
 
     function cancelCreateCompany() {
