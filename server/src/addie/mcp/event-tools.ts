@@ -15,15 +15,18 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { isSlackUserAAOAdmin } from './admin-tools.js';
 import { eventsDb } from '../../db/events-db.js';
+import { upsertEmailContact } from '../../db/contacts-db.js';
 import { query } from '../../db/client.js';
 import {
   createEvent as createLumaEvent,
+  updateEvent as updateLumaEvent,
   getEvent as getLumaEvent,
   getEventGuests,
   approveGuest,
   declineGuest,
   isLumaEnabled,
   type CreateEventInput as LumaCreateEventInput,
+  type UpdateEventInput as LumaUpdateEventInput,
 } from '../../luma/client.js';
 import type {
   CreateEventInput,
@@ -412,6 +415,10 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
           type: 'boolean',
           description: 'Publish the event immediately (default: true)',
         },
+        require_rsvp_approval: {
+          type: 'boolean',
+          description: 'If true, registrations require admin approval before being confirmed.',
+        },
       },
       required: ['title', 'start_time', 'event_type'],
     },
@@ -526,6 +533,24 @@ the response will suggest they share their location or join industry gathering g
           enum: ['draft', 'published', 'cancelled'],
           description: 'Change event status',
         },
+        require_rsvp_approval: {
+          type: 'boolean',
+          description: 'If true, registrations require admin approval before being confirmed.',
+        },
+      },
+      required: ['event_slug'],
+    },
+  },
+  {
+    name: 'register_event_interest',
+    description: `Register the current user's interest in an event. Use when someone asks to be notified about an event, added to a waitlist, or wants to express interest without formally registering.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_slug: {
+          type: 'string',
+          description: 'Event slug or ID',
+        },
       },
       required: ['event_slug'],
     },
@@ -605,6 +630,7 @@ export function createEventToolHandlers(
       venue_country: (input.venue_country as string) || 'United States',
       virtual_url: input.virtual_url as string | undefined,
       max_attendees: input.max_attendees as number | undefined,
+      require_rsvp_approval: (input.require_rsvp_approval as boolean | undefined) ?? false,
       status: publishImmediately ? 'published' : 'draft',
       created_by_user_id: memberContext?.workos_user?.workos_user_id || slackUserId,
     };
@@ -622,6 +648,7 @@ export function createEventToolHandlers(
           end_at: endTime?.toISOString() || new Date(startTime.getTime() + 2 * 60 * 60 * 1000).toISOString(),
           timezone,
           visibility: publishImmediately ? 'public' : 'private',
+          require_rsvp_approval: (input.require_rsvp_approval as boolean | undefined) ?? false,
         };
 
         // Add location for in-person events
@@ -1019,6 +1046,10 @@ export function createEventToolHandlers(
       }
       changes.push(`Status → ${input.status}`);
     }
+    if (input.require_rsvp_approval !== undefined) {
+      updates.require_rsvp_approval = input.require_rsvp_approval;
+      changes.push(`RSVP approval → ${input.require_rsvp_approval ? 'required' : 'open'}`);
+    }
 
     if (changes.length === 0) {
       return 'No changes provided. Specify at least one field to update.';
@@ -1026,7 +1057,26 @@ export function createEventToolHandlers(
 
     await eventsDb.updateEvent(event.id, updates);
 
-    // TODO: Update Luma event if luma_event_id exists
+    // Sync to Luma if event has a Luma ID
+    if (event.luma_event_id && isLumaEnabled()) {
+      const lumaUpdates: LumaUpdateEventInput = {};
+      if (updates.title) lumaUpdates.name = updates.title as string;
+      if (updates.description) lumaUpdates.description = updates.description as string;
+      if (updates.start_time) lumaUpdates.start_at = (updates.start_time as Date).toISOString();
+      if (updates.end_time) lumaUpdates.end_at = (updates.end_time as Date).toISOString();
+      if (updates.virtual_url) lumaUpdates.meeting_url = updates.virtual_url as string;
+      if (updates.status) lumaUpdates.visibility = updates.status === 'published' ? 'public' : 'private';
+      if (updates.require_rsvp_approval !== undefined) lumaUpdates.require_rsvp_approval = updates.require_rsvp_approval as boolean;
+
+      if (Object.keys(lumaUpdates).length > 0) {
+        try {
+          await updateLumaEvent(event.luma_event_id, lumaUpdates);
+          logger.info({ lumaEventId: event.luma_event_id, updates: Object.keys(lumaUpdates) }, 'Synced event update to Luma');
+        } catch (lumaError) {
+          logger.warn({ err: lumaError, lumaEventId: event.luma_event_id }, 'Failed to sync event update to Luma');
+        }
+      }
+    }
 
     logger.info({
       eventId: event.id,
@@ -1035,6 +1085,57 @@ export function createEventToolHandlers(
     }, 'Event updated via Addie');
 
     return `✅ Updated **${event.title}**\n\n${changes.map(c => `• ${c}`).join('\n')}`;
+  });
+
+  // Register interest in an event
+  handlers.set('register_event_interest', async (input) => {
+    const eventSlug = input.event_slug as string;
+
+    let event = await eventsDb.getEventBySlug(eventSlug);
+    if (!event) {
+      event = await eventsDb.getEventById(eventSlug);
+    }
+    if (!event) {
+      return `❌ Event not found: "${eventSlug}"`;
+    }
+
+    const email = memberContext?.workos_user?.email ?? memberContext?.slack_user?.email ?? null;
+    if (!email) {
+      return `I don't have your email address on file. Could you share it so I can add you to the interest list?`;
+    }
+
+    const displayName = memberContext?.workos_user
+      ? [memberContext.workos_user.first_name, memberContext.workos_user.last_name].filter(Boolean).join(' ') || undefined
+      : memberContext?.slack_user?.display_name ?? undefined;
+
+    // Check if already registered so we can give a useful response
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId) {
+      const alreadyRegistered = await eventsDb.isUserRegistered(event.id, workosUserId, email);
+      if (alreadyRegistered) {
+        return `You're already registered for **${event.title}** — no need to join the interest list separately.`;
+      }
+    }
+
+    const contact = await upsertEmailContact({ email, displayName });
+
+    try {
+      await eventsDb.createRegistration({
+        event_id: event.id,
+        email_contact_id: contact.contactId,
+        email,
+        name: displayName,
+        registration_status: 'waitlisted',
+        registration_source: 'interest',
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code !== '23505') throw err;
+      // Unique constraint hit — already expressed interest
+    }
+
+    logger.info({ eventId: event.id, email, contactId: contact.contactId }, 'Event interest registered via Addie');
+
+    return `✅ You're on the interest list for **${event.title}**. We'll keep you posted on updates.`;
   });
 
   return handlers;

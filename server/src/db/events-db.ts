@@ -45,12 +45,12 @@ export class EventsDatabase {
         external_registration_url, is_external_event,
         featured_image_url,
         sponsorship_enabled, sponsorship_tiers, stripe_product_id,
-        status, max_attendees,
+        status, max_attendees, require_rsvp_approval,
         created_by_user_id, organization_id, metadata
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
       )
       RETURNING *`,
       [
@@ -82,6 +82,7 @@ export class EventsDatabase {
         input.stripe_product_id || null,
         input.status || 'draft',
         input.max_attendees || null,
+        input.require_rsvp_approval ?? false,
         input.created_by_user_id || null,
         input.organization_id || null,
         JSON.stringify(input.metadata || {}),
@@ -148,6 +149,7 @@ export class EventsDatabase {
       status: 'status',
       published_at: 'published_at',
       max_attendees: 'max_attendees',
+      require_rsvp_approval: 'require_rsvp_approval',
       metadata: 'metadata',
     };
 

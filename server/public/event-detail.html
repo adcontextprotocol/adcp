@@ -721,6 +721,30 @@
         `;
       }
 
+      // Email interest form (upcoming events only)
+      if (!isPast) {
+        const loggedInEmail = window.__APP_CONFIG__?.user?.email || '';
+        html += `
+          <div class="event-section" id="interest-section">
+            <h2 class="section-title">Stay informed</h2>
+            <p style="color: var(--color-text-secondary); margin-bottom: 1rem;">Enter your email to be notified about updates for this event.</p>
+            <form id="interest-form" data-slug="${escapeHtml(event.slug)}" style="display: flex; gap: 0.5rem; flex-wrap: wrap;" onsubmit="submitInterest(event)">
+              <input
+                type="email"
+                id="interest-email"
+                placeholder="you@company.com"
+                value="${escapeHtml(loggedInEmail)}"
+                required
+                style="flex: 1; min-width: 220px; padding: 0.625rem 0.875rem; border: 1px solid var(--color-border); border-radius: 6px; font-size: 0.9375rem; background: var(--color-surface); color: var(--color-text);"
+              />
+              <button type="submit" class="btn btn-primary">Notify me</button>
+            </form>
+            <p id="interest-success" style="display: none; color: var(--color-success, #16a34a); margin-top: 0.5rem;">You're on the list!</p>
+            <p id="interest-error" style="display: none; color: var(--color-error, #dc2626); margin-top: 0.5rem;">Something went wrong. Please try again.</p>
+          </div>
+        `;
+      }
+
       // Industry Gathering / Attendee Group
       if (industryGathering) {
         html += `
@@ -853,6 +877,32 @@
     function handleRegister() {
       // TODO: Implement registration flow
       alert('Registration coming soon! Check back later.');
+    }
+
+    async function submitInterest(e) {
+      e.preventDefault();
+      const slug = e.target.dataset.slug;
+      const email = document.getElementById('interest-email').value;
+      const successEl = document.getElementById('interest-success');
+      const errorEl = document.getElementById('interest-error');
+      successEl.style.display = 'none';
+      errorEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/events/interest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, event_slug: slug }),
+        });
+        if (res.ok) {
+          document.getElementById('interest-form').style.display = 'none';
+          successEl.style.display = 'block';
+        } else {
+          errorEl.style.display = 'block';
+        }
+      } catch {
+        errorEl.style.display = 'block';
+      }
     }
 
     function handleSponsorTier(tierId, tierName, priceCents) {

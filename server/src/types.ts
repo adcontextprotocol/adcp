@@ -913,7 +913,7 @@ export type EventType = 'summit' | 'meetup' | 'webinar' | 'workshop' | 'conferen
 export type EventFormat = 'in_person' | 'virtual' | 'hybrid';
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
 export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled' | 'no_show';
-export type RegistrationSource = 'direct' | 'luma' | 'import' | 'admin';
+export type RegistrationSource = 'direct' | 'luma' | 'import' | 'admin' | 'interest';
 export type SponsorshipPaymentStatus = 'pending' | 'paid' | 'refunded' | 'cancelled';
 
 export interface SponsorshipTier {
@@ -956,6 +956,7 @@ export interface Event {
   status: EventStatus;
   published_at?: Date;
   max_attendees?: number;
+  require_rsvp_approval: boolean;
   created_by_user_id?: string;
   organization_id?: string;
   metadata: Record<string, unknown>;
@@ -992,6 +993,7 @@ export interface CreateEventInput {
   stripe_product_id?: string;
   status?: EventStatus;
   max_attendees?: number;
+  require_rsvp_approval?: boolean;
   created_by_user_id?: string;
   organization_id?: string;
   metadata?: Record<string, unknown>;
@@ -1026,6 +1028,7 @@ export interface UpdateEventInput {
   status?: EventStatus;
   published_at?: Date;
   max_attendees?: number;
+  require_rsvp_approval?: boolean;
   metadata?: Record<string, unknown>;
 }
 

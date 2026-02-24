@@ -966,6 +966,56 @@ export function createEventsRouter(): {
     }
   });
 
+  // POST /api/events/interest - Register email interest (no auth required)
+  publicApiRouter.post("/interest", async (req: Request, res: Response) => {
+    try {
+      const { email, name, event_slug } = req.body as {
+        email?: unknown;
+        name?: unknown;
+        event_slug?: unknown;
+      };
+
+      if (!email || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: "Invalid email address" });
+      }
+
+      const displayName = typeof name === "string" && name.trim() ? name.trim() : undefined;
+      const slug = typeof event_slug === "string" && event_slug.trim() ? event_slug.trim() : undefined;
+
+      const contact = await upsertEmailContact({ email: email.toLowerCase().trim(), displayName });
+
+      // Create a waitlisted registration to record the event-specific interest signal
+      if (slug) {
+        const event = await eventsDb.getEventBySlug(slug);
+        if (event) {
+          try {
+            await eventsDb.createRegistration({
+              event_id: event.id,
+              email_contact_id: contact.contactId,
+              email: email.toLowerCase().trim(),
+              name: displayName,
+              registration_status: 'waitlisted',
+              registration_source: 'interest',
+            });
+          } catch (err) {
+            if ((err as { code?: string }).code !== '23505') throw err;
+            // Unique constraint hit — contact already expressed interest or registered
+          }
+        }
+      }
+
+      logger.info(
+        { contactId: contact.contactId, isNew: contact.isNew, event_slug: slug },
+        "Email interest registered"
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, "Error registering email interest");
+      res.status(500).json({ error: "Failed to register interest" });
+    }
+  });
+
   // GET /api/events/:slug - Get event by slug (public)
   publicApiRouter.get("/:slug", async (req: Request, res: Response) => {
     try {
@@ -1054,6 +1104,7 @@ export function createEventsRouter(): {
         email: user.email,
         name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || undefined,
         registration_source: "direct",
+        registration_status: event.require_rsvp_approval ? "waitlisted" : "registered",
       });
 
       logger.info(
