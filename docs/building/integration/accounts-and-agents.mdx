@@ -83,6 +83,14 @@ Rates: Agent's rates
 Agent re-bills individual brands and operators
 ```
 
+### Agent account
+
+When `supported_billing` includes `"agent"`, the seller pre-provisions an **agent account**: a top-level billing relationship between the seller and the agent, with no brand or operator association. It serves as the billing parent for all agent-billed sub-accounts.
+
+When a sub-account is created with `billing: "agent"`, the seller links it to the agent account via `parent_account_id`. The agent receives a single consolidated invoice and is responsible for re-billing individual brands and operators on its side.
+
+When `default_billing: "agent"`, the agent account also acts as the **fallback**: buys without a direct brand account route to the agent account automatically, without requiring a separate `sync_accounts` call first.
+
 ## Account Setup
 
 The seller declares account capabilities in `get_adcp_capabilities`:
@@ -103,6 +111,25 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 | `supported_billing` | Which billing models the seller supports: `brand`, `operator`, `agent` |
 | `default_billing` | The billing model applied when the agent omits `billing` from sync_accounts. |
 | `required_for_products` | Whether `get_products` requires an `account_id`. When true, set up an account before browsing. |
+
+### Seller billing patterns
+
+Sellers combine auth model and billing support in different ways. The four common patterns:
+
+| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` | Agent account |
+|---------|------------------------|--------------------|--------------------|---------------|
+| Operator-gated | `true` | `["brand", "operator"]` | — | No |
+| Direct-only | `false` | `["brand", "operator"]` | — | No |
+| Agent-consolidated | `false` | `["agent"]` | `"agent"` | Yes |
+| Hybrid | `false` | `["brand", "operator", "agent"]` | `"agent"` | Yes (fallback) |
+
+**Operator-gated** — Each operator authenticates directly with the seller (via OAuth or API key). No agent-level billing — every account has a direct billing relationship. Typical for premium publishers and platforms that enforce per-operator contract compliance.
+
+**Direct-only** — The seller trusts the agent's identity but requires a direct account for every brand or operator. Operators listed in `brand.json` may be provisioned instantly; others go through `pending_approval` until T&C are signed out-of-band. No agent account — the agent cannot buy without a direct account for the advertiser.
+
+**Agent-consolidated** — All billing flows through the agent. The seller maintains a single agent account and creates sub-accounts per brand/operator immediately (no pending approval needed). The agent handles re-billing. Typical for DSP-style sellers and subscription content platforms.
+
+**Hybrid** — Both paths are available. Direct accounts (brand or operator billing) give buyers their own rate cards and invoicing with the seller. The agent account serves as the fallback — buys without a specific direct account route to the agent account automatically. Typical for sellers serving both direct buyers and programmatic buyers.
 
 ### Trust Model
 
@@ -700,7 +727,7 @@ For organizations that cannot host files on their domain, the `authoritative_loc
 | Brand identity | House domain + brand_id via brand.json | Resolution and caching |
 | Account capabilities | `account` section in capabilities | `require_operator_auth`, `authorization_endpoint`, `supported_billing`, `required_for_products` |
 | Account setup | `sync_accounts` task with status lifecycle | Provisioning, credit, legal |
-| Billing | Three models: brand, operator, agent | Which models are supported |
+| Billing | Three models: brand, operator, agent | Which models are supported; whether agent account exists |
 | Operator authorization | `authorized_operators` in brand.json | Verification and enforcement |
 | Account status | Standard status values with setup URLs | Status transitions and notifications |
 | Account ID | Required when agent has multiple accounts | Mapping from brand+operator to account |
