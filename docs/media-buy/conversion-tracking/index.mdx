@@ -307,6 +307,28 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `target.value` | number | Yes (if target set) | Target cost per metric unit in buy currency |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
+**Valid metric/target pairings** — sellers should reject mismatched combinations:
+
+| `metric` | Valid `target.kind` |
+|---|---|
+| `clicks` | `cpc` |
+| `views` | `cpv` |
+| `completed_views` | `cpcv` |
+
+### Choosing a strategy
+
+| Goal | When to use | What you set |
+|---|---|---|
+| Max conversions | As many conversions as possible within budget | `kind: "event"` + event source, no target |
+| Target ROAS | Specific return on ad spend | `kind: "event"` + `target: { kind: "roas", value: 4.0 }` |
+| Target CPA | Specific cost per conversion | `kind: "event"` + `target: { kind: "cpa", value: 25.0 }` |
+| Max clicks | Maximize clicks within budget | `kind: "metric"`, `metric: "clicks"`, no target |
+| Target CPC | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cpc", value: 2.0 }` |
+| Max views | Maximize views within budget | `kind: "metric"`, `metric: "views"`, no target |
+| Target CPV | Specific cost per view | `kind: "metric"`, `metric: "views"` + `target: { kind: "cpv", value: 0.02 }` |
+| Max completed views | Maximize completed views within budget | `kind: "metric"`, `metric: "completed_views"`, no target |
+| Target CPCV | Specific cost per completed view | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "cpcv", value: 0.05 }` |
+
 ### Multiple goals and priority
 
 A package can have multiple goals. Priority controls which the seller treats as primary. A common pattern is to use metric goals as proxy signals when event data is sparse:

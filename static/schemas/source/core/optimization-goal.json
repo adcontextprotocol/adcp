@@ -5,6 +5,7 @@
   "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
   "oneOf": [
     {
+      "type": "object",
       "description": "Optimize for a seller-tracked delivery metric. No event source required — the seller tracks clicks, views, and completed views natively.",
       "properties": {
         "kind": { "type": "string", "const": "metric" },
@@ -14,9 +15,10 @@
           "description": "Seller-native metric to optimize for"
         },
         "target": {
-          "description": "Target cost per metric unit. When omitted, the seller optimizes for maximum metric volume within budget.",
+          "description": "Target cost per metric unit. When omitted, the seller optimizes for maximum metric volume within budget. The target kind must match the metric: clicks→cpc, views→cpv, completed_views→cpcv.",
           "oneOf": [
             {
+              "type": "object",
               "properties": {
                 "kind": { "type": "string", "const": "cpc" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per click in the buy currency" }
@@ -25,6 +27,7 @@
               "additionalProperties": true
             },
             {
+              "type": "object",
               "properties": {
                 "kind": { "type": "string", "const": "cpv" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per view in the buy currency" }
@@ -33,6 +36,7 @@
               "additionalProperties": true
             },
             {
+              "type": "object",
               "properties": {
                 "kind": { "type": "string", "const": "cpcv" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per completed view in the buy currency" }
@@ -52,6 +56,7 @@
       "additionalProperties": true
     },
     {
+      "type": "object",
       "description": "Optimize for an advertiser-tracked conversion event. Requires an event source registered via sync_event_sources.",
       "properties": {
         "kind": { "type": "string", "const": "event" },
@@ -72,6 +77,7 @@
           "description": "Target cost or return for this event. When omitted, the seller optimizes for maximum conversions within budget.",
           "oneOf": [
             {
+              "type": "object",
               "properties": {
                 "kind": { "type": "string", "const": "cpa" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per acquisition in the buy currency" }
@@ -80,6 +86,7 @@
               "additionalProperties": true
             },
             {
+              "type": "object",
               "properties": {
                 "kind": { "type": "string", "const": "roas" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent)" }
