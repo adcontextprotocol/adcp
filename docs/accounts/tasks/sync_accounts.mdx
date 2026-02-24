@@ -114,7 +114,7 @@ asyncio.run(main())
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier for this account. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). Absent when `action: "failed"`. |
+| `account_id` | Vendor agent's identifier for this account. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). May be absent when `status: "pending_approval"` (seller hasn't provisioned yet) or `action: "failed"`. |
 | `house` | Echoed from request |
 | `brand_id` | Echoed from request (when provided) |
 | `operator` | Echoed from request (when provided) |

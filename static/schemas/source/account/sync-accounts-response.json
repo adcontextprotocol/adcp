@@ -22,7 +22,7 @@
             "properties": {
               "account_id": {
                 "type": "string",
-                "description": "Seller-assigned account identifier. When billing is 'agent', multiple brands may share the same account_id."
+                "description": "Seller-assigned account identifier. When billing is 'agent', multiple brands may share the same account_id. May be absent when status is 'pending_approval' and the seller has not yet provisioned the account."
               },
               "house": {
                 "type": "string",

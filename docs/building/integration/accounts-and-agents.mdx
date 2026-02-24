@@ -188,7 +188,7 @@ No `account_id` yet — the seller hasn't provisioned the account. A human at Ac
 Once approved, the seller assigns the `account_id` and the account becomes usable.
 
 <Note>
-`account_id` is optional in `pending_approval` responses. Some sellers provision the account immediately and return an `account_id` while approval is pending — others wait until setup is complete. Agents should handle both cases.
+`account_id` is optional in `sync_accounts` responses — sellers may not assign one until setup is complete. However, `account_id` is **required** in `list_accounts` responses (per the [Account schema](/docs/accounts/tasks/list_accounts)). This means an account without an `account_id` won't appear in `list_accounts` until the seller provisions it. Use `push_notification_config` in the sync request to get notified when that happens.
 </Note>
 
 **Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller.
