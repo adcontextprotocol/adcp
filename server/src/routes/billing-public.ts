@@ -14,6 +14,7 @@ import {
   createAndSendInvoice,
   getInvoiceableProducts,
   createCheckoutSession,
+  createCoupon,
   getPendingInvoices,
   createStripeCustomer,
   createCustomerSession,
@@ -21,6 +22,7 @@ import {
   type InvoiceRequestData,
   type CheckoutSessionData,
 } from "../billing/stripe-client.js";
+import * as referralDb from "../db/referral-codes-db.js";
 import {
   OrganizationDatabase,
   type CompanyType,
@@ -174,7 +176,7 @@ export function createPublicBillingRouter(): Router {
   // POST /api/invoice-request - Request an invoice for a product (public endpoint)
   router.post("/invoice-request", async (req: Request, res: Response) => {
     try {
-      const { companyName, contactName, contactEmail, billingAddress, lookupKey } =
+      const { companyName, contactName, contactEmail, billingAddress, lookupKey, referral_code } =
         req.body as {
           companyName: string;
           contactName: string;
@@ -188,6 +190,7 @@ export function createPublicBillingRouter(): Router {
             country: string;
           };
           lookupKey: string;
+          referral_code?: string;
         };
 
       // Validate required fields
@@ -242,12 +245,46 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
+      // Validate referral code and create a Stripe coupon if it carries a discount
+      let invoiceCouponId: string | undefined;
+      let validatedInvoiceReferralCode: Awaited<ReturnType<typeof referralDb.getReferralCode>> = null;
+
+      if (referral_code) {
+        validatedInvoiceReferralCode = await referralDb.getReferralCode(referral_code);
+
+        if (!validatedInvoiceReferralCode || validatedInvoiceReferralCode.status !== 'active') {
+          return res.status(400).json({ error: 'Invalid or expired referral code' });
+        }
+
+        if (validatedInvoiceReferralCode.expires_at && validatedInvoiceReferralCode.expires_at < new Date()) {
+          return res.status(400).json({ error: 'Referral code has expired' });
+        }
+
+        if (validatedInvoiceReferralCode.max_uses !== null && validatedInvoiceReferralCode.used_count >= validatedInvoiceReferralCode.max_uses) {
+          return res.status(400).json({ error: 'Referral code has been fully redeemed' });
+        }
+
+        if (validatedInvoiceReferralCode.discount_percent) {
+          const coupon = await createCoupon({
+            name: `Referral: ${validatedInvoiceReferralCode.code}`,
+            percent_off: validatedInvoiceReferralCode.discount_percent,
+            duration: 'once',
+            max_redemptions: 1,
+            metadata: { referral_code: validatedInvoiceReferralCode.code },
+          });
+          if (coupon) {
+            invoiceCouponId = coupon.coupon_id;
+          }
+        }
+      }
+
       const invoiceData: InvoiceRequestData = {
         companyName,
         contactName,
         contactEmail,
         billingAddress,
         lookupKey,
+        couponId: invoiceCouponId,
       };
 
       const result = await createAndSendInvoice(invoiceData);
@@ -258,6 +295,15 @@ export function createPublicBillingRouter(): Router {
           message:
             "Could not create or send invoice. Please contact finance@agenticadvertising.org for assistance.",
         });
+      }
+
+      // Record referral after invoice is confirmed
+      if (validatedInvoiceReferralCode) {
+        try {
+          await referralDb.redeemReferralCodeForInvoice(validatedInvoiceReferralCode.code, companyName, contactEmail);
+        } catch (err) {
+          logger.warn({ err, referral_code, companyName }, 'Failed to record referral for invoice — continuing');
+        }
       }
 
       // Get product details for the notification
@@ -321,9 +367,10 @@ export function createPublicBillingRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const user = req.user!;
-        const { priceId, orgId } = req.body as {
+        const { priceId, orgId, referral_code } = req.body as {
           priceId: string;
           orgId: string;
+          referral_code?: string;
         };
 
         if (!priceId || !orgId) {
@@ -367,6 +414,67 @@ export function createPublicBillingRouter(): Router {
         const protocol = req.protocol;
         const baseUrl = `${protocol}://${host}`;
 
+        // Determine referral discount to apply at checkout.
+        // Priority 1: accepted referral (prospect already accepted invitation — use that discount)
+        // Priority 2: referral_code in request body (for direct checkout without going through /join)
+        let referralCouponId: string | undefined;
+        let acceptedReferral: Awaited<ReturnType<typeof referralDb.getAcceptedReferralForOrg>> = null;
+        let validatedReferralCode: Awaited<ReturnType<typeof referralDb.getReferralCode>> = null;
+
+        const orgAlreadyHasDiscount = !!(
+          org.stripe_coupon_id ||
+          org.stripe_promotion_code ||
+          org.discount_percent ||
+          org.discount_amount_cents
+        );
+
+        // Check for a pre-accepted referral first
+        acceptedReferral = await referralDb.getAcceptedReferralForOrg(orgId);
+
+        if (acceptedReferral) {
+          // Prospect already accepted an invitation — apply that discount
+          if (acceptedReferral.discount_percent && !orgAlreadyHasDiscount) {
+            const coupon = await createCoupon({
+              name: `Referral: ${acceptedReferral.referral_code}`,
+              percent_off: acceptedReferral.discount_percent,
+              duration: 'once',
+              max_redemptions: 1,
+              metadata: { referral_code: acceptedReferral.referral_code },
+            });
+            if (coupon) {
+              referralCouponId = coupon.coupon_id;
+            }
+          }
+        } else if (referral_code) {
+          // No pre-accepted referral; try the code from the request body (fallback path)
+          validatedReferralCode = await referralDb.getReferralCode(referral_code);
+
+          if (!validatedReferralCode || validatedReferralCode.status !== 'active') {
+            return res.status(400).json({ error: 'Invalid or expired referral code' });
+          }
+
+          if (validatedReferralCode.expires_at && validatedReferralCode.expires_at < new Date()) {
+            return res.status(400).json({ error: 'Referral code has expired' });
+          }
+
+          if (validatedReferralCode.max_uses !== null && validatedReferralCode.used_count >= validatedReferralCode.max_uses) {
+            return res.status(400).json({ error: 'Referral code has been fully redeemed' });
+          }
+
+          if (validatedReferralCode.discount_percent && !orgAlreadyHasDiscount) {
+            const coupon = await createCoupon({
+              name: `Referral: ${validatedReferralCode.code}`,
+              percent_off: validatedReferralCode.discount_percent,
+              duration: 'once',
+              max_redemptions: 1,
+              metadata: { referral_code: validatedReferralCode.code },
+            });
+            if (coupon) {
+              referralCouponId = coupon.coupon_id;
+            }
+          }
+        }
+
         const checkoutData: CheckoutSessionData = {
           priceId,
           customerId: org.stripe_customer_id || undefined,
@@ -376,13 +484,21 @@ export function createPublicBillingRouter(): Router {
           workosOrganizationId: orgId,
           workosUserId: user.id,
           isPersonalWorkspace: org.is_personal || false,
-          // Apply org's stored coupon if available
-          couponId: org.stripe_coupon_id || undefined,
-          // Only use promotion code if no coupon ID (coupon takes precedence)
-          promotionCode: !org.stripe_coupon_id ? (org.stripe_promotion_code || undefined) : undefined,
+          // Priority: org coupon > referral coupon > org promo code > allow manual entry
+          couponId: org.stripe_coupon_id || referralCouponId || undefined,
+          promotionCode: !org.stripe_coupon_id && !referralCouponId ? (org.stripe_promotion_code || undefined) : undefined,
         };
 
         const result = await createCheckoutSession(checkoutData);
+
+        // For the fallback code path, record the redemption after checkout is confirmed
+        if (validatedReferralCode && result) {
+          try {
+            await referralDb.acceptReferralCode(validatedReferralCode.code, orgId, user.id);
+          } catch (err) {
+            logger.warn({ err, referral_code, orgId }, 'Failed to record referral at checkout — continuing');
+          }
+        }
 
         if (!result) {
           return res.status(500).json({

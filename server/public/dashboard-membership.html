@@ -939,6 +939,30 @@
 
       <!-- Membership signup (for non-subscribers) -->
       <div id="membershipSection" style="display: none;">
+
+        <!-- Referral discount countdown banner (shown when user has an accepted referral) -->
+        <div id="referralBanner" style="display:none; margin-bottom: 20px;">
+          <div id="referralBannerInner" style="
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--color-success-500);
+            background: var(--color-success-50);
+          ">
+            <div style="font-size: 1.5rem; flex-shrink: 0;">&#127881;</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 14px; font-weight: 600; color: var(--color-success-700); margin-bottom: 4px;" id="referralBannerTitle">
+                You have a pending discount
+              </div>
+              <div style="font-size: 13px; color: var(--color-success-700);" id="referralBannerMessage">
+                Subscribe now to claim your discount.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="membership-promo">
           <h2>Become a Member</h2>
           <p>
@@ -1201,6 +1225,7 @@
         membershipSection.style.display = 'block';
         renderMembershipBenefits();
         loadProducts();
+        loadReferralBanner();
       }
     }
 
@@ -1336,6 +1361,47 @@
           <p>${description}</p>
         </div>
       `;
+    }
+
+    // Load referral banner — shows discount countdown for users who accepted a referral invitation
+    async function loadReferralBanner() {
+      try {
+        const res = await fetch('/api/me/referral', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.referral || data.days_remaining === null) return;
+
+        const days = data.days_remaining;
+        const discount = data.discount_percent;
+        const banner = document.getElementById('referralBanner');
+        const inner = document.getElementById('referralBannerInner');
+        const title = document.getElementById('referralBannerTitle');
+        const message = document.getElementById('referralBannerMessage');
+
+        if (!banner || !title || !message) return;
+
+        const discountText = discount ? discount + '% off your first year' : 'a special discount';
+        const urgency = days <= 7;
+
+        title.textContent = urgency
+          ? 'Your discount expires soon!'
+          : 'You have a pending discount';
+
+        message.textContent = days === 0
+          ? 'Today is your last day to claim ' + discountText + '.'
+          : 'Subscribe within ' + days + ' day' + (days === 1 ? '' : 's') + ' to claim ' + discountText + '.';
+
+        if (urgency && inner) {
+          inner.style.borderColor = 'var(--color-warning-500)';
+          inner.style.background = 'var(--color-warning-50)';
+          title.style.color = 'var(--color-warning-700)';
+          message.style.color = 'var(--color-warning-700)';
+        }
+
+        banner.style.display = '';
+      } catch {
+        // Silently ignore — banner is non-critical
+      }
     }
 
     // Load products from API
@@ -1493,14 +1559,20 @@
       btn.textContent = 'Redirecting...';
 
       try {
+        const checkoutBody = {
+          priceId: selectedProduct.price_id,
+          orgId: currentOrg.id,
+        };
+        const storedReferralCode = localStorage.getItem('aao_referral_code');
+        if (storedReferralCode) {
+          checkoutBody.referral_code = storedReferralCode;
+        }
+
         const response = await fetch('/api/checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            priceId: selectedProduct.price_id,
-            orgId: currentOrg.id,
-          }),
+          body: JSON.stringify(checkoutBody),
         });
 
         if (!response.ok) {

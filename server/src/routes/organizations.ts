@@ -21,6 +21,7 @@ import { OrganizationDatabase, CompanyType, RevenueTier, MembershipTier, VALID_R
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
+import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import {
@@ -2565,6 +2566,174 @@ export function createOrganizationsRouter(): Router {
         error: 'Failed to list roles',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
+    }
+  });
+
+  // =========================================================================
+  // REFERRAL CODES
+  // =========================================================================
+
+  // POST /api/organizations/:orgId/referral-codes - Create a referral code
+  router.post('/:orgId/referral-codes', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+      const { target_company_name, discount_percent, max_uses, expires_at, custom_code } = req.body;
+
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+
+      if (discount_percent !== undefined) {
+        if (typeof discount_percent !== 'number' || discount_percent < 1 || discount_percent > 100) {
+          return res.status(400).json({ error: 'discount_percent must be a number between 1 and 100' });
+        }
+      }
+
+      if (max_uses !== undefined) {
+        if (!Number.isInteger(max_uses) || max_uses < 1) {
+          return res.status(400).json({ error: 'max_uses must be a positive integer' });
+        }
+      }
+
+      if (expires_at !== undefined) {
+        const expiry = new Date(expires_at);
+        if (isNaN(expiry.getTime())) {
+          return res.status(400).json({ error: 'expires_at must be a valid date' });
+        }
+        if (expiry <= new Date()) {
+          return res.status(400).json({ error: 'expires_at must be a future date' });
+        }
+      }
+
+      if (custom_code) {
+        const normalized = String(custom_code).toUpperCase();
+        if (!/^[A-Z0-9_-]{2,40}$/.test(normalized)) {
+          return res.status(400).json({ error: 'Custom code must be 2–40 characters: letters, numbers, hyphens, or underscores only' });
+        }
+      }
+
+      const code = await referralDb.createReferralCode({
+        referrer_org_id: orgId,
+        referrer_user_id: user.id,
+        referrer_user_name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
+        referrer_user_email: user.email,
+        target_company_name: target_company_name || undefined,
+        discount_percent: discount_percent || undefined,
+        max_uses: max_uses || undefined,
+        expires_at: expires_at ? new Date(expires_at) : undefined,
+        custom_code: custom_code || undefined,
+      });
+
+      res.json({ referral_code: code });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('duplicate key')) {
+        return res.status(409).json({ error: 'That code is already in use — try a different one' });
+      }
+      logger.error({ err: error }, 'Error creating referral code');
+      res.status(500).json({ error: 'Failed to create referral code' });
+    }
+  });
+
+  // GET /api/organizations/:orgId/referral-codes - List codes and referral activity
+  router.get('/:orgId/referral-codes', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId } = req.params;
+
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+
+      const rows = await referralDb.listReferralCodes(orgId);
+
+      // Group referrals under their codes
+      const codesMap = new Map<number, {
+        code: string;
+        target_company_name: string | null;
+        discount_percent: number | null;
+        max_uses: number | null;
+        used_count: number;
+        status: string;
+        expires_at: Date | null;
+        created_at: Date;
+        referrals: Array<{
+          referred_org_id: string | null;
+          referred_org_name: string | null;
+          referred_org_membership_tier: string | null;
+          converted_at: Date | null;
+          referred_at: Date | null;
+        }>;
+      }>();
+
+      for (const row of rows) {
+        if (!codesMap.has(row.code_id)) {
+          codesMap.set(row.code_id, {
+            code: row.code,
+            target_company_name: row.target_company_name,
+            discount_percent: row.discount_percent,
+            max_uses: row.max_uses,
+            used_count: row.used_count,
+            status: row.code_status,
+            expires_at: row.expires_at,
+            created_at: row.code_created_at,
+            referrals: [],
+          });
+        }
+
+        if (row.referral_id) {
+          codesMap.get(row.code_id)!.referrals.push({
+            referred_org_id: row.referred_org_id,
+            referred_org_name: row.referred_org_name,
+            referred_org_membership_tier: row.referred_org_membership_tier,
+            converted_at: row.converted_at,
+            referred_at: row.referred_at,
+          });
+        }
+      }
+
+      res.json({ referral_codes: Array.from(codesMap.values()) });
+    } catch (error) {
+      logger.error({ err: error }, 'Error listing referral codes');
+      res.status(500).json({ error: 'Failed to list referral codes' });
+    }
+  });
+
+  // DELETE /api/organizations/:orgId/referral-codes/:codeId - Revoke a referral code
+  router.delete('/:orgId/referral-codes/:codeId', requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const { orgId, codeId } = req.params;
+
+      const memberships = await workos!.userManagement.listOrganizationMemberships({
+        userId: user.id,
+        organizationId: orgId,
+      });
+
+      if (memberships.data.length === 0) {
+        return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+
+      const revoked = await referralDb.revokeReferralCode(parseInt(codeId, 10), orgId);
+
+      if (!revoked) {
+        return res.status(404).json({ error: 'Referral code not found or already revoked' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Error revoking referral code');
+      res.status(500).json({ error: 'Failed to revoke referral code' });
     }
   });
 

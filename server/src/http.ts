@@ -62,6 +62,8 @@ import { registerAllJobs, JOB_NAMES } from "./addie/jobs/job-definitions.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
+import { createReferralsRouter } from "./routes/referrals.js";
+import { convertReferral } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
@@ -867,6 +869,10 @@ export class HTTPServer {
     // Mount organization routes
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount public referral routes
+    const referralsRouter = createReferralsRouter();
+    this.app.use('/api', referralsRouter); // Public referral routes: /api/referral/*
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
     const registryApiRouter = createRegistryApiRouter({
@@ -1799,6 +1805,11 @@ export class HTTPServer {
     // Properties registry page (redirects to publishers - consolidated)
     this.app.get("/properties", (_req, res) => {
       res.redirect(301, '/publishers');
+    });
+
+    // Referral landing page - personalized invite page for prospects
+    this.app.get("/join/:code", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'join.html');
     });
 
     // About AAO page - serve about.html at /about
@@ -3852,6 +3863,15 @@ export class HTTPServer {
             const session = event.data.object as Stripe.Checkout.Session;
             const customerId = session.customer as string | null;
             const workosOrgId = session.metadata?.workos_organization_id;
+
+            if (workosOrgId) {
+              // Mark any pending referral as converted
+              try {
+                await convertReferral(workosOrgId);
+              } catch (err) {
+                logger.warn({ err, workosOrgId }, 'Failed to convert referral on checkout completion');
+              }
+            }
 
             if (customerId && workosOrgId) {
               // Ensure the Stripe customer is linked to the organization.
