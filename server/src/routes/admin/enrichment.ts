@@ -28,7 +28,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/status",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (_req, res) => {
       res.json({
         configured: isLushaConfigured(),
@@ -107,7 +107,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/enrichment/domain/:domain",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { domain } = req.params;
@@ -561,7 +561,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/import",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { company, autoAssignOwner } = req.body;

@@ -294,6 +294,36 @@
       color: var(--color-text-muted);
     }
 
+    .company-search__section-label {
+      padding: var(--space-1) var(--space-3);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__lusha {
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      border-top: 1px solid var(--color-border-subtle);
+    }
+
+    .company-search__lusha:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__lusha-tag {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      padding: 1px 5px;
+    }
+
     /* Inline create-company form */
     .create-company-form {
       display: none;
@@ -625,6 +655,7 @@
 
     let companySearchTimer;
     let selectedProspectId = null;
+    let lushaConfigured = false;
 
     const STATUS_LABELS = {
       prospect: 'Prospect', contacted: 'Contacted', responded: 'Responded',
@@ -669,6 +700,30 @@
           searchProspects(input.value.trim());
         }
       });
+
+      // When domain is entered in the manual create form, auto-fill name via enrichment
+      const domainInput = document.getElementById('newCompanyDomain');
+      domainInput.addEventListener('blur', async function () {
+        if (!lushaConfigured) return;
+        const domain = domainInput.value.trim();
+        const nameInput = document.getElementById('newCompanyName');
+        if (!domain || nameInput.value.trim()) return;
+        try {
+          const res = await ManageSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.suggested?.companyName && !nameInput.value.trim()) {
+              nameInput.value = data.suggested.companyName;
+            }
+          }
+        } catch (_err) {
+          // best-effort
+        }
+      });
     }
 
     async function searchProspects(q) {
@@ -689,7 +744,11 @@
           html += '<div class="company-search__empty">No matching prospects</div>';
         }
 
-        html += '<div class="company-search__create" data-query="' + escapeHtml(q) + '">+ Create "' + escapeHtml(q) + '" as prospect</div>';
+        if (lushaConfigured) {
+          html += '<div class="company-search__lusha" data-query="' + escapeHtml(q) + '">🔍 Search external companies for "' + escapeHtml(q) + '"</div>';
+        } else {
+          html += '<div class="company-search__create" data-query="' + escapeHtml(q) + '">+ Create "' + escapeHtml(q) + '" as prospect</div>';
+        }
 
         dropdown.innerHTML = html;
         dropdown.classList.add('open');
@@ -702,23 +761,122 @@
           });
         });
 
-        dropdown.querySelector('.company-search__create').addEventListener('mousedown', function (e) {
-          e.preventDefault();
-          dropdown.classList.remove('open');
-          openCreateCompany(q);
-        });
+        const lushaRow = dropdown.querySelector('.company-search__lusha');
+        if (lushaRow) {
+          lushaRow.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            searchLusha(lushaRow.dataset.query);
+          });
+        }
+
+        const createRow = dropdown.querySelector('.company-search__create');
+        if (createRow) {
+          createRow.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            dropdown.classList.remove('open');
+            openCreateCompany();
+          });
+        }
       } catch (err) {
         dropdown.innerHTML = '<div class="company-search__empty">Search failed</div>';
         dropdown.classList.add('open');
       }
     }
 
-    function openCreateCompany(name) {
-      document.getElementById('newCompanyName').value = name;
+    async function searchLusha(q) {
+      const dropdown = document.getElementById('companyDropdown');
+      dropdown.innerHTML = '<div class="company-search__empty">Searching external companies…</div>';
+      dropdown.classList.add('open');
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospecting/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: [q], pageSize: 8 }),
+        });
+
+        if (!res.ok) {
+          dropdown.innerHTML = '<div class="company-search__empty">Search failed — try again</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const companies = data.companies || [];
+        let html = '';
+
+        if (companies.length > 0) {
+          html += '<div class="company-search__section-label">External companies</div>';
+          companies.forEach(function (c) {
+            const companyJson = escapeHtml(JSON.stringify(c));
+            html += '<div class="company-search__item" data-company="' + companyJson + '">' +
+              '<span class="company-search__item-name">' + escapeHtml(c.companyName || c.domain || '') + '</span>' +
+              (c.domain ? '<span class="company-search__item-domain">' + escapeHtml(c.domain) + '</span>' : '') +
+              (c.mainIndustry ? '<span class="company-search__lusha-tag">' + escapeHtml(c.mainIndustry) + '</span>' : '') +
+              (c.employeeCountRange ? '<span class="company-search__item-domain">' + escapeHtml(c.employeeCountRange) + '</span>' : '') +
+              '</div>';
+          });
+        } else {
+          html += '<div class="company-search__empty">No external companies found</div>';
+        }
+
+        html += '<div class="company-search__create">+ Create manually</div>';
+        dropdown.innerHTML = html;
+
+        dropdown.querySelectorAll('.company-search__item[data-company]').forEach(function (el) {
+          el.addEventListener('mousedown', async function (e) {
+            e.preventDefault();
+            try {
+              const company = JSON.parse(el.dataset.company);
+              await importLushaCompany(company);
+            } catch (err) {
+              console.error('Failed to parse company data', err);
+            }
+          });
+        });
+
+        dropdown.querySelector('.company-search__create').addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          dropdown.classList.remove('open');
+          openCreateCompany();
+        });
+      } catch (err) {
+        dropdown.innerHTML = '<div class="company-search__empty">Search failed — try again</div>';
+      }
+    }
+
+    async function importLushaCompany(company) {
+      const dropdown = document.getElementById('companyDropdown');
+      dropdown.innerHTML = '<div class="company-search__empty">Importing…</div>';
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospecting/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company }),
+        });
+
+        const data = await res.json();
+        dropdown.classList.remove('open');
+
+        if (res.ok && data.organization) {
+          selectProspect(data.organization.workos_organization_id, data.organization.name);
+        } else if (res.status === 409 && data.existing) {
+          selectProspect(data.existing.workos_organization_id, data.existing.name);
+        } else {
+          openCreateCompany();
+        }
+      } catch (err) {
+        dropdown.classList.remove('open');
+        openCreateCompany();
+      }
+    }
+
+    function openCreateCompany() {
+      document.getElementById('newCompanyName').value = '';
       document.getElementById('newCompanyDomain').value = '';
       document.getElementById('addCompanyError').textContent = '';
       document.getElementById('createCompanyForm').classList.add('open');
-      document.getElementById('newCompanyDomain').focus();
+      document.getElementById('newCompanyName').focus();
     }
 
     function cancelCreateCompany() {
@@ -789,6 +947,13 @@
         document.getElementById('orgName').textContent = org.name;
 
         setupCompanySearch();
+
+        const statusRes = await ManageSidebar.fetch('/api/admin/enrichment/status').catch(() => null);
+        if (statusRes && statusRes.ok) {
+          const statusData = await statusRes.json();
+          lushaConfigured = statusData.configured === true;
+        }
+
         await Promise.all([loadMyCodes(), loadAllActivity()]);
       } catch (err) {
         console.error('Init error:', err);
