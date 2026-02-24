@@ -164,12 +164,11 @@ The seller trusts the agent's identity but requires a direct account for every b
 }
 ```
 
-Seller provisions the account but requires setup before activation:
+Seller acknowledges the request but requires setup before provisioning:
 
 ```json
 {
   "accounts": [{
-    "account_id": "acc_acme_001",
     "house": "acme-corp.com",
     "action": "created",
     "status": "pending_approval",
@@ -182,9 +181,13 @@ Seller provisions the account but requires setup before activation:
 }
 ```
 
-The account exists with an `account_id` but can't be used for buys yet. A human at Acme Corp completes the setup at the URL. The agent polls `list_accounts` (filtering by `status: "pending_approval"` or `status: "active"`) until the account transitions to `active`.
+No `account_id` yet — the seller has acknowledged the relationship `(house: "acme-corp.com", billing: "brand")` but hasn't provisioned an account. A human at Acme Corp completes the setup at the URL. To check progress, the agent either:
+- Re-calls `sync_accounts` with the same natural key — the seller returns the updated status (and `account_id` once provisioned)
+- Receives a webhook notification if `push_notification_config` was provided in the request
 
-**Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller. The seller always assigns an `account_id` on creation — even pending accounts are trackable via `list_accounts`.
+Once provisioned, the seller assigns an `account_id` and the account appears in `list_accounts`. Some sellers may assign an `account_id` immediately — `account_id` is optional in `sync_accounts` responses but required in `list_accounts`.
+
+**Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller.
 
 ### Agent-consolidated
 
