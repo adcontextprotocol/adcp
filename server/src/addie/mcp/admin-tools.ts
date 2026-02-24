@@ -1405,10 +1405,16 @@ function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
 
 function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
   if (pendingInvoices.length === 0) return '';
-  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  const pastDueCount = pendingInvoices.filter(inv => inv.is_past_due).length;
+  const header = pastDueCount > 0
+    ? `⚠️ **Unpaid invoices (${pastDueCount} past due):** ${pendingInvoices.length}\n`
+    : `**Pending invoices:** ${pendingInvoices.length}\n`;
+  let result = header;
   for (const inv of pendingInvoices.slice(0, 3)) {
     const formatted = formatPendingInvoice(inv);
-    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    const statusLabel = inv.is_past_due ? 'past due' : formatted.status;
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${statusLabel})`;
+    if (formatted.due_date !== 'Not set') result += ` due ${formatted.due_date}`;
     if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
     result += '\n';
   }
@@ -1425,6 +1431,7 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
   return {
     id: invoice.id,
     status: invoice.status,
+    is_past_due: invoice.is_past_due,
     amount: formatCurrency(invoice.amount_due, invoice.currency),
     product: invoice.product_name || 'Unknown product',
     customer_name: invoice.customer_name || 'Unknown',
@@ -1840,7 +1847,11 @@ export function createAdminToolHandlers(
       if (lifecycleStage === 'member' || lifecycleStage === 'churned' || org.subscription_status) {
         response += `### Membership\n`;
         if (org.subscription_status === 'active') {
-          response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          const hasPastDueInvoice = pendingInvoices.some(inv => inv.is_past_due);
+          const statusLabel = hasPastDueInvoice
+            ? `Active (⚠️ unpaid invoice overdue) - ${org.subscription_product_name || 'Subscription'}`
+            : `Active - ${org.subscription_product_name || 'Subscription'}`;
+          response += `**Status:** ${statusLabel}\n`;
           if (org.subscription_amount) {
             const amount = formatCurrency(org.subscription_amount);
             const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
