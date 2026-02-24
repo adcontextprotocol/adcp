@@ -912,8 +912,22 @@ export interface DomainLookupResult {
 export type EventType = 'summit' | 'meetup' | 'webinar' | 'workshop' | 'conference' | 'other';
 export type EventFormat = 'in_person' | 'virtual' | 'hybrid';
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'completed';
-export type RegistrationStatus = 'registered' | 'waitlisted' | 'cancelled' | 'no_show';
+export type EventVisibility = 'public' | 'invite_listed' | 'invite_unlisted';
+export type RegistrationStatus = 'registered' | 'waitlisted' | 'interested' | 'cancelled' | 'no_show';
 export type RegistrationSource = 'direct' | 'luma' | 'import' | 'admin' | 'interest';
+
+export interface EventAccessRules {
+  membership_required?: boolean;
+  organizations?: string[];
+}
+
+export interface EventInvite {
+  id: string;
+  event_id: string;
+  email: string;
+  invited_by_user_id?: string;
+  created_at: Date;
+}
 export type SponsorshipPaymentStatus = 'pending' | 'paid' | 'refunded' | 'cancelled';
 
 export interface SponsorshipTier {
@@ -957,6 +971,8 @@ export interface Event {
   published_at?: Date;
   max_attendees?: number;
   require_rsvp_approval: boolean;
+  visibility: EventVisibility;
+  access_rules: EventAccessRules;
   created_by_user_id?: string;
   organization_id?: string;
   metadata: Record<string, unknown>;
@@ -994,6 +1010,8 @@ export interface CreateEventInput {
   status?: EventStatus;
   max_attendees?: number;
   require_rsvp_approval?: boolean;
+  visibility?: EventVisibility;
+  access_rules?: EventAccessRules;
   created_by_user_id?: string;
   organization_id?: string;
   metadata?: Record<string, unknown>;
@@ -1029,6 +1047,8 @@ export interface UpdateEventInput {
   published_at?: Date;
   max_attendees?: number;
   require_rsvp_approval?: boolean;
+  visibility?: EventVisibility;
+  access_rules?: EventAccessRules;
   metadata?: Record<string, unknown>;
 }
 
@@ -1042,6 +1062,7 @@ export interface ListEventsOptions {
   search?: string;
   limit?: number;
   offset?: number;
+  include_invite_unlisted?: boolean;  // Admin-only: include invite_unlisted events in results
 }
 
 export interface EventRegistration {

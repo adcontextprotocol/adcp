@@ -80,6 +80,7 @@
     .badge-in_person { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-virtual { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-hybrid { background: var(--color-purple-100, var(--color-primary-100)); color: var(--color-purple-700, var(--color-primary-700)); }
+    .badge-invite { background: #fef3c7; color: #92400e; }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -569,6 +570,45 @@
           </div>
         </div>
 
+        <!-- Access Control -->
+        <div class="section-divider">
+          <div class="section-title">Access control</div>
+        </div>
+
+        <div class="form-group">
+          <label for="visibility">Visibility</label>
+          <select id="visibility" onchange="toggleAccessSection()">
+            <option value="public">Public — anyone can see and register</option>
+            <option value="invite_listed">Invite only, listed — shown in listings; registration restricted</option>
+            <option value="invite_unlisted">Invite only, unlisted — hidden from public listing</option>
+          </select>
+        </div>
+
+        <div id="accessRulesSection" style="display: none;">
+          <div class="form-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="membershipRequired">
+              <label for="membershipRequired">Require AgenticAdvertising.org membership to register</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Invite list (only shown when editing an existing event with invite visibility) -->
+        <div id="inviteListSection" style="display: none;">
+          <div class="form-group">
+            <label>Invite list</label>
+            <small style="display: block; margin-bottom: var(--space-2); color: var(--color-text-secondary);">
+              Add email addresses, one per line or comma-separated. All emails are automatically lowercased.
+            </small>
+            <textarea id="inviteEmails" placeholder="name@company.com&#10;another@company.com" rows="4"
+              style="width: 100%; padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); resize: vertical;"></textarea>
+            <button type="button" class="btn btn-secondary btn-small" onclick="addInvites()" style="margin-top: var(--space-2);">
+              Add to invite list
+            </button>
+          </div>
+          <div id="currentInvitesList" style="margin-top: var(--space-3);"></div>
+        </div>
+
         <!-- Attendee Group (only shown when editing existing event) -->
         <div id="eventGroupSection" style="display: none;">
           <div class="section-divider">
@@ -700,6 +740,7 @@
               <div class="event-meta">
                 <span class="badge badge-${event.status}">${event.status}</span>
                 <span class="badge badge-${event.event_format}">${event.event_format.replace('_', ' ')}</span>
+                ${event.visibility && event.visibility !== 'public' ? `<span class="badge badge-invite">${event.visibility === 'invite_listed' ? 'invite only' : 'unlisted'}</span>` : ''}
                 <span>${dateStr} at ${timeStr}</span>
                 ${event.venue_city ? `<span>${escapeHtml(event.venue_city)}</span>` : ''}
               </div>
@@ -728,6 +769,7 @@
       sponsorshipTierCount = 0;
       toggleLocationFields();
       toggleSponsorshipTiers();
+      toggleAccessSection();
       document.getElementById('eventModal').style.display = 'flex';
     }
 
@@ -778,6 +820,12 @@
       // Sponsorship
       document.getElementById('sponsorshipEnabled').checked = event.sponsorship_enabled || false;
       toggleSponsorshipTiers();
+
+      // Access control
+      document.getElementById('visibility').value = event.visibility || 'public';
+      document.getElementById('membershipRequired').checked = event.access_rules?.membership_required || false;
+      toggleAccessSection();
+      loadInvites(id);
 
       // Show Stripe product info if linked
       if (event.stripe_product_id) {
@@ -921,6 +969,10 @@
         sponsorship_enabled: document.getElementById('sponsorshipEnabled').checked,
         sponsorship_tiers: getSponsorshipTiers(),
         // stripe_product_id is auto-managed by the server when sponsorship_tiers are set
+        visibility: document.getElementById('visibility').value,
+        access_rules: {
+          membership_required: document.getElementById('membershipRequired').checked || undefined,
+        },
       };
 
       try {
@@ -1001,6 +1053,11 @@
       document.getElementById('eventGroupExists').style.display = 'none';
       document.getElementById('eventGroupNotExists').style.display = 'none';
       document.getElementById('eventGroupLoading').style.display = 'none';
+      // Reset access control section
+      document.getElementById('accessRulesSection').style.display = 'none';
+      document.getElementById('inviteListSection').style.display = 'none';
+      document.getElementById('currentInvitesList').innerHTML = '';
+      document.getElementById('inviteEmails').value = '';
     }
 
     // Toggle location fields based on event format
@@ -1025,6 +1082,101 @@
     function toggleSponsorshipTiers() {
       const enabled = document.getElementById('sponsorshipEnabled').checked;
       document.getElementById('sponsorshipTiersSection').style.display = enabled ? 'block' : 'none';
+    }
+
+    // Toggle access rules and invite sections based on visibility
+    function toggleAccessSection() {
+      const visibility = document.getElementById('visibility').value;
+      const isInviteOnly = visibility !== 'public';
+      document.getElementById('accessRulesSection').style.display = isInviteOnly ? 'block' : 'none';
+      // Invite list only shown when editing an existing event
+      if (isInviteOnly && editingEventId) {
+        document.getElementById('inviteListSection').style.display = 'block';
+      } else {
+        document.getElementById('inviteListSection').style.display = 'none';
+      }
+    }
+
+    // Load existing invites for an event
+    async function loadInvites(eventId) {
+      const visibility = document.getElementById('visibility').value;
+      if (visibility === 'public') return;
+
+      document.getElementById('inviteListSection').style.display = 'block';
+      document.getElementById('currentInvitesList').innerHTML = '<p style="font-size: var(--text-sm); color: var(--color-text-secondary);">Loading...</p>';
+
+      try {
+        const res = await fetch(`/api/admin/events/${eventId}/invites`);
+        if (!res.ok) throw new Error('Failed to load invites');
+        const data = await res.json();
+        renderInviteList(data.invites || []);
+      } catch (error) {
+        document.getElementById('currentInvitesList').innerHTML = '';
+      }
+    }
+
+    // Render invite list
+    function renderInviteList(invites) {
+      const container = document.getElementById('currentInvitesList');
+      if (invites.length === 0) {
+        container.innerHTML = '<p style="font-size: var(--text-sm); color: var(--color-text-secondary);">No invites yet.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <label style="display: block; margin-bottom: var(--space-2); font-weight: 500;">Current invite list (${invites.length})</label>
+        <div style="border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+          ${invites.map(invite => `
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border-subtle); font-size: var(--text-sm);">
+              <span>${escapeHtml(invite.email)}</span>
+              <button type="button" class="btn btn-secondary btn-small" data-email="${escapeHtml(invite.email)}" onclick="removeInvite(this.dataset.email)" style="font-size: var(--text-xs); padding: 2px 8px;">Remove</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Add invites from textarea
+    async function addInvites() {
+      if (!editingEventId) return;
+      const raw = document.getElementById('inviteEmails').value.trim();
+      if (!raw) return;
+
+      // Support newline or comma-separated emails
+      const emails = raw.split(/[\n,]+/).map(e => e.trim()).filter(e => e.includes('@'));
+      if (emails.length === 0) {
+        alert('No valid email addresses found.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/admin/events/${editingEventId}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails }),
+        });
+        if (!res.ok) throw new Error('Failed to add invites');
+        const data = await res.json();
+        document.getElementById('inviteEmails').value = '';
+        await loadInvites(editingEventId);
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
+    // Remove a single invite
+    async function removeInvite(email) {
+      if (!editingEventId) return;
+      if (!confirm(`Remove ${email} from the invite list?`)) return;
+
+      try {
+        const res = await fetch(`/api/admin/events/${editingEventId}/invites/${encodeURIComponent(email)}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Failed to remove invite');
+        await loadInvites(editingEventId);
+      } catch (error) {
+        alert(error.message);
+      }
     }
 
     // Add sponsorship tier

@@ -115,6 +115,14 @@ const workingGroupDb = new WorkingGroupDatabase();
 const logger = createLogger("events-routes");
 
 /**
+ * Look up the WorkOS organization ID for a user from local DB.
+ * Returns null if the user has no org membership.
+ */
+async function getUserOrgId(workosUserId: string): Promise<string | null> {
+  return eventsDb.getUserOrgId(workosUserId);
+}
+
+/**
  * Create events routes
  * Returns separate routers for:
  * - pageRouter: Page routes (/admin/events, /events, /events/:slug)
@@ -187,6 +195,7 @@ export function createEventsRouter(): {
         search,
         limit,
         offset,
+        include_invite_unlisted: true,  // Admin sees all events regardless of visibility
       });
 
       res.json({ events });
@@ -909,6 +918,99 @@ export function createEventsRouter(): {
     }
   );
 
+  // GET /api/admin/events/:id/invites - List invite list for an event
+  adminApiRouter.get(
+    "/:id/invites",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const invites = await eventsDb.getEventInvites(id);
+        res.json({ invites });
+      } catch (error) {
+        logger.error({ err: error }, "Error getting event invites");
+        res.status(500).json({
+          error: "Failed to get invites",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/events/:id/invites - Add emails to invite list
+  adminApiRouter.post(
+    "/:id/invites",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { emails } = req.body as { emails: string[] };
+        const user = req.user!;
+
+        if (!emails || !Array.isArray(emails) || emails.length === 0) {
+          return res.status(400).json({
+            error: "Invalid input",
+            message: "emails must be a non-empty array of email addresses",
+          });
+        }
+
+        if (emails.length > 500) {
+          return res.status(400).json({
+            error: "Too many emails",
+            message: "Maximum 500 emails per request",
+          });
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidEmails = emails.filter(e => typeof e !== 'string' || !emailRegex.test(e.trim()));
+        if (invalidEmails.length > 0) {
+          return res.status(400).json({
+            error: "Invalid emails",
+            message: `Invalid email addresses: ${invalidEmails.slice(0, 5).join(', ')}`,
+          });
+        }
+
+        const added = await eventsDb.addInvites(id, emails, user.id);
+        logger.info({ eventId: id, count: added, userId: user.id }, "Added event invites");
+        res.json({ added });
+      } catch (error) {
+        logger.error({ err: error }, "Error adding event invites");
+        res.status(500).json({
+          error: "Failed to add invites",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
+  // DELETE /api/admin/events/:id/invites/:email - Remove an email from invite list
+  adminApiRouter.delete(
+    "/:id/invites/:email",
+    requireAuth,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id, email } = req.params;
+        const removed = await eventsDb.removeInvite(id, decodeURIComponent(email));
+        if (!removed) {
+          return res.status(404).json({
+            error: "Invite not found",
+            message: "No invite found for that email",
+          });
+        }
+        res.json({ success: true });
+      } catch (error) {
+        logger.error({ err: error }, "Error removing event invite");
+        res.status(500).json({
+          error: "Failed to remove invite",
+          message: "An unexpected error occurred",
+        });
+      }
+    }
+  );
+
   // =========================================================================
   // PUBLIC API ROUTES (mounted at /api/events)
   // =========================================================================
@@ -994,7 +1096,7 @@ export function createEventsRouter(): {
               email_contact_id: contact.contactId,
               email: email.toLowerCase().trim(),
               name: displayName,
-              registration_status: 'waitlisted',
+              registration_status: 'interested',
               registration_source: 'interest',
             });
           } catch (err) {
@@ -1017,7 +1119,7 @@ export function createEventsRouter(): {
   });
 
   // GET /api/events/:slug - Get event by slug (public)
-  publicApiRouter.get("/:slug", async (req: Request, res: Response) => {
+  publicApiRouter.get("/:slug", optionalAuth, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
 
@@ -1027,6 +1129,26 @@ export function createEventsRouter(): {
           error: "Event not found",
           message: "No published event found with that slug",
         });
+      }
+
+      // invite_unlisted events are 404 for non-invited users
+      // Return 404 (not 403) so the event's existence is not revealed
+      if (event.visibility === "invite_unlisted") {
+        const user = req.user;
+        if (!user) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No published event found with that slug",
+          });
+        }
+        const userOrgId = await getUserOrgId(user.id);
+        const hasAccess = await eventsDb.checkUserAccess(event.id, user.email, userOrgId ?? undefined);
+        if (!hasAccess) {
+          return res.status(404).json({
+            error: "Event not found",
+            message: "No published event found with that slug",
+          });
+        }
       }
 
       // Get sponsors for display
@@ -1082,6 +1204,19 @@ export function createEventsRouter(): {
           error: "Already registered",
           message: "You are already registered for this event",
         });
+      }
+
+      // Gate registration for invite-only events
+      if (event.visibility === "invite_listed" || event.visibility === "invite_unlisted") {
+        const userOrgId = await getUserOrgId(user.id);
+        const hasAccess = await eventsDb.checkUserAccess(event.id, user.email, userOrgId ?? undefined);
+        if (!hasAccess) {
+          return res.status(403).json({
+            error: "Invite only",
+            message: "This event is by invitation only.",
+            invite_only: true,
+          });
+        }
       }
 
       // Check capacity
