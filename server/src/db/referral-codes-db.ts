@@ -142,6 +142,13 @@ export async function listReferralCodes(referrerOrgId: string): Promise<Referral
   return result.rows;
 }
 
+export async function listAllReferralCodes(): Promise<ReferralDashboardRow[]> {
+  const result = await query<ReferralDashboardRow>(
+    `SELECT * FROM referral_dashboard ORDER BY code_created_at DESC, referral_id DESC`
+  );
+  return result.rows;
+}
+
 export async function revokeReferralCode(id: number, referrerOrgId: string): Promise<ReferralCode | null> {
   const result = await query<ReferralCode>(
     `UPDATE referral_codes

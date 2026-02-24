@@ -7,7 +7,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 import { VALID_REVENUE_TIERS } from "../../db/organization-db.js";
@@ -27,7 +27,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
   const { workos } = config;
 
   // GET /api/admin/prospects - List all prospects with action-based views
-  apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/prospects", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
       const { status, source, view, owner, mine } = req.query;

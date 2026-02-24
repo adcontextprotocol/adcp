@@ -13,7 +13,7 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
@@ -154,7 +154,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/view-counts",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const pool = getPool();

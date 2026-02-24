@@ -33,7 +33,8 @@ import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -63,7 +64,7 @@ import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
 import { createReferralsRouter } from "./routes/referrals.js";
-import { convertReferral } from "./db/referral-codes-db.js";
+import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
@@ -279,7 +280,7 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -294,6 +295,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
+      isManage: isManage || isAdmin,
       isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
@@ -306,8 +308,8 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
-  const config = buildAppConfig(user);
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false): string {
+  const config = buildAppConfig(user, isManage);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
   // Add PostHog script if API key is configured
@@ -761,9 +763,20 @@ export class HTTPServer {
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
 
+      // Determine manage-tier access for nav rendering
+      let isManage = false;
+      if (user) {
+        if (isDevModeEnabled()) {
+          const devUser = getDevUser(req);
+          isManage = devUser?.isManage ?? false;
+        } else if (user.id) {
+          isManage = await isWebUserAAOCouncil(user.id);
+        }
+      }
+
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
-      const configScript = getAppConfigScript(user);
+      const configScript = getAppConfigScript(user, isManage);
 
       // Inject before </head>
       if (html.includes('</head>')) {
@@ -1402,7 +1415,18 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
-        const configScript = getAppConfigScript(user);
+
+        let isManage = false;
+        if (user) {
+          if (isDevModeEnabled()) {
+            const devUser = getDevUser(req);
+            isManage = devUser?.isManage ?? false;
+          } else if (user.id) {
+            isManage = await isWebUserAAOCouncil(user.id);
+          }
+        }
+
+        const configScript = getAppConfigScript(user, isManage);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1440,7 +1464,18 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
-        const configScript = getAppConfigScript(user);
+
+        let isManage = false;
+        if (user) {
+          if (isDevModeEnabled()) {
+            const devUser = getDevUser(req);
+            isManage = devUser?.isManage ?? false;
+          } else if (user.id) {
+            isManage = await isWebUserAAOCouncil(user.id);
+          }
+        }
+
+        const configScript = getAppConfigScript(user, isManage);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -3918,6 +3953,23 @@ export class HTTPServer {
       }
     });
 
+    // Manage routes — kitchen cabinet + admin
+    this.app.get('/manage', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage.html'));
+    this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
+    this.app.get('/manage/prospects', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-prospects.html'));
+    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
+    this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
+
+    // Redirect moved admin pages to their new /manage paths
+    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/prospects'));
+    this.app.get('/admin/accounts', (req, res) => res.redirect(301, '/manage/accounts'));
+    this.app.get('/admin/analytics', (req, res) => res.redirect(301, '/manage/analytics'));
+
     // Admin routes
     // GET /admin - Admin landing page
     this.app.get('/admin', requireAuth, requireAdmin, async (req, res) => {
@@ -4185,7 +4237,7 @@ export class HTTPServer {
     });
 
     // GET /api/admin/analytics-data - Get simple analytics data from views
-    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
+    this.app.get('/api/admin/analytics-data', requireAuth, requireManage, async (req, res) => {
       try {
         const pool = getPool();
         // Query all analytics views
@@ -4216,6 +4268,17 @@ export class HTTPServer {
           error: 'Internal server error',
           message: 'Unable to fetch analytics data',
         });
+      }
+    });
+
+    // GET /api/admin/referrals - Aggregate referral activity for manage tier
+    this.app.get('/api/admin/referrals', requireAuth, requireManage, async (_req, res) => {
+      try {
+        const rows = await listAllReferralCodes();
+        res.json(rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching referral data');
+        res.status(500).json({ error: 'Internal server error', message: 'Unable to fetch referral data' });
       }
     });
 
@@ -5335,6 +5398,7 @@ Disallow: /api/admin/
               first_name: user.firstName,
               last_name: user.lastName,
               isAdmin: devUser.isAdmin,
+              isManage: devUser.isManage || devUser.isAdmin,
             },
             organizations,
             // Include dev mode info for debugging
@@ -5375,6 +5439,7 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
+        const isManage = isAdmin || await isWebUserAAOCouncil(user.id);
 
         // Build response with optional impersonation info
         const response: Record<string, unknown> = {
@@ -5384,6 +5449,7 @@ Disallow: /api/admin/
             first_name: user.firstName,
             last_name: user.lastName,
             isAdmin,
+            isManage,
           },
           organizations,
         };

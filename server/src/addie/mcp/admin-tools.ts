@@ -90,6 +90,9 @@ const wgDb = new WorkingGroupDatabase();
 // The slug for the AAO admin working group
 const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
 
+// The slug for the kitchen cabinet management group
+const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
+
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
@@ -171,6 +174,40 @@ export function invalidateWebAdminStatusCache(workosUserId?: string): void {
 export function invalidateAllAdminCaches(): void {
   adminStatusCache.clear();
   webAdminStatusCache.clear();
+  webCouncilStatusCache.clear();
+}
+
+// Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
+const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();
+
+/**
+ * Check if a web user is a kitchen cabinet council member.
+ * Results are cached for 30 minutes to reduce DB load.
+ */
+export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean> {
+  const cached = webCouncilStatusCache.get(workosUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isCouncil;
+  }
+
+  try {
+    const group = await wgDb.getWorkingGroupBySlug(KITCHEN_CABINET_SLUG);
+
+    if (!group) {
+      logger.warn('Kitchen Cabinet working group not found');
+      webCouncilStatusCache.set(workosUserId, { isCouncil: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return false;
+    }
+
+    const isCouncil = await wgDb.isMember(group.id, workosUserId);
+    webCouncilStatusCache.set(workosUserId, { isCouncil, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
+    logger.debug({ workosUserId, isCouncil }, 'Checked web user council status');
+    return isCouncil;
+  } catch (error) {
+    logger.error({ error, workosUserId }, 'Error checking if web user is council member');
+    return false;
+  }
 }
 
 /**

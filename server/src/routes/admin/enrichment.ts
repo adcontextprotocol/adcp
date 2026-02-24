@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import {
   getLushaClient,
   isLushaConfigured,
@@ -41,7 +41,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/stats",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (_req, res) => {
       try {
         const stats = await getEnrichmentStats();
@@ -452,7 +452,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/search",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const lusha = getLushaClient();
