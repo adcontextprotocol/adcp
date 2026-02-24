@@ -226,6 +226,15 @@
     .text-right {
       text-align: right;
     }
+
+    table a {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    table a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -254,26 +263,27 @@
       <!-- Metrics Grid -->
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-label">Annual Recurring Revenue</div>
+          <div class="metric-label">Annual recurring revenue</div>
           <div class="metric-value" id="arr">$0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Active Customers</div>
+          <div class="metric-label">Active customers</div>
           <div class="metric-value" id="active-customers">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">New Bookings (30 days)</div>
-          <div class="metric-value" id="new-bookings">0</div>
+          <div class="metric-label">Collected (all time)</div>
+          <div class="metric-value" id="total-collected">$0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">Total Revenue</div>
-          <div class="metric-value" id="total-revenue">$0</div>
+          <div class="metric-label">Outstanding invoices</div>
+          <div class="metric-value" id="outstanding-total">$0</div>
+          <div class="metric-change" id="outstanding-count"></div>
         </div>
       </div>
 
-      <!-- Bookings by Month -->
+      <!-- Revenue by month -->
       <div class="section">
-        <h2>Bookings by Month (Last 12 Months)</h2>
+        <h2>Revenue by month (last 12 months)</h2>
         <table id="revenue-table">
           <thead>
             <tr>
@@ -290,7 +300,7 @@
 
       <!-- Product Revenue -->
       <div class="section">
-        <h2>Revenue by Product</h2>
+        <h2>Revenue by product</h2>
         <table id="product-table">
           <thead>
             <tr>
@@ -304,9 +314,42 @@
         </table>
       </div>
 
+      <!-- Recent members -->
+      <div class="section">
+        <h2>Recent members (last 90 days)</h2>
+        <table id="recent-signups-table">
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Company type</th>
+              <th>Subscription</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- Outstanding invoices -->
+      <div class="section">
+        <h2>Outstanding invoices</h2>
+        <table id="outstanding-invoices-table">
+          <thead>
+            <tr>
+              <th>Organization</th>
+              <th>Amount due</th>
+              <th>Status</th>
+              <th>Due date</th>
+              <th>Invoice</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <!-- Membership Metrics by Company Type -->
       <div class="section">
-        <h2>Membership by Company Type</h2>
+        <h2>Membership by company type</h2>
         <div class="section-actions">
           <button class="btn btn-secondary" onclick="downloadMembershipCSV()">Export CSV</button>
         </div>
@@ -326,7 +369,7 @@
 
       <!-- Membership Metrics by Revenue Tier -->
       <div class="section">
-        <h2>Membership by Revenue Tier</h2>
+        <h2>Membership by revenue tier</h2>
         <table id="revenue-tier-table">
           <thead>
             <tr>
@@ -343,7 +386,7 @@
 
       <!-- Full Matrix -->
       <div class="section">
-        <h2>Full Breakdown (Company Type × Revenue Tier)</h2>
+        <h2>Full breakdown (company type × revenue tier)</h2>
         <div class="table-container">
           <table id="matrix-table">
             <thead>
@@ -403,8 +446,12 @@
         const metrics = data.subscription_metrics || {};
         document.getElementById('arr').textContent = formatCurrency(metrics.total_arr || 0);
         document.getElementById('active-customers').textContent = metrics.active_subscriptions || 0;
-        document.getElementById('new-bookings').textContent = metrics.new_bookings_30d || 0;
-        document.getElementById('total-revenue').textContent = formatCurrency(metrics.total_revenue || 0);
+        document.getElementById('total-collected').textContent = formatCurrency(metrics.total_revenue || 0);
+
+        const outstanding = data.outstanding_invoices_summary || {};
+        document.getElementById('outstanding-total').textContent = formatCurrency(outstanding.total_dollars || 0);
+        const outstandingCount = outstanding.count || 0;
+        document.getElementById('outstanding-count').textContent = `${outstandingCount} invoice${outstandingCount === 1 ? '' : 's'}`;
 
         // Populate revenue by month table
         const revenueTable = document.getElementById('revenue-table').querySelector('tbody');
@@ -427,7 +474,7 @@
         if (data.product_revenue && data.product_revenue.length > 0) {
           productTable.innerHTML = data.product_revenue.map(row => `
             <tr>
-              <td>${row.product_name || 'N/A'}</td>
+              <td>${escapeHtml(row.product_name || 'N/A')}</td>
               <td>${formatCurrency(row.total_revenue)}</td>
               <td>${row.customer_count || 0}</td>
               <td>${formatCurrency(row.avg_revenue_per_customer)}</td>
@@ -435,6 +482,50 @@
           `).join('');
         } else {
           productTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No product data yet</td></tr>';
+        }
+
+        // Populate recent signups table
+        const signupsTable = document.getElementById('recent-signups-table').querySelector('tbody');
+        if (data.recent_signups && data.recent_signups.length > 0) {
+          signupsTable.innerHTML = data.recent_signups.map(row => {
+            const amount = row.subscription_amount_dollars
+              ? `${formatCurrency(row.subscription_amount_dollars)}/${escapeHtml(row.subscription_interval || 'year')}`
+              : 'Comped';
+            return `
+              <tr>
+                <td><a href="/admin/accounts/${encodeURIComponent(row.org_id)}">${escapeHtml(row.name)}</a></td>
+                <td>${escapeHtml(row.company_type || 'Unknown')}</td>
+                <td>${amount}</td>
+                <td>${formatDate(row.created_at)}</td>
+              </tr>
+            `;
+          }).join('');
+        } else {
+          signupsTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No recent signups</td></tr>';
+        }
+
+        // Populate outstanding invoices table
+        const invoicesTable = document.getElementById('outstanding-invoices-table').querySelector('tbody');
+        if (data.outstanding_invoices && data.outstanding_invoices.length > 0) {
+          invoicesTable.innerHTML = data.outstanding_invoices.map(row => {
+            const invoiceLink = row.hosted_invoice_url
+              ? `<a href="${escapeHtml(row.hosted_invoice_url)}" target="_blank" rel="noopener">${escapeHtml(row.invoice_number || 'View')}</a>`
+              : escapeHtml(row.invoice_number || 'N/A');
+            const orgCell = row.org_id
+              ? `<a href="/admin/accounts/${encodeURIComponent(row.org_id)}">${escapeHtml(row.org_name || 'Unknown')}</a>`
+              : escapeHtml(row.customer_email || 'Unknown');
+            return `
+              <tr>
+                <td>${orgCell}</td>
+                <td>${formatCurrency(row.amount_due_dollars)}</td>
+                <td>${escapeHtml(row.status)}</td>
+                <td>${formatDate(row.due_date)}</td>
+                <td>${invoiceLink}</td>
+              </tr>
+            `;
+          }).join('');
+        } else {
+          invoicesTable.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--color-text-secondary);">No outstanding invoices</td></tr>';
         }
 
         // Show content, hide loading
