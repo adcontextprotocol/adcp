@@ -46,12 +46,12 @@ Applied when the agent omits `billing` from `sync_accounts`. When set to `"agent
 
 **4. How do you resolve account references?** (`account_resolution`)
 
-| Resolution | Description |
-|-----------|-------------|
-| `account_id` | Buyer passes a seller-assigned `account_id` (from `sync_accounts` or `list_accounts`) |
-| `natural_key` | Seller resolves from the natural key (`house`, `brand_id`, `operator`) — `sync_accounts` may be optional |
+| Resolution | Model | Description |
+|-----------|-------|-------------|
+| `account_id` | Explicit account IDs | Accounts are managed out-of-band (advertiser portal, sales rep). Buyer discovers them via `list_accounts` and passes a seller-assigned `account_id`. |
+| `natural_key` | Implicit account IDs | Buyer declares intent via `sync_accounts` — who's advertising, who's paying — and the seller provisions accounts. On subsequent requests, the buyer passes brand identity (`house`, `brand_id`, `operator`) and the seller resolves internally. |
 
-Default: `["account_id"]`. When `natural_key` is supported, buyers can skip `sync_accounts` and pass brand identity directly in every request.
+Default: `["account_id"]`. See [Account references](#account-references) for detailed workflows.
 
 **Example capabilities:**
 
@@ -342,23 +342,29 @@ Verification is a trust signal, not a gate. Finding the operator in `brand.json`
 
 ## Account references
 
-Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `account_resolution` capability declares which mode it supports — and the mode determines the buyer's entire integration path.
+Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `account_resolution` capability declares which model it supports — and the model determines the buyer's entire integration path.
 
-### By account ID
+### Explicit account IDs
 
-The seller already has accounts provisioned. The buyer discovers them via `list_accounts`, picks the right `account_id`, and passes it on every request.
+Accounts are managed outside of AdCP. The advertiser creates an account on the seller's platform, grants the operator permission to manage it, and the agent discovers the account via `list_accounts`. The agent is not involved in authentication or billing — those are handled between the advertiser and seller directly.
+
+**Typical sellers:** Social platforms, self-serve ad platforms — anywhere the advertiser already has an account.
 
 **Workflow:**
 
-1. Call `list_accounts` to discover existing accounts
-2. Pick the `account_id` that matches the brand/operator you're buying for
-3. Pass `{ "account_id": "acc_acme_001" }` on every request (`get_products`, `create_media_buy`, etc.)
+1. Advertiser creates an account on the seller's platform (out-of-band)
+2. Advertiser grants the operator permission to manage the account (out-of-band)
+3. Agent calls `list_accounts` to discover available accounts
+4. Human selects the correct account from the list
+5. Agent passes `{ "account_id": "acc_acme_001" }` on every request (`get_products`, `create_media_buy`, etc.)
 
-**When to expect this:** Sellers where accounts are pre-provisioned — through a portal, a sales rep, or an earlier `sync_accounts` call. The buyer already has a relationship; they just need to look up the identifier.
+The agent doesn't set up accounts, negotiate billing, or manage authentication with the seller. It just discovers what already exists and lets the human choose.
 
-### By natural key
+### Implicit account IDs
 
-The buyer doesn't need to know account IDs. Instead, they declare intent — who they are, what they want — and the seller figures out the account.
+The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating the seat, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
+
+**Typical sellers:** Traditional publishers, retail media networks — anywhere the buying relationship is established programmatically.
 
 `sync_accounts` is the declaration tool. Each entry is a set of flags that tells the seller what the buyer needs:
 
@@ -373,14 +379,17 @@ Every combination of flags that might require the seller to do something differe
 
 **Workflow:**
 
-1. Call `sync_accounts` with one or more declarations
-2. Seller provisions or links accounts for each, returns status and `account_id` values
+1. Agent calls `sync_accounts` with one or more declarations
+2. Seller provisions or links accounts for each, responds with status:
+   - `active` — ready to use
+   - `pending_approval` — seller reviewing (human may need to visit `setup.url`)
+   - `rejected` — seller declined the request
 3. For subsequent requests, pass either:
    - `{ "account_id": "acc_acme_001" }` — using the ID the seller returned
    - `{ "house": "acme-corp.com", "brand_id": "bolt", "operator": "pinnacle-media.com" }` — if the seller supports `natural_key` resolution
 4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
 
-**When to expect this:** Most integrations. The buyer declares what they need; the seller decides how to provision it. Sellers that support `natural_key` in `account_resolution` also let buyers skip `sync_accounts` entirely and pass brand identity directly on every request — the seller resolves the account internally.
+The agent may be involved in billing (when `billing` is `"agent"` or `"operator"`). The seller may require human approval before activating accounts.
 
 ### Natural key semantics
 
