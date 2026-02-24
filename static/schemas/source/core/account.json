@@ -69,10 +69,6 @@
       },
       "required": ["amount", "currency"]
     },
-    "parent_account_id": {
-      "type": "string",
-      "description": "Parent account ID when this account is a sub-account under a shared billing account."
-    },
     "setup": {
       "type": "object",
       "description": "Present when status is 'pending_approval'. Contains next steps for completing account activation.",
