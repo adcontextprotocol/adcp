@@ -1,7 +1,7 @@
 /**
  * API key management routes
  *
- * Uses WorkOS server-side API for organization API key CRUD.
+ * Uses WorkOS API for organization API key CRUD.
  * Requires authenticated session (cookie-based auth).
  * Verifies org membership before allowing any operation.
  */
@@ -14,18 +14,68 @@ import { requireAuth } from "../middleware/auth.js";
 
 const logger = createLogger("api-keys-routes");
 
+const WORKOS_API_KEY = process.env.WORKOS_API_KEY;
+const WORKOS_BASE_URL = "https://api.workos.com";
+
 const AUTH_ENABLED = !!(
-  process.env.WORKOS_API_KEY &&
+  WORKOS_API_KEY &&
   process.env.WORKOS_CLIENT_ID &&
   process.env.WORKOS_COOKIE_PASSWORD &&
   process.env.WORKOS_COOKIE_PASSWORD.length >= 32
 );
 
 const workos = AUTH_ENABLED
-  ? new WorkOS(process.env.WORKOS_API_KEY!, {
+  ? new WorkOS(WORKOS_API_KEY!, {
       clientId: process.env.WORKOS_CLIENT_ID!,
     })
   : null;
+
+/**
+ * Make a direct HTTP request to the WorkOS API.
+ * Used for endpoints without dedicated SDK methods (e.g., API key management).
+ */
+async function workosRequest(
+  method: string,
+  path: string,
+  options?: { query?: Record<string, string>; body?: unknown },
+): Promise<{ status: number; data: unknown }> {
+  const url = new URL(path, WORKOS_BASE_URL);
+  if (options?.query) {
+    for (const [key, value] of Object.entries(options.query)) {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${WORKOS_API_KEY}`,
+  };
+
+  const fetchOptions: RequestInit = { method, headers };
+  if (options?.body) {
+    headers["Content-Type"] = "application/json";
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(url.toString(), fetchOptions);
+  if (!response.ok) {
+    let body: string;
+    try {
+      body = await response.text();
+    } catch {
+      body = "(unable to read response body)";
+    }
+    const error = new Error(
+      `WorkOS API error: ${response.status} ${body}`,
+    ) as Error & { status: number };
+    error.status = response.status;
+    throw error;
+  }
+
+  if (response.status === 204) {
+    return { status: 204, data: null };
+  }
+  return { status: response.status, data: await response.json() };
+}
 
 /**
  * Verify the authenticated user is a member of the specified organization.
@@ -39,10 +89,13 @@ async function verifyOrgMembership(
   const memberships =
     await workos!.userManagement.listOrganizationMemberships({
       userId: req.user!.id,
-      organizationId,
     });
 
-  if (memberships.data.length === 0) {
+  const isMember = memberships.data.some(
+    (m) => m.organizationId === organizationId,
+  );
+
+  if (!isMember) {
     res.status(403).json({
       error: "Access denied",
       message: "You are not a member of this organization",
@@ -92,12 +145,13 @@ export function createApiKeysRouter(): Router {
       if (req.query.before) params.before = req.query.before as string;
       if (req.query.limit) params.limit = req.query.limit as string;
 
-      const { data } = await workos.get(
+      const result = await workosRequest(
+        "GET",
         `/organizations/${organizationId}/api_keys`,
         { query: params },
       );
 
-      res.json(data);
+      res.json(result.data);
     } catch (error) {
       logger.error({ err: error }, "Error listing API keys");
       sendWorkOSError(res, error, "Failed to list API keys");
@@ -131,9 +185,10 @@ export function createApiKeysRouter(): Router {
         body.permissions = permissions;
       }
 
-      const { data } = await workos.post(
+      const result = await workosRequest(
+        "POST",
         `/organizations/${organizationId}/api_keys`,
-        body,
+        { body },
       );
 
       logger.info(
@@ -141,7 +196,7 @@ export function createApiKeysRouter(): Router {
         "API key created",
       );
 
-      res.status(201).json(data);
+      res.status(201).json(result.data);
     } catch (error) {
       logger.error({ err: error }, "Error creating API key");
       sendWorkOSError(res, error, "Failed to create API key");
@@ -165,7 +220,7 @@ export function createApiKeysRouter(): Router {
       if (!(await verifyOrgMembership(req, res, organizationId))) return;
 
       const apiKeyId = req.params.id;
-      await workos.delete(`/api_keys/${apiKeyId}`);
+      await workosRequest("DELETE", `/organizations/${organizationId}/api_keys/${apiKeyId}`);
 
       logger.info(
         { userId: req.user!.id, organizationId, apiKeyId },
