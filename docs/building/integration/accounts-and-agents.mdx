@@ -87,9 +87,9 @@ Agent re-bills individual brands and operators
 
 Accounts with `billing: "agent"` are invoiced to the agent. There is no hierarchy — each account simply declares who gets invoiced: the brand, the operator, or the agent. The agent receives the invoice from the seller and re-bills individual brands and operators on its own side.
 
-### Default agent account
+### Default account
 
-When `default_billing: "agent"`, the seller maintains a pre-provisioned **agent account** — a standing account with no brand or operator association. It acts as the fallback: brands or operators without a direct account on the seller route through it automatically. Agents don't need to call `sync_accounts` to use it.
+When `default_billing: "agent"`, the seller pre-provisions a default account — a standing account with no brand or operator association — for agent-billed buys. Brands or operators without a direct account on the seller route through it automatically. Agents don't need to call `sync_accounts` to use it.
 
 ## Account Setup
 
@@ -116,8 +116,8 @@ The seller declares account capabilities in `get_adcp_capabilities`:
 
 Sellers combine auth model and billing support in different ways. The four common patterns:
 
-| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` | Agent account |
-|---------|------------------------|--------------------|--------------------|---------------|
+| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` | Default account |
+|---------|------------------------|--------------------|--------------------|-----------------|
 | Operator-gated | `true` | `["brand", "operator"]` | — | No |
 | Direct-only | `false` | `["brand", "operator"]` | — | No |
 | Agent-consolidated | `false` | `["agent"]` | `"agent"` | Yes |
@@ -125,11 +125,11 @@ Sellers combine auth model and billing support in different ways. The four commo
 
 **Operator-gated** — Each operator authenticates directly with the seller (via OAuth or API key). No agent-level billing — every account has a direct billing relationship. Typical for premium publishers and platforms that enforce per-operator contract compliance.
 
-**Direct-only** — The seller trusts the agent's identity but requires a direct account for every brand or operator. Operators listed in `brand.json` may be provisioned instantly; others go through `pending_approval` until T&C are signed out-of-band. No agent account — the agent cannot buy without a direct account for the advertiser.
+**Direct-only** — The seller trusts the agent's identity but requires a direct account for every brand or operator. Operators listed in `brand.json` may be provisioned instantly; others go through `pending_approval` until T&C are signed out-of-band. No default account — the agent cannot buy without a direct account for the advertiser.
 
-**Agent-consolidated** — All billing flows through the agent. The seller maintains a single agent account and creates sub-accounts per brand/operator immediately (no pending approval needed). The agent handles re-billing. Typical for DSP-style sellers and subscription content platforms.
+**Agent-consolidated** — All billing flows through the agent. The seller pre-provisions a default account and creates per-brand/operator accounts immediately (no pending approval needed). The agent handles re-billing. Typical for DSP-style sellers and subscription content platforms.
 
-**Hybrid** — Both paths are available. Direct accounts (brand or operator billing) give buyers their own rate cards and invoicing with the seller. The agent account serves as the fallback — buys without a specific direct account route to the agent account automatically. Typical for sellers serving both direct buyers and programmatic buyers.
+**Hybrid** — Both paths are available. Direct accounts (brand or operator billing) give buyers their own rate cards and invoicing with the seller. The default account serves as the fallback — buys without a direct account route through it automatically. Typical for sellers serving both direct buyers and programmatic buyers.
 
 ### Trust Model
 
@@ -724,7 +724,7 @@ For organizations that cannot host files on their domain, the `authoritative_loc
 | Brand identity | House domain + brand_id via brand.json | Resolution and caching |
 | Account capabilities | `account` section in capabilities | `require_operator_auth`, `authorization_endpoint`, `supported_billing`, `required_for_products` |
 | Account setup | `sync_accounts` task with status lifecycle | Provisioning, credit, legal |
-| Billing | Three models: brand, operator, agent | Which models are supported; whether agent account exists |
+| Billing | Three models: brand, operator, agent | Which models are supported; whether a default account exists |
 | Operator authorization | `authorized_operators` in brand.json | Verification and enforcement |
 | Account status | Standard status values with setup URLs | Status transitions and notifications |
 | Account ID | Required when agent has multiple accounts | Mapping from brand+operator to account |
