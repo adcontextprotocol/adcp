@@ -6,7 +6,7 @@
 import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import {
   getLushaClient,
   isLushaConfigured,
@@ -28,7 +28,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/status",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (_req, res) => {
       res.json({
         configured: isLushaConfigured(),
@@ -41,7 +41,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.get(
     "/enrichment/stats",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (_req, res) => {
       try {
         const stats = await getEnrichmentStats();
@@ -107,11 +107,17 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/enrichment/domain/:domain",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { domain } = req.params;
         const { save_to_org_id } = req.body;
+
+        // Validate domain format before hitting Lusha
+        const DOMAIN_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](\.[a-zA-Z]{2,})+$/;
+        if (!DOMAIN_RE.test(domain)) {
+          return res.status(400).json({ error: "Invalid domain format" });
+        }
 
         const lusha = getLushaClient();
         if (!lusha) {
@@ -452,7 +458,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/search",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const lusha = getLushaClient();
@@ -561,7 +567,7 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
   apiRouter.post(
     "/prospecting/import",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { company, autoAssignOwner } = req.body;

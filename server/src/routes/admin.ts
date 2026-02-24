@@ -65,11 +65,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // ADMIN PAGE ROUTES (mounted at /admin)
   // =========================================================================
 
-  pageRouter.get("/prospects", requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-prospects.html").catch((err) => {
-      logger.error({ err }, "Error serving admin prospects page");
-      res.status(500).send("Internal server error");
-    });
+  pageRouter.get("/prospects", (req, res) => {
+    res.redirect(301, "/manage/prospects");
   });
 
   pageRouter.get("/api-keys", requireAuth, requireAdmin, (req, res) => {

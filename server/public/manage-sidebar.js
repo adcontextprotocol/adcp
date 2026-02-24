@@ -1,66 +1,31 @@
-// Shared admin sidebar navigation component
-// Include this in any admin page with: <script src="/admin-sidebar.js"></script>
+// Shared manage sidebar navigation component
+// Include this in any manage page with: <script src="/manage-sidebar.js"></script>
 
 (function() {
   'use strict';
 
   // Navigation configuration
   const NAV_CONFIG = {
-    logo: 'Admin',
+    logo: 'Manage',
     sections: [
       {
         label: 'Overview',
         items: [
-          { href: '/admin', label: 'Dashboard', icon: '📊' },
+          { href: '/manage', label: 'Home', icon: '📊' },
         ]
       },
       {
-        label: 'Account Management',
+        label: 'Growth',
         items: [
-          { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
-          { href: '/admin/members', label: 'Organizations', icon: '🏢' },
-          { href: '/admin/domain-health', label: 'Domain Health', icon: '🔗' },
+          { href: '/manage/referrals', label: 'Referrals', icon: '🔗' },
+          { href: '/manage/prospects', label: 'Prospects', icon: '🎯' },
+          { href: '/manage/accounts', label: 'Accounts', icon: '📋' },
         ]
       },
       {
-        label: 'Community',
+        label: 'Analytics',
         items: [
-          { href: '/admin/events', label: 'Events', icon: '📅' },
-          { href: '/admin/meetings', label: 'Meetings', icon: '🗓️' },
-          { href: '/admin/working-groups', label: 'Working Groups', icon: '🏛️' },
-          { href: '/admin/perspectives', label: 'Perspectives', icon: '💡' },
-        ]
-      },
-      {
-        label: 'Billing',
-        items: [
-          { href: '/admin/products', label: 'Products', icon: '💳' },
-          { href: '/admin/billing', label: 'Stripe Linking', icon: '🔗' },
-        ]
-      },
-      {
-        label: 'System',
-        items: [
-          { href: '/admin/agreements', label: 'Agreements', icon: '📋' },
-          { href: '/admin/email', label: 'Email', icon: '📧' },
-          { href: '/admin/addie', label: 'Addie', icon: '🤖' },
-          { href: '/admin/manifest-refs', label: 'Manifest Registry', icon: '📋' },
-          { href: '/admin/moltbook', label: 'Moltbook', icon: '📱' },
-          { href: '/admin/escalations', label: 'Escalations', icon: '🚨' },
-          { href: '/admin/feeds', label: 'Industry Feeds', icon: '📰' },
-          { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
-          { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
-          { href: '/admin/bans', label: 'Bans', icon: '🚫' },
-          { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
-        ]
-      },
-      {
-        label: 'Settings',
-        items: [
-          { href: '/admin/settings', label: 'System Settings', icon: '⚙️' },
-          { href: '/admin/insight-types', label: 'Insight Types', icon: '🏷️' },
-          { href: '/admin/outreach', label: 'Outreach Config', icon: '📣' },
-          { href: '/admin/insights', label: 'Raw Insights', icon: '🧠' },
+          { href: '/manage/analytics', label: 'Revenue analytics', icon: '📈' },
         ]
       }
     ]
@@ -260,7 +225,7 @@
     const sectionsHTML = NAV_CONFIG.sections.map(section => {
       const itemsHTML = section.items.map(item => {
         const isActive = currentPath === item.href ||
-                        (item.href !== '/admin' && currentPath.startsWith(item.href));
+                        (item.href !== '/manage' && currentPath.startsWith(item.href));
         const activeClass = isActive ? 'active' : '';
         return `
           <a href="${item.href}" class="admin-nav-item ${activeClass}">
@@ -278,12 +243,16 @@
       `;
     }).join('');
 
+    const adminLink = (window.__APP_CONFIG__ && window.__APP_CONFIG__.isAdmin)
+      ? `<a href="/admin" class="admin-back-link">Admin panel →</a>`
+      : '';
+
     return `
-      <button class="admin-sidebar-toggle" onclick="AdminSidebar.toggleSidebar()">☰</button>
-      <div class="admin-sidebar-overlay" onclick="AdminSidebar.closeSidebar()"></div>
+      <button class="admin-sidebar-toggle" onclick="ManageSidebar.toggleSidebar()">☰</button>
+      <div class="admin-sidebar-overlay" onclick="ManageSidebar.closeSidebar()"></div>
       <aside class="admin-sidebar" id="adminSidebar">
         <div class="admin-sidebar-header">
-          <a href="/admin" class="admin-sidebar-logo">
+          <a href="/manage" class="admin-sidebar-logo">
             <img src="/AAo.svg" alt="AAO">
             <span>${NAV_CONFIG.logo}</span>
           </a>
@@ -295,9 +264,7 @@
           <a href="/dashboard" class="admin-back-link">
             ← Back to dashboard
           </a>
-          <a href="/manage" class="admin-back-link">
-            Manage AAO →
-          </a>
+          ${adminLink}
         </div>
       </aside>
     `;
@@ -305,11 +272,9 @@
 
   // Wrap content in main container
   function wrapContent() {
-    // Find existing content wrapper or body content
     const existingMain = document.querySelector('.admin-main');
-    if (existingMain) return; // Already wrapped
+    if (existingMain) return;
 
-    // Get all body children except scripts, sidebar elements, nav, and footer/footer placeholder
     const bodyChildren = Array.from(document.body.children).filter(el =>
       el.tagName !== 'SCRIPT' &&
       !el.classList.contains('admin-sidebar') &&
@@ -320,21 +285,17 @@
       el.id !== 'adcp-footer'
     );
 
-    // Create main wrapper
     const mainWrapper = document.createElement('main');
     mainWrapper.className = 'admin-main';
 
-    // Move children to wrapper
     bodyChildren.forEach(child => {
       mainWrapper.appendChild(child);
     });
 
-    // Find footer placeholder or actual footer to insert before
     const footerPlaceholder = document.getElementById('adcp-footer');
     const actualFooter = document.querySelector('.aao-footer');
     const insertBeforeElement = footerPlaceholder || actualFooter;
 
-    // Insert main wrapper before footer if it exists, otherwise append to body
     if (insertBeforeElement) {
       document.body.insertBefore(mainWrapper, insertBeforeElement);
     } else {
@@ -346,13 +307,11 @@
   function init() {
     injectStyles();
 
-    // Remove old header nav if present
     const oldHeader = document.querySelector('.admin-header');
     if (oldHeader) {
       oldHeader.remove();
     }
 
-    // Insert sidebar at start of body (after adcp-nav if present)
     const sidebarHTML = createSidebarHTML();
     const adcpNav = document.getElementById('adcp-nav');
     if (adcpNav) {
@@ -361,14 +320,11 @@
       document.body.insertAdjacentHTML('afterbegin', sidebarHTML);
     }
 
-    // Add layout class to body
     document.body.classList.add('admin-layout');
 
-    // Wrap existing content
     wrapContent();
   }
 
-  // Toggle sidebar (mobile)
   function toggleSidebar() {
     const sidebar = document.getElementById('adminSidebar');
     const overlay = document.querySelector('.admin-sidebar-overlay');
@@ -383,15 +339,12 @@
     overlay?.classList.remove('show');
   }
 
-  // Utility function to redirect to login with return_to parameter
   function redirectToLogin() {
     const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
     window.location.href = `/auth/login?return_to=${returnUrl}`;
   }
 
-  // Shared fetch wrapper that handles 401 redirects automatically
-  async function adminFetch(url, options = {}) {
-    // Always include credentials to send session cookies
+  async function manageFetch(url, options = {}) {
     const fetchOptions = {
       ...options,
       credentials: 'include'
@@ -399,15 +352,13 @@
     const response = await fetch(url, fetchOptions);
     if (response.status === 401) {
       redirectToLogin();
-      // Return a never-resolving promise to prevent further processing
       return new Promise(() => {});
     }
     return response;
   }
 
-  // Auto-initialize only on admin pages
   function shouldInitialize() {
-    return window.location.pathname.startsWith('/admin');
+    return window.location.pathname.startsWith('/manage');
   }
 
   if (shouldInitialize()) {
@@ -418,13 +369,12 @@
     }
   }
 
-  // Export API
-  window.AdminSidebar = {
+  window.ManageSidebar = {
     config: NAV_CONFIG,
     init,
     toggleSidebar,
     closeSidebar,
     redirectToLogin,
-    fetch: adminFetch
+    fetch: manageFetch
   };
 })();

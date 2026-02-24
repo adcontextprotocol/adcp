@@ -7,7 +7,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 import { VALID_REVENUE_TIERS } from "../../db/organization-db.js";
@@ -26,8 +26,38 @@ interface ProspectRoutesConfig {
 export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesConfig): void {
   const { workos } = config;
 
+  // GET /api/admin/prospects/typeahead - Lightweight prospect search for typeaheads
+  apiRouter.get("/prospects/typeahead", requireAuth, requireManage, async (req, res) => {
+    const q = ((req.query.q as string) || "").trim();
+    if (q.length < 2) {
+      return res.status(400).json({ error: "Query must be at least 2 characters" });
+    }
+    try {
+      const pool = getPool();
+      const result = await pool.query<{
+        workos_organization_id: string;
+        name: string;
+        email_domain: string | null;
+        prospect_status: string | null;
+      }>(
+        `SELECT workos_organization_id, name, email_domain, prospect_status
+         FROM organizations
+         WHERE prospect_status IS NOT NULL
+           AND prospect_status != 'disqualified'
+           AND (name ILIKE $1 OR email_domain ILIKE $1)
+         ORDER BY name
+         LIMIT 8`,
+        [`%${q}%`]
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, "Error in prospects typeahead");
+      return res.status(500).json({ error: "Search failed" });
+    }
+  });
+
   // GET /api/admin/prospects - List all prospects with action-based views
-  apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/prospects", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
       const { status, source, view, owner, mine } = req.query;
@@ -222,7 +252,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         query += ` AND o.prospect_owner = $${params.length}`;
       }
 
-      // mine=true filter: only show prospects where current user is owner in org_stakeholders
+      // mine=true filter: show prospects where current user has any stakeholder role
       if (mine === "true") {
         const currentUserId = req.user?.id;
         if (currentUserId) {
@@ -231,7 +261,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             SELECT 1 FROM org_stakeholders os
             WHERE os.organization_id = o.workos_organization_id
               AND os.user_id = $${params.length}
-              AND os.role = 'owner'
           )`;
         }
       }
@@ -463,6 +492,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
       }
 
       // Enrich with membership count and engagement data
+      const currentUserId = req.user?.id;
       const prospects = result.rows.map((row) => {
         const memberCount = memberCountMap.get(row.workos_organization_id) || 0;
         const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
@@ -528,6 +558,9 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },
           recent_activity_count: recentActivityCount,
           pending_invoices: pendingInvoices,
+          user_stakeholder_role: currentUserId
+            ? (stakeholdersMap.get(row.workos_organization_id) || []).find(s => s.user_id === currentUserId)?.role ?? null
+            : null,
         };
       });
 
@@ -549,7 +582,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
   });
 
   // POST /api/admin/prospects - Create a new prospect
-  apiRouter.post("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/prospects", requireAuth, requireManage, async (req, res) => {
     try {
       const {
         name,
@@ -577,7 +610,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         domain,
         company_type,
         prospect_status,
-        prospect_source: prospect_source || "aao_launch_list",
+        prospect_source: prospect_source || "referral",
         prospect_notes,
         prospect_contact_name,
         prospect_contact_email,
