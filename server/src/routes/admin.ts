@@ -94,7 +94,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   setupProspectRoutes(apiRouter, { workos });
 
   // Organization detail and management routes
-  setupOrganizationRoutes(pageRouter, apiRouter, { workos });
+  setupOrganizationRoutes(apiRouter, { workos });
 
   // Company enrichment and prospecting routes
   setupEnrichmentRoutes(apiRouter);
