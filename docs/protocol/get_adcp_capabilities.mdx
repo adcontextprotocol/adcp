@@ -81,7 +81,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 
 **Operator-scoped** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and calls `sync_accounts` within each session to declare brands. The operator's credential authorizes all calls in that session.
 
-See [Accounts and Agents](/docs/building/integration/accounts-and-agents#trust-model) for full workflows and [seller billing patterns](/docs/building/integration/accounts-and-agents#seller-billing-patterns) for common combinations of auth model, billing support, and default account.
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model, billing support, and default account.
 
 ### media_buy
 
@@ -571,7 +571,7 @@ Route requests to appropriate API versions based on `adcp.major_versions`.
 
 After discovering capabilities:
 
-1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/docs/building/integration/accounts-and-agents#trust-model)
+1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare)
 2. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
 3. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
 4. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
