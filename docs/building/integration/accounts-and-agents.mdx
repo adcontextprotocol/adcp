@@ -169,6 +169,7 @@ Seller acknowledges the request but requires setup before provisioning:
 ```json
 {
   "accounts": [{
+    "account_id": "acc_acme_pending",
     "house": "acme-corp.com",
     "action": "created",
     "status": "pending_approval",
@@ -181,11 +182,11 @@ Seller acknowledges the request but requires setup before provisioning:
 }
 ```
 
-No `account_id` yet — the seller has acknowledged the relationship `(house: "acme-corp.com", billing: "brand")` but hasn't provisioned an account. A human at Acme Corp completes the setup at the URL. To check progress, the agent either:
-- Re-calls `sync_accounts` with the same natural key — the seller returns the updated status (and `account_id` once provisioned)
+The seller has assigned an `account_id` and acknowledged the relationship `(house: "acme-corp.com", billing: "brand")`, but the account is pending review before it becomes active. A human at Acme Corp completes the setup at the URL. To check progress, the agent either:
+- Re-calls `sync_accounts` with the same natural key — the seller returns the updated status
 - Receives a webhook notification if `push_notification_config` was provided in the request
 
-Once provisioned, the seller assigns an `account_id` and the account appears in `list_accounts`. Some sellers may assign an `account_id` immediately — `account_id` is optional in `sync_accounts` responses but required in `list_accounts`.
+Once provisioned, the seller assigns an `account_id` and the account appears in `list_accounts`. `account_id` is present in all `sync_accounts` responses except when `status` is `rejected` or `action` is `failed`. It is always present in `list_accounts`.
 
 **Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller.
 
