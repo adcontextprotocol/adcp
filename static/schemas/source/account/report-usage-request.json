@@ -2,20 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/report-usage-request.json",
   "title": "Report Usage Request",
-  "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Multiple usage records can be batched in a single request.",
+  "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts, operators, and campaigns in a single request.",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "The caller's account with this vendor agent, obtained from sync_accounts."
-    },
-    "operator_id": {
-      "type": "string",
-      "description": "The operator on whose behalf usage is reported. Characterizes billing responsibility — the entity that owes the vendor for the reported consumption."
-    },
     "reporting_period": {
       "type": "object",
-      "description": "The time range covered by this usage report.",
+      "description": "The time range covered by this usage report. Applies to all records in the request.",
       "properties": {
         "start": {
           "type": "string",
@@ -33,11 +25,23 @@
     },
     "usage": {
       "type": "array",
-      "description": "One or more usage records. Each record describes consumption of one vendor service unit. Multiple campaigns can be batched by varying buyer_campaign_ref. Multiple service types (signal, content_standards, creative) can be mixed in a single request.",
+      "description": "One or more usage records. Each record is self-contained: it carries its own account_id, operator_id, and buyer_campaign_ref, allowing a single request to span multiple accounts, operators, and campaigns.",
       "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "The account with this vendor agent for this record, obtained from sync_accounts."
+          },
+          "operator_id": {
+            "type": "string",
+            "description": "The operator on whose behalf this usage is reported. Identifies the billing party — the entity that owes the vendor for this consumption."
+          },
+          "buyer_campaign_ref": {
+            "type": "string",
+            "description": "The buyer's campaign reference (e.g., a media_buy_id). Used to group records by campaign."
+          },
           "kind": {
             "type": "string",
             "enum": ["signal", "content_standards", "creative"],
@@ -52,10 +56,6 @@
             "type": "string",
             "pattern": "^[A-Z]{3}$",
             "description": "ISO 4217 currency code."
-          },
-          "buyer_campaign_ref": {
-            "type": "string",
-            "description": "The buyer's campaign reference (e.g., a media_buy_id). Vary this across records to batch multiple campaigns in a single request."
           },
           "impressions": {
             "type": "integer",
@@ -80,7 +80,7 @@
             "description": "Content standards configuration identifier. Required when kind is 'content_standards'."
           }
         },
-        "required": ["kind", "vendor_cost", "currency"],
+        "required": ["account_id", "operator_id", "kind", "vendor_cost", "currency"],
         "if": {
           "properties": { "kind": { "type": "string", "const": "signal" } },
           "required": ["kind"]
@@ -98,20 +98,20 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account_id", "operator_id", "reporting_period", "usage"],
+  "required": ["reporting_period", "usage"],
   "additionalProperties": true,
   "examples": [
     {
       "description": "Signal usage for a single campaign",
       "data": {
-        "account_id": "acct_pinnacle_signals",
-        "operator_id": "pinnacle-media.com",
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
           "end": "2025-03-31T23:59:59Z"
         },
         "usage": [
           {
+            "account_id": "acct_pinnacle_signals",
+            "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_launch_001",
             "kind": "signal",
             "signal_agent_segment_id": "luxury_auto_intenders",
@@ -125,16 +125,16 @@
       }
     },
     {
-      "description": "Mixed signal and content standards usage across two campaigns",
+      "description": "Multi-account batch: two brands, two operators, mixed service types",
       "data": {
-        "account_id": "acct_nova_signals",
-        "operator_id": "nova-brands.com",
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
           "end": "2025-03-31T23:59:59Z"
         },
         "usage": [
           {
+            "account_id": "acct_pinnacle_signals",
+            "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_q1_001",
             "kind": "signal",
             "signal_agent_segment_id": "luxury_auto_intenders",
@@ -144,6 +144,8 @@
             "currency": "USD"
           },
           {
+            "account_id": "acct_nova_signals",
+            "operator_id": "nova-brands.com",
             "buyer_campaign_ref": "mb_summer_preview_002",
             "kind": "content_standards",
             "standards_id": "brand_safety_v2",

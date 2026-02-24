@@ -5,7 +5,7 @@ testable: false
 
 Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing.
 
-Multiple campaigns can be batched in a single request by varying `buyer_campaign_ref` across records. Multiple vendor service types (`signal`, `content_standards`, `creative`) can also be mixed in a single request.
+Each usage record is self-contained — it carries its own `account_id`, `operator_id`, and `buyer_campaign_ref`. A single request can span multiple accounts, operators, and campaigns.
 
 **Response Time**: ~1s.
 
@@ -16,21 +16,21 @@ Multiple campaigns can be batched in a single request by varying `buyer_campaign
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Yes | The caller's account with this vendor agent (from `sync_accounts`). |
-| `operator_id` | string | Yes | The operator on whose behalf usage is reported. Characterizes billing responsibility — the entity that owes the vendor. |
-| `reporting_period` | object | Yes | `start` and `end` as ISO 8601 date-time in UTC. |
-| `usage` | UsageRecord[] | Yes | One or more usage records. Each describes consumption of one vendor service unit. |
+| `reporting_period` | object | Yes | `start` and `end` as ISO 8601 date-time in UTC. Applies to all records in the request. |
+| `usage` | UsageRecord[] | Yes | One or more usage records. Each record is self-contained with its own account, operator, and campaign reference. |
 
 ### Usage Record Fields
 
-Each record requires `kind`, `vendor_cost`, and `currency`. Additional fields depend on `kind`:
+Each record requires `account_id`, `operator_id`, `kind`, `vendor_cost`, and `currency`. Additional fields depend on `kind`:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `account_id` | string | Yes | The account with this vendor agent for this record (from `sync_accounts`). |
+| `operator_id` | string | Yes | The operator on whose behalf this usage is reported. Identifies the billing party. |
 | `kind` | string | Yes | `"signal"`, `"content_standards"`, or `"creative"` |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
-| `buyer_campaign_ref` | string | No | Buyer's campaign reference. Vary this across records to batch multiple campaigns in a single request. |
+| `buyer_campaign_ref` | string | No | Buyer's campaign reference (e.g., a `media_buy_id`). Used to group records by campaign. |
 | `impressions` | number | Signal: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
 | `signal_agent_segment_id` | string | Signal: Yes | Signal identifier from `get_signals` |
@@ -52,14 +52,14 @@ Each record requires `kind`, `vendor_cost`, and `currency`. Additional fields de
 
 ```json Request
 {
-  "account_id": "acct_pinnacle_signals",
-  "operator_id": "pinnacle-media.com",
   "reporting_period": {
     "start": "2025-03-01T00:00:00Z",
     "end": "2025-03-31T23:59:59Z"
   },
   "usage": [
     {
+      "account_id": "acct_pinnacle_signals",
+      "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_launch_001",
       "kind": "signal",
       "signal_agent_segment_id": "luxury_auto_intenders",
@@ -81,20 +81,20 @@ Each record requires `kind`, `vendor_cost`, and `currency`. Additional fields de
 
 </CodeGroup>
 
-### Multiple campaigns in one request
+### Multi-account batch
 
-Batch usage for several campaigns by varying `buyer_campaign_ref`:
+A single request spanning two brands with different accounts and operators:
 
 ```json
 {
-  "account_id": "acct_nova_signals",
-  "operator_id": "nova-brands.com",
   "reporting_period": {
     "start": "2025-03-01T00:00:00Z",
     "end": "2025-03-31T23:59:59Z"
   },
   "usage": [
     {
+      "account_id": "acct_pinnacle_signals",
+      "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_q1_001",
       "kind": "signal",
       "signal_agent_segment_id": "luxury_auto_intenders",
@@ -104,10 +104,11 @@ Batch usage for several campaigns by varying `buyer_campaign_ref`:
       "currency": "USD"
     },
     {
+      "account_id": "acct_nova_signals",
+      "operator_id": "nova-brands.com",
       "buyer_campaign_ref": "mb_summer_preview_002",
-      "kind": "signal",
-      "signal_agent_segment_id": "luxury_auto_intenders",
-      "pricing_option_id": "po_lux_auto_cpm",
+      "kind": "content_standards",
+      "standards_id": "brand_safety_v2",
       "impressions": 800000,
       "vendor_cost": 400.00,
       "currency": "USD"
@@ -143,7 +144,7 @@ Report upon campaign completion to close out the final period.
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | `account_id` not found or not accessible | Verify account_id from `list_accounts`; re-run `sync_accounts` if needed |
+| `ACCOUNT_NOT_FOUND` | `account_id` in a usage record not found or not accessible | Verify account_id from `list_accounts`; re-run `sync_accounts` if needed |
 | `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for the record's `kind` |
 | `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the original `get_signals` response |
 
