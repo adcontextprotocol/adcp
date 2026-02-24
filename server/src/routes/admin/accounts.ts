@@ -647,17 +647,21 @@ export function setupAccountRoutes(
              ORDER BY created_at DESC`,
             [orgId]
           );
-          pendingInvoices = localInvoices.rows.map((inv) => ({
-            id: inv.id,
-            status: inv.status as "draft" | "open",
-            amount_due: inv.amount_due,
-            currency: inv.currency,
-            created: inv.created_at || new Date(),
-            due_date: inv.due_date,
-            hosted_invoice_url: inv.hosted_invoice_url,
-            product_name: null,
-            customer_email: null,
-          }));
+          pendingInvoices = localInvoices.rows.map((inv) => {
+            const dueDate = inv.due_date ? new Date(inv.due_date) : null;
+            return {
+              id: inv.id,
+              status: inv.status as "draft" | "open",
+              is_past_due: inv.status === 'open' && dueDate !== null && dueDate < new Date(),
+              amount_due: inv.amount_due,
+              currency: inv.currency,
+              created: inv.created_at || new Date(),
+              due_date: dueDate,
+              hosted_invoice_url: inv.hosted_invoice_url,
+              product_name: null,
+              customer_email: null,
+            };
+          });
         }
 
         // Find owner from stakeholders

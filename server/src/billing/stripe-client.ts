@@ -1377,6 +1377,7 @@ export async function archiveProduct(productId: string, priceId: string): Promis
 export interface PendingInvoice {
   id: string;
   status: 'draft' | 'open';
+  is_past_due: boolean;
   amount_due: number;
   currency: string;
   created: Date;
@@ -1427,6 +1428,7 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       }
     }
     const allInvoices = Array.from(invoiceMap.values());
+    const now = new Date();
 
     for (const invoice of allInvoices) {
       // Get product name from first line item
@@ -1454,13 +1456,15 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
         }
       }
 
+      const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000) : null;
       pendingInvoices.push({
         id: invoice.id,
         status: invoice.status as 'draft' | 'open',
+        is_past_due: invoice.status === 'open' && dueDate !== null && dueDate < now,
         amount_due: invoice.amount_due,
         currency: invoice.currency,
         created: new Date(invoice.created * 1000),
-        due_date: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+        due_date: dueDate,
         hosted_invoice_url: invoice.hosted_invoice_url || null,
         product_name: productName,
         customer_email: typeof invoice.customer_email === 'string' ? invoice.customer_email : null,
@@ -1510,6 +1514,7 @@ export async function getPendingInvoicesByEmail(email: string): Promise<PendingI
 export interface OpenInvoiceWithCustomer {
   id: string;
   status: 'draft' | 'open';
+  is_past_due: boolean;
   amount_due: number;
   currency: string;
   created: Date;
@@ -1559,13 +1564,16 @@ function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | 
     }
   }
 
+  const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000) : null;
+  const status = (invoice.status === 'draft' || invoice.status === 'open') ? invoice.status : 'open';
   return {
     id: invoice.id,
-    status: (invoice.status === 'draft' || invoice.status === 'open') ? invoice.status : 'open',
+    status,
+    is_past_due: status === 'open' && dueDate !== null && dueDate < new Date(),
     amount_due: invoice.amount_due,
     currency: invoice.currency,
     created: new Date(invoice.created * 1000),
-    due_date: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+    due_date: dueDate,
     hosted_invoice_url: invoice.hosted_invoice_url || null,
     product_name: productName,
     customer_id: customerId,
