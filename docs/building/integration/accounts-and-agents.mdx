@@ -83,13 +83,13 @@ Rates: Agent's rates
 Agent re-bills individual brands and operators
 ```
 
-### Agent account
+### Agent billing
 
-When `supported_billing` includes `"agent"`, the seller pre-provisions an **agent account**: a top-level billing relationship between the seller and the agent, with no brand or operator association. It serves as the billing parent for all agent-billed sub-accounts.
+Accounts with `billing: "agent"` are invoiced to the agent. There is no hierarchy — each account simply declares who gets invoiced: the brand, the operator, or the agent. The agent receives the invoice from the seller and re-bills individual brands and operators on its own side.
 
-When a sub-account is created with `billing: "agent"`, the agent receives a single consolidated invoice from the seller and is responsible for re-billing individual brands and operators on its side.
+### Default agent account
 
-When `default_billing: "agent"`, the agent account also acts as the **fallback**: buys without a direct brand account route to the agent account automatically, without requiring a separate `sync_accounts` call first.
+When `default_billing: "agent"`, the seller maintains a pre-provisioned **agent account** — a standing account with no brand or operator association. It acts as the fallback: brands or operators without a direct account on the seller route through it automatically. Agents don't need to call `sync_accounts` to use it.
 
 ## Account Setup
 
