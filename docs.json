@@ -172,6 +172,21 @@
             ]
           },
           {
+            "group": "Accounts Protocol",
+            "pages": [
+              "docs/accounts/overview",
+              "docs/building/integration/accounts-and-agents",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
@@ -220,8 +235,6 @@
                 "group": "Task Reference",
                 "pages": [
                   "docs/media-buy/task-reference/index",
-                  "docs/media-buy/task-reference/sync_accounts",
-                  "docs/media-buy/task-reference/list_accounts",
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
@@ -661,6 +674,21 @@
             ]
           },
           {
+            "group": "Accounts Protocol",
+            "pages": [
+              "docs/accounts/overview",
+              "docs/building/integration/accounts-and-agents",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Signals Protocol",
             "pages": [
               "docs/signals/overview",
@@ -709,8 +737,6 @@
                 "group": "Task Reference",
                 "pages": [
                   "docs/media-buy/task-reference/index",
-                  "docs/media-buy/task-reference/sync_accounts",
-                  "docs/media-buy/task-reference/list_accounts",
                   "docs/media-buy/task-reference/get_products",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",

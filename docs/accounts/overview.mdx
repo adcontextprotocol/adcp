@@ -1,0 +1,114 @@
+---
+title: Accounts Protocol
+sidebarTitle: Overview
+description: The commercial infrastructure connecting buyers, brands, and vendor agents across all AdCP protocols
+---
+
+The Accounts Protocol defines the commercial layer beneath all AdCP vendor protocols. Every transaction — a media buy, a data signal, a content standards check — happens between parties that have a commercial relationship. The Accounts Protocol establishes that relationship and closes the financial loop through post-delivery settlement.
+
+## The commercial model
+
+Four questions underlie every AdCP transaction:
+
+| Question | Answered by | Mechanism |
+|----------|-------------|-----------|
+| Who is the advertiser? | Brand registry | `house` domain resolves to `brand.json` |
+| Who is the operator? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
+| Who has commercial terms? | Account | `sync_accounts` binds buyer and vendor to billing terms |
+| What is owed? | Settlement | `report_usage` reports consumption for reconciliation |
+
+## Scope
+
+The Accounts Protocol applies across all vendor protocols. An orchestrator syncs accounts once per vendor agent and reuses the same `account_id` across all interactions with that agent:
+
+| Vendor Protocol | account_id used for |
+|---|---|
+| Media Buy | Rate cards, invoicing, campaign attribution |
+| Signals | Per-account pricing options, activation, usage settlement |
+| Governance | Content standards billing |
+| Creative | Creative service billing |
+
+## Transaction lifecycle
+
+```
+1. Resolve brand identity
+   Fetch house.com/.well-known/brand.json → canonical brand (house, brand_id)
+
+2. Verify operator identity
+   Check authorized_operators in brand.json → confirm operator is permitted to buy for this brand
+
+3. Establish account
+   sync_accounts(house, brand_id, operator, billing) → account_id
+
+4. Execute
+   Protocol tasks use account_id to apply correct rates and terms
+   Examples: get_signals(account_id), create_media_buy(account_id)
+
+5. Settle
+   report_usage(account_id, operator_id, usage[]) → vendor tracks what they earned
+```
+
+## Principals
+
+The Accounts Protocol operates with four principal types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+
+| Principal | Role | Identified by |
+|-----------|------|---------------|
+| Brand | Whose products are advertised | `house` domain + `brand_id` via brand.json |
+| Operator | Who drives the buys | Domain (e.g., `pinnacle-media.com`) |
+| Agent | What software places the buys | Authenticated session |
+| Vendor agent | The seller's AdCP agent | `agent_url` |
+
+## Tasks
+
+| Task | Purpose |
+|------|---------|
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare advertiser portfolio; receive `account_id` per brand |
+| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Query account status; retrieve active `account_id` values |
+| [`report_usage`](/docs/accounts/tasks/report_usage) | Report service consumption for post-delivery settlement |
+
+## Brand registry connection
+
+The `house` field in `sync_accounts` is not an arbitrary identifier — it is the brand's domain, resolvable to a `brand.json` file that declares the brand's canonical identity, sub-brands, authorized operators, and properties.
+
+Vendor agents can verify buyer claims against the brand registry: if an orchestrator claims to represent `acme-corp.com`, the vendor can fetch `acme-corp.com/.well-known/brand.json` to confirm authorized operators and brand hierarchy. This makes the Accounts Protocol tamper-resistant — account relationships are grounded in publicly verifiable brand identity.
+
+See the [Brand Protocol](/docs/brand-protocol/index) for how brand identity resolution works.
+
+## Counterparty verification
+
+Every commercial relationship in advertising depends on knowing who you're actually doing business with. The Accounts Protocol addresses this at the protocol level through the brand registry.
+
+When an orchestrator calls `sync_accounts`, the `house` field is the brand's domain. Vendor agents can fetch `house.com/.well-known/brand.json` to verify:
+
+- **Brand identity**: Is this brand who they claim to be?
+- **Operator authorization**: Is the operator listed in the request actually authorized to buy on this brand's behalf?
+- **Brand hierarchy**: Which sub-brands does this house portfolio include?
+
+This verification is grounded in publicly accessible DNS-hosted identity — not in what the buyer agent asserts, but in what the brand itself has declared.
+
+The `pending_approval` account state is where human review occurs: credit checks, legal agreements, and identity verification. Vendor agents that require these steps return a `setup.url` for the human to complete the process before the account becomes active.
+
+### Brand registry and the contribute-back pattern
+
+The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) provides a community-maintained layer of brand identity for brands that haven't yet published their own `brand.json`. Buyer agents resolving brands before `sync_accounts` can contribute data back to the registry as a byproduct of normal account setup — improving identity coverage for the ecosystem without extra effort.
+
+The recommended pattern for buyer agents (see [GitHub #1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
+
+```
+1. resolve_brand(house_domain) → check registry
+2. If not found: research_brand(house_domain) → enrich
+3. Confirm with user where UX permits
+4. save_brand() → contribute back to registry
+5. sync_accounts() → establish commercial relationship
+```
+
+This means registry coverage improves as a natural byproduct of agents doing their normal job.
+
+## Settlement model
+
+`report_usage` is buyer-reported: the orchestrator computes and reports what was consumed. The vendor agent uses the reported `pricing_option_id` to verify the correct rate was applied and track earned revenue.
+
+Partial acceptance is valid — a `report_usage` call can include records for multiple campaigns and multiple vendor services (`kind: "signal"`, `kind: "content_standards"`, `kind: "creative"`). The response confirms how many records were accepted and which (if any) failed validation.
+
+The `operator_id` field identifies the billing party — the agency or brand on whose behalf usage is being reported. This determines which entity receives the invoice.
