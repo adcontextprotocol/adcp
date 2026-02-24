@@ -8,11 +8,12 @@ The Accounts Protocol defines the commercial layer beneath all AdCP vendor proto
 
 ## The commercial model
 
-Three questions underlie every AdCP transaction:
+Four questions underlie every AdCP transaction:
 
 | Question | Answered by | Mechanism |
 |----------|-------------|-----------|
 | Who is the advertiser? | Brand registry | `house` domain resolves to `brand.json` |
+| Who is the operator? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
 | Who has commercial terms? | Account | `sync_accounts` binds buyer and vendor to billing terms |
 | What is owed? | Settlement | `report_usage` reports consumption for reconciliation |
 
@@ -33,14 +34,17 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator syncs
 1. Resolve brand identity
    Fetch house.com/.well-known/brand.json → canonical brand (house, brand_id)
 
-2. Establish account
+2. Verify operator identity
+   Check authorized_operators in brand.json → confirm operator is permitted to buy for this brand
+
+3. Establish account
    sync_accounts(house, brand_id, operator, billing) → account_id
 
-3. Execute
+4. Execute
    Protocol tasks use account_id to apply correct rates and terms
    Examples: get_signals(account_id), create_media_buy(account_id)
 
-4. Settle
+5. Settle
    report_usage(account_id, operator_id, usage[]) → vendor tracks what they earned
 ```
 
