@@ -72,10 +72,6 @@
                 ],
                 "description": "Who is invoiced on this account. May differ from the requested billing if the seller doesn't support it."
               },
-              "parent_account_id": {
-                "type": "string",
-                "description": "Parent account ID when this account is a sub-account under a shared billing account"
-              },
               "setup": {
                 "type": "object",
                 "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation.",
@@ -222,8 +218,7 @@
             "name": "Tide (via GroupM)",
             "action": "created",
             "status": "active",
-            "billing": "agent",
-            "parent_account_id": "acc_agent_house"
+            "billing": "agent"
           },
           {
             "account_id": "acc_dove_pending",

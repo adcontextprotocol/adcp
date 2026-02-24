@@ -87,7 +87,7 @@ Agent re-bills individual brands and operators
 
 When `supported_billing` includes `"agent"`, the seller pre-provisions an **agent account**: a top-level billing relationship between the seller and the agent, with no brand or operator association. It serves as the billing parent for all agent-billed sub-accounts.
 
-When a sub-account is created with `billing: "agent"`, the seller links it to the agent account via `parent_account_id`. The agent receives a single consolidated invoice and is responsible for re-billing individual brands and operators on its side.
+When a sub-account is created with `billing: "agent"`, the agent receives a single consolidated invoice from the seller and is responsible for re-billing individual brands and operators on its side.
 
 When `default_billing: "agent"`, the agent account also acts as the **fallback**: buys without a direct brand account route to the agent account automatically, without requiring a separate `sync_accounts` call first.
 
@@ -218,8 +218,7 @@ The seller responds with per-account results. Each account has an action (what h
       "name": "Tide (via GroupM)",
       "action": "created",
       "status": "active",
-      "billing": "agent",
-      "parent_account_id": "acc_agent_house"
+      "billing": "agent"
     },
     {
       "account_id": "acc_acme_pending",
@@ -578,8 +577,7 @@ GroupM operates buying seats on a DSP for multiple advertisers. Billing goes thr
       "brand_id": "dove",
       "action": "created",
       "status": "active",
-      "billing": "agent",
-      "parent_account_id": "acc_groupm_house"
+      "billing": "agent"
     },
     {
       "account_id": "sub_tide_001",
@@ -587,8 +585,7 @@ GroupM operates buying seats on a DSP for multiple advertisers. Billing goes thr
       "brand_id": "tide",
       "action": "created",
       "status": "active",
-      "billing": "agent",
-      "parent_account_id": "acc_groupm_house"
+      "billing": "agent"
     }
   ]
 }

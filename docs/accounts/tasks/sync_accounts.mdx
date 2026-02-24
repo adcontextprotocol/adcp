@@ -122,7 +122,6 @@ asyncio.run(main())
 | `action` | What happened in this sync (see [Action Values](#action-values)) |
 | `status` | Current durable state of the account (see [Account Status](#account-status)) |
 | `billing` | Actual billing model applied. May differ from requested — always check this field. |
-| `parent_account_id` | Parent account when billing is consolidated through an agent or operator house account |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, and `message` explaining what's needed. |
 | `rate_card` | Vendor-assigned rate card identifier (when applicable) |
 | `payment_terms` | Net terms (e.g. `net_30`) |
