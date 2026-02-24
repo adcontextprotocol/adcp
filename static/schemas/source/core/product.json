@@ -133,16 +133,13 @@
         },
         "supported_optimization_strategies": {
           "type": "array",
-          "description": "Optimization strategies this product supports when optimization_goals are set on a package. Event strategies: maximize_conversions (no target), target_cpa, target_roas. Metric strategies: target_cpc, target_cpv, target_cpcv. A metric goal without a target implicitly maximizes that metric within budget — no separate strategy declaration needed.",
+          "description": "Optimization strategies this product supports when optimization_goals are set on a package. Target kinds: cost_per (cost per metric unit or conversion event), rate (metric rate such as CTR or VCR), per_ad_spend (return on ad spend — requires value_field on event goals). A goal without a target implicitly maximizes that metric or event within budget — no separate strategy declaration needed.",
           "items": {
             "type": "string",
             "enum": [
-              "maximize_conversions",
-              "target_cpa",
-              "target_roas",
-              "target_cpc",
-              "target_cpv",
-              "target_cpcv"
+              "target_cost_per",
+              "target_rate",
+              "target_per_ad_spend"
             ]
           },
           "minItems": 1

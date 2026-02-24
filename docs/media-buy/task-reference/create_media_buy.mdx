@@ -195,7 +195,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion event with optional CPA/ROAS target) or `kind: "metric"` (seller-native metric with optional CPC/CPV/CPCV target). Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
+| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion event with optional `cost_per` or `per_ad_spend` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `rate` target). Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
@@ -326,7 +326,7 @@ asyncio.run(create_targeted_campaign())
 
 ### Campaign with Conversion Optimization
 
-Set a ROAS target for conversion-optimized delivery. The product must declare support in `conversion_tracking.supported_optimization_strategies`, and you must have an event source configured via `sync_event_sources`:
+Set a per_ad_spend target for conversion-optimized delivery. The product must declare support in `conversion_tracking.supported_optimization_strategies`, and you must have an event source configured via `sync_event_sources`:
 
 <CodeGroup>
 
@@ -352,7 +352,8 @@ const result = await testAgent.createMediaBuy({
       kind: 'event',
       event_source_id: 'retailer_sales',
       event_type: 'purchase',
-      target: { kind: 'roas', value: 4.0 },
+      value_field: 'value',
+      target: { kind: 'per_ad_spend', value: 4.0 },
       priority: 1
     }]
   }],
@@ -370,7 +371,7 @@ if ('errors' in validated && validated.errors) {
 }
 
 if ('media_buy_id' in validated) {
-  console.log(`Campaign ${validated.media_buy_id} created with ROAS target`);
+  console.log(`Campaign ${validated.media_buy_id} created with per_ad_spend target`);
 }
 ```
 
@@ -398,7 +399,8 @@ async def create_optimized_campaign():
                 'kind': 'event',
                 'event_source_id': 'retailer_sales',
                 'event_type': 'purchase',
-                'target': { 'kind': 'roas', 'value': 4.0 },
+                'value_field': 'value',
+                'target': { 'kind': 'per_ad_spend', 'value': 4.0 },
                 'priority': 1
             }]
         }],
@@ -409,7 +411,7 @@ async def create_optimized_campaign():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Creation failed: {result.errors}")
 
-    print(f"Campaign {result.media_buy_id} created with ROAS target")
+    print(f"Campaign {result.media_buy_id} created with per_ad_spend target")
 
 asyncio.run(create_optimized_campaign())
 ```

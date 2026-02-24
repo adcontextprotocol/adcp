@@ -15,31 +15,24 @@
           "description": "Seller-native metric to optimize for"
         },
         "target": {
-          "description": "Target cost per metric unit. When omitted, the seller optimizes for maximum metric volume within budget. The target kind must match the metric: clicks→cpc, views→cpv, completed_views→cpcv.",
+          "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
           "oneOf": [
             {
               "type": "object",
+              "description": "Target cost per unit of the metric (e.g., cost per click, cost per view).",
               "properties": {
-                "kind": { "type": "string", "const": "cpc" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per click in the buy currency" }
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
               },
               "required": ["kind", "value"],
               "additionalProperties": true
             },
             {
               "type": "object",
+              "description": "Target rate for this metric as a proportion of impressions (e.g., CTR of 0.001, video completion rate of 0.85).",
               "properties": {
-                "kind": { "type": "string", "const": "cpv" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per view in the buy currency" }
-              },
-              "required": ["kind", "value"],
-              "additionalProperties": true
-            },
-            {
-              "type": "object",
-              "properties": {
-                "kind": { "type": "string", "const": "cpcv" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per completed view in the buy currency" }
+                "kind": { "type": "string", "const": "rate" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "Target rate as a decimal (e.g., 0.001 for 0.1% CTR, 0.85 for 85% VCR)" }
               },
               "required": ["kind", "value"],
               "additionalProperties": true
@@ -73,23 +66,29 @@
           "type": "string",
           "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
         },
+        "value_field": {
+          "type": "string",
+          "description": "Field on the event's custom_data that carries the monetary value for this goal. Required when target.kind is 'per_ad_spend'. Common values: 'value', 'order_total', 'profit_margin'."
+        },
         "target": {
           "description": "Target cost or return for this event. When omitted, the seller optimizes for maximum conversions within budget.",
           "oneOf": [
             {
               "type": "object",
+              "description": "Target cost per conversion event.",
               "properties": {
-                "kind": { "type": "string", "const": "cpa" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per acquisition in the buy currency" }
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per event in the buy currency" }
               },
               "required": ["kind", "value"],
               "additionalProperties": true
             },
             {
               "type": "object",
+              "description": "Target return per unit of ad spend, calculated as sum(value_field) / spend. Requires value_field on the goal.",
               "properties": {
-                "kind": { "type": "string", "const": "roas" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent)" }
+                "kind": { "type": "string", "const": "per_ad_spend" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value_field per $1 spent)" }
               },
               "required": ["kind", "value"],
               "additionalProperties": true

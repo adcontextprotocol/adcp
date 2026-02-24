@@ -74,7 +74,7 @@ The simplest commerce media product. The retailer renders the creative from the 
   },
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "supported_optimization_strategies": ["target_cost_per", "target_per_ad_spend"],
     "platform_managed": true
   },
   "creative_policy": {
@@ -392,7 +392,8 @@ A single media buy can span multiple product types and retailers. Each package t
         "kind": "event",
         "event_source_id": "grocery_retailer_purchases",
         "event_type": "purchase",
-        "target": { "kind": "roas", "value": 3.0 },
+        "value_field": "value",
+        "target": { "kind": "per_ad_spend", "value": 3.0 },
         "priority": 1
       }]
     },
@@ -413,7 +414,7 @@ A single media buy can span multiple product types and retailers. Each package t
 }
 ```
 
-The `account_id` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goals` to tell the retailer to optimize for purchases at a 3x ROAS target. The display and premium packages use standard creative workflows.
+The `account_id` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goals` with a `per_ad_spend` target to tell the retailer to optimize for 3x return on purchase value. The display and premium packages use standard creative workflows.
 
 ### Delivery Reporting
 
@@ -496,7 +497,7 @@ Products signal closed-loop capability through two fields:
 {
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "supported_optimization_strategies": ["target_cost_per", "target_per_ad_spend"],
     "platform_managed": true
   }
 }
@@ -540,7 +541,7 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 1. **Set up accounts early** — use `list_accounts` to confirm your billing relationship with each retailer before placing buys
 2. **Sync product and inventory feeds early** — product and inventory catalogs should be synced to the account before creating buys. Inventory feeds update hourly; product feeds daily.
 3. **Reference retailer store catalogs in targeting** — the retailer's store locations and catchment areas are platform-side data. Use them for proximity targeting without needing to sync your own store catalog.
-4. **Use `optimization_goals`** — set event goals with `target_roas` or `target_cpa` targets on packages to let the retailer optimize delivery against their purchase data
+4. **Use `optimization_goals`** — set event goals with `cost_per` or `per_ad_spend` targets on packages to let the retailer optimize delivery against their purchase data
 5. **Use catalog selectors strategically** — `gtins` for specific products, `tags` or `category` for broad promotions
 6. **Budget across the funnel** — sponsored products for conversion, on-site display for awareness, off-site for reach extension
 7. **Compare attribution windows** — use `attribution_window` in delivery reports to normalize ROAS across retailers with different lookback windows

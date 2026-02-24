@@ -1,8 +1,8 @@
 ---
 title: Conversion Tracking
-description: Configure event sources, send conversion events, match users for attribution, and optimize delivery with ROAS and CPA goals.
+description: Configure event sources, send conversion events, match users for attribution, and optimize delivery toward cost, rate, and return-on-spend goals.
 testable: true
-keywords: [conversion tracking, event sources, attribution, ROAS, CPA, optimization goals, user matching, event logging]
+keywords: [conversion tracking, event sources, attribution, optimization goals, user matching, event logging, cost_per, per_ad_spend, rate]
 ---
 
 
@@ -238,63 +238,67 @@ There are two kinds of goals, discriminated by `kind`:
 
 Optimize for an advertiser-tracked conversion event. Requires an event source registered via `sync_event_sources`.
 
-**ROAS target**:
-
-```json
-{
-  "kind": "event",
-  "event_source_id": "website_pixel",
-  "event_type": "purchase",
-  "target": { "kind": "roas", "value": 4.0 },
-  "attribution_window": { "click_through": "28d", "view_through": "1d" },
-  "priority": 1
-}
-```
-
-**CPA target**:
+**Cost per conversion**:
 
 ```json
 {
   "kind": "event",
   "event_source_id": "website_pixel",
   "event_type": "lead",
-  "target": { "kind": "cpa", "value": 25.00 },
+  "target": { "kind": "cost_per", "value": 25.00 },
   "priority": 1
 }
 ```
+
+**Return on ad spend** (requires `value_field`):
+
+```json
+{
+  "kind": "event",
+  "event_source_id": "website_pixel",
+  "event_type": "purchase",
+  "value_field": "value",
+  "target": { "kind": "per_ad_spend", "value": 4.0 },
+  "attribution_window": { "click_through": "28d", "view_through": "1d" },
+  "priority": 1
+}
+```
+
+The `value_field` tells the seller which field on each event's `custom_data` carries the monetary value. For `per_ad_spend` targets, the seller calculates `sum(value_field) / spend` and optimizes toward the target ratio.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | `"event"` | Yes | Discriminator |
 | `event_source_id` | string | Yes | Event source to optimize against (must be configured via `sync_event_sources`) |
 | `event_type` | [EventType](#event-types) | Yes | Event type to optimize for (e.g., `purchase`, `lead`, `app_install`) |
-| `target.kind` | `"cpa"` \| `"roas"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
-| `target.value` | number | Yes (if target set) | CPA in buy currency, or ROAS multiplier (e.g., 4.0) |
+| `value_field` | string | When target is `per_ad_spend` | Field on `custom_data` carrying the monetary value (e.g., `value`, `order_total`, `profit_margin`) |
+| `target.kind` | `"cost_per"` \| `"per_ad_spend"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
+| `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = $4 per $1 spent) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
 ### kind: metric
 
-Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively. Use when buying on CPM but wanting to optimize toward a click or view cost target.
+Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively. Use when buying on CPM but wanting to optimize toward a click or view cost target, or a target rate like CTR.
 
-**CPC target**:
+**Cost per click**:
 
 ```json
 {
   "kind": "metric",
   "metric": "clicks",
-  "target": { "kind": "cpc", "value": 2.00 },
+  "target": { "kind": "cost_per", "value": 2.00 },
   "priority": 2
 }
 ```
 
-**CPV target**:
+**Target click-through rate**:
 
 ```json
 {
   "kind": "metric",
-  "metric": "views",
-  "target": { "kind": "cpv", "value": 0.02 },
+  "metric": "clicks",
+  "target": { "kind": "rate", "value": 0.001 },
   "priority": 2
 }
 ```
@@ -303,31 +307,33 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 |-------|------|----------|-------------|
 | `kind` | `"metric"` | Yes | Discriminator |
 | `metric` | `"clicks"` \| `"views"` \| `"completed_views"` | Yes | Seller-native metric to optimize for |
-| `target.kind` | `"cpc"` \| `"cpv"` \| `"cpcv"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
-| `target.value` | number | Yes (if target set) | Target cost per metric unit in buy currency |
+| `target.kind` | `"cost_per"` \| `"rate"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
+| `target.value` | number | Yes (if target set) | Cost per metric unit in buy currency, or rate as a decimal (e.g., 0.001 for 0.1% CTR) |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
-**Valid metric/target pairings** — sellers should reject mismatched combinations:
+### Target kinds
 
-| `metric` | Valid `target.kind` |
-|---|---|
-| `clicks` | `cpc` |
-| `views` | `cpv` |
-| `completed_views` | `cpcv` |
+All target kinds across both goal types:
+
+| `target.kind` | Metric goals | Event goals | Description |
+|---|---|---|---|
+| `cost_per` | Cost per click/view/completed view | Cost per conversion event | `spend / count` |
+| `rate` | CTR, VCR, etc. | — | `count / impressions` |
+| `per_ad_spend` | — | ROAS, profit per spend, etc. | `sum(value_field) / spend` |
 
 ### Choosing a strategy
 
 | Goal | When to use | What you set |
 |---|---|---|
 | Max conversions | As many conversions as possible within budget | `kind: "event"` + event source, no target |
-| Target ROAS | Specific return on ad spend | `kind: "event"` + `target: { kind: "roas", value: 4.0 }` |
-| Target CPA | Specific cost per conversion | `kind: "event"` + `target: { kind: "cpa", value: 25.0 }` |
+| Target cost per conversion | Specific cost per event | `kind: "event"` + `target: { kind: "cost_per", value: 25.0 }` |
+| Target return on ad spend | Specific return ratio on a value field | `kind: "event"` + `value_field` + `target: { kind: "per_ad_spend", value: 4.0 }` |
 | Max clicks | Maximize clicks within budget | `kind: "metric"`, `metric: "clicks"`, no target |
-| Target CPC | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cpc", value: 2.0 }` |
+| Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
+| Target CTR | Specific click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "rate", value: 0.001 }` |
 | Max views | Maximize views within budget | `kind: "metric"`, `metric: "views"`, no target |
-| Target CPV | Specific cost per view | `kind: "metric"`, `metric: "views"` + `target: { kind: "cpv", value: 0.02 }` |
-| Max completed views | Maximize completed views within budget | `kind: "metric"`, `metric: "completed_views"`, no target |
-| Target CPCV | Specific cost per completed view | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "cpcv", value: 0.05 }` |
+| Target cost per view | Specific cost per view | `kind: "metric"`, `metric: "views"` + `target: { kind: "cost_per", value: 0.02 }` |
+| Target VCR | Specific video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "rate", value: 0.85 }` |
 
 ### Multiple goals and priority
 
@@ -338,20 +344,20 @@ A package can have multiple goals. Priority controls which the seller treats as 
   {
     "kind": "metric",
     "metric": "clicks",
-    "target": { "kind": "cpc", "value": 2.00 },
+    "target": { "kind": "cost_per", "value": 2.00 },
     "priority": 2
   },
   {
     "kind": "event",
     "event_source_id": "mobile_sdk",
     "event_type": "app_install",
-    "target": { "kind": "cpa", "value": 10.00 },
+    "target": { "kind": "cost_per", "value": 10.00 },
     "priority": 1
   }
 ]
 ```
 
-The seller focuses on the `priority: 1` goal (installs at $10 CPA) and uses clicks as a proxy signal until install data accumulates.
+The seller focuses on the `priority: 1` goal (installs at $10 cost per) and uses clicks as a proxy signal until install data accumulates.
 
 ### Prerequisites
 
