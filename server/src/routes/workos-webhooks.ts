@@ -823,13 +823,14 @@ export async function backfillOrganizationMemberships(): Promise<{
 
             for (const user of usersResponse.data) {
               try {
-                // Also get the membership to get the membership ID
+                // Get the membership ID for this user in this org
                 const membershipsResponse = await workos.userManagement.listOrganizationMemberships({
                   userId: user.id,
-                  organizationId: org.workos_organization_id,
                 });
 
-                const membership = membershipsResponse.data[0];
+                const membership = membershipsResponse.data.find(
+                  (m) => m.organizationId === org.workos_organization_id,
+                );
                 if (membership && membership.status === 'active') {
                   await pool.query(
                     `INSERT INTO organization_memberships (

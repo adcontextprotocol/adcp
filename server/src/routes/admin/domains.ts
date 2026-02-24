@@ -2259,7 +2259,7 @@ export function setupDomainRoutes(
               for (const m of memberships.data) {
                 existingMemberUserIds.add(m.userId);
               }
-              after = memberships.listMetadata?.after;
+              after = memberships.listMetadata?.after ?? undefined;
             } while (after);
 
             // Also get pending invitations (can't add users who have pending invites)
@@ -2276,7 +2276,7 @@ export function setupDomainRoutes(
                   pendingInvitationEmails.add(inv.email.toLowerCase());
                 }
               }
-              after = invitations.listMetadata?.after;
+              after = invitations.listMetadata?.after ?? undefined;
             } while (after);
 
             // Filter to users who aren't already members and don't have pending invitations
@@ -2407,7 +2407,7 @@ export function setupDomainRoutes(
               for (const m of memberships.data) {
                 existingMemberUserIds.add(m.userId);
               }
-              after = memberships.listMetadata?.after;
+              after = memberships.listMetadata?.after ?? undefined;
             } while (after);
           } catch (err) {
             logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
