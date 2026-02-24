@@ -397,6 +397,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           goingCold,
           renewals,
           myAccounts,
+          openInvoices,
         ] = await Promise.all([
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
@@ -405,12 +406,15 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               AND na.is_next_step = TRUE
               AND na.next_step_completed_at IS NULL
               AND (na.next_step_due_date IS NULL OR na.next_step_due_date <= NOW() + INTERVAL '7 days')
+            WHERE (o.is_personal IS NOT TRUE)
           `),
           pool.query(`
             SELECT COUNT(*) as count
             FROM organizations o
-            WHERE o.created_at > NOW() - INTERVAL '14 days'
+            WHERE o.created_at >= NOW() - INTERVAL '14 days'
               AND NOT EXISTS (SELECT 1 FROM org_activities WHERE organization_id = o.workos_organization_id)
+              AND (o.is_personal IS NOT TRUE)
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
           pool.query(`
             SELECT COUNT(*) as count
@@ -422,6 +426,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
                 OR o.subscription_status NOT IN ('active', 'trialing')
                 OR o.subscription_canceled_at IS NOT NULL
               )
+              AND (o.is_personal IS NOT TRUE)
           `),
           pool.query(`
             SELECT COUNT(*) as count
@@ -430,13 +435,24 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               AND o.subscription_current_period_end IS NOT NULL
               AND o.subscription_current_period_end >= NOW()
               AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
+              AND (o.is_personal IS NOT TRUE)
           `),
           userId
             ? pool.query(
-                `SELECT COUNT(*) as count FROM org_stakeholders WHERE user_id = $1`,
+                `SELECT COUNT(*) as count FROM org_stakeholders os
+                 JOIN organizations o ON o.workos_organization_id = os.organization_id
+                 WHERE os.user_id = $1 AND (o.is_personal IS NOT TRUE)`,
                 [userId]
               )
             : Promise.resolve({ rows: [{ count: 0 }] }),
+          pool.query(`
+            SELECT COUNT(DISTINCT oi.workos_organization_id) as count
+            FROM org_invoices oi
+            JOIN organizations o ON o.workos_organization_id = oi.workos_organization_id
+            WHERE oi.status IN ('draft', 'open')
+              AND oi.amount_due > 0
+              AND (o.is_personal IS NOT TRUE)
+          `),
         ]);
 
         res.json({
@@ -445,6 +461,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           going_cold: parseInt(goingCold.rows[0]?.count || "0"),
           renewals: parseInt(renewals.rows[0]?.count || "0"),
           my_accounts: parseInt(myAccounts.rows[0]?.count || "0"),
+          open_invoices: parseInt(openInvoices.rows[0]?.count || "0"),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
