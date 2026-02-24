@@ -4169,16 +4169,43 @@ export class HTTPServer {
       try {
         const pool = getPool();
         // Query all analytics views
-        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers] = await Promise.all([
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups] = await Promise.all([
           pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
           pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
           pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
           pool.query('SELECT * FROM product_revenue ORDER BY total_revenue DESC'),
           pool.query('SELECT SUM(net_revenue) as total FROM revenue_by_month'),
           pool.query('SELECT COUNT(*) as total FROM customer_health'),
+          pool.query(`
+            SELECT COUNT(*) as count, COALESCE(SUM(amount_due), 0) as total_cents
+            FROM org_invoices
+            WHERE status IN ('draft', 'open')
+          `),
+          pool.query(`
+            SELECT oi.stripe_invoice_id, oi.amount_due, oi.status, oi.due_date,
+              oi.hosted_invoice_url, oi.invoice_number, oi.product_name,
+              oi.customer_email, oi.created_at,
+              o.name as org_name, o.workos_organization_id as org_id
+            FROM org_invoices oi
+            LEFT JOIN organizations o ON o.workos_organization_id = oi.workos_organization_id
+            WHERE oi.status IN ('draft', 'open')
+            ORDER BY oi.due_date ASC NULLS LAST
+          `),
+          pool.query(`
+            SELECT workos_organization_id as org_id, name, company_type,
+              subscription_amount, subscription_interval, created_at
+            FROM organizations
+            WHERE subscription_status = 'active'
+              AND subscription_canceled_at IS NULL
+              AND created_at >= NOW() - INTERVAL '90 days'
+              AND is_personal IS NOT TRUE
+            ORDER BY created_at DESC
+            LIMIT 20
+          `),
         ]);
 
         const metrics = subscriptionMetrics.rows[0] || {};
+        const outstandingRow = outstandingSummary.rows[0] || {};
         res.json({
           revenue_by_month: revenueByMonth.rows,
           customer_health: customerHealth.rows,
@@ -4189,6 +4216,31 @@ export class HTTPServer {
             total_customers: totalCustomers.rows[0]?.total || 0,
           },
           product_revenue: productRevenue.rows,
+          outstanding_invoices_summary: {
+            count: Number(outstandingRow.count) || 0,
+            total_dollars: (Number(outstandingRow.total_cents) || 0) / 100,
+          },
+          outstanding_invoices: outstandingList.rows.map((row: any) => ({
+            stripe_invoice_id: row.stripe_invoice_id,
+            amount_due_dollars: (row.amount_due || 0) / 100,
+            status: row.status,
+            due_date: row.due_date,
+            hosted_invoice_url: row.hosted_invoice_url,
+            invoice_number: row.invoice_number,
+            product_name: row.product_name,
+            customer_email: row.customer_email,
+            created_at: row.created_at,
+            org_name: row.org_name,
+            org_id: row.org_id,
+          })),
+          recent_signups: recentSignups.rows.map((row: any) => ({
+            org_id: row.org_id,
+            name: row.name,
+            company_type: row.company_type,
+            subscription_amount_dollars: (row.subscription_amount || 0) / 100,
+            subscription_interval: row.subscription_interval,
+            created_at: row.created_at,
+          })),
         });
       } catch (error) {
         logger.error({ err: error }, 'Error fetching analytics data');
