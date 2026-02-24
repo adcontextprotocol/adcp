@@ -113,6 +113,12 @@ export function setupEnrichmentRoutes(apiRouter: Router): void {
         const { domain } = req.params;
         const { save_to_org_id } = req.body;
 
+        // Validate domain format before hitting Lusha
+        const DOMAIN_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](\.[a-zA-Z]{2,})+$/;
+        if (!DOMAIN_RE.test(domain)) {
+          return res.status(400).json({ error: "Invalid domain format" });
+        }
+
         const lusha = getLushaClient();
         if (!lusha) {
           return res.status(503).json({

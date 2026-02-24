@@ -477,7 +477,8 @@
     }
 
     function statusBadge(status) {
-      return `<span class="status-badge status-${status}">${status}</span>`;
+      const safe = escapeHtml(status);
+      return `<span class="status-badge status-${safe}">${safe}</span>`;
     }
 
     function copyJoinLink(code) {
@@ -845,10 +846,12 @@
         } else if (res.status === 409 && data.existing) {
           selectProspect(data.existing.workos_organization_id, data.existing.name);
         } else {
+          document.getElementById('addCompanyError').textContent = data.error || 'Import failed — enter details manually';
           openCreateCompany();
         }
       } catch (err) {
         dropdown.classList.remove('open');
+        document.getElementById('addCompanyError').textContent = 'Network error — enter details manually';
         openCreateCompany();
       }
     }
@@ -888,6 +891,8 @@
             linkedinUrl: data.enrichment?.linkedinUrl,
             description: data.enrichment?.description,
           };
+          // Guard: user may have clicked Cancel while lookup was in flight
+          if (!document.getElementById('createCompanyForm').classList.contains('open')) return;
           document.getElementById('createCompanyForm').classList.remove('open');
           await importLushaCompany(company);
           return;
@@ -986,13 +991,13 @@
         currentOrgId = org.id;
         document.getElementById('orgName').textContent = org.name;
 
-        setupCompanySearch();
-
         const statusRes = await ManageSidebar.fetch('/api/admin/enrichment/status').catch(() => null);
         if (statusRes && statusRes.ok) {
           const statusData = await statusRes.json();
           lushaConfigured = statusData.configured === true;
         }
+
+        setupCompanySearch();
 
         await Promise.all([loadMyCodes(), loadAllActivity()]);
       } catch (err) {
