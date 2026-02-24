@@ -2589,6 +2589,12 @@ export function createOrganizationsRouter(): Router {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
+      if (!isDevModeEnabled()) {
+        if (!await orgDb.hasActiveSubscription(orgId)) {
+          return res.status(402).json({ error: 'An active membership is required to create referral codes' });
+        }
+      }
+
       if (discount_percent !== undefined) {
         if (typeof discount_percent !== 'number' || discount_percent < 1 || discount_percent > 100) {
           return res.status(400).json({ error: 'discount_percent must be a number between 1 and 100' });

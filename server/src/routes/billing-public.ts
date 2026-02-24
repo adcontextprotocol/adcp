@@ -491,7 +491,11 @@ export function createPublicBillingRouter(): Router {
 
         const result = await createCheckoutSession(checkoutData);
 
-        // For the fallback code path, record the redemption after checkout is confirmed
+        // For the fallback code path (user entered a code at checkout rather than accepting
+        // on the landing page), consume the code now. This increments used_count before
+        // payment completes — the same tradeoff as the original invoice flow. A user who
+        // abandons checkout will have consumed a single-use code. The pre-accepted path
+        // (above) avoids this because the code is consumed at /join/:code accept time.
         if (validatedReferralCode && result) {
           try {
             await referralDb.acceptReferralCode(validatedReferralCode.code, orgId, user.id);

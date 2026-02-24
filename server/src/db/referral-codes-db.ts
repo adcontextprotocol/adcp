@@ -227,7 +227,9 @@ export async function acceptReferralCode(
     ? `Referred via code ${code} (targeted for ${referralCode.target_company_name})`
     : `Referred via code ${code}`;
 
-  // Create stakeholder relationship: referrer becomes owner of the referred org
+  // Create stakeholder relationship: referrer becomes owner of the referred org.
+  // This runs outside the CTE transaction intentionally — stakeholder assignment
+  // is best-effort. A failure here does not roll back the referral acceptance.
   try {
     await query(
       `INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
@@ -337,6 +339,9 @@ export async function redeemReferralCodeForInvoice(
  * Called from the Stripe checkout.session.completed webhook.
  */
 export async function convertReferral(referredOrgId: string): Promise<Referral | null> {
+  // Both 'pending' (invoice path) and 'accepted' (online path) referrals are
+  // converted on payment. An org should only ever have one active referral
+  // (enforced by the unique partial index), so this UPDATE affects at most one row.
   const result = await query<Referral>(
     `UPDATE referrals
      SET status = 'converted', converted_at = NOW(), updated_at = NOW()
