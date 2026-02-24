@@ -71,6 +71,36 @@ Vendor agents can verify buyer claims against the brand registry: if an orchestr
 
 See the [Brand Protocol](/docs/brand-protocol/index) for how brand identity resolution works.
 
+## Counterparty verification
+
+Every commercial relationship in advertising depends on knowing who you're actually doing business with. The Accounts Protocol addresses this at the protocol level through the brand registry.
+
+When an orchestrator calls `sync_accounts`, the `house` field is the brand's domain. Vendor agents can fetch `house.com/.well-known/brand.json` to verify:
+
+- **Brand identity**: Is this brand who they claim to be?
+- **Operator authorization**: Is the operator listed in the request actually authorized to buy on this brand's behalf?
+- **Brand hierarchy**: Which sub-brands does this house portfolio include?
+
+This verification is grounded in publicly accessible DNS-hosted identity — not in what the buyer agent asserts, but in what the brand itself has declared.
+
+The `pending_approval` account state is where human review occurs: credit checks, legal agreements, and identity verification. Vendor agents that require these steps return a `setup.url` for the human to complete the process before the account becomes active.
+
+### Brand registry and the contribute-back pattern
+
+The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) provides a community-maintained layer of brand identity for brands that haven't yet published their own `brand.json`. Buyer agents resolving brands before `sync_accounts` can contribute data back to the registry as a byproduct of normal account setup — improving identity coverage for the ecosystem without extra effort.
+
+The recommended pattern for buyer agents (see [GitHub #1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
+
+```
+1. resolve_brand(house_domain) → check registry
+2. If not found: research_brand(house_domain) → enrich
+3. Confirm with user where UX permits
+4. save_brand() → contribute back to registry
+5. sync_accounts() → establish commercial relationship
+```
+
+This means registry coverage improves as a natural byproduct of agents doing their normal job.
+
 ## Settlement model
 
 `report_usage` is buyer-reported: the orchestrator computes and reports what was consumed. The vendor agent uses the reported `pricing_option_id` to verify the correct rate was applied and track earned revenue.
