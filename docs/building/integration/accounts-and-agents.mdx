@@ -30,7 +30,7 @@ Sellers configure four fields in the `account` section of [`get_adcp_capabilitie
 
 When `false` (default): the seller trusts the agent. The agent authenticates once and declares brands/operators via `sync_accounts`.
 
-When `true`: each operator must authenticate with the seller directly (via OAuth or API key). The agent obtains a credential per operator.
+When `true`: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band.
 
 **3. What's the default billing model?** (`default_billing`)
 
@@ -96,23 +96,23 @@ Each operator authenticates directly with the seller. No agent-level billing —
 ```json
 {
   "accounts": [{
-    "house": "unilever.com",
-    "brand_id": "dove",
-    "operator": "mindshare.com",
+    "house": "nova-brands.com",
+    "brand_id": "spark",
+    "operator": "pinnacle-media.com",
     "billing": "brand"
   }]
 }
 ```
 
-Seller checks `unilever.com/.well-known/brand.json`, finds Mindshare in `authorized_operators`, and fast-tracks provisioning:
+Seller checks `nova-brands.com/.well-known/brand.json`, finds Pinnacle Media in `authorized_operators`, and fast-tracks provisioning:
 
 ```json
 {
   "accounts": [{
-    "account_id": "acc_unilever_dove",
-    "house": "unilever.com",
-    "brand_id": "dove",
-    "operator": "mindshare.com",
+    "account_id": "acc_nova_spark",
+    "house": "nova-brands.com",
+    "brand_id": "spark",
+    "operator": "pinnacle-media.com",
     "action": "created",
     "status": "active",
     "billing": "brand"
@@ -206,15 +206,15 @@ All billing flows through the agent. The seller pre-provisions a default account
 {
   "accounts": [
     {
-      "house": "unilever.com",
-      "brand_id": "dove",
-      "operator": "groupm.com",
+      "house": "nova-brands.com",
+      "brand_id": "spark",
+      "operator": "pinnacle-media.com",
       "billing": "agent"
     },
     {
-      "house": "pg.com",
-      "brand_id": "tide",
-      "operator": "groupm.com",
+      "house": "acme-corp.com",
+      "brand_id": "bolt",
+      "operator": "pinnacle-media.com",
       "billing": "agent"
     }
   ]
@@ -227,21 +227,25 @@ Both accounts active immediately:
 {
   "accounts": [
     {
-      "account_id": "acc_dove_001",
-      "house": "unilever.com",
-      "brand_id": "dove",
+      "account_id": "acc_spark_001",
+      "house": "nova-brands.com",
+      "brand_id": "spark",
+      "operator": "pinnacle-media.com",
       "action": "created",
       "status": "active",
       "billing": "agent"
     },
     {
-      "account_id": "acc_tide_001",
-      "house": "pg.com",
-      "brand_id": "tide",
+      "account_id": "acc_bolt_001",
+      "house": "acme-corp.com",
+      "brand_id": "bolt",
+      "operator": "pinnacle-media.com",
       "action": "created",
       "status": "active",
       "billing": "agent"
     }
+  ]
+}
   ]
 }
 ```
@@ -272,7 +276,9 @@ Both paths are available. Direct accounts (brand or operator billing) give buyer
 3. Direct accounts may go through `pending_approval`; agent-billed accounts are active immediately
 4. Call `get_products` / `create_media_buy` with `account_id`
 
-**sync_accounts example — agent requests brand billing, seller maps to agent:**
+**sync_accounts example — billing negotiation:**
+
+The seller supports brand billing in general, but may not support it for every brand. Here, the agent requests brand billing for a brand without a direct relationship:
 
 ```json
 {
@@ -283,7 +289,7 @@ Both paths are available. Direct accounts (brand or operator billing) give buyer
 }
 ```
 
-Seller doesn't support direct billing for this brand and maps to agent billing:
+Seller maps to agent billing because this brand has no direct account:
 
 ```json
 {
@@ -309,26 +315,26 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 ```json
 {
   "house": {
-    "domain": "unilever.com",
-    "name": "Unilever"
+    "domain": "nova-brands.com",
+    "name": "Nova Brands"
   },
   "brands": [
-    { "id": "dove", "names": [{"en": "Dove"}] },
-    { "id": "axe", "names": [{"en": "Axe"}] }
+    { "id": "spark", "names": [{"en": "Spark"}] },
+    { "id": "glow", "names": [{"en": "Glow"}] }
   ],
   "authorized_operators": [
     {
-      "domain": "mindshare.com",
-      "brands": ["dove", "axe"],
+      "domain": "pinnacle-media.com",
+      "brands": ["spark", "glow"],
       "countries": ["US", "GB", "DE"]
     },
     {
-      "domain": "dentsu.co.jp",
-      "brands": ["dove"],
+      "domain": "summit-agency.jp",
+      "brands": ["spark"],
       "countries": ["JP"]
     },
     {
-      "domain": "unilever.com",
+      "domain": "nova-brands.com",
       "brands": ["*"]
     }
   ]
