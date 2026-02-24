@@ -57,11 +57,12 @@
                 "enum": [
                   "active",
                   "pending_approval",
+                  "rejected",
                   "payment_required",
                   "suspended",
                   "closed"
                 ],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
               },
               "billing": {
                 "type": "string",

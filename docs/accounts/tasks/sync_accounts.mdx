@@ -144,9 +144,10 @@ asyncio.run(main())
 |--------|---------|-----------|
 | `active` | Ready to use | Use `account_id` in protocol operations |
 | `pending_approval` | Vendor reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll `list_accounts` for updates. |
+| `rejected` | Vendor declined the request | Review rejection reason, adjust and re-sync, or contact vendor |
 | `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. Route spend to other accounts. |
 | `suspended` | Was active, now paused | Contact vendor to resolve |
-| `closed` | Terminated | — |
+| `closed` | Was active, now terminated | — |
 
 ## Common Scenarios
 

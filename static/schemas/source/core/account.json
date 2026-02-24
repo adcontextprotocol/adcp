@@ -23,8 +23,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["active", "pending_approval", "payment_required", "suspended", "closed"],
-      "description": "Account status. pending_approval: seller reviewing (credit, contracts). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
+      "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
+      "description": "Account status. pending_approval: seller reviewing (credit, contracts). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
     },
     "house": {
       "type": "string",

@@ -63,7 +63,7 @@ All parameters are optional. An empty request returns all accounts.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `status` | string | No | Filter by account status: `active`, `pending_approval`, `payment_required`, `suspended`, or `closed`. |
+| `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only live accounts. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
@@ -84,7 +84,7 @@ All parameters are optional. An empty request returns all accounts.
 | `house` | Brand's house domain (the [brand registry](/docs/brand-protocol/brand-json) identifier) |
 | `brand_id` | Brand ID within the house (when applicable) |
 | `operator` | Operator domain (when applicable) |
-| `status` | Current account state: `active`, `pending_approval`, `payment_required`, `suspended`, or `closed` |
+| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `brand`, `operator`, or `agent` |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 

@@ -372,9 +372,10 @@ The `sync_accounts` task lets an agent declare its advertiser portfolio to a sel
 |--------|---------|-----------|
 | `active` | Ready to use | Place buys on this account |
 | `pending_approval` | Seller reviewing | Human may need to visit `setup.url`. Poll `list_accounts` for updates. |
+| `rejected` | Seller declined the request | Review rejection reason, adjust and re-sync, or contact seller |
 | `payment_required` | Credit limit reached | Add funds or route spend to other accounts |
 | `suspended` | Was active, now paused | Contact seller |
-| `closed` | Terminated | — |
+| `closed` | Was active, now terminated | — |
 
 ### delete_missing scope
 
