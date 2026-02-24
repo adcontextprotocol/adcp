@@ -19,7 +19,7 @@ Four questions underlie every AdCP transaction:
 
 ## Scope
 
-The Accounts Protocol applies across all vendor protocols. An orchestrator syncs accounts once per vendor agent and reuses the same `account_id` across all interactions with that agent:
+The Accounts Protocol applies across all vendor protocols. An orchestrator sets up an account once per brand/operator pair per vendor agent and reuses the same `account_id` across all interactions with that agent:
 
 | Vendor Protocol | account_id used for |
 |---|---|
@@ -63,7 +63,7 @@ The Accounts Protocol operates with four principal types. See [Accounts and agen
 
 | Task | Purpose |
 |------|---------|
-| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare advertiser portfolio; receive `account_id` per brand |
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Sync advertiser accounts with a seller; receive `account_id` values |
 | [`list_accounts`](/docs/accounts/tasks/list_accounts) | Query account status; retrieve active `account_id` values |
 | [`report_usage`](/docs/accounts/tasks/report_usage) | Report service consumption for post-delivery settlement |
 

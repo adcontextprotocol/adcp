@@ -73,7 +73,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 | `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `default_billing` | string | Billing model applied when agent omits `billing` from `sync_accounts`. Must be one of `supported_billing`. |
-| `required_for_products` | boolean | Default: `false`. When `true`, an active account is required before calling `get_products`. |
+| `account_resolution` | string[] | How this seller resolves account references in requests. Values: `account_id` (seller-assigned identifier) and/or `natural_key` (resolved from house + brand_id + operator). Buyers use this to determine whether to pass `account.account_id` or `account.house` (with optional `brand_id`/`operator`) in task requests. |
 
 #### Auth models
 

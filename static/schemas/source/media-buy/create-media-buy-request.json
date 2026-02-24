@@ -13,9 +13,9 @@
       "type": "string",
       "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
     },
-    "account_id": {
-      "type": "string",
-      "description": "Account to bill for this media buy. Required when the agent has access to multiple accounts; when omitted, the seller uses the agent's sole account. The seller maps the agent's brand + operator to an account during sync_accounts; the agent passes that account_id here."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account to bill for this media buy. Pass an account_id from list_accounts or sync_accounts, or use a natural key (house, brand_id, operator) if the seller supports natural_key resolution."
     },
     "proposal_id": {
       "type": "string",
@@ -152,6 +152,7 @@
   },
   "required": [
     "buyer_ref",
+    "account",
     "brand",
     "start_time",
     "end_time"

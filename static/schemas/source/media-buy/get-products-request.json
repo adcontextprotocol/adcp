@@ -22,9 +22,9 @@
       "$ref": "/schemas/core/catalog.json",
       "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
     },
-    "account_id": {
-      "type": "string",
-      "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account for product lookup. Returns products with pricing specific to this account's rate card."
     },
     "buyer_campaign_ref": {
       "type": "string",
@@ -47,7 +47,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["buying_mode"],
+  "required": ["buying_mode", "account"],
   "oneOf": [
     {
       "properties": {

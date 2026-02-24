@@ -301,6 +301,10 @@
         "audience-member": {
           "$ref": "/schemas/core/audience-member.json",
           "description": "Hashed identifiers for a CRM audience member (hashed email, phone, or universal IDs)"
+        },
+        "account-ref": {
+          "$ref": "/schemas/core/account-ref.json",
+          "description": "Reference to an account by seller-assigned ID or natural key (house, brand_id, operator)"
         }
       },
       "requirements": {
@@ -711,7 +715,7 @@
         "sync-accounts": {
           "request": {
             "$ref": "/schemas/account/sync-accounts-request.json",
-            "description": "Request parameters for syncing advertiser accounts with upsert semantics"
+            "description": "Request parameters for syncing advertiser accounts with a seller"
           },
           "response": {
             "$ref": "/schemas/account/sync-accounts-response.json",

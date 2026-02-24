@@ -86,6 +86,7 @@ All parameters are optional. An empty request returns all accounts.
 | `operator` | Operator domain (when applicable) |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `brand`, `operator`, or `agent` |
+| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 
 ## Common Scenarios
@@ -201,10 +202,10 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to declare your advertiser portfolio |
+| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to establish a buying relationship |
 
 ## Next Steps
 
-- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Declare new accounts or update existing ones
+- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
 - [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
 - [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the `house` domain

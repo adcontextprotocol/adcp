@@ -8,13 +8,13 @@ AdCP distinguishes four entities in every billable operation:
 | Entity | Question | How identified |
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id ([brand.json](/docs/brand-protocol/brand-json)) |
-| **Account** | Who gets billed? What rates apply? | `account_id` |
+| **Account** | Who gets billed? What rates apply? | [Account reference](#account-references) |
 | **Operator** | Who operates the seat? | Domain (e.g., `pinnacle-media.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session |
 
 **Brand** — The advertiser whose products or services are promoted. Identified by house domain + brand_id, resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an `account_id`.
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — either an `account_id` or a natural key (`house`, `brand_id`, `operator`).
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -36,7 +36,7 @@ Sellers configure four fields in the `account` section of [`get_adcp_capabilitie
 
 **2. Do you require operator-level auth?** (`require_operator_auth`)
 
-When `false` (default): the seller trusts the agent. The agent authenticates once and declares brands/operators via `sync_accounts`.
+When `false` (default): the seller trusts the agent. The agent authenticates once and sets up accounts via `sync_accounts`.
 
 When `true`: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band.
 
@@ -44,19 +44,24 @@ When `true`: each operator must authenticate with the seller directly. The agent
 
 Applied when the agent omits `billing` from `sync_accounts`. When set to `"agent"`, the seller pre-provisions a default account — a standing account with no brand or operator association — that buys route through automatically.
 
-**4. Must buyers have an account before browsing?** (`required_for_products`)
+**4. How do you resolve account references?** (`account_resolution`)
 
-When `true`, calls to `get_products` require an `account_id`. When `false` (default), products are browsable without an account.
+| Resolution | Description |
+|-----------|-------------|
+| `account_id` | Buyer passes a seller-assigned `account_id` (from `sync_accounts` or `list_accounts`) |
+| `natural_key` | Seller resolves from the natural key (`house`, `brand_id`, `operator`) — `sync_accounts` may be optional |
+
+Default: `["account_id"]`. When `natural_key` is supported, buyers can skip `sync_accounts` and pass brand identity directly in every request.
 
 **Example capabilities:**
 
 ```json
 {
   "account": {
+    "account_resolution": ["account_id", "natural_key"],
     "require_operator_auth": false,
     "supported_billing": ["brand", "operator", "agent"],
-    "default_billing": "agent",
-    "required_for_products": false
+    "default_billing": "agent"
   }
 }
 ```
@@ -65,12 +70,12 @@ These four fields combine into four common patterns.
 
 ## Seller patterns
 
-| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` | Default account |
-|---------|------------------------|--------------------|--------------------|-----------------|
-| Operator-gated | `true` | `["brand", "operator"]` | — | No |
-| Direct-only | `false` | `["brand", "operator"]` | — | No |
-| Agent-consolidated | `false` | `["agent"]` | `"agent"` | Yes |
-| Hybrid | `false` | `["brand", "operator", "agent"]` | `"agent"` | Yes (fallback) |
+| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` |
+|---------|------------------------|--------------------|--------------------|
+| Operator-gated | `true` | `["brand", "operator"]` | — |
+| Direct-only | `false` | `["brand", "operator"]` | — |
+| Agent-consolidated | `false` | `["agent"]` | `"agent"` |
+| Hybrid | `false` | `["brand", "operator", "agent"]` | `"agent"` |
 
 ### Operator-gated
 
@@ -81,10 +86,10 @@ Each operator authenticates directly with the seller. No agent-level billing —
 ```json
 {
   "account": {
+    "account_resolution": ["account_id"],
     "require_operator_auth": true,
     "supported_billing": ["brand", "operator"],
-    "authorization_endpoint": "https://seller.example.com/oauth/authorize",
-    "required_for_products": true
+    "authorization_endpoint": "https://seller.example.com/oauth/authorize"
   }
 }
 ```
@@ -95,20 +100,18 @@ Each operator authenticates directly with the seller. No agent-level billing —
 2. For each operator:
    a. Obtain operator's credential (OAuth via `authorization_endpoint`, or API key out-of-band)
    b. Open a new session with the operator's credential
-   c. Call `sync_accounts` to declare brands for this operator
+   c. Call `sync_accounts` to set up each brand for this operator
 3. Wait for account status `active` (poll `list_accounts` if `pending_approval`)
-4. Call `get_products` / `create_media_buy` using the operator's session
+4. Call `get_products` / `create_media_buy` with the operator's session and `account` reference
 
 **sync_accounts example:**
 
 ```json
 {
-  "accounts": [{
-    "house": "nova-brands.com",
-    "brand_id": "spark",
-    "operator": "pinnacle-media.com",
-    "billing": "brand"
-  }]
+  "house": "nova-brands.com",
+  "brand_id": "spark",
+  "operator": "pinnacle-media.com",
+  "billing": "brand"
 }
 ```
 
@@ -116,15 +119,13 @@ Seller checks `nova-brands.com/.well-known/brand.json`, finds Pinnacle Media in 
 
 ```json
 {
-  "accounts": [{
-    "account_id": "acc_nova_spark",
-    "house": "nova-brands.com",
-    "brand_id": "spark",
-    "operator": "pinnacle-media.com",
-    "action": "created",
-    "status": "active",
-    "billing": "brand"
-  }]
+  "account_id": "acc_nova_spark",
+  "house": "nova-brands.com",
+  "brand_id": "spark",
+  "operator": "pinnacle-media.com",
+  "status": "active",
+  "billing": "brand",
+  "account_scope": "operator_brand"
 }
 ```
 
@@ -139,8 +140,8 @@ The seller trusts the agent's identity but requires a direct account for every b
 ```json
 {
   "account": {
-    "supported_billing": ["brand", "operator"],
-    "required_for_products": true
+    "account_resolution": ["account_id"],
+    "supported_billing": ["brand", "operator"]
   }
 }
 ```
@@ -148,19 +149,17 @@ The seller trusts the agent's identity but requires a direct account for every b
 **Buyer workflow:**
 
 1. Call `get_adcp_capabilities` — see `require_operator_auth` absent (defaults to `false`)
-2. Call `sync_accounts` with brands and operators (using agent's own token)
+2. Call `sync_accounts` for each brand/operator pair
 3. Wait for account status `active` — may require human to complete credit/legal at `setup.url`
-4. Call `get_products` with `account_id`
-5. Call `create_media_buy` with `account_id`
+4. Call `get_products` with `account` reference
+5. Call `create_media_buy` with `account` reference
 
 **sync_accounts example — brand buying direct:**
 
 ```json
 {
-  "accounts": [{
-    "house": "acme-corp.com",
-    "billing": "brand"
-  }]
+  "house": "acme-corp.com",
+  "billing": "brand"
 }
 ```
 
@@ -168,17 +167,15 @@ Seller acknowledges the request but requires setup before provisioning:
 
 ```json
 {
-  "accounts": [{
-    "account_id": "acc_acme_pending",
-    "house": "acme-corp.com",
-    "action": "created",
-    "status": "pending_approval",
-    "billing": "brand",
-    "setup": {
-      "url": "https://seller.example.com/advertiser-onboard",
-      "message": "Complete advertiser registration and credit application"
-    }
-  }]
+  "account_id": "acc_acme_pending",
+  "house": "acme-corp.com",
+  "status": "pending_approval",
+  "billing": "brand",
+  "account_scope": "brand",
+  "setup": {
+    "url": "https://seller.example.com/advertiser-onboard",
+    "message": "Complete advertiser registration and credit application"
+  }
 }
 ```
 
@@ -186,7 +183,7 @@ The seller has assigned an `account_id` and acknowledged the relationship `(hous
 - Re-calls `sync_accounts` with the same natural key — the seller returns the updated status
 - Receives a webhook notification if `push_notification_config` was provided in the request
 
-Once provisioned, the seller assigns an `account_id` and the account appears in `list_accounts`. `account_id` is present in all `sync_accounts` responses except when `status` is `rejected` or `action` is `failed`. It is always present in `list_accounts`.
+The pending account is visible in `list_accounts` with its `account_id` — see [account_id and rejected accounts](#account_id-and-rejected-accounts) for when `account_id` is present.
 
 **Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller.
 
@@ -208,57 +205,32 @@ All billing flows through the agent. The seller pre-provisions a default account
 **Buyer workflow:**
 
 1. Call `get_adcp_capabilities` — see `supported_billing: ["agent"]` and `default_billing: "agent"`
-2. Call `sync_accounts` to declare brands and operators (billing is always `agent`)
+2. Call `sync_accounts` for each brand/operator pair (billing is always `agent`)
 3. Accounts are active immediately — no human approval needed
-4. Call `get_products` / `create_media_buy` with `account_id`
+4. Call `get_products` / `create_media_buy` with `account` reference
 
 **sync_accounts example:**
 
 ```json
 {
-  "accounts": [
-    {
-      "house": "nova-brands.com",
-      "brand_id": "spark",
-      "operator": "pinnacle-media.com",
-      "billing": "agent"
-    },
-    {
-      "house": "acme-corp.com",
-      "brand_id": "bolt",
-      "operator": "pinnacle-media.com",
-      "billing": "agent"
-    }
-  ]
+  "house": "nova-brands.com",
+  "brand_id": "spark",
+  "operator": "pinnacle-media.com",
+  "billing": "agent"
 }
 ```
 
-Both accounts active immediately:
+Account active immediately:
 
 ```json
 {
-  "accounts": [
-    {
-      "account_id": "acc_spark_001",
-      "house": "nova-brands.com",
-      "brand_id": "spark",
-      "operator": "pinnacle-media.com",
-      "action": "created",
-      "status": "active",
-      "billing": "agent"
-    },
-    {
-      "account_id": "acc_bolt_001",
-      "house": "acme-corp.com",
-      "brand_id": "bolt",
-      "operator": "pinnacle-media.com",
-      "action": "created",
-      "status": "active",
-      "billing": "agent"
-    }
-  ]
-}
-  ]
+  "account_id": "acc_spark_001",
+  "house": "nova-brands.com",
+  "brand_id": "spark",
+  "operator": "pinnacle-media.com",
+  "status": "active",
+  "billing": "agent",
+  "account_scope": "operator_brand"
 }
 ```
 
@@ -282,11 +254,11 @@ Both paths are available. Direct accounts (brand or operator billing) give buyer
 **Buyer workflow:**
 
 1. Call `get_adcp_capabilities` — see all three billing models, `default_billing: "agent"`
-2. Call `sync_accounts` with preferred billing per brand:
+2. Call `sync_accounts` for each brand/operator pair with preferred billing:
    - Brands with a direct seller relationship: `billing: "brand"`
    - Everything else: `billing: "agent"` (or omit to accept the default)
 3. Direct accounts may go through `pending_approval`; agent-billed accounts are active immediately
-4. Call `get_products` / `create_media_buy` with `account_id`
+4. Call `get_products` / `create_media_buy` with `account` reference
 
 **sync_accounts example — billing negotiation:**
 
@@ -294,10 +266,8 @@ The seller supports brand billing in general, but may not support it for every b
 
 ```json
 {
-  "accounts": [{
-    "house": "acme-corp.com",
-    "billing": "brand"
-  }]
+  "house": "acme-corp.com",
+  "billing": "brand"
 }
 ```
 
@@ -305,14 +275,12 @@ Seller maps to agent billing because this brand has no direct account:
 
 ```json
 {
-  "accounts": [{
-    "account_id": "acc_acme_001",
-    "house": "acme-corp.com",
-    "action": "created",
-    "status": "active",
-    "billing": "agent",
-    "warnings": ["Direct billing (brand) not supported. Mapped to agent billing."]
-  }]
+  "account_id": "acc_acme_001",
+  "house": "acme-corp.com",
+  "status": "active",
+  "billing": "agent",
+  "account_scope": "agent",
+  "warnings": ["Direct billing (brand) not supported. Mapped to agent billing."]
 }
 ```
 
@@ -372,11 +340,53 @@ Verification is a trust signal, not a gate. Finding the operator in `brand.json`
 
 `authorized_operators` models the interface between the brand and whoever holds the seat. It does not model internal agency hierarchies.
 
-## sync_accounts reference
+## Account references
 
-The `sync_accounts` task lets an agent declare its advertiser portfolio to a seller. See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
+Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `account_resolution` capability declares which mode it supports — and the mode determines the buyer's entire integration path.
 
-**Natural key:** The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "acme-corp.com"}` (brand buying direct) is a different account from `{house: "acme-corp.com", operator: "pinnacle-media.com"}` (brand via agency).
+### By account ID
+
+The seller already has accounts provisioned. The buyer discovers them via `list_accounts`, picks the right `account_id`, and passes it on every request.
+
+**Workflow:**
+
+1. Call `list_accounts` to discover existing accounts
+2. Pick the `account_id` that matches the brand/operator you're buying for
+3. Pass `{ "account_id": "acc_acme_001" }` on every request (`get_products`, `create_media_buy`, etc.)
+
+**When to expect this:** Sellers where accounts are pre-provisioned — through a portal, a sales rep, or an earlier `sync_accounts` call. The buyer already has a relationship; they just need to look up the identifier.
+
+### By natural key
+
+The buyer doesn't need to know account IDs. Instead, they declare intent — who they are, what they want — and the seller figures out the account.
+
+`sync_accounts` is the declaration tool. Each entry is a set of flags that tells the seller what the buyer needs:
+
+| Flag | What it tells the seller |
+|------|-------------------------|
+| `house` + `brand_id` | Which brand is advertising |
+| `operator` | Who operates the seat (agency, trading desk) |
+| `billing` | Who gets the invoice — `brand`, `operator`, or `agent` |
+| `sandbox` | Whether this is a test account |
+
+Every combination of flags that might require the seller to do something different — bill a different entity, set up a different rate card, create a sandbox — is a distinct declaration.
+
+**Workflow:**
+
+1. Call `sync_accounts` with one or more declarations
+2. Seller provisions or links accounts for each, returns status and `account_id` values
+3. For subsequent requests, pass either:
+   - `{ "account_id": "acc_acme_001" }` — using the ID the seller returned
+   - `{ "house": "acme-corp.com", "brand_id": "bolt", "operator": "pinnacle-media.com" }` — if the seller supports `natural_key` resolution
+4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
+
+**When to expect this:** Most integrations. The buyer declares what they need; the seller decides how to provision it. Sellers that support `natural_key` in `account_resolution` also let buyers skip `sync_accounts` entirely and pass brand identity directly on every request — the seller resolves the account internally.
+
+### Natural key semantics
+
+The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. Missing fields are distinct from present fields — `{house: "acme-corp.com"}` (brand buying direct) is a different account from `{house: "acme-corp.com", operator: "pinnacle-media.com"}` (brand via agency).
+
+See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
 
 ### Account status
 
@@ -389,16 +399,35 @@ The `sync_accounts` task lets an agent declare its advertiser portfolio to a sel
 | `suspended` | Was active, now paused | Contact seller |
 | `closed` | Was active, now terminated | — |
 
-### delete_missing scope
+### Account scope
 
-When `delete_missing: true`, the seller deactivates accounts that were previously synced by **this agent** but are not included in the current request. It does not affect accounts managed by other agents. Use `dry_run: true` to preview deactivations.
+The agent requests accounts by natural key — `(house, brand_id, operator)`. The seller decides what granularity to assign. The `account_scope` field in the response tells the agent how the seller resolved the request:
+
+| Scope | Meaning | Example |
+|-------|---------|---------|
+| `operator` | One account for all brands under this operator | Agent sends (Pinnacle Media, Acme) and (Pinnacle Media, Nova) — seller maps both to the Pinnacle Media account |
+| `brand` | One account for this brand regardless of operator | Agent sends (Acme, Pinnacle Media) and (Acme, Summit Agency) — seller maps both to the Acme account |
+| `operator_brand` | Dedicated account for this operator+brand pair | Agent sends (Pinnacle Media, Acme) — seller creates a specific Acme-via-Pinnacle account |
+| `agent` | The agent's default account | Agent sends any brand — seller routes to the standing agent account |
+
+The agent does not choose the scope — the seller assigns it based on its own account policy. An agent requesting `(house: "acme-corp.com", operator: "pinnacle-media.com")` might receive an operator-scoped account, a brand-scoped account, or a dedicated operator_brand account depending on the seller.
+
+When multiple natural keys resolve to the same `account_id`, the `account_scope` explains why. The agent should use the returned `account_id` for subsequent operations regardless of scope.
+
+### account_id and rejected accounts
+
+`account_id` is present in all `sync_accounts` responses and `list_accounts` results except when `status` is `rejected` (seller declined the account request — no account was created).
+
+Pending accounts (`pending_approval`) always have an `account_id` — the seller has acknowledged the relationship and assigned an identifier even though approval is in progress.
 
 ## Error codes
 
 | Code | When returned | Resolution |
 |------|-------------|------------|
-| `ACCOUNT_REQUIRED` | Multiple accounts; seller can't determine which | Pass `account_id` on the request |
-| `ACCOUNT_NOT_FOUND` | `account_id` doesn't exist or agent lacks access | Check `account_id`, re-sync |
+| `ACCOUNT_REQUIRED` | Multiple accounts; seller can't determine which | Pass `account_id` in the account reference |
+| `ACCOUNT_NOT_FOUND` | `account_id` doesn't exist or agent lacks access | Check account reference, re-run `sync_accounts` |
+| `ACCOUNT_SETUP_REQUIRED` | Natural key resolved but account needs setup | Check `details.setup` for URL/message |
+| `ACCOUNT_AMBIGUOUS` | Natural key resolves to multiple accounts | Pass `account_id` or more specific natural key |
 | `PAYMENT_REQUIRED` | Credit limit reached or funds depleted | Add funds, route to another account |
 | `ACCOUNT_SUSPENDED` | Account not in good standing | Contact seller |
 | `BRAND_REQUIRED` | Billable operation without brand reference | Include `brand` in request |
@@ -409,7 +438,7 @@ When the seller returns `ACCOUNT_REQUIRED`, it includes the available accounts:
 {
   "errors": [{
     "code": "ACCOUNT_REQUIRED",
-    "message": "Multiple accounts available. Please specify account_id.",
+    "message": "Multiple accounts available. Please specify account_id in the account reference.",
     "details": {
       "available_accounts": [
         { "account_id": "acc_acme_001", "name": "Acme Corp" },
@@ -421,6 +450,19 @@ When the seller returns `ACCOUNT_REQUIRED`, it includes the available accounts:
 ```
 
 ## Design notes
+
+### sync_accounts and seller record systems
+
+When an agent declares `(house: "acme-corp.com", operator: "pinnacle-media.com")`, the seller looks up or creates records in its own system — CRM, OMS, ad server, or billing platform. The `account_id` returned is the seller's internal identifier for that relationship.
+
+This means `sync_accounts` is not just "account creation" — it's the buyer-side interface to the seller's record system. The seller may:
+
+- Map the natural key to an existing account and return it
+- Create a new record and return it immediately (`status: "active"`)
+- Create a placeholder pending human review (`status: "pending_approval"`)
+- Decline the request entirely (`status: "rejected"`)
+
+`list_accounts` returns all records the seller has mapped for this agent — including pending and rejected entries. The agent uses `list_accounts` to see the full state of its portfolio with this seller, not just active accounts.
 
 ### Accounts and insertion orders
 

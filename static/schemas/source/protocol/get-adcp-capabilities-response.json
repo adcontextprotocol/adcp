@@ -42,6 +42,16 @@
       "type": "object",
       "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
+        "account_resolution": {
+          "type": "array",
+          "description": "How the seller resolves account references. account_id: buyer passes a seller-assigned account_id (from sync_accounts or list_accounts). natural_key: seller resolves from the natural key (house, brand_id, operator) — sync_accounts may be optional.",
+          "items": {
+            "type": "string",
+            "enum": ["account_id", "natural_key"]
+          },
+          "minItems": 1,
+          "default": ["account_id"]
+        },
         "require_operator_auth": {
           "type": "boolean",
           "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
@@ -65,11 +75,6 @@
           "type": "string",
           "enum": ["brand", "operator", "agent"],
           "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
-        },
-        "required_for_products": {
-          "type": "boolean",
-          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
-          "default": false
         }
       },
       "required": ["supported_billing"]

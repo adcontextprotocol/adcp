@@ -104,7 +104,7 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 
 **Three billing models:** `brand` (brand invoiced directly), `operator` (agency invoiced), `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
 
-**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account_id` -> `create_media_buy` with `account_id`.
+**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account` -> `create_media_buy` with `account`.
 
 <Card title="Accounts Protocol" icon="arrow-right" href="/docs/accounts/overview">
   Accounts Protocol overview: identity verification, billing models, and settlement.

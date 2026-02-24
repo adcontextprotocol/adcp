@@ -21,11 +21,11 @@ Each usage record is self-contained — it carries its own `account_id`, `operat
 
 ### Usage Record Fields
 
-Each record requires `account_id`, `operator_id`, `kind`, `vendor_cost`, and `currency`. Additional fields depend on `kind`:
+Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `currency`. Additional fields depend on `kind`:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `account_id` | string | Yes | The account with this vendor agent for this record (from `sync_accounts`). |
+| `account` | object | Yes | [Account reference](/docs/building/integration/accounts-and-agents#account-references) for this record (by `account_id` or natural key). |
 | `operator_id` | string | Yes | The operator on whose behalf this usage is reported. Identifies the billing party. |
 | `kind` | string | Yes | `"signal"`, `"content_standards"`, or `"creative"` |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
@@ -144,12 +144,12 @@ Report upon campaign completion to close out the final period.
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | `account_id` in a usage record not found or not accessible | Verify account_id from `list_accounts`; re-run `sync_accounts` if needed |
+| `ACCOUNT_NOT_FOUND` | Account reference in a usage record not found or not accessible | Verify via `list_accounts`; re-run `sync_accounts` if needed |
 | `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for the record's `kind` |
 | `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the original `get_signals` response |
 
 ## Next Steps
 
-- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Establish the account relationship before reporting
+- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller before reporting
 - [Accounts Protocol](/docs/accounts/overview) — How account establishment and settlement fit together
 - [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing hierarchy and operator model

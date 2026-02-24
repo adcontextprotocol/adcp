@@ -73,6 +73,11 @@
                 ],
                 "description": "Who is invoiced on this account. May differ from the requested billing if the seller doesn't support it."
               },
+              "account_scope": {
+                "type": "string",
+                "enum": ["operator", "brand", "operator_brand", "agent"],
+                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to this operator+brand pair. agent: the agent's default account."
+              },
               "setup": {
                 "type": "object",
                 "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation.",
@@ -225,31 +230,33 @@
   ],
   "examples": [
     {
-      "description": "Mixed results - one active, one pending approval",
+      "description": "Mixed results — one active, one pending approval",
       "data": {
         "accounts": [
           {
-            "account_id": "sub_tide_001",
-            "house": "pg.com",
-            "brand_id": "tide",
-            "operator": "groupm.com",
-            "name": "Tide (via GroupM)",
+            "account_id": "acc_spark_001",
+            "house": "nova-brands.com",
+            "brand_id": "spark",
+            "operator": "pinnacle-media.com",
+            "name": "Spark (via Pinnacle)",
             "action": "created",
             "status": "active",
-            "billing": "agent"
+            "billing": "brand",
+            "account_scope": "operator_brand"
           },
           {
-            "account_id": "acc_dove_pending",
-            "house": "unilever.com",
-            "brand_id": "dove",
-            "operator": "mindshare.com",
-            "name": "Dove",
+            "account_id": "acc_glow_pending",
+            "house": "nova-brands.com",
+            "brand_id": "glow",
+            "operator": "pinnacle-media.com",
+            "name": "Glow",
             "action": "created",
             "status": "pending_approval",
             "billing": "brand",
+            "account_scope": "operator_brand",
             "setup": {
-              "url": "https://seller.com/onboard/dove",
-              "message": "Credit application required for direct billing",
+              "url": "https://seller.example.com/advertiser-onboard",
+              "message": "Complete advertiser registration and credit application",
               "expires_at": "2026-03-10T00:00:00Z"
             }
           }
@@ -273,7 +280,7 @@
       }
     },
     {
-      "description": "Seller doesn't support direct billing, maps to agent billing",
+      "description": "Billing remapped — seller doesn't support direct billing",
       "data": {
         "accounts": [
           {
@@ -283,6 +290,7 @@
             "action": "created",
             "status": "active",
             "billing": "agent",
+            "account_scope": "agent",
             "warnings": [
               "Direct billing (brand) not supported. Mapped to agent billing."
             ]

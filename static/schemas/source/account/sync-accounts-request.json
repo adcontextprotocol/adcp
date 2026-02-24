@@ -14,17 +14,17 @@
         "properties": {
           "house": {
             "type": "string",
-            "description": "House domain where brand.json is hosted (e.g., 'unilever.com', 'acme-corp.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
+            "description": "House domain where brand.json is hosted (e.g., 'acme-corp.com', 'nova-brands.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "brand_id": {
             "type": "string",
-            "description": "Brand ID within the house portfolio (from brand.json). Required when the house has multiple brands (e.g., 'dove' under unilever.com, 'tide' under pg.com). Omit for single-brand houses.",
+            "description": "Brand ID within the house portfolio (from brand.json). Required when the house has multiple brands. Omit for single-brand houses.",
             "pattern": "^[a-z0-9_]+$"
           },
           "operator": {
             "type": "string",
-            "description": "Domain of the entity operating the seat (e.g., 'groupm.com', 'mindshare.com'). Verified against the brand's authorized_operators in brand.json. Omit if the brand operates its own seat.",
+            "description": "Domain of the entity operating the seat (e.g., 'pinnacle-media.com'). Verified against the brand's authorized_operators in brand.json. Omit if the brand operates its own seat.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
@@ -60,7 +60,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
+      "description": "Webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -79,15 +79,15 @@
       "data": {
         "accounts": [
           {
-            "house": "unilever.com",
-            "brand_id": "dove",
-            "operator": "mindshare.com",
+            "house": "nova-brands.com",
+            "brand_id": "spark",
+            "operator": "pinnacle-media.com",
             "billing": "brand"
           },
           {
-            "house": "pg.com",
-            "brand_id": "tide",
-            "operator": "groupm.com",
+            "house": "nova-brands.com",
+            "brand_id": "glow",
+            "operator": "pinnacle-media.com",
             "billing": "agent"
           }
         ]
@@ -109,13 +109,13 @@
       "data": {
         "accounts": [
           {
-            "house": "unilever.com",
-            "brand_id": "dove",
+            "house": "nova-brands.com",
+            "brand_id": "spark",
             "billing": "agent"
           },
           {
-            "house": "unilever.com",
-            "brand_id": "axe",
+            "house": "nova-brands.com",
+            "brand_id": "glow",
             "billing": "agent"
           }
         ]

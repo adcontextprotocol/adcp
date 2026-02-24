@@ -91,6 +91,11 @@
       "required": ["message"],
       "additionalProperties": true
     },
+    "account_scope": {
+      "type": "string",
+      "enum": ["operator", "brand", "operator_brand", "agent"],
+      "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."
@@ -118,6 +123,7 @@
         "name": "Acme",
         "advertiser": "Acme Corp",
         "status": "active",
+        "account_scope": "brand",
         "rate_card": "acme_vip_2024",
         "payment_terms": "net_30"
       }
@@ -130,6 +136,7 @@
         "advertiser": "Acme Corp",
         "billing_proxy": "Pinnacle Media",
         "status": "active",
+        "account_scope": "operator_brand",
         "rate_card": "acme_vip_2024",
         "payment_terms": "net_60"
       }
@@ -141,6 +148,7 @@
         "name": "Pinnacle",
         "advertiser": "Pinnacle Media",
         "status": "active",
+        "account_scope": "operator",
         "rate_card": "agency_standard",
         "payment_terms": "net_45"
       }
@@ -156,6 +164,7 @@
         "brand_id": "dove",
         "operator": "groupm.com",
         "billing": "agent",
+        "account_scope": "operator_brand",
         "payment_terms": "net_30"
       }
     },
@@ -169,7 +178,8 @@
         "house": "unilever.com",
         "brand_id": "axe",
         "operator": "mindshare.com",
-        "billing": "brand"
+        "billing": "brand",
+        "account_scope": "brand"
       }
     }
   ]
