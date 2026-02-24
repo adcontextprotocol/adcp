@@ -10,6 +10,7 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
 - **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative)?
+- **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
 
 **Request Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-request.json)
@@ -61,6 +62,26 @@ Array of domain protocols this seller supports:
   "supported_protocols": ["media_buy"]
 }
 ```
+
+### account
+
+Account and authentication capabilities. Optional — sellers that don't manage accounts through AdCP may omit it. When present, buyers should read it before calling `sync_accounts` or any authenticated task.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported_billing` | string[] | **Required.** Billing models this seller supports: `brand`, `operator`, `agent` |
+| `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
+| `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
+| `default_billing` | string | Billing model applied when agent omits `billing` from `sync_accounts`. Must be one of `supported_billing`. |
+| `required_for_products` | boolean | Default: `false`. When `true`, an active account is required before calling `get_products`. |
+
+#### Auth models
+
+**Agent-trusted** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential.
+
+**Operator-scoped** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and calls `sync_accounts` within each session to declare brands. The operator's credential authorizes all calls in that session.
+
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents#trust-model) for full workflows.
 
 ### media_buy
 
@@ -425,6 +446,11 @@ const buy = await client.createMediaBuy({
     "major_versions": [1]
   },
   "supported_protocols": ["media_buy"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["brand", "operator"],
+    "default_billing": "brand"
+  },
   "media_buy": {
     "features": {
       "inline_creative_management": true,
@@ -470,6 +496,8 @@ const buy = await client.createMediaBuy({
 This tells buyers:
 - **AdCP versions**: Version 1
 - **Protocols**: Media-buy only (signals not supported)
+- **Auth model**: Agent-trusted (`require_operator_auth: false`) — authenticate once, declare brands via `sync_accounts`
+- **Billing**: Brand or operator billing; default is brand
 - **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
@@ -533,19 +561,24 @@ Don't send postal areas for a system the seller doesn't support. Don't request f
 **4. Fail Fast on Incompatibility**
 If a seller doesn't support required capabilities, skip them early rather than discovering failures later.
 
-**5. Use Protocol Version for Routing**
+**5. Read the Auth Model Before Proceeding**
+Check `account.require_operator_auth` immediately after discovery. Agent-trusted and operator-scoped flows diverge significantly: the former uses a single credential for all brands and operators, the latter requires per-operator credentials and sessions.
+
+**6. Use Protocol Version for Routing**
 Route requests to appropriate API versions based on `adcp.major_versions`.
 
 ## Next Steps
 
 After discovering capabilities:
 
-1. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
-2. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
-3. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
+1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/docs/building/integration/accounts-and-agents#trust-model)
+2. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
+3. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
+4. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
 
 ## Learn More
 
+- [Accounts and Agents](/docs/building/integration/accounts-and-agents) - Auth models, account setup, billing
 - [adagents.json Specification](/docs/governance/property/adagents) - Publisher authorization files
 - [Product Filters](/docs/media-buy/task-reference/get_products#filters) - Capability-aware filtering
 - [Content Standards](/docs/governance/content-standards) - Brand safety configuration
