@@ -340,8 +340,9 @@ export async function redeemReferralCodeForInvoice(
  */
 export async function convertReferral(referredOrgId: string): Promise<Referral | null> {
   // Both 'pending' (invoice path) and 'accepted' (online path) referrals are
-  // converted on payment. An org should only ever have one active referral
-  // (enforced by the unique partial index), so this UPDATE affects at most one row.
+  // converted on payment. The unique partial index prevents two 'accepted' rows
+  // for the same org; the invoice and online paths are mutually exclusive in
+  // normal usage, so this UPDATE affects at most one row.
   const result = await query<Referral>(
     `UPDATE referrals
      SET status = 'converted', converted_at = NOW(), updated_at = NOW()

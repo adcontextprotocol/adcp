@@ -1387,9 +1387,9 @@
           ? 'Your discount expires soon!'
           : 'You have a pending discount';
 
-        message.textContent = days === 0
+        message.textContent = days <= 1
           ? 'Today is your last day to claim ' + discountText + '.'
-          : 'Subscribe within ' + days + ' day' + (days === 1 ? '' : 's') + ' to claim ' + discountText + '.';
+          : 'Subscribe within ' + days + ' days to claim ' + discountText + '.';
 
         if (urgency && inner) {
           inner.style.borderColor = 'var(--color-warning-500)';
