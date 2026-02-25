@@ -9,8 +9,8 @@ Returns all accounts the authenticated agent can operate on this vendor agent. U
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/account/list-accounts-request.json`](https://adcontextprotocol.org/schemas/account/list-accounts-request.json)
-**Response Schema**: [`/schemas/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/account/list-accounts-response.json)
+**Request Schema**: [`/schemas/v3/account/list-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-request.json)
+**Response Schema**: [`/schemas/v3/account/list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
 
 ## Quick Start
 
@@ -63,7 +63,7 @@ All parameters are optional. An empty request returns all accounts.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `status` | string | No | Filter by account status: `active`, `pending_approval`, `payment_required`, `suspended`, or `closed`. |
+| `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only live accounts. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
@@ -79,13 +79,13 @@ All parameters are optional. An empty request returns all accounts.
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. |
+| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. May be absent when `status: "rejected"`. |
 | `name` | Vendor agent's display name for the account |
-| `house` | Brand's house domain (the [brand registry](/docs/brand-protocol/brand-json) identifier) |
-| `brand_id` | Brand ID within the house (when applicable) |
-| `operator` | Operator domain (when applicable) |
-| `status` | Current account state: `active`, `pending_approval`, `payment_required`, `suspended`, or `closed` |
-| `billing` | Billing model in effect: `brand`, `operator`, or `agent` |
+| `brand` | Brand reference object: `domain` (the [brand registry](/docs/brand-protocol/brand-json) house domain) and optional `brand_id` (sub-brand within the house) |
+| `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
+| `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
+| `billing` | Billing model in effect: `operator` or `agent` |
+| `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 
 ## Common Scenarios
@@ -201,10 +201,10 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to declare your advertiser portfolio |
+| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to establish a buying relationship |
 
 ## Next Steps
 
-- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Declare new accounts or update existing ones
+- [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller
 - [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing models, trust models, and authorized operators
-- [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the `house` domain
+- [Brand protocol](/docs/brand-protocol/brand-json) — How vendor agents resolve brand identity from the brand's `domain`

@@ -5,9 +5,9 @@
   "description": "Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across multiple catalog types (products, inventory, stores, promotions, offerings). Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs is omitted, the call is discovery-only: returns all catalogs on the account without modification.",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Account that owns these catalogs. Required if the agent has multiple accounts and the seller cannot route automatically."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns these catalogs."
     },
     "catalogs": {
       "type": "array",
@@ -53,6 +53,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "required": ["account"],
   "if": {
     "properties": { "delete_missing": { "const": true } },
     "required": ["delete_missing"]
@@ -66,7 +67,7 @@
     {
       "description": "Sync product and inventory feeds for a retail media campaign",
       "data": {
-        "account_id": "acct_acmecorp",
+        "account": { "account_id": "acct_acmecorp" },
         "catalogs": [
           {
             "catalog_id": "product-feed",
@@ -90,7 +91,7 @@
     {
       "description": "Sync inline offerings for a recruitment campaign",
       "data": {
-        "account_id": "acct_restaurants",
+        "account": { "account_id": "acct_restaurants" },
         "catalogs": [
           {
             "catalog_id": "chef-vacancies",
@@ -115,7 +116,7 @@
     {
       "description": "Discovery-only: list all catalogs on the account",
       "data": {
-        "account_id": "acct_acmecorp"
+        "account": { "account_id": "acct_acmecorp" }
       }
     }
   ]

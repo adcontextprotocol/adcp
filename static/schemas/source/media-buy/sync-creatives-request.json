@@ -5,9 +5,9 @@
   "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Account that owns these creatives. Optional if the agent has a single account or the seller can determine the account from context. Required if the agent has multiple accounts and the seller cannot route automatically."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account that owns these creatives."
     },
     "creatives": {
       "type": "array",
@@ -68,6 +68,7 @@
     }
   },
   "required": [
+    "account",
     "creatives"
   ],
   "additionalProperties": true,

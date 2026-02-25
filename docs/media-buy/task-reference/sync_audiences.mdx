@@ -31,7 +31,7 @@ const hashPhone = (e164Phone) =>
   createHash("sha256").update(e164Phone).digest("hex");
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "existing_customers",
@@ -77,7 +77,7 @@ def hash_phone(e164_phone: str) -> str:
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'existing_customers',
             'name': 'Existing customers',
@@ -106,7 +106,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Yes | Account to manage audiences for |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
 
@@ -176,7 +176,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAudiencesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
 });
 
 if (!result.success) {
@@ -201,7 +201,7 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
-    result = await test_agent.simple.sync_audiences(account_id='acct_12345')
+    result = await test_agent.simple.sync_audiences(account={'account_id': 'acct_12345'})
 
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Operation failed: {result.errors}")
@@ -236,7 +236,7 @@ const existingCustomers = [
 ];
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "existing_customers",
@@ -278,7 +278,7 @@ async def main():
     ]
 
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'existing_customers',
             'name': 'Existing customers — suppression',
@@ -313,7 +313,7 @@ const hashEmail = (email) =>
   createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "lapsed_subscribers",
@@ -351,7 +351,7 @@ def hash_email(email: str) -> str:
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'lapsed_subscribers',
             'name': 'Lapsed subscribers',
@@ -382,7 +382,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAudiencesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     { audience_id: "old_campaign_list", delete: true },
   ],
@@ -406,7 +406,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{'audience_id': 'old_campaign_list', 'delete': True}]
     )
 

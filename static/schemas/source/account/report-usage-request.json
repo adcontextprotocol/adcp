@@ -25,14 +25,14 @@
     },
     "usage": {
       "type": "array",
-      "description": "One or more usage records. Each record is self-contained: it carries its own account_id, operator_id, and buyer_campaign_ref, allowing a single request to span multiple accounts, operators, and campaigns.",
+      "description": "One or more usage records. Each record is self-contained: it carries its own account, operator_id, and buyer_campaign_ref, allowing a single request to span multiple accounts, operators, and campaigns.",
       "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
-          "account_id": {
-            "type": "string",
-            "description": "The account with this vendor agent for this record, obtained from sync_accounts."
+          "account": {
+            "$ref": "/schemas/core/account-ref.json",
+            "description": "Account for this usage record."
           },
           "operator_id": {
             "type": "string",
@@ -80,7 +80,7 @@
             "description": "Content standards configuration identifier. Required when kind is 'content_standards'."
           }
         },
-        "required": ["account_id", "operator_id", "kind", "vendor_cost", "currency"],
+        "required": ["account", "operator_id", "kind", "vendor_cost", "currency"],
         "if": {
           "properties": { "kind": { "type": "string", "const": "signal" } },
           "required": ["kind"]
@@ -110,7 +110,7 @@
         },
         "usage": [
           {
-            "account_id": "acct_pinnacle_signals",
+            "account": { "account_id": "acct_pinnacle_signals" },
             "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_launch_001",
             "kind": "signal",
@@ -133,7 +133,7 @@
         },
         "usage": [
           {
-            "account_id": "acct_pinnacle_signals",
+            "account": { "account_id": "acct_pinnacle_signals" },
             "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_q1_001",
             "kind": "signal",
@@ -144,7 +144,7 @@
             "currency": "USD"
           },
           {
-            "account_id": "acct_nova_signals",
+            "account": { "account_id": "acct_nova_signals" },
             "operator_id": "nova-brands.com",
             "buyer_campaign_ref": "mb_summer_preview_002",
             "kind": "content_standards",
