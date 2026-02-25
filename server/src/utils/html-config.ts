@@ -10,6 +10,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getPool } from "../db/client.js";
+import { resolveEffectiveMembership } from "../db/org-filters.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,21 +128,26 @@ export function getPublicFilePath(filename: string): string {
 
 /**
  * Enrich a user object with membership status from the database.
+ * Checks both direct and inherited membership via the brand registry hierarchy.
  */
 export async function enrichUserWithMembership(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
   if (!user?.id || user.isMember !== undefined) return user;
   try {
     const pool = getPool();
     const result = await pool.query(
-      `SELECT o.workos_organization_id
+      `SELECT u.primary_organization_id
        FROM users u
-       JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
        WHERE u.workos_user_id = $1
-         AND o.subscription_status = 'active'
-         AND o.is_personal = false`,
+         AND u.primary_organization_id IS NOT NULL`,
       [user.id]
     );
-    user.isMember = result.rows.length > 0;
+    if (result.rows.length > 0) {
+      const orgId = result.rows[0].primary_organization_id;
+      const membership = await resolveEffectiveMembership(orgId);
+      user.isMember = membership.is_member;
+    } else {
+      user.isMember = false;
+    }
   } catch {
     user.isMember = false;
   }

@@ -993,14 +993,6 @@
           <input type="text" id="prospectDisqualificationReason" placeholder="e.g. Trade association, competitor, not in target market">
         </div>
 
-        <div class="form-group">
-          <label>Parent Company</label>
-          <select id="prospectParent">
-            <option value="">None (standalone company)</option>
-          </select>
-          <div class="form-hint">For subsidiaries, select the parent company</div>
-        </div>
-
         <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact Info</h3>
 
         <div class="form-row">
@@ -1327,13 +1319,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         } catch (e) {
           // Domain discovery may not be available, that's ok
           console.log('Domain discovery not available:', e);
-        }
-
-        // Load organizations for dropdown
-        const orgsRes = await fetch('/api/admin/organizations');
-        if (orgsRes.ok) {
-          allOrganizations = await orgsRes.json();
-          populateParentDropdown();
         }
 
         // Load current view
@@ -2955,17 +2940,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       }
     }
 
-    function populateParentDropdown() {
-      const select = document.getElementById('prospectParent');
-      select.innerHTML = '<option value="">None (standalone company)</option>';
-
-      allOrganizations
-        .filter(org => !org.prospect_status || org.prospect_status === 'joined')
-        .forEach(org => {
-          select.innerHTML += `<option value="${org.workos_organization_id}">${org.name}</option>`;
-        });
-    }
-
     function applyFilters() {
       const ownerFilter = document.getElementById('filterOwner').value;
       const typeFilter = document.getElementById('filterType').value;
@@ -3323,7 +3297,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('prospectOwner').value = prospect.prospect_owner || '';
       document.getElementById('prospectStatus').value = prospect.prospect_status || 'prospect';
       document.getElementById('prospectSource').value = prospect.prospect_source || 'aao_launch_list';
-      document.getElementById('prospectParent').value = prospect.parent_organization_id || '';
       document.getElementById('prospectContactName').value = prospect.prospect_contact_name || '';
       document.getElementById('prospectContactEmail').value = prospect.prospect_contact_email || '';
       document.getElementById('prospectContactTitle').value = prospect.prospect_contact_title || '';
@@ -3360,7 +3333,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         prospect_owner: document.getElementById('prospectOwner').value || null,
         prospect_status: document.getElementById('prospectStatus').value,
         prospect_source: document.getElementById('prospectSource').value,
-        parent_organization_id: document.getElementById('prospectParent').value || null,
         prospect_contact_name: document.getElementById('prospectContactName').value || null,
         prospect_contact_email: document.getElementById('prospectContactEmail').value || null,
         prospect_contact_title: document.getElementById('prospectContactTitle').value || null,

@@ -39,6 +39,7 @@ import {
   enrichOrganization,
   enrichDomain,
 } from '../../services/enrichment.js';
+import { researchDomain } from '../../services/brand-enrichment.js';
 import {
   getLushaClient,
   isLushaConfigured,
@@ -472,6 +473,21 @@ Returns a list of organizations with open or draft invoices.`,
         org_id: { type: 'string', description: 'Organization ID to save enrichment to' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'research_domain',
+    description:
+      'Comprehensive domain research: checks brand registry, enriches via Brandfetch + Sonnet classification + Lusha firmographics. Skips sources that already have fresh data (< 30 days). Returns brand identity, corporate hierarchy (house_domain/parent_brand), and firmographics in one call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Domain to research (e.g., mindshare.com)' },
+        org_id: { type: 'string', description: 'Organization ID to attach Lusha data to (auto-detected from domain if not provided)' },
+        skip_brandfetch: { type: 'boolean', description: 'Skip Brandfetch/Sonnet enrichment' },
+        skip_lusha: { type: 'boolean', description: 'Skip Lusha firmographic enrichment' },
+      },
+      required: ['domain'],
     },
   },
   {
@@ -1733,7 +1749,8 @@ export function createAdminToolHandlers(
         `SELECT o.*,
                 p.name as parent_name
          FROM organizations o
-         LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+         LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+         LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
          WHERE o.is_personal = false
            AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
          ORDER BY
@@ -2291,6 +2308,66 @@ export function createAdminToolHandlers(
       } else {
         response = `No results found for "${companyName}" in Lusha's database.`;
       }
+    }
+
+    return response;
+  });
+
+  // Research domain (unified enrichment)
+  handlers.set('research_domain', async (input) => {
+    const domain = (input.domain as string)?.toLowerCase().trim();
+    if (!domain) return 'Please provide a domain to research.';
+
+    const result = await researchDomain(domain, {
+      org_id: input.org_id as string | undefined,
+      skip_brandfetch: input.skip_brandfetch as boolean | undefined,
+      skip_lusha: input.skip_lusha as boolean | undefined,
+    });
+
+    let response = `## Domain Research: ${domain}\n\n`;
+
+    // Brand info
+    if (result.brand) {
+      response += `### Brand identity\n`;
+      response += `**Name:** ${result.brand.brand_name}\n`;
+      if (result.brand.keller_type) response += `**Type:** ${result.brand.keller_type}\n`;
+      if (result.brand.house_domain) response += `**House:** ${result.brand.house_domain}\n`;
+      if (result.brand.parent_brand) response += `**Parent:** ${result.brand.parent_brand}\n`;
+      response += `**Source:** ${result.brand.source_type}`;
+      if (result.brand.classification_confidence) response += ` (${result.brand.classification_confidence} confidence)`;
+      response += `\n\n`;
+    } else {
+      response += `_No brand data found._\n\n`;
+    }
+
+    // Firmographics
+    if (result.firmographics) {
+      response += `### Firmographics\n`;
+      if (result.firmographics.company_name) response += `**Company:** ${result.firmographics.company_name}\n`;
+      if (result.firmographics.industry) response += `**Industry:** ${result.firmographics.industry}\n`;
+      if (result.firmographics.employee_count) response += `**Employees:** ${result.firmographics.employee_count.toLocaleString()}\n`;
+      if (result.firmographics.revenue_range) response += `**Revenue:** ${result.firmographics.revenue_range}\n`;
+      if (result.firmographics.country) response += `**Country:** ${result.firmographics.country}\n`;
+      response += `\n`;
+    }
+
+    // Org info
+    if (result.org) {
+      response += `### Organization\n`;
+      response += `**Name:** ${result.org.name}\n`;
+      response += `**Status:** ${result.org.subscription_status || 'none'}\n`;
+      response += `**ID:** ${result.org.workos_organization_id}\n\n`;
+    }
+
+    // Actions log
+    response += `### Actions\n`;
+    for (const action of result.actions) {
+      const icon = action.action === 'fetched' ? '✅' :
+                   action.action.startsWith('skipped') ? '⏭️' :
+                   action.action === 'failed' ? '❌' : '🔍';
+      response += `${icon} **${action.source}**: ${action.action}`;
+      if (action.detail) response += ` — ${action.detail}`;
+      response += `\n`;
     }
 
     return response;

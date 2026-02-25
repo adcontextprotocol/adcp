@@ -660,6 +660,7 @@
               <span id="memberBadge" class="member-badge prospect">Prospect</span>
               <span id="accountTypeBadge" class="member-badge" style="background: var(--color-gray-200); color: var(--color-text-heading); cursor: pointer;" onclick="openConvertAccountModal()" title="Click to change account type">Team</span>
             </h1>
+            <div id="inheritedMembershipNotice" style="display: none; margin-top: var(--space-1); font-size: var(--text-sm); color: var(--color-brand); font-weight: 500;"></div>
             <div id="headerSubtitle" class="header-subtitle"></div>
           </div>
           <div style="display: flex; gap: var(--space-2);">
@@ -1034,13 +1035,6 @@
           <input type="text" id="editName">
         </div>
 
-        <div class="form-group">
-          <label>Parent Organization</label>
-          <select id="editParentOrg">
-            <option value="">None (independent)</option>
-          </select>
-          <div class="form-hint">If this is a subsidiary or division, select the parent company.</div>
-        </div>
 
         <div class="form-row">
           <div class="form-group">
@@ -1466,6 +1460,10 @@
       if (a.is_disqualified) {
         memberBadge.className = 'member-badge disqualified';
         memberBadge.textContent = 'Disqualified';
+      } else if (a.effective_membership?.is_inherited) {
+        memberBadge.className = 'member-badge member';
+        memberBadge.textContent = 'Covered member';
+        memberBadge.title = `Covered by ${a.effective_membership.paying_org_name} membership`;
       } else {
         const statusLabels = {
           member: 'Member',
@@ -1474,6 +1472,16 @@
           prospect: 'Prospect'
         };
         memberBadge.textContent = statusLabels[a.member_status] || 'Prospect';
+      }
+
+      // Inherited membership notice
+      const inheritedNotice = document.getElementById('inheritedMembershipNotice');
+      if (a.effective_membership?.is_inherited && inheritedNotice) {
+        inheritedNotice.style.display = '';
+        inheritedNotice.innerHTML = `Covered by <a href="/admin/accounts/${a.effective_membership.paying_org_id}">${escapeHtml(a.effective_membership.paying_org_name)}</a> membership` +
+          (a.effective_membership.hierarchy_chain?.length > 1
+            ? ` <span style="color: var(--color-text-secondary); font-size: var(--text-xs);">(${a.effective_membership.hierarchy_chain.join(' → ')})</span>`
+            : '');
       }
 
       // Header subtitle (company type, revenue tier, employees, location)
@@ -2252,40 +2260,7 @@
       document.getElementById('editRevenueTier').value = accountData.revenue_tier || '';
       toggleDisqualifyReason();
 
-      // Load and populate parent org options
-      await loadParentOrgOptions();
-
       openModal('editModal');
-    }
-
-    async function loadParentOrgOptions() {
-      const select = document.getElementById('editParentOrg');
-      // Keep the "None" option
-      select.innerHTML = '<option value="">None (independent)</option>';
-
-      try {
-        const response = await fetch('/api/admin/prospects?limit=500');
-        if (!response.ok) return;
-
-        const data = await response.json();
-        const orgs = data.prospects || [];
-
-        // Filter out current org and sort by name
-        orgs
-          .filter(org => org.workos_organization_id !== accountId)
-          .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-          .forEach(org => {
-            const option = document.createElement('option');
-            option.value = org.workos_organization_id;
-            option.textContent = org.name;
-            if (org.workos_organization_id === accountData.parent_organization_id) {
-              option.selected = true;
-            }
-            select.appendChild(option);
-          });
-      } catch (error) {
-        console.error('Error loading parent org options:', error);
-      }
     }
 
     function toggleDisqualifyReason() {
@@ -2306,8 +2281,7 @@
         prospect_status: document.getElementById('editDisqualified').checked ? 'disqualified' : null,
         disqualification_reason: document.getElementById('editDisqualified').checked ?
           document.getElementById('editDisqualifyReason').value : null,
-        revenue_tier: document.getElementById('editRevenueTier').value || null,
-        parent_organization_id: document.getElementById('editParentOrg').value || null
+        revenue_tier: document.getElementById('editRevenueTier').value || null
       };
 
       try {

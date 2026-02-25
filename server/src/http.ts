@@ -53,6 +53,7 @@ import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
+import { invalidateMembershipCache } from "./db/org-filters.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
@@ -3340,6 +3341,7 @@ export class HTTPServer {
                 // Invalidate member context cache for all users in this org
                 // (subscription status affects is_member and subscription fields)
                 invalidateMemberContextCache();
+                invalidateMembershipCache(org.workos_organization_id);
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -3546,6 +3548,7 @@ export class HTTPServer {
 
                 // Invalidate member context cache
                 invalidateMemberContextCache();
+                invalidateMembershipCache(org.workos_organization_id);
               }
 
               // Record revenue event

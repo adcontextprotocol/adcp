@@ -20,6 +20,7 @@ import { getPendingInvoices } from "../../billing/stripe-client.js";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
+  resolveEffectiveMembership,
   type OrgTier,
 } from "../../db/org-filters.js";
 import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
@@ -344,9 +345,11 @@ export function setupAccountRoutes(
           SELECT
             o.*,
             p.name as parent_name,
-            (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count
+            p.email_domain as parent_domain,
+            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
           FROM organizations o
-          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
           WHERE o.workos_organization_id = $1
         `,
           [orgId]
@@ -361,6 +364,9 @@ export function setupAccountRoutes(
         // Derive member status from subscription
         const memberStatus = deriveOrgTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
+
+        // Resolve effective membership (direct or inherited via brand hierarchy)
+        const effectiveMembership = await resolveEffectiveMembership(orgId);
 
         // Run parallel queries for related data (including members from local cache)
         const [
@@ -776,10 +782,19 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Hierarchy
-          parent_organization_id: org.parent_organization_id,
+          // Hierarchy (derived from brand registry via email_domain → house_domain)
           parent_name: org.parent_name,
+          parent_domain: org.parent_domain,
           subsidiary_count: parseInt(org.subsidiary_count) || 0,
+
+          // Effective membership (direct or inherited via brand registry hierarchy)
+          effective_membership: {
+            is_member: effectiveMembership.is_member,
+            is_inherited: effectiveMembership.is_inherited,
+            paying_org_id: effectiveMembership.paying_org_id,
+            paying_org_name: effectiveMembership.paying_org_name,
+            hierarchy_chain: effectiveMembership.hierarchy_chain,
+          },
 
           // Activity
           activities: activitiesResult.rows,
