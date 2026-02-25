@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-ref.json",
   "title": "Account Reference",
-  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the buyer manages accounts (e.g., picked from list_accounts). Use the natural key (house, brand_id, operator) when the seller resolves accounts internally.",
+  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the buyer manages accounts (e.g., picked from list_accounts). Use the natural key (brand + operator) when the seller resolves accounts internally.",
   "type": "object",
   "oneOf": [
     {
@@ -17,29 +17,23 @@
     },
     {
       "properties": {
-        "house": {
-          "type": "string",
-          "description": "House domain where brand.json is hosted",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-        },
-        "brand_id": {
-          "type": "string",
-          "description": "Brand ID within the house portfolio. Required for multi-brand houses.",
-          "pattern": "^[a-z0-9_]+$"
+        "brand": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Brand reference identifying the advertiser"
         },
         "operator": {
           "type": "string",
-          "description": "Domain of the entity operating the seat. Omit if the brand operates its own seat.",
+          "description": "Domain of the entity operating the seat. When the brand operates its own seat, this is the brand's domain.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         }
       },
-      "required": ["house"],
+      "required": ["brand", "operator"],
       "additionalProperties": false
     }
   ],
   "examples": [
     { "account_id": "acc_acme_001" },
-    { "house": "acme-corp.com" },
-    { "house": "nova-brands.com", "brand_id": "spark", "operator": "pinnacle-media.com" }
+    { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com" },
+    { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com" }
   ]
 }

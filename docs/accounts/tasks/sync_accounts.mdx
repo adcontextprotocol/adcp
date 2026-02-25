@@ -3,7 +3,7 @@ title: sync_accounts
 testable: false
 ---
 
-Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning their status and any setup instructions. Brands are identified by house domain + optional brand_id, resolved via `/.well-known/brand.json`.
+Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning their status and any setup instructions. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
 
 `sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. The `account_id` returned is what you pass to protocol tasks like `create_media_buy`, `get_signals`, `activate_signal`, and `report_usage`.
 
@@ -23,8 +23,9 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAccountsResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAccounts({
-  house: "acme-corp.com",
-  billing: "brand",
+  brand: { domain: "acme-corp.com" },
+  operator: "acme-corp.com",
+  billing: "operator",
 });
 
 if (!result.success) {
@@ -37,7 +38,7 @@ if ("errors" in validated && validated.errors) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
 }
 
-console.log(`${validated.house}: ${validated.status}`);
+console.log(`${validated.brand.domain}: ${validated.status}`);
 if (validated.status === "pending_approval" && validated.setup?.url) {
   console.log(`  Complete setup at: ${validated.setup.url}`);
 }
@@ -49,14 +50,15 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_accounts(
-        house='acme-corp.com',
-        billing='brand',
+        brand={"domain": "acme-corp.com"},
+        operator="acme-corp.com",
+        billing="operator",
     )
 
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Operation failed: {result.errors}")
 
-    print(f"{result.house}: {result.status}")
+    print(f"{result.brand['domain']}: {result.status}")
     if result.status == 'pending_approval' and hasattr(result, 'setup') and result.setup:
         print(f"  Complete setup at: {result.setup.url}")
 
@@ -69,14 +71,13 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `house` | string | Yes | House domain where [`brand.json`](/docs/brand-protocol/brand-json) is hosted (e.g. `acme-corp.com`, `nova-brands.com`). This is the brand registry identifier -- seller agents look up the brand's verified identity from this domain. For single-brand houses, this alone identifies the brand. |
-| `brand_id` | string | No | Brand ID within the house portfolio (e.g. `spark`, `glow`). Required when the house has multiple brands. |
-| `operator` | string | No | Domain of the entity operating the seat (e.g. `pinnacle-media.com`). Verified against the brand's `authorized_operators` in brand.json. Omit if the brand operates its own seat. |
-| `billing` | string | No | Who should be invoiced: `brand`, `operator`, or `agent`. Omit to accept the seller's default. The seller may return a different billing model -- always check the response. |
+| `brand` | object | Yes | Brand reference identifying the advertiser. Contains `domain` (house domain where brand.json is hosted) and optional `brand_id` (for multi-brand houses). See [brand-ref](/docs/brand-protocol/brand-json). |
+| `operator` | string | Yes | Domain of the entity operating the seat (e.g. `pinnacle-media.com`). When the brand operates its own seat, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
+| `billing` | string | No | Who should be invoiced: `operator` or `agent`. Omit to accept the seller's default. The seller must either accept this billing model or reject the request. |
 | `sandbox` | boolean | No | When true, set up a sandbox account. No real platform calls or billing. |
 | `push_notification_config` | object | No | Webhook for async notifications when account status changes (e.g., `pending_approval` transitions to `active`). |
 
-**Natural key**: The tuple `(house, brand_id, operator)` uniquely identifies an account relationship. `{house: "acme-corp.com"}` (direct) is a different account from `{house: "acme-corp.com", operator: "pinnacle-media.com"}` (via agency).
+**Natural key**: The tuple `(brand, operator)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency).
 
 ## Response
 
@@ -95,12 +96,11 @@ Returns the account status and details directly (not wrapped in an array).
 | Field | Description |
 |-------|-------------|
 | `account_id` | Seller-assigned account identifier. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). May be absent when `status: "rejected"`. Present for all other statuses including `pending_approval`. |
-| `house` | Echoed from request |
-| `brand_id` | Echoed from request (when provided) |
-| `operator` | Echoed from request (when provided) |
+| `brand` | Echoed from request. Object with `domain` and optional `brand_id`. |
+| `operator` | Echoed from request |
 | `name` | Seller's display name for the account |
 | `status` | Current state of the account (see [Account status](#account-status)) |
-| `billing` | Actual billing model applied. May differ from requested -- always check this field. |
+| `billing` | Billing model applied. Matches the requested value, or the seller's default when omitted. |
 | `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (the agent's default account). See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, `message` explaining what's needed, and optional `expires_at`. |
 | `rate_card` | Seller-assigned rate card identifier (when applicable) |
@@ -131,10 +131,9 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAccountsResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAccounts({
-  house: "nova-brands.com",
-  brand_id: "spark",
+  brand: { domain: "nova-brands.com", brand_id: "spark" },
   operator: "pinnacle-media.com",
-  billing: "brand",
+  billing: "operator",
 });
 
 if (!result.success) {
@@ -161,10 +160,9 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_accounts(
-        house='nova-brands.com',
-        brand_id='spark',
-        operator='pinnacle-media.com',
-        billing='brand',
+        brand={"domain": "nova-brands.com", "brand_id": "spark"},
+        operator="pinnacle-media.com",
+        billing="operator",
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -190,8 +188,9 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAccountsResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAccounts({
-  house: "acme-corp.com",
-  billing: "brand",
+  brand: { domain: "acme-corp.com" },
+  operator: "acme-corp.com",
+  billing: "operator",
 });
 
 if (!result.success) {
@@ -218,8 +217,9 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_accounts(
-        house='acme-corp.com',
-        billing='brand',
+        brand={"domain": "acme-corp.com"},
+        operator="acme-corp.com",
+        billing="operator",
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -230,60 +230,6 @@ async def main():
     elif result.status == 'pending_approval':
         print(f"Setup required: {result.setup.url}")
         # Poll list_accounts until status becomes active
-
-asyncio.run(main())
-```
-
-</CodeGroup>
-
-### Handling billing negotiation
-
-The seller may return a different billing model than requested. Always check the returned `billing` value:
-
-<CodeGroup>
-
-```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAccountsResponseSchema } from "@adcp/client";
-
-const result = await testAgent.syncAccounts({
-  house: "acme-corp.com",
-  billing: "brand", // requested
-});
-
-if (!result.success) {
-  throw new Error(`Request failed: ${result.error}`);
-}
-
-const validated = SyncAccountsResponseSchema.parse(result.data);
-
-if ("errors" in validated && validated.errors) {
-  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
-}
-
-if (validated.warnings?.length) {
-  console.warn(`Billing remapped: ${validated.warnings.join(", ")}`);
-  console.log(`Applied billing: ${validated.billing}`); // may differ from request
-}
-```
-
-```python Python
-import asyncio
-from adcp.testing import test_agent
-
-async def main():
-    result = await test_agent.simple.sync_accounts(
-        house='acme-corp.com',
-        billing='brand',
-    )
-
-    if hasattr(result, 'errors') and result.errors:
-        raise Exception(f"Operation failed: {result.errors}")
-
-    warnings = getattr(result, 'warnings', None)
-    if warnings:
-        print(f"Billing remapped: {', '.join(warnings)}")
-        print(f"Applied billing: {result.billing}")
 
 asyncio.run(main())
 ```
@@ -301,8 +247,8 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAccountsResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAccounts({
-  house: "acme-corp.com",
-  brand_id: "clearance",
+  brand: { domain: "acme-corp.com", brand_id: "clearance" },
+  operator: "acme-corp.com",
 });
 
 if (!result.success) {
@@ -329,8 +275,8 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_accounts(
-        house='acme-corp.com',
-        brand_id='clearance',
+        brand={"domain": "acme-corp.com", "brand_id": "clearance"},
+        operator="acme-corp.com",
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -354,11 +300,11 @@ asyncio.run(main())
 | `ACCOUNT_NOT_FOUND` | Referenced account does not exist or is not accessible | Check `account_id` or re-sync |
 | `PAYMENT_REQUIRED` | Account has reached its credit limit | Add funds or route to another account |
 | `ACCOUNT_SUSPENDED` | Account is suspended | Contact seller to resolve |
-| `BRAND_REQUIRED` | Billable operation attempted without brand reference | Include `house` in the request |
+| `BRAND_REQUIRED` | Billable operation attempted without brand reference | Include `brand` in the request |
 
 ## Next steps
 
 - [list_accounts](/docs/accounts/tasks/list_accounts) -- Poll for status changes on pending accounts
 - [Accounts and agents](/docs/building/integration/accounts-and-agents) -- Billing models, trust models, and authorized operators
-- [Brand protocol](/docs/brand-protocol/brand-json) -- How seller agents resolve brand identity from the `house` domain
+- [Brand protocol](/docs/brand-protocol/brand-json) -- How seller agents resolve brand identity from the `brand.domain`
 - [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) -- Discover `supported_billing` and `account_resolution` before syncing accounts

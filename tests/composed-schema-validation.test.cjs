@@ -215,7 +215,7 @@ async function runTests() {
     '/schemas/media-buy/create-media-buy-request.json',
     {
       buyer_ref: 'single-account-campaign',
-      account: { house: 'acmecorp.com' },
+      account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
       packages: [
         {
           buyer_ref: 'pkg-001',

@@ -44,13 +44,13 @@
       "properties": {
         "account_resolution": {
           "type": "array",
-          "description": "How the seller resolves account references. account_id: buyer passes a seller-assigned account_id (from sync_accounts or list_accounts). natural_key: seller resolves from the natural key (house, brand_id, operator) — sync_accounts may be optional.",
+          "description": "How the seller resolves account references. explicit_account_id: accounts are managed out-of-band (advertiser portal, sales rep) and discovered via list_accounts. implicit_from_sync: buyer declares intent via sync_accounts and the seller provisions accounts.",
           "items": {
             "type": "string",
-            "enum": ["account_id", "natural_key"]
+            "enum": ["explicit_account_id", "implicit_from_sync"]
           },
           "minItems": 1,
-          "default": ["account_id"]
+          "default": ["explicit_account_id"]
         },
         "require_operator_auth": {
           "type": "boolean",
@@ -64,16 +64,16 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand operating its own seat). agent: agent consolidates billing.",
           "items": {
             "type": "string",
-            "enum": ["brand", "operator", "agent"]
+            "enum": ["operator", "agent"]
           },
           "minItems": 1
         },
         "default_billing": {
           "type": "string",
-          "enum": ["brand", "operator", "agent"],
+          "enum": ["operator", "agent"],
           "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
         }
       },

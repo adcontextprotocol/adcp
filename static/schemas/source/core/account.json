@@ -26,25 +26,19 @@
       "enum": ["active", "pending_approval", "rejected", "payment_required", "suspended", "closed"],
       "description": "Account status. pending_approval: seller reviewing (credit, contracts). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
     },
-    "house": {
-      "type": "string",
-      "description": "House domain where brand.json is hosted. Canonical identity anchor for the brand.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-    },
-    "brand_id": {
-      "type": "string",
-      "description": "Brand ID within the house portfolio (from brand.json)",
-      "pattern": "^[a-z0-9_]+$"
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Brand reference identifying the advertiser"
     },
     "operator": {
       "type": "string",
-      "description": "Domain of the entity operating this account",
+      "description": "Domain of the entity operating this account. When the brand operates its own seat, this is the brand's domain.",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
     },
     "billing": {
       "type": "string",
-      "enum": ["brand", "operator", "agent"],
-      "description": "Who is invoiced on this account. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing."
+      "enum": ["operator", "agent"],
+      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand operating its own seat). agent: agent consolidates billing."
     },
     "rate_card": {
       "type": "string",
@@ -122,7 +116,10 @@
         "account_id": "acc_acme_direct",
         "name": "Acme",
         "advertiser": "Acme Corp",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "acme-corp.com",
         "status": "active",
+        "billing": "operator",
         "account_scope": "brand",
         "rate_card": "acme_vip_2024",
         "payment_terms": "net_30"
@@ -135,7 +132,10 @@
         "name": "Acme c/o Pinnacle",
         "advertiser": "Acme Corp",
         "billing_proxy": "Pinnacle Media",
+        "brand": { "domain": "acme-corp.com" },
+        "operator": "pinnacle-media.com",
         "status": "active",
+        "billing": "operator",
         "account_scope": "operator_brand",
         "rate_card": "acme_vip_2024",
         "payment_terms": "net_60"
@@ -147,7 +147,10 @@
         "account_id": "acc_pinnacle",
         "name": "Pinnacle",
         "advertiser": "Pinnacle Media",
+        "brand": { "domain": "pinnacle-media.com" },
+        "operator": "pinnacle-media.com",
         "status": "active",
+        "billing": "operator",
         "account_scope": "operator",
         "rate_card": "agency_standard",
         "payment_terms": "net_45"
@@ -156,13 +159,12 @@
     {
       "description": "Account with brand identity and operator (via sync_accounts)",
       "data": {
-        "account_id": "sub_dove_001",
-        "name": "Dove (via GroupM)",
-        "advertiser": "Unilever",
+        "account_id": "acc_spark_001",
+        "name": "Spark (via Pinnacle)",
+        "advertiser": "Nova Brands",
         "status": "active",
-        "house": "unilever.com",
-        "brand_id": "dove",
-        "operator": "groupm.com",
+        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "operator": "pinnacle-media.com",
         "billing": "agent",
         "account_scope": "operator_brand",
         "payment_terms": "net_30"
@@ -171,14 +173,13 @@
     {
       "description": "Pending account awaiting seller approval",
       "data": {
-        "account_id": "acc_axe_pending",
-        "name": "Axe",
-        "advertiser": "Unilever",
+        "account_id": "acc_glow_pending",
+        "name": "Glow",
+        "advertiser": "Nova Brands",
         "status": "pending_approval",
-        "house": "unilever.com",
-        "brand_id": "axe",
-        "operator": "mindshare.com",
-        "billing": "brand",
+        "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+        "operator": "pinnacle-media.com",
+        "billing": "operator",
         "account_scope": "brand"
       }
     }

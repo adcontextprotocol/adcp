@@ -125,7 +125,7 @@ async function runTests() {
   await validateExample(
     {
       "buying_mode": "brief",
-      "account": { "house": "nikeinc.com", "brand_id": "nike" },
+      "account": { "brand": { "domain": "nikeinc.com", "brand_id": "nike" }, "operator": "nikeinc.com" },
       "brand": {
         "domain": "nikeinc.com",
         "brand_id": "nike"

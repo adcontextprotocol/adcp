@@ -24,15 +24,9 @@
                 "type": "string",
                 "description": "Seller-assigned account identifier. When billing is 'agent', multiple brands may share the same account_id. May be absent when status is 'rejected' or action is 'failed'."
               },
-              "house": {
-                "type": "string",
-                "description": "House domain, echoed from the request",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-              },
-              "brand_id": {
-                "type": "string",
-                "description": "Brand ID within the house portfolio, echoed from request",
-                "pattern": "^[a-z0-9_]+$"
+              "brand": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Brand reference, echoed from the request"
               },
               "operator": {
                 "type": "string",
@@ -67,11 +61,10 @@
               "billing": {
                 "type": "string",
                 "enum": [
-                  "brand",
                   "operator",
                   "agent"
                 ],
-                "description": "Who is invoiced on this account. May differ from the requested billing if the seller doesn't support it."
+                "description": "Who is invoiced on this account. Matches the requested billing model (or the seller's default if omitted from the request)."
               },
               "account_scope": {
                 "type": "string",
@@ -147,7 +140,8 @@
               }
             },
             "required": [
-              "house",
+              "brand",
+              "operator",
               "action",
               "status"
             ],
@@ -235,24 +229,22 @@
         "accounts": [
           {
             "account_id": "acc_spark_001",
-            "house": "nova-brands.com",
-            "brand_id": "spark",
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
             "action": "created",
             "status": "active",
-            "billing": "brand",
+            "billing": "operator",
             "account_scope": "operator_brand"
           },
           {
             "account_id": "acc_glow_pending",
-            "house": "nova-brands.com",
-            "brand_id": "glow",
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
             "operator": "pinnacle-media.com",
             "name": "Glow",
             "action": "created",
             "status": "pending_approval",
-            "billing": "brand",
+            "billing": "operator",
             "account_scope": "operator_brand",
             "setup": {
               "url": "https://seller.example.com/advertiser-onboard",
@@ -268,8 +260,8 @@
       "data": {
         "accounts": [
           {
-            "house": "acme-corp.com",
-            "brand_id": "clearance",
+            "brand": { "domain": "acme-corp.com", "brand_id": "clearance" },
+            "operator": "acme-corp.com",
             "action": "created",
             "status": "rejected",
             "warnings": [
@@ -280,19 +272,19 @@
       }
     },
     {
-      "description": "Billing remapped — seller doesn't support direct billing",
+      "description": "Unsupported billing — seller rejects the request",
       "data": {
         "accounts": [
           {
-            "account_id": "acc_agent_house",
-            "house": "acme-corp.com",
-            "name": "Acme Corp (via agent)",
-            "action": "created",
-            "status": "active",
-            "billing": "agent",
-            "account_scope": "agent",
-            "warnings": [
-              "Direct billing (brand) not supported. Mapped to agent billing."
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "action": "failed",
+            "status": "rejected",
+            "errors": [
+              {
+                "code": "BILLING_NOT_SUPPORTED",
+                "message": "Operator billing is not supported. This seller only accepts agent billing."
+              }
             ]
           }
         ]

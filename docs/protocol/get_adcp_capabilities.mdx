@@ -69,11 +69,11 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported_billing` | string[] | **Required.** Billing models this seller supports: `brand`, `operator`, `agent` |
+| `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent` |
 | `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `default_billing` | string | Billing model applied when agent omits `billing` from `sync_accounts`. Must be one of `supported_billing`. |
-| `account_resolution` | string[] | How this seller resolves account references in requests. Values: `account_id` (seller-assigned identifier) and/or `natural_key` (resolved from house + brand_id + operator). Buyers use this to determine whether to pass `account.account_id` or `account.house` (with optional `brand_id`/`operator`) in task requests. |
+| `account_resolution` | string[] | How this seller resolves account references in requests. Values: `explicit_account_id` (seller-assigned identifier) and/or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. |
 
 #### Auth models
 
@@ -448,8 +448,8 @@ const buy = await client.createMediaBuy({
   "supported_protocols": ["media_buy"],
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["brand", "operator"],
-    "default_billing": "brand"
+    "supported_billing": ["operator", "agent"],
+    "default_billing": "operator"
   },
   "media_buy": {
     "features": {
@@ -497,7 +497,7 @@ This tells buyers:
 - **AdCP versions**: Version 1
 - **Protocols**: Media-buy only (signals not supported)
 - **Auth model**: Agent-trusted (`require_operator_auth: false`) — authenticate once, declare brands via `sync_accounts`
-- **Billing**: Brand or operator billing; default is brand
+- **Billing**: Operator or agent billing; default is operator
 - **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
