@@ -26,6 +26,7 @@ import {
   type PendingInvoice,
 } from "../billing/stripe-client.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
+import { invalidateMembershipCache } from "../db/org-filters.js";
 
 const logger = createLogger("billing-routes");
 
@@ -757,6 +758,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
                 ]
               );
               subscriptionSynced = true;
+              invalidateMembershipCache(org_id);
             }
           }
         } catch (syncError) {
