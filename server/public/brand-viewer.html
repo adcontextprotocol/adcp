@@ -1825,6 +1825,14 @@
                 <div class="community-info-value"><a href="https://${escapeAttr(domain)}" target="_blank" style="color: var(--color-brand); text-decoration: none;">${escapeHtml(domain)}</a></div>
               </div>`;
 
+            // Community-hosted brand.json URL
+            const hostedBrandJsonUrl = `https://agenticadvertising.org/brands/${encodeURIComponent(domain)}/brand.json`;
+            gridHtml += `
+              <div class="community-info-item">
+                <div class="community-info-label">Community brand.json</div>
+                <div class="community-info-value"><a href="${escapeAttr(hostedBrandJsonUrl)}" target="_blank" style="color: var(--color-brand); text-decoration: none; word-break: break-all;">${escapeHtml(hostedBrandJsonUrl)}</a></div>
+              </div>`;
+
             if (brandInfo.source_type) {
               gridHtml += `
                 <div class="community-info-item">

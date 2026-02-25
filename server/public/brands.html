@@ -580,6 +580,10 @@
                 if (brand.house_domain) {
                     metaParts.push(`<span class="brand-card__meta-item"><span class="brand-card__meta-icon">&#x1F3E0;</span> ${escapeHtml(brand.house_domain)}</span>`);
                 }
+                if (brand.domain && (brand.source === 'community' || brand.source === 'enriched')) {
+                    const brandJsonUrl = `https://agenticadvertising.org/brands/${encodeURIComponent(brand.domain)}/brand.json`;
+                    metaParts.push(`<a class="brand-card__meta-item" href="${escapeAttr(brandJsonUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color: var(--color-brand); text-decoration: none;" title="View community brand.json"><span class="brand-card__meta-icon">{}</span> brand.json</a>`);
+                }
 
                 const metaHtml = metaParts.length > 0
                     ? `<div class="brand-card__meta">${metaParts.join('')}</div>`
@@ -624,6 +628,11 @@
             const div = document.createElement('div');
             div.textContent = str;
             return div.innerHTML;
+        }
+
+        function escapeAttr(str) {
+            if (!str) return '';
+            return escapeHtml(String(str)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
     </script>
 </body>
