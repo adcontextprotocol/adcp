@@ -38,4 +38,4 @@ jobs:
       run: npx --no-install mintlify broken-links
 
     - name: Check README links
-      run: npx --no-install markdown-link-check README.md --config .markdown-link-check.json
+      run: npx markdown-link-check README.md --config .markdown-link-check.json
