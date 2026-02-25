@@ -133,7 +133,7 @@
         },
         "supported_optimization_strategies": {
           "type": "array",
-          "description": "Optimization strategies this product supports when optimization_goals are set on a package. Target kinds: cost_per (cost per metric unit or conversion event), threshold_rate (minimum per-impression metric rate), per_ad_spend (return on ad spend — requires value_field on event sources). A goal without a target implicitly maximizes that metric or event within budget — no separate strategy declaration needed.",
+          "description": "Optimization strategies this product supports when optimization_goals are set on a package. Target kinds: cost_per (cost per metric unit or conversion event), threshold_rate (minimum per-impression metric rate), per_ad_spend (return on ad spend — requires value_field on event sources). A goal without a target implicitly maximizes that metric or event within budget — no separate strategy declaration needed. When this field is omitted but conversion_tracking is present, buyers can still set target-less optimization goals (maximize within budget); they just cannot set specific cost_per, threshold_rate, or per_ad_spend targets.",
           "items": {
             "type": "string",
             "enum": [

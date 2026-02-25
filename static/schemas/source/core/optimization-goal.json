@@ -79,7 +79,7 @@
               "value_factor": {
                 "type": "number",
                 "default": 1,
-                "description": "Multiplier applied to the value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. Defaults to 1."
+                "description": "Multiplier applied to the value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1."
               }
             },
             "required": ["event_source_id", "event_type"],
