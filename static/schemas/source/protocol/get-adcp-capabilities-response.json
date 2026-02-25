@@ -67,6 +67,11 @@
           },
           "minItems": 1
         },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "default": false
+        },
         "account_financials": {
           "type": "boolean",
           "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",

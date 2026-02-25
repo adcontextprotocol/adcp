@@ -55,7 +55,7 @@ The account reference may be a seller-assigned `account_id` (explicit model) or 
    Explicit (explicit_account_id):
      list_accounts() → find existing account_id for this brand/operator
    Implicit (implicit_from_sync):
-     sync_accounts({ accounts: [{ brand, operator, billing }] }) → account_id, status, billing terms
+     sync_accounts({ accounts: [{ brand, operator, billing }] }) → status, billing terms
 
 6. Execute
    Protocol tasks use the account reference to apply correct rates and terms

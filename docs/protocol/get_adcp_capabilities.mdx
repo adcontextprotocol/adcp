@@ -73,6 +73,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 | `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `account_resolution` | string | How this seller resolves account references in requests. Either `explicit_account_id` (seller-assigned identifier) or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. Default: `explicit_account_id`. |
+| `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 
 #### Auth models

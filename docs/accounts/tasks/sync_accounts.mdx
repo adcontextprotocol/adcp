@@ -5,7 +5,7 @@ testable: false
 
 Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning per-account status and any setup instructions. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
 
-`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. The `account_id` returned is what you pass to protocol tasks like `create_media_buy`, `get_signals`, `activate_signal`, and `report_usage`.
+`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. To discover seller-assigned account IDs (for the explicit model), use [`list_accounts`](/docs/accounts/tasks/list_accounts). For the implicit model, use natural keys (`brand` + `operator`) on subsequent requests.
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
@@ -114,7 +114,6 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Seller-assigned account identifier. Pass this to protocol tasks (`create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, etc.). May be absent when `status: "rejected"` or `action: "failed"`. |
 | `brand` | Echoed from request. Object with `domain` and optional `brand_id`. |
 | `operator` | Echoed from request. |
 | `name` | Seller's display name for the account. |
@@ -134,12 +133,29 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 | Status | Meaning | Next step |
 |--------|---------|-----------|
-| `active` | Ready to use | Use `account_id` in protocol operations |
+| `active` | Ready to use | Use [account reference](/docs/building/integration/accounts-and-agents#account-references) in protocol operations |
 | `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll `list_accounts` for updates. |
 | `rejected` | Seller declined the request | Review rejection reason in `warnings`, adjust and retry, or contact seller |
 | `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. Route spend to other accounts. |
 | `suspended` | Was active, now paused | Contact seller to resolve |
 | `closed` | Was active, now terminated | -- |
+
+### Async notifications
+
+When `push_notification_config` is provided and the seller returns `pending_approval`, the seller sends a webhook notification when the account status changes (e.g., approved → `active`, declined → `rejected`).
+
+The notification payload includes the `(brand, operator)` natural key so the buyer can correlate it to the original sync request. For the explicit model, the notification also includes the seller-assigned `account_id` once provisioned.
+
+```json
+{
+  "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+  "operator": "pinnacle-media.com",
+  "status": "active",
+  "account_id": "acc_glow_001"
+}
+```
+
+If the buyer did not provide `push_notification_config`, poll [`list_accounts`](/docs/accounts/tasks/list_accounts) to check for status changes.
 
 ## Common scenarios
 
@@ -178,7 +194,7 @@ if ("errors" in validated && validated.errors) {
 
 for (const account of validated.accounts) {
   if (account.status === "active") {
-    console.log(`Ready: ${account.brand.domain}/${account.brand.brand_id} → ${account.account_id}`);
+    console.log(`Ready: ${account.brand.domain}/${account.brand.brand_id} → ${account.status}`);
   } else if (account.status === "pending_approval") {
     console.log(`Setup required for ${account.brand.brand_id}: ${account.setup?.url}`);
     // Poll list_accounts until status becomes active
@@ -211,7 +227,7 @@ async def main():
 
     for account in result.accounts:
         if account.status == 'active':
-            print(f"Ready: {account.brand['domain']}/{account.brand.get('brand_id')} → {account.account_id}")
+            print(f"Ready: {account.brand['domain']}/{account.brand.get('brand_id')} → {account.status}")
         elif account.status == 'pending_approval':
             print(f"Setup required for {account.brand.get('brand_id')}: {account.setup.url}")
             # Poll list_accounts until status becomes active
@@ -251,7 +267,7 @@ if ("errors" in validated && validated.errors) {
 
 const account = validated.accounts[0];
 if (account.status === "active") {
-  console.log(`Ready: account_id = ${account.account_id}`);
+  console.log(`Ready: ${account.brand.domain} — ${account.status}`);
 } else if (account.status === "pending_approval") {
   console.log(`Setup required: ${account.setup?.url}`);
   // Poll list_accounts until status becomes active
@@ -278,7 +294,7 @@ async def main():
 
     account = result.accounts[0]
     if account.status == 'active':
-        print(f"Ready: account_id = {account.account_id}")
+        print(f"Ready: {account.brand['domain']} — {account.status}")
     elif account.status == 'pending_approval':
         print(f"Setup required: {account.setup.url}")
         # Poll list_accounts until status becomes active
@@ -290,7 +306,7 @@ asyncio.run(main())
 
 ### Handling rejection
 
-When a seller declines a request, the account entry has `status: "rejected"` and `account_id` is absent:
+When a seller declines a request, the account entry has `status: "rejected"`:
 
 <CodeGroup>
 

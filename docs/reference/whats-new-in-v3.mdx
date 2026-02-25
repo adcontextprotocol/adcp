@@ -98,7 +98,7 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 | Entity | Question | How identified |
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
-| **Account** | Who gets billed? | `account_id` from `sync_accounts` |
+| **Account** | Who gets billed? | [Account reference](/docs/building/integration/accounts-and-agents#account-references) — `account_id` from `list_accounts` or natural key |
 | **Operator** | Who operates on the brand's behalf? | Domain (e.g., `acmeagency.example.com`) |
 | **Agent** | What software places buys? | Authenticated session |
 

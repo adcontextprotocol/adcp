@@ -20,10 +20,6 @@
           "items": {
             "type": "object",
             "properties": {
-              "account_id": {
-                "type": "string",
-                "description": "Seller-assigned account identifier. When billing is 'agent', multiple brands may share the same account_id. May be absent when status is 'rejected' or action is 'failed'."
-              },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Brand reference, echoed from the request"
@@ -145,23 +141,6 @@
               "action",
               "status"
             ],
-            "if": {
-              "not": {
-                "anyOf": [
-                  {
-                    "properties": { "action": { "const": "failed" } },
-                    "required": ["action"]
-                  },
-                  {
-                    "properties": { "status": { "const": "rejected" } },
-                    "required": ["status"]
-                  }
-                ]
-              }
-            },
-            "then": {
-              "required": ["account_id"]
-            },
             "additionalProperties": true
           }
         },
@@ -228,7 +207,6 @@
       "data": {
         "accounts": [
           {
-            "account_id": "acc_spark_001",
             "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
             "operator": "pinnacle-media.com",
             "name": "Spark (via Pinnacle)",
@@ -238,7 +216,6 @@
             "account_scope": "operator_brand"
           },
           {
-            "account_id": "acc_glow_pending",
             "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
             "operator": "pinnacle-media.com",
             "name": "Glow",

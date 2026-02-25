@@ -15,7 +15,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account to bill for this media buy. Pass an account_id from list_accounts or sync_accounts, or use a natural key (brand, operator) if the seller supports implicit_from_sync resolution."
+      "description": "Account to bill for this media buy. Pass an account_id from list_accounts (explicit model), or use a natural key (brand, operator) if the seller supports implicit_from_sync resolution."
     },
     "proposal_id": {
       "type": "string",
