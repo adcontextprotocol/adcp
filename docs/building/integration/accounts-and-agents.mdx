@@ -350,7 +350,7 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 
 ### Verification flow
 
-1. Resolve `{house}/.well-known/brand.json`
+1. Resolve `{brand.domain}/.well-known/brand.json`
 2. Check `authorized_operators` for matching `domain` with the brand in `brands`
 3. If found → proceed (account may still need credit/legal approval)
 4. If not found → reject the account (`action: "failed"`) or return `pending_approval` for manual review

@@ -5,7 +5,7 @@ testable: false
 
 Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing.
 
-Each usage record is self-contained — it carries its own `account_id`, `operator_id`, and `buyer_campaign_ref`. A single request can span multiple accounts, operators, and campaigns.
+Each usage record is self-contained — it carries its own `account`, `operator_id`, and `buyer_campaign_ref`. A single request can span multiple accounts, operators, and campaigns.
 
 **Response Time**: ~1s.
 
@@ -58,7 +58,7 @@ Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `curre
   },
   "usage": [
     {
-      "account_id": "acct_pinnacle_signals",
+      "account": { "account_id": "acct_pinnacle_signals" },
       "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_launch_001",
       "kind": "signal",
@@ -93,7 +93,7 @@ A single request spanning two brands with different accounts and operators:
   },
   "usage": [
     {
-      "account_id": "acct_pinnacle_signals",
+      "account": { "account_id": "acct_pinnacle_signals" },
       "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_q1_001",
       "kind": "signal",
@@ -104,7 +104,7 @@ A single request spanning two brands with different accounts and operators:
       "currency": "USD"
     },
     {
-      "account_id": "acct_nova_signals",
+      "account": { "account_id": "acct_nova_signals" },
       "operator_id": "nova-brands.com",
       "buyer_campaign_ref": "mb_summer_preview_002",
       "kind": "content_standards",
