@@ -390,6 +390,8 @@ export interface PlannerContext {
     /** Whether this is a real company org vs an auto-generated personal workspace */
     is_personal_workspace?: boolean;
     persona?: string;
+    /** Whether this company is in Addie's SDR pipeline */
+    is_addie_prospect?: boolean;
   };
   /** What capabilities has/hasn't this member unlocked? */
   capabilities?: MemberCapabilities;

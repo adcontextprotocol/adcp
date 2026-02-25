@@ -811,6 +811,14 @@
             My Accounts
             <span class="badge" id="count-my_accounts">0</span>
           </button>
+          <button class="view-tab" data-view="addie_pipeline" onclick="switchView('addie_pipeline')" style="background: var(--color-info-50); border-color: var(--color-info-200);">
+            Addie's pipeline
+            <span class="badge" id="count-addie_pipeline" style="background: var(--color-info-200);">0</span>
+          </button>
+          <button class="view-tab" data-view="needs_human" onclick="switchView('needs_human')" style="background: var(--color-warning-50); border-color: var(--color-warning-200);">
+            Needs human
+            <span class="badge" id="count-needs_human" style="background: var(--color-warning-200);">0</span>
+          </button>
           <button class="view-tab active" data-view="all" onclick="switchView('all')">
             All
           </button>
@@ -947,6 +955,7 @@
               <option value="negotiating">Negotiating</option>
               <option value="converted">Converted</option>
               <option value="declined">Declined</option>
+              <option value="disqualified">Disqualified</option>
             </select>
           </div>
           <div class="form-group">
@@ -1217,6 +1226,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       renewals: 'Active members with subscriptions ending in the next 60 days',
       low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
       my_accounts: 'Organizations where you are the owner or watching',
+      addie_pipeline: 'Prospects auto-triaged and owned by Addie — review her work or reassign to a human',
+      needs_human: 'Unowned prospects needing a human — claim these or assign to a team member. Unclaimed after 48h are auto-assigned to Addie.',
       all: 'All organizations in the system',
       domain_discovery: 'Email domains from Slack and Email contacts not yet associated with organizations - potential prospects to add',
       prospect_search: 'Search Lusha database for companies matching your ideal customer profile - find new prospects by industry, size, and location',
@@ -1321,6 +1332,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('count-going_cold').textContent = viewCounts.going_cold || 0;
       document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
       document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
+      document.getElementById('count-addie_pipeline').textContent = viewCounts.addie_pipeline || 0;
+      document.getElementById('count-needs_human').textContent = viewCounts.needs_human || 0;
       // hot_prospects and low_engagement are calculated client-side, so we don't show counts
     }
 
@@ -1329,7 +1342,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const prospectOwner = document.getElementById('prospectOwner');
 
       filterOwner.innerHTML = '<option value="">All</option>';
-      prospectOwner.innerHTML = '<option value="">Not assigned</option>';
+      prospectOwner.innerHTML = '<option value="">Not assigned</option><option value="addie">Addie (AI SDR)</option>';
 
       teamMembers.forEach(member => {
         const isMe = currentUser?.id && member.user_id === currentUser.id;
@@ -1384,7 +1397,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       // Fetch data for view
       // open_invoices is filtered client-side since we already have the data
-      const serverViews = ['needs_followup', 'new_signups', 'hot_prospects', 'going_cold', 'renewals', 'low_engagement', 'my_accounts'];
+      const serverViews = ['needs_followup', 'new_signups', 'hot_prospects', 'going_cold', 'renewals', 'low_engagement', 'my_accounts', 'addie_pipeline', 'needs_human'];
       const viewParam = (view === 'all' || view === 'open_invoices') ? '' : (serverViews.includes(view) ? `?view=${view}` : '');
       const response = await fetch(`/api/admin/prospects${viewParam}`);
 

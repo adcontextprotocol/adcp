@@ -182,6 +182,32 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             orderBy = ` ORDER BY o.last_activity_at DESC NULLS LAST`;
             break;
 
+          case "addie_pipeline":
+            // Prospects owned by Addie (auto-triaged), excluding disqualified
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.prospect_owner = 'addie'
+                AND o.subscription_status IS NULL
+                AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            `;
+            orderBy = ` ORDER BY o.created_at DESC`;
+            break;
+
+          case "needs_human":
+            // All unowned prospects (no 30-day cliff — stale ones need attention too)
+            query = `
+              ${selectFields}
+              FROM organizations o
+              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              WHERE o.prospect_owner IS NULL
+                AND o.subscription_status IS NULL
+                AND COALESCE(o.prospect_status, 'prospect') = 'prospect'
+            `;
+            orderBy = ` ORDER BY o.created_at DESC`;
+            break;
+
           default:
             // Default: all orgs
             query = `

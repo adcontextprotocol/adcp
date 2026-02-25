@@ -40,6 +40,10 @@ export interface EnrichmentResult {
     revenueRange?: string;
     industry?: string;
     suggestedCompanyType?: string | null;
+    description?: string;
+    specialties?: string[];
+    country?: string;
+    foundedYear?: number;
   };
 }
 
@@ -291,6 +295,10 @@ export async function enrichOrganization(
       revenueRange: result.data.revenueRange || formatRevenueRange(result.data.revenue) || undefined,
       industry: result.data.mainIndustry,
       suggestedCompanyType: suggestedType,
+      description: result.data.description,
+      specialties: result.data.specialties,
+      country: result.data.country,
+      foundedYear: result.data.foundedYear,
     },
   };
 }
@@ -344,6 +352,10 @@ export async function enrichDomain(domain: string): Promise<EnrichmentResult> {
       revenueRange: result.data.revenueRange || formatRevenueRange(result.data.revenue) || undefined,
       industry: result.data.mainIndustry,
       suggestedCompanyType: suggestedType,
+      description: result.data.description,
+      specialties: result.data.specialties,
+      country: result.data.country,
+      foundedYear: result.data.foundedYear,
     },
   };
 }

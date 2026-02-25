@@ -26,6 +26,7 @@ import {
   type AssistantMessageEvent,
 } from '../addie/index.js';
 import { queueForNoteExtraction } from '../addie/services/passive-note-extractor.js';
+import { triageAndCreateProspect } from '../services/prospect-triage.js';
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
@@ -160,6 +161,20 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
     }
 
     logger.info({ email }, 'New Slack user added');
+
+    // Fire-and-forget prospect triage for business emails
+    if (email && process.env.ANTHROPIC_API_KEY) {
+      const domain = email.split('@')[1];
+      const title = user.profile?.title ?? undefined;
+      triageAndCreateProspect(domain, {
+        name: realName ?? undefined,
+        email,
+        title,
+        source: 'slack',
+      }).catch(err => {
+        logger.error({ err, domain }, 'Prospect triage failed for Slack join');
+      });
+    }
   } catch (error) {
     logger.error({ error, userId: user.id }, 'Failed to process team_join event');
   }

@@ -146,7 +146,7 @@ This ensures users are notified when their escalated requests are handled.
 - find_prospect: Quick search for prospects
 - add_prospect: Add a new prospect
 - update_prospect: Update prospect info
-- list_prospects: List prospects with filtering
+- query_prospects: Query prospects across views (all, my_engaged, my_followups, unassigned, addie_pipeline)
 - enrich_company: Research a company via Lusha
 - prospect_search_lusha: Search Lusha for prospects
 - lookup_organization: Look up membership status
