@@ -195,7 +195,7 @@ npx adcp \
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
 | `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
-| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion event with optional `cost_per` or `per_ad_spend` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `rate` target). Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
+| `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion events with `event_sources` array, optional `cost_per` or `per_ad_spend` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `threshold_rate` target). Product must declare support in `conversion_tracking.supported_optimization_strategies`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
@@ -350,9 +350,9 @@ const result = await testAgent.createMediaBuy({
     bid_price: 1.20,
     optimization_goals: [{
       kind: 'event',
-      event_source_id: 'retailer_sales',
-      event_type: 'purchase',
-      value_field: 'value',
+      event_sources: [
+        { event_source_id: 'retailer_sales', event_type: 'purchase', value_field: 'value' }
+      ],
       target: { kind: 'per_ad_spend', value: 4.0 },
       priority: 1
     }]
@@ -397,9 +397,9 @@ async def create_optimized_campaign():
             'bid_price': 1.20,
             'optimization_goals': [{
                 'kind': 'event',
-                'event_source_id': 'retailer_sales',
-                'event_type': 'purchase',
-                'value_field': 'value',
+                'event_sources': [
+                    { 'event_source_id': 'retailer_sales', 'event_type': 'purchase', 'value_field': 'value' }
+                ],
                 'target': { 'kind': 'per_ad_spend', 'value': 4.0 },
                 'priority': 1
             }]

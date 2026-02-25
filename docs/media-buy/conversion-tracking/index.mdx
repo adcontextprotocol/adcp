@@ -1,8 +1,8 @@
 ---
 title: Conversion Tracking
-description: Configure event sources, send conversion events, match users for attribution, and optimize delivery toward cost, rate, and return-on-spend goals.
+description: Configure event sources, send conversion events, match users for attribution, and optimize delivery toward cost, threshold rate, and return-on-spend goals.
 testable: true
-keywords: [conversion tracking, event sources, attribution, optimization goals, user matching, event logging, cost_per, per_ad_spend, rate]
+keywords: [conversion tracking, event sources, attribution, optimization goals, user matching, event logging, cost_per, per_ad_spend, threshold_rate]
 ---
 
 
@@ -236,42 +236,48 @@ There are two kinds of goals, discriminated by `kind`:
 
 ### kind: event
 
-Optimize for an advertiser-tracked conversion event. Requires an event source registered via `sync_event_sources`.
+Optimize for advertiser-tracked conversion events. The `event_sources` array defines which source-type pairs feed this goal. The seller deduplicates by `event_id` across all entries — the same business event reported by multiple sources (e.g., web analytics and an MMP) counts once.
 
-**Cost per conversion**:
+**Cost per conversion** (single source):
 
 ```json
 {
   "kind": "event",
-  "event_source_id": "website_pixel",
-  "event_type": "lead",
+  "event_sources": [
+    { "event_source_id": "website_pixel", "event_type": "lead" }
+  ],
   "target": { "kind": "cost_per", "value": 25.00 },
   "priority": 1
 }
 ```
 
-**Return on ad spend** (requires `value_field`):
+**Return on ad spend** (multiple sources with refunds):
 
 ```json
 {
   "kind": "event",
-  "event_source_id": "website_pixel",
-  "event_type": "purchase",
-  "value_field": "value",
+  "event_sources": [
+    { "event_source_id": "web_pixel", "event_type": "purchase", "value_field": "order_total" },
+    { "event_source_id": "app_sdk", "event_type": "purchase", "value_field": "order_total" },
+    { "event_source_id": "web_pixel", "event_type": "refund", "value_field": "refund_amount", "value_factor": -1 }
+  ],
   "target": { "kind": "per_ad_spend", "value": 4.0 },
   "attribution_window": { "click_through": "28d", "view_through": "1d" },
   "priority": 1
 }
 ```
 
-The `value_field` tells the seller which field on each event's `custom_data` carries the monetary value. For `per_ad_spend` targets, the seller calculates `sum(value_field) / spend` and optimizes toward the target ratio.
+For `per_ad_spend` targets, each event source entry specifies a `value_field` (which field on `custom_data` carries the monetary value) and an optional `value_factor` (multiplier, defaults to 1). The seller computes `sum(value_field * value_factor) / spend` across all deduplicated events.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | `"event"` | Yes | Discriminator |
-| `event_source_id` | string | Yes | Event source to optimize against (must be configured via `sync_event_sources`) |
-| `event_type` | [EventType](#event-types) | Yes | Event type to optimize for (e.g., `purchase`, `lead`, `app_install`) |
-| `value_field` | string | When target is `per_ad_spend` | Field on `custom_data` carrying the monetary value (e.g., `value`, `order_total`, `profit_margin`) |
+| `event_sources` | array | Yes | Source-type pairs feeding this goal. Seller deduplicates by `event_id` across entries. |
+| `event_sources[].event_source_id` | string | Yes | Event source (must be configured via `sync_event_sources`) |
+| `event_sources[].event_type` | [EventType](#event-types) | Yes | Event type to include (e.g., `purchase`, `lead`, `refund`) |
+| `event_sources[].custom_event_name` | string | When event_type is `custom` | Platform-specific custom event name |
+| `event_sources[].value_field` | string | When target is `per_ad_spend` | Field on `custom_data` carrying the monetary value. Must be numeric, in buy currency. |
+| `event_sources[].value_factor` | number | No | Multiplier for value_field (default 1). Use -1 for refunds, 0.01 for cents. |
 | `target.kind` | `"cost_per"` \| `"per_ad_spend"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
 | `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = $4 per $1 spent) |
 | `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
@@ -279,7 +285,7 @@ The `value_field` tells the seller which field on each event's `custom_data` car
 
 ### kind: metric
 
-Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively. Use when buying on CPM but wanting to optimize toward a click or view cost target, or a target rate like CTR.
+Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively.
 
 **Cost per click**:
 
@@ -292,24 +298,46 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 }
 ```
 
-**Target click-through rate**:
+**Minimum click-through rate**:
 
 ```json
 {
   "kind": "metric",
   "metric": "clicks",
-  "target": { "kind": "rate", "value": 0.001 },
+  "target": { "kind": "threshold_rate", "value": 0.001 },
   "priority": 2
+}
+```
+
+**Minimum attention time**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "attention_seconds",
+  "target": { "kind": "threshold_rate", "value": 5.0 },
+  "priority": 3
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | `"metric"` | Yes | Discriminator |
-| `metric` | `"clicks"` \| `"views"` \| `"completed_views"` | Yes | Seller-native metric to optimize for |
-| `target.kind` | `"cost_per"` \| `"rate"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
-| `target.value` | number | Yes (if target set) | Cost per metric unit in buy currency, or rate as a decimal (e.g., 0.001 for 0.1% CTR) |
+| `metric` | string | Yes | Seller-native metric (see metrics table below) |
+| `target.kind` | `"cost_per"` \| `"threshold_rate"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
+| `target.value` | number | Yes (if target set) | Cost per metric unit in buy currency, or minimum per-impression value |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+**Metrics**:
+
+| Metric | Unit | `threshold_rate` example | Description |
+|---|---|---|---|
+| `clicks` | count/impression | 0.001 (0.1% CTR) | Click-throughs |
+| `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
+| `completed_views` | count/impression | 0.85 (85% VCR) | Video completions |
+| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression |
+| `attention_seconds` | seconds/impression | 5.0 (5s attention) | Attention time per impression |
+| `attention_score` | score/impression | 40.0 (vendor-specific) | Attention score per impression |
 
 ### Target kinds
 
@@ -317,23 +345,23 @@ All target kinds across both goal types:
 
 | `target.kind` | Metric goals | Event goals | Description |
 |---|---|---|---|
-| `cost_per` | Cost per click/view/completed view | Cost per conversion event | `spend / count` |
-| `rate` | CTR, VCR, etc. | — | `count / impressions` |
-| `per_ad_spend` | — | ROAS, profit per spend, etc. | `sum(value_field) / spend` |
+| `cost_per` | Cost per click/view/etc. | Cost per conversion event | `spend / count` |
+| `threshold_rate` | Minimum per-impression value | — | `at least X per impression` |
+| `per_ad_spend` | — | ROAS, profit per spend, etc. | `sum(value_field * value_factor) / spend` |
 
 ### Choosing a strategy
 
 | Goal | When to use | What you set |
 |---|---|---|
-| Max conversions | As many conversions as possible within budget | `kind: "event"` + event source, no target |
+| Max conversions | As many conversions as possible within budget | `kind: "event"` + event sources, no target |
 | Target cost per conversion | Specific cost per event | `kind: "event"` + `target: { kind: "cost_per", value: 25.0 }` |
-| Target return on ad spend | Specific return ratio on a value field | `kind: "event"` + `value_field` + `target: { kind: "per_ad_spend", value: 4.0 }` |
+| Target return on ad spend | Specific return ratio on event values | `kind: "event"` + `value_field` on sources + `target: { kind: "per_ad_spend", value: 4.0 }` |
 | Max clicks | Maximize clicks within budget | `kind: "metric"`, `metric: "clicks"`, no target |
 | Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
-| Target CTR | Specific click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "rate", value: 0.001 }` |
-| Max views | Maximize views within budget | `kind: "metric"`, `metric: "views"`, no target |
-| Target cost per view | Specific cost per view | `kind: "metric"`, `metric: "views"` + `target: { kind: "cost_per", value: 0.02 }` |
-| Target VCR | Specific video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "rate", value: 0.85 }` |
+| Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
+| Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
+| Target attention | Minimum attention time | `kind: "metric"`, `metric: "attention_seconds"` + `target: { kind: "threshold_rate", value: 5.0 }` |
+| Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
 
 ### Multiple goals and priority
 
@@ -349,21 +377,23 @@ A package can have multiple goals. Priority controls which the seller treats as 
   },
   {
     "kind": "event",
-    "event_source_id": "mobile_sdk",
-    "event_type": "app_install",
+    "event_sources": [
+      { "event_source_id": "mobile_sdk", "event_type": "app_install" },
+      { "event_source_id": "mmp_adjust", "event_type": "app_install" }
+    ],
     "target": { "kind": "cost_per", "value": 10.00 },
     "priority": 1
   }
 ]
 ```
 
-The seller focuses on the `priority: 1` goal (installs at $10 cost per) and uses clicks as a proxy signal until install data accumulates.
+The seller focuses on the `priority: 1` goal (installs at $10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
 
 ### Prerequisites
 
 Before setting event optimization goals:
 
-1. **Configure event sources** — Call [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) to set up the event source referenced in `event_source_id`
+1. **Configure event sources** — Call [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) to set up the event sources referenced in `event_sources`
 2. **Check seller support** — The product must declare support in `conversion_tracking.supported_optimization_strategies` (returned by [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities))
 3. **Send events** — Use [`log_event`](/docs/media-buy/task-reference/log_event) to send conversion data. The seller needs event history to optimize effectively.
 

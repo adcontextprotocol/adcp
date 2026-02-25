@@ -390,9 +390,9 @@ A single media buy can span multiple product types and retailers. Each package t
       "pacing": "even",
       "optimization_goals": [{
         "kind": "event",
-        "event_source_id": "grocery_retailer_purchases",
-        "event_type": "purchase",
-        "value_field": "value",
+        "event_sources": [
+          { "event_source_id": "grocery_retailer_purchases", "event_type": "purchase", "value_field": "value" }
+        ],
         "target": { "kind": "per_ad_spend", "value": 3.0 },
         "priority": 1
       }]
