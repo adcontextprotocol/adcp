@@ -12,7 +12,7 @@
         "metric": {
           "type": "string",
           "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score"],
-          "description": "Seller-native metric to optimize for. Count metrics: clicks, views (viewable impressions), completed_views (video completions). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score per impression)."
+          "description": "Seller-native metric to optimize for. Count metrics: clicks, views (viewable impressions), completed_views (video or audio completions). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score per impression)."
         },
         "target": {
           "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
@@ -55,7 +55,7 @@
         "kind": { "type": "string", "const": "event" },
         "event_sources": {
           "type": "array",
-          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. The seller deduplicates by event_id across all entries — the same business event reported by multiple sources (e.g., web analytics and an MMP) counts once. All event sources must be configured via sync_event_sources.",
+          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. The seller deduplicates by event_id across all entries — the same business event reported by multiple sources (e.g., web analytics and an MMP) counts once. When a deduplicated event_id appears from multiple sources with different value_fields, the seller uses the value_field and value_factor from the first matching entry in the event_sources array. All event sources must be configured via sync_event_sources.",
           "items": {
             "type": "object",
             "properties": {

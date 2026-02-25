@@ -272,7 +272,7 @@ For `per_ad_spend` targets, each event source entry specifies a `value_field` (w
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `kind` | `"event"` | Yes | Discriminator |
-| `event_sources` | array | Yes | Source-type pairs feeding this goal. Seller deduplicates by `event_id` across entries. |
+| `event_sources` | array | Yes | Source-type pairs feeding this goal. Seller deduplicates by `event_id` across entries — when the same `event_id` arrives from multiple sources with different `value_field`s, the seller uses the `value_field` and `value_factor` from the first matching entry in this array. |
 | `event_sources[].event_source_id` | string | Yes | Event source (must be configured via `sync_event_sources`) |
 | `event_sources[].event_type` | [EventType](#event-types) | Yes | Event type to include (e.g., `purchase`, `lead`, `refund`) |
 | `event_sources[].custom_event_name` | string | When event_type is `custom` | Platform-specific custom event name |
@@ -286,6 +286,15 @@ For `per_ad_spend` targets, each event source entry specifies a `value_field` (w
 ### kind: metric
 
 Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively.
+
+**Maximize clicks** (no target — seller optimizes for volume within budget):
+
+```json
+{
+  "kind": "metric",
+  "metric": "clicks"
+}
+```
 
 **Cost per click**:
 
@@ -334,7 +343,7 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 |---|---|---|---|
 | `clicks` | count/impression | 0.001 (0.1% CTR) | Click-throughs |
 | `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
-| `completed_views` | count/impression | 0.85 (85% VCR) | Video completions |
+| `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions |
 | `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression |
 | `attention_seconds` | seconds/impression | 5.0 (5s attention) | Attention time per impression |
 | `attention_score` | score/impression | 40.0 (vendor-specific) | Attention score per impression |
@@ -388,6 +397,14 @@ A package can have multiple goals. Priority controls which the seller treats as 
 ```
 
 The seller focuses on the `priority: 1` goal (installs at $10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
+
+### Pricing model vs. optimization goal
+
+The pricing model (CPC, CPM, CPA, etc.) determines what the buyer pays. The optimization goal determines how the seller allocates impressions. These are independent — a package can use CPM pricing while optimizing toward a CPA target, or use CPA pricing while optimizing for ROAS. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for details on billing.
+
+### Reach and frequency
+
+Reach-based optimization (e.g., "maximize unique reach" or "target 70% reach of P18-49") is not expressed through `optimization_goals`. Instead, use [CPP pricing](/docs/media-buy/advanced-topics/pricing-models#cpp-cost-per-point) for GRP-based buys, `frequency_cap` on the package for frequency constraints, and delivery forecasts to plan reach before buying. Reach and frequency metrics are available in delivery reporting via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 ### Prerequisites
 
