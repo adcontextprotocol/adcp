@@ -19,7 +19,6 @@
         items: [
           { href: '/manage/referrals', label: 'Referrals', icon: '🔗' },
           { href: '/manage/prospects', label: 'Prospects', icon: '🎯' },
-          { href: '/manage/accounts', label: 'Accounts', icon: '📋' },
         ]
       },
       {

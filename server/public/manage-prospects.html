@@ -1739,7 +1739,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // Status badge
         let statusHtml;
         if (domain.existing_org) {
-          statusHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
+          statusHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
         } else {
           statusHtml = '<span class="status-badge status-prospect">New Prospect</span>';
         }
@@ -1750,7 +1750,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (domain.is_new_prospect) {
           actionHtml = `<button class="btn btn-primary btn-sm" onclick="createProspectFromDomain('${domain.domain}', '${primarySource}')">Create Prospect</button>`;
         } else {
-          actionHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View Org</a>`;
+          actionHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View account</a>`;
         }
 
         // Checkbox for new prospects
@@ -2445,7 +2445,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         return `
           <tr style="vertical-align: top;">
             <td>
-              <a href="/admin/organizations/${analysis.org_id}" target="_blank">
+              <a href="/admin/accounts/${analysis.org_id}" target="_blank">
                 <strong>${analysis.org_name}</strong>
               </a>
               <div style="margin-top: var(--space-2); display: flex; gap: var(--space-1); flex-wrap: wrap;">
@@ -3044,7 +3044,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       tbody.innerHTML = filteredProspects.map(prospect => {
         // Company name with link and type badge
-        let companyHtml = `<a href="/admin/organizations/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
+        let companyHtml = `<a href="/admin/accounts/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
         // Add type label inline - support both array and legacy single value
         let typeLabel = '';
         if (prospect.is_personal) {
@@ -3107,7 +3107,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           const amount = (invoice.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: invoice.currency || 'USD' });
           const statusClass = invoice.status === 'draft' ? 'draft' : '';
           const statusLabel = invoice.status === 'draft' ? 'Draft' : 'Open';
-          const invoiceUrl = invoice.hosted_invoice_url || `/admin/organizations/${prospect.workos_organization_id}`;
+          const invoiceUrl = invoice.hosted_invoice_url || `/admin/accounts/${prospect.workos_organization_id}`;
           activityHtml = `<a href="${invoiceUrl}" target="_blank" class="invoice-badge ${statusClass}" title="Click to view invoice">
             💰 ${statusLabel}: ${amount}
           </a>`;
@@ -3765,7 +3765,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           return `
             <div class="search-result-item">
               <div>
-                <a href="/admin/organizations/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
+                <a href="/admin/accounts/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
                 <div class="result-meta">${escapeHtml(contactInfo)}</div>
               </div>
               <div class="result-actions">
@@ -3775,7 +3775,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
                 <button class="result-action-btn invoice" onclick="quickInvoice('${org.workos_organization_id}')" title="Send invoice">
                   📄 Invoice
                 </button>
-                <button class="result-action-btn view" onclick="window.location='/admin/organizations/${org.workos_organization_id}'" title="View details">
+                <button class="result-action-btn view" onclick="window.location='/admin/accounts/${org.workos_organization_id}'" title="View details">
                   👁️
                 </button>
               </div>
