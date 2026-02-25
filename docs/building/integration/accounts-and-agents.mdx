@@ -9,7 +9,7 @@ AdCP distinguishes four entities in every billable operation:
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` ([brand.json](/docs/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | [Account reference](#account-references) |
-| **Operator** | Who operates the seat? | Domain (e.g., `pinnacle-media.com`) |
+| **Operator** | Who operates on the brand's behalf? | Domain (e.g., `pinnacle-media.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session |
 
 **Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id`), resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
@@ -24,13 +24,15 @@ See [Accounts Protocol overview](/docs/accounts/overview) for the full commercia
 
 ## What sellers declare
 
-Sellers configure four fields in the `account` section of [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#account):
+Sellers configure the `account` section of [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities#account):
 
 **1. Which billing models do you support?** (`supported_billing`)
 
+The buyer must pass one of these values as `billing` in every `sync_accounts` entry. The seller either accepts or rejects.
+
 | Billing | Who is invoiced | Use case |
 |---------|----------------|----------|
-| `operator` | Operator (agency or brand with own seat) | Operator buying on their own terms |
+| `operator` | Operator (agency or brand buying direct) | Operator buying on their own terms |
 | `agent` | Agent | Agent consolidates billing across brands |
 
 **2. Do you require operator-level auth?** (`require_operator_auth`)
@@ -39,53 +41,51 @@ When `false` (default): the seller trusts the agent. The agent authenticates onc
 
 When `true`: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band.
 
-**3. What's the default billing model?** (`default_billing`)
-
-Applied when the agent omits `billing` from `sync_accounts`. When set to `"agent"`, the seller pre-provisions a default account — a standing account with no brand or operator association — that buys route through automatically.
-
-**4. How do you resolve account references?** (`account_resolution`)
+**3. How do you resolve account references?** (`account_resolution`)
 
 | Resolution | Model | Description |
 |-----------|-------|-------------|
 | `explicit_account_id` | Explicit account IDs | Accounts are managed out-of-band (advertiser portal, sales rep). Buyer discovers them via `list_accounts` and passes a seller-assigned `account_id`. |
 | `implicit_from_sync` | Implicit account IDs | Buyer declares intent via `sync_accounts` — who's advertising, who's paying — and the seller provisions accounts. On subsequent requests, the buyer passes brand identity (`brand`, `operator`) and the seller resolves internally. |
 
-Default: `["explicit_account_id"]`. See [Account references](#account-references) for detailed workflows.
+Default: `"explicit_account_id"`. See [Account references](#account-references) for detailed workflows.
+
+Sellers can also declare `account_financials: true` to expose account-level financial data (spend, credit, invoices) via [`get_account_financials`](/docs/accounts/tasks/get_account_financials). This only applies to operator-billed accounts.
 
 **Example capabilities:**
 
 ```json
 {
   "account": {
-    "account_resolution": ["explicit_account_id", "implicit_from_sync"],
+    "account_resolution": "implicit_from_sync",
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent"],
-    "default_billing": "agent"
+    "supported_billing": ["operator", "agent"]
   }
 }
 ```
 
-These four fields combine into four common patterns.
+These three fields combine into four common patterns.
 
 ## Seller patterns
 
-| Pattern | `require_operator_auth` | `supported_billing` | `default_billing` |
-|---------|------------------------|--------------------|--------------------|
-| Operator-gated | `true` | `["operator"]` | — |
-| Direct-only | `false` | `["operator"]` | — |
-| Agent-consolidated | `false` | `["agent"]` | `"agent"` |
-| Hybrid | `false` | `["operator", "agent"]` | `"agent"` |
+Which kind of platform are you buying from? That determines the account setup pattern.
 
-### Operator-gated
+| Platform type | `require_operator_auth` | `supported_billing` |
+|---------------|------------------------|-------------------|
+| [Social / walled garden](#social-platform) | `true` | `["operator"]` |
+| [Direct publisher](#direct-publisher) | `false` | `["operator"]` or `["operator", "agent"]` |
+| [DSP / programmatic](#dsp--programmatic) | `false` | `["agent"]` |
 
-Each operator authenticates directly with the seller. No agent-level billing — every account has a direct billing relationship. Typical for premium publishers and platforms that enforce per-operator contract compliance.
+### Social platform
+
+The operator already has an account on the platform — an ad account, a business manager, a self-serve dashboard. The agent obtains the operator's credentials (via OAuth or API key) and opens a per-operator session. The platform bills the operator directly.
 
 **Capabilities:**
 
 ```json
 {
   "account": {
-    "account_resolution": ["explicit_account_id"],
+    "account_resolution": "explicit_account_id",
     "require_operator_auth": true,
     "supported_billing": ["operator"],
     "authorization_endpoint": "https://seller.example.com/oauth/authorize"
@@ -103,16 +103,15 @@ Each operator authenticates directly with the seller. No agent-level billing —
 3. Wait for account status `active` (poll `list_accounts` if `pending_approval`)
 4. Call `get_products` / `create_media_buy` with the operator's session and `account` reference
 
-**sync_accounts example:**
+**sync_accounts request:**
 
 ```json
 {
-  "brand": {
-    "domain": "nova-brands.com",
-    "brand_id": "spark"
-  },
-  "operator": "pinnacle-media.com",
-  "billing": "operator"
+  "accounts": [{
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com",
+    "billing": "operator"
+  }]
 }
 ```
 
@@ -120,31 +119,33 @@ Seller checks `nova-brands.com/.well-known/brand.json`, finds Pinnacle Media in 
 
 ```json
 {
-  "account_id": "acc_nova_spark",
-  "brand": {
-    "domain": "nova-brands.com",
-    "brand_id": "spark"
-  },
-  "operator": "pinnacle-media.com",
-  "status": "active",
-  "billing": "operator",
-  "account_scope": "operator_brand"
+  "accounts": [{
+    "account_id": "acc_nova_spark",
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com",
+    "action": "created",
+    "status": "active",
+    "billing": "operator",
+    "account_scope": "operator_brand"
+  }]
 }
 ```
 
 **Key point:** The operator's credential — not the agent's — authorizes all calls in that session. Brand.json verification is secondary to the credential.
 
-### Direct-only
+### Direct publisher
 
-The seller trusts the agent's identity but requires a direct account for every brand or operator. Operators listed in `brand.json` may be provisioned instantly; others go through `pending_approval` until T&C are signed out-of-band. No default account — the agent cannot buy without a direct account.
+The publisher trusts the agent but bills the operator directly. The agent sets up accounts via `sync_accounts` — no per-operator login needed. Accounts may require human approval (credit checks, legal agreements) before becoming active.
+
+Many publishers also accept agent billing (`supported_billing: ["operator", "agent"]`). The buyer chooses per account — operators with a direct relationship use `billing: "operator"`, everything else uses `billing: "agent"`. If the seller doesn't support the requested billing for a particular account, it rejects the request and the agent re-submits with a different model.
 
 **Capabilities:**
 
 ```json
 {
   "account": {
-    "account_resolution": ["explicit_account_id"],
-    "supported_billing": ["operator"]
+    "account_resolution": "explicit_account_id",
+    "supported_billing": ["operator", "agent"]
   }
 }
 ```
@@ -157,15 +158,15 @@ The seller trusts the agent's identity but requires a direct account for every b
 4. Call `get_products` with `account` reference
 5. Call `create_media_buy` with `account` reference
 
-**sync_accounts example — brand with own seat:**
+**sync_accounts request — brand buying direct:**
 
 ```json
 {
-  "brand": {
-    "domain": "acme-corp.com"
-  },
-  "operator": "acme-corp.com",
-  "billing": "operator"
+  "accounts": [{
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "billing": "operator"
+  }]
 }
 ```
 
@@ -173,18 +174,19 @@ Seller acknowledges the request but requires setup before provisioning:
 
 ```json
 {
-  "account_id": "acc_acme_pending",
-  "brand": {
-    "domain": "acme-corp.com"
-  },
-  "operator": "acme-corp.com",
-  "status": "pending_approval",
-  "billing": "operator",
-  "account_scope": "brand",
-  "setup": {
-    "url": "https://seller.example.com/advertiser-onboard",
-    "message": "Complete advertiser registration and credit application"
-  }
+  "accounts": [{
+    "account_id": "acc_acme_pending",
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "action": "created",
+    "status": "pending_approval",
+    "billing": "operator",
+    "account_scope": "brand",
+    "setup": {
+      "url": "https://seller.example.com/advertiser-onboard",
+      "message": "Complete advertiser registration and credit application"
+    }
+  }]
 }
 ```
 
@@ -196,94 +198,17 @@ The pending account is visible in `list_accounts` with its `account_id` — see 
 
 **Key point:** `pending_approval` is the normal path. Every buyer needs a direct relationship with the seller.
 
-### Agent-consolidated
-
-All billing flows through the agent. The seller pre-provisions a default account and creates per-brand/operator accounts immediately — no pending approval needed. The agent handles re-billing. Typical for DSP-style sellers and subscription content platforms.
-
-**Capabilities:**
-
-```json
-{
-  "account": {
-    "supported_billing": ["agent"],
-    "default_billing": "agent"
-  }
-}
-```
-
-**Buyer workflow:**
-
-1. Call `get_adcp_capabilities` — see `supported_billing: ["agent"]` and `default_billing: "agent"`
-2. Call `sync_accounts` for each brand/operator pair (billing is always `agent`)
-3. Accounts are active immediately — no human approval needed
-4. Call `get_products` / `create_media_buy` with `account` reference
-
-**sync_accounts example:**
-
-```json
-{
-  "brand": {
-    "domain": "nova-brands.com",
-    "brand_id": "spark"
-  },
-  "operator": "pinnacle-media.com",
-  "billing": "agent"
-}
-```
-
-Account active immediately:
-
-```json
-{
-  "account_id": "acc_spark_001",
-  "brand": {
-    "domain": "nova-brands.com",
-    "brand_id": "spark"
-  },
-  "operator": "pinnacle-media.com",
-  "status": "active",
-  "billing": "agent",
-  "account_scope": "operator_brand"
-}
-```
-
-**Key point:** The agent receives a single consolidated invoice. Per-brand accounts give reporting granularity but billing is centralized. Buys without a specific `account_id` route to the default account.
-
-### Hybrid
-
-Both paths are available. Direct accounts (operator billing) give buyers their own rate cards and invoicing with the seller. The default account serves as the fallback — buys without a direct account route through it automatically. Typical for sellers serving both direct buyers and programmatic buyers.
-
-**Capabilities:**
-
-```json
-{
-  "account": {
-    "supported_billing": ["operator", "agent"],
-    "default_billing": "agent"
-  }
-}
-```
-
-**Buyer workflow:**
-
-1. Call `get_adcp_capabilities` — see both billing models, `default_billing: "agent"`
-2. Call `sync_accounts` for each brand/operator pair with preferred billing:
-   - Operator with a direct seller relationship: `billing: "operator"`
-   - Everything else: `billing: "agent"` (or omit to accept the default)
-3. Direct accounts may go through `pending_approval`; agent-billed accounts are active immediately
-4. Call `get_products` / `create_media_buy` with `account` reference
-
-**sync_accounts example — unsupported billing rejected:**
+**Billing rejection — operator billing not available:**
 
 The seller supports operator billing in general, but may not support it for every operator. Here, the agent requests operator billing for an operator without a direct relationship:
 
 ```json
 {
-  "brand": {
-    "domain": "acme-corp.com"
-  },
-  "operator": "acme-corp.com",
-  "billing": "operator"
+  "accounts": [{
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "billing": "operator"
+  }]
 }
 ```
 
@@ -291,23 +216,71 @@ Seller rejects the request because this operator has no direct billing relations
 
 ```json
 {
-  "brand": {
-    "domain": "acme-corp.com"
-  },
-  "operator": "acme-corp.com",
-  "status": "rejected",
-  "billing": "operator",
-  "action": "failed",
-  "errors": [{
-    "code": "BILLING_NOT_SUPPORTED",
-    "message": "Operator billing is not available for this account. Re-submit with billing: \"agent\"."
+  "accounts": [{
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "action": "failed",
+    "status": "rejected",
+    "errors": [{
+      "code": "BILLING_NOT_SUPPORTED",
+      "message": "Operator billing is not available for this account. Re-submit with billing: \"agent\"."
+    }]
   }]
 }
 ```
 
-The agent should re-submit with a supported billing model (e.g., `"agent"`) or inform the buyer that operator billing is not available with this seller.
+The agent re-submits with `billing: "agent"` or informs the buyer that operator billing is not available with this seller. Billing is never silently remapped.
 
-**Key point:** The seller accepts the requested billing or rejects the request. Billing is never silently remapped. Direct accounts are preferred when available but the agent can always fall back to agent billing by re-submitting.
+### DSP / programmatic
+
+All billing flows through the agent. The agent has a standing relationship with the platform and consolidates billing across all brands and operators. Accounts are created instantly — no human approval needed.
+
+**Capabilities:**
+
+```json
+{
+  "account": {
+    "supported_billing": ["agent"]
+  }
+}
+```
+
+**Buyer workflow:**
+
+1. Call `get_adcp_capabilities` — see `supported_billing: ["agent"]`
+2. Call `sync_accounts` for each brand/operator pair with `billing: "agent"`
+3. Accounts are active immediately — no human approval needed
+4. Call `get_products` / `create_media_buy` with `account` reference
+
+**sync_accounts request:**
+
+```json
+{
+  "accounts": [{
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com",
+    "billing": "agent"
+  }]
+}
+```
+
+Account active immediately:
+
+```json
+{
+  "accounts": [{
+    "account_id": "acc_spark_001",
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com",
+    "action": "created",
+    "status": "active",
+    "billing": "agent",
+    "account_scope": "operator_brand"
+  }]
+}
+```
+
+**Key point:** The agent receives a single consolidated invoice. Per-brand accounts give reporting granularity but billing is centralized.
 
 ## Authorized operators
 
@@ -357,9 +330,9 @@ Brands declare who can represent them in `/.well-known/brand.json` via the `auth
 
 Verification is a trust signal, not a gate. Finding the operator in `brand.json` lets the seller fast-track provisioning. If the operator isn't listed, the seller can still approve through its own review process.
 
-**Self-authorization is implicit.** When the `operator` domain matches the brand's domain, the brand is operating its own seat — no listing in `authorized_operators` is needed.
+**Self-authorization is implicit.** When the `operator` domain matches the brand's domain, the brand is operating directly — no listing in `authorized_operators` is needed.
 
-`authorized_operators` models the interface between the brand and whoever holds the seat. It does not model internal agency hierarchies.
+`authorized_operators` models the interface between the brand and whoever operates on its behalf. It does not model internal agency hierarchies.
 
 ## Account references
 
@@ -383,7 +356,7 @@ The agent doesn't set up accounts, negotiate billing, or manage authentication w
 
 ### Implicit account IDs
 
-The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating the seat, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
+The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating on the brand's behalf, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
 
 **Typical sellers:** Traditional publishers, retail media networks — anywhere the buying relationship is established programmatically.
 
@@ -392,7 +365,7 @@ The agent manages the buying relationship. It calls `sync_accounts` to tell the 
 | Flag | What it tells the seller |
 |------|-------------------------|
 | `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
-| `operator` | Who operates the seat (agency, trading desk) |
+| `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
 | `billing` | Who gets the invoice — `operator` or `agent` |
 | `sandbox` | Whether this is a test account |
 
@@ -414,7 +387,7 @@ The agent may be involved in billing (when `billing` is `"agent"` or `"operator"
 
 ### Natural key semantics
 
-The tuple `(brand, operator)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates its own seat, set `operator` to the brand's domain. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency).
+The tuple `(brand, operator)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates directly, set `operator` to the brand's domain. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency).
 
 See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
 

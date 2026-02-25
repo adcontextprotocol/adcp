@@ -64,7 +64,7 @@
                   "operator",
                   "agent"
                 ],
-                "description": "Who is invoiced on this account. Matches the requested billing model (or the seller's default if omitted from the request)."
+                "description": "Who is invoiced on this account. Matches the requested billing model."
               },
               "account_scope": {
                 "type": "string",

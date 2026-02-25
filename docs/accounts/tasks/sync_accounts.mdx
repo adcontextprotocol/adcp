@@ -92,8 +92,8 @@ asyncio.run(main())
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `brand` | object | Yes | Brand reference identifying the advertiser. Contains `domain` (house domain where brand.json is hosted) and optional `brand_id` (for multi-brand houses). See [brand-ref](/docs/brand-protocol/brand-json). |
-| `operator` | string | Yes | Domain of the entity operating the seat (e.g. `pinnacle-media.com`). When the brand operates its own seat, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
-| `billing` | string | No | Who should be invoiced: `operator` or `agent`. Omit to accept the seller's default. The seller must either accept this billing model or reject the request. |
+| `operator` | string | Yes | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
+| `billing` | string | Yes | Who should be invoiced: `operator` or `agent`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts. The seller must either accept this billing model or reject the request. |
 | `sandbox` | boolean | No | When true, set up a sandbox account. No real platform calls or billing. |
 
 **Natural key**: The tuple `(brand, operator)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency).
@@ -120,7 +120,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `name` | Seller's display name for the account. |
 | `action` | What happened: `created`, `updated`, `unchanged`, or `failed`. |
 | `status` | Current state of the account (see [Account status](#account-status)). |
-| `billing` | Billing model applied. Matches the requested value, or the seller's default when omitted. |
+| `billing` | Billing model applied. Matches the requested value. |
 | `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (the agent's default account). See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, `message` explaining what's needed, and optional `expires_at`. |
 | `rate_card` | Seller-assigned rate card identifier (when applicable). |

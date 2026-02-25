@@ -69,11 +69,11 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent` |
+| `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
 | `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
-| `default_billing` | string | Billing model applied when agent omits `billing` from `sync_accounts`. Must be one of `supported_billing`. |
-| `account_resolution` | string[] | How this seller resolves account references in requests. Values: `explicit_account_id` (seller-assigned identifier) and/or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. |
+| `account_resolution` | string | How this seller resolves account references in requests. Either `explicit_account_id` (seller-assigned identifier) or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. Default: `explicit_account_id`. |
+| `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 
 #### Auth models
 
@@ -81,7 +81,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 
 **Operator-scoped** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and calls `sync_accounts` within each session to declare brands. The operator's credential authorizes all calls in that session.
 
-See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model, billing support, and default account.
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
 ### media_buy
 
@@ -448,8 +448,7 @@ const buy = await client.createMediaBuy({
   "supported_protocols": ["media_buy"],
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent"],
-    "default_billing": "operator"
+    "supported_billing": ["operator", "agent"]
   },
   "media_buy": {
     "features": {

@@ -29,11 +29,13 @@ Check this before requesting a sandbox account. If `sandbox` is not declared or 
 Request a sandbox account via `sync_accounts` using `"sandbox": true`:
 
 ```json
-// sync_accounts
+// sync_accounts request
 {
-  "brand": { "domain": "acme-corp.com" },
-  "operator": "acme-corp.com",
-  "sandbox": true
+  "accounts": [{
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  }]
 }
 ```
 

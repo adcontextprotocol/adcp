@@ -23,7 +23,7 @@
         },
         "operator": {
           "type": "string",
-          "description": "Domain of the entity operating the seat. When the brand operates its own seat, this is the brand's domain.",
+          "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         }
       },

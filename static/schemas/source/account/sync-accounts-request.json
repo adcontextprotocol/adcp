@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates each seat, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
+  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
   "type": "object",
   "properties": {
     "accounts": {
@@ -18,7 +18,7 @@
           },
           "operator": {
             "type": "string",
-            "description": "Domain of the entity operating the seat (e.g., 'pinnacle-media.com'). When the brand operates its own seat, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
@@ -27,7 +27,7 @@
               "operator",
               "agent"
             ],
-            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand operating its own seat). agent: agent consolidates billing across brands. Omit to accept the seller's default. The seller must either accept this billing model or reject the request."
+            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
           },
           "sandbox": {
             "type": "boolean",
@@ -36,7 +36,8 @@
         },
         "required": [
           "brand",
-          "operator"
+          "operator",
+          "billing"
         ],
         "additionalProperties": true
       },
@@ -86,7 +87,7 @@
       }
     },
     {
-      "description": "Brand operating its own seat",
+      "description": "Brand buying direct",
       "data": {
         "accounts": [
           {

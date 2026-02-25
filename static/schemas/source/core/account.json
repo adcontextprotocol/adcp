@@ -32,13 +32,13 @@
     },
     "operator": {
       "type": "string",
-      "description": "Domain of the entity operating this account. When the brand operates its own seat, this is the brand's domain.",
+      "description": "Domain of the entity operating this account. When the brand operates directly, this is the brand's domain.",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
     },
     "billing": {
       "type": "string",
       "enum": ["operator", "agent"],
-      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand operating its own seat). agent: agent consolidates billing."
+      "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing."
     },
     "rate_card": {
       "type": "string",

@@ -43,14 +43,10 @@
       "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
         "account_resolution": {
-          "type": "array",
+          "type": "string",
           "description": "How the seller resolves account references. explicit_account_id: accounts are managed out-of-band (advertiser portal, sales rep) and discovered via list_accounts. implicit_from_sync: buyer declares intent via sync_accounts and the seller provisions accounts.",
-          "items": {
-            "type": "string",
-            "enum": ["explicit_account_id", "implicit_from_sync"]
-          },
-          "minItems": 1,
-          "default": ["explicit_account_id"]
+          "enum": ["explicit_account_id", "implicit_from_sync"],
+          "default": "explicit_account_id"
         },
         "require_operator_auth": {
           "type": "boolean",
@@ -64,17 +60,17 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand operating its own seat). agent: agent consolidates billing.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. The buyer must pass one of these values in sync_accounts.",
           "items": {
             "type": "string",
             "enum": ["operator", "agent"]
           },
           "minItems": 1
         },
-        "default_billing": {
-          "type": "string",
-          "enum": ["operator", "agent"],
-          "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
+        "account_financials": {
+          "type": "boolean",
+          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
+          "default": false
         }
       },
       "required": ["supported_billing"]

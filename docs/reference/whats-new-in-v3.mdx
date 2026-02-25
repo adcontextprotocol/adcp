@@ -99,10 +99,10 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
 | **Account** | Who gets billed? | `account_id` from `sync_accounts` |
-| **Operator** | Who operates the seat? | Domain (e.g., `acmeagency.example.com`) |
+| **Operator** | Who operates on the brand's behalf? | Domain (e.g., `acmeagency.example.com`) |
 | **Agent** | What software places buys? | Authenticated session |
 
-**Two billing models:** `operator` (operator or brand with own seat is invoiced) and `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
+**Two billing models:** `operator` (operator or brand buying direct is invoiced) and `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
 
 **Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account` -> `create_media_buy` with `account`.
 

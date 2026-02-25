@@ -82,7 +82,7 @@ All parameters are optional. An empty request returns all accounts.
 | `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. May be absent when `status: "rejected"`. |
 | `name` | Vendor agent's display name for the account |
 | `brand` | Brand reference object: `domain` (the [brand registry](/docs/brand-protocol/brand-json) house domain) and optional `brand_id` (sub-brand within the house) |
-| `operator` | Operator domain. Always present — when the brand operates its own seat, `operator` equals the brand's domain. |
+| `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |

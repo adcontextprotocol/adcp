@@ -731,6 +731,16 @@
             "$ref": "/schemas/account/report-usage-response.json",
             "description": "Response payload for report_usage task"
           }
+        },
+        "get-account-financials": {
+          "request": {
+            "$ref": "/schemas/account/get-account-financials-request.json",
+            "description": "Request parameters for querying financial status of an operator-billed account"
+          },
+          "response": {
+            "$ref": "/schemas/account/get-account-financials-response.json",
+            "description": "Response payload for get_account_financials task"
+          }
         }
       }
     },
