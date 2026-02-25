@@ -345,6 +345,74 @@ export class BrandDatabase {
     return result.rowCount || 0;
   }
 
+  // ========== Company Search ==========
+
+  /**
+   * Search brands by name, alias, or domain.
+   * Searches brand_name, brand_names (localized aliases), and domain fields.
+   */
+  async findCompany(rawQuery: string, options: { limit?: number } = {}): Promise<Array<{
+    domain: string;
+    canonical_domain: string;
+    brand_name: string;
+    house_domain?: string;
+    keller_type?: string;
+    parent_brand?: string;
+    brand_agent_url?: string;
+    source: string;
+  }>> {
+    const limit = options.limit ?? 10;
+    const escaped = rawQuery.trim().replace(/[%_\\]/g, '\\$&');
+    const fuzzy = `%${escaped}%`;
+
+    const result = await query<{
+      domain: string;
+      canonical_domain: string | null;
+      brand_name: string | null;
+      house_domain: string | null;
+      keller_type: string | null;
+      parent_brand: string | null;
+      brand_agent_url: string | null;
+      source_type: string;
+    }>(
+      `SELECT
+        domain,
+        COALESCE(canonical_domain, domain) AS canonical_domain,
+        COALESCE(brand_name, domain) AS brand_name,
+        house_domain,
+        keller_type,
+        parent_brand,
+        brand_agent_url,
+        source_type
+      FROM discovered_brands
+      WHERE
+        brand_name ILIKE $1
+        OR domain ILIKE $1
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(brand_names) AS name_obj,
+               jsonb_each_text(name_obj) AS kv(k, v)
+          WHERE v ILIKE $1
+        )
+      ORDER BY
+        CASE WHEN LOWER(brand_name) = LOWER($2) THEN 0 ELSE 1 END,
+        brand_name NULLS LAST
+      LIMIT $3`,
+      [fuzzy, rawQuery.trim(), limit]
+    );
+
+    return result.rows.map(row => ({
+      domain: row.domain,
+      canonical_domain: row.canonical_domain ?? row.domain,
+      brand_name: row.brand_name ?? row.domain,
+      house_domain: row.house_domain ?? undefined,
+      keller_type: row.keller_type ?? undefined,
+      parent_brand: row.parent_brand ?? undefined,
+      brand_agent_url: row.brand_agent_url ?? undefined,
+      source: row.source_type,
+    }));
+  }
+
   // ========== Brand Registry (Combined View) ==========
 
   /**

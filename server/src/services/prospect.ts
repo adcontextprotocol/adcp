@@ -8,7 +8,7 @@
 import { getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
-import { enrichOrganization } from './enrichment.js';
+import { researchDomain } from './brand-enrichment.js';
 
 // Initialize WorkOS client if configured
 const workos =
@@ -38,7 +38,6 @@ export interface CreateProspectInput {
   prospect_next_action?: string;
   prospect_next_action_date?: string;
   prospect_owner?: string;
-  parent_organization_id?: string;
 }
 
 export interface CreateProspectResult {
@@ -131,11 +130,10 @@ export async function createProspect(
         prospect_next_action,
         prospect_next_action_date,
         prospect_owner,
-        parent_organization_id,
         is_personal,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, NOW(), NOW())
       RETURNING workos_organization_id, name, company_type, email_domain, prospect_status`,
       [
         workosOrg.id,
@@ -151,7 +149,6 @@ export async function createProspect(
         input.prospect_next_action || null,
         input.prospect_next_action_date || null,
         input.prospect_owner || null,
-        input.parent_organization_id || null,
       ]
     );
 
@@ -169,11 +166,11 @@ export async function createProspect(
         [workosOrg.id, normalizedDomain]
       );
 
-      // Auto-enrich in background
-      enrichOrganization(workosOrg.id, normalizedDomain).catch((err) => {
+      // Auto-enrich in background (brand registry + firmographics)
+      researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
         logger.warn(
           { err, domain: normalizedDomain, orgId: workosOrg.id },
-          'Background enrichment failed for new prospect'
+          'Background research failed for new prospect'
         );
       });
     }

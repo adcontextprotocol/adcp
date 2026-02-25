@@ -125,6 +125,7 @@ async function runTests() {
   await validateExample(
     {
       "buying_mode": "brief",
+      "account": { "brand": { "domain": "nikeinc.com", "brand_id": "nike" }, "operator": "nikeinc.com" },
       "brand": {
         "domain": "nikeinc.com",
         "brand_id": "nike"
@@ -155,7 +156,7 @@ async function runTests() {
   // Conversion tracking examples
   await validateExample(
     {
-      "account_id": "acct_12345",
+      "account": { "account_id": "acct_12345" },
       "event_sources": [
         {
           "event_source_id": "website_pixel",

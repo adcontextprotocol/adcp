@@ -217,6 +217,48 @@
           <span>Domain Discovery</span>
         </div>
 
+        <!-- Brand registry mapping -->
+        <div class="card">
+          <h2 style="margin-bottom: var(--space-2);">Brand registry mapping</h2>
+          <p class="subtitle">Organizations mapped to the brand registry for hierarchy and membership inheritance.</p>
+
+          <div style="display: flex; gap: var(--space-4); margin-bottom: var(--space-4);">
+            <div style="flex: 1; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-gray-50); text-align: center;">
+              <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--color-text-heading);" id="stat-total">-</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">With domain</div>
+            </div>
+            <div style="flex: 1; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-success-50, #ecfdf5); text-align: center;">
+              <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--color-success, #059669);" id="stat-mapped">-</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Mapped</div>
+            </div>
+            <div style="flex: 1; padding: var(--space-4); border-radius: var(--radius-md); background: var(--color-warning-50, #fff7ed); text-align: center;">
+              <div style="font-size: var(--text-2xl); font-weight: 600; color: var(--color-warning, #d97706);" id="stat-unmapped">-</div>
+              <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Unmapped</div>
+            </div>
+          </div>
+
+          <div id="unmapped-section" style="display: none;">
+            <div class="count-bar" style="margin-bottom: var(--space-3);">
+              <span class="count-info" id="unmapped-count"></span>
+              <button class="btn btn-secondary btn-sm" onclick="runBackfill()" id="backfillBtn">
+                Research unmapped (max 25)
+              </button>
+            </div>
+
+            <table class="domains-table">
+              <thead>
+                <tr>
+                  <th>Organization</th>
+                  <th>Domain</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="unmappedTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card">
           <h1>Domain Discovery</h1>
           <p class="subtitle">Find new prospects from Slack and email contacts that haven't been mapped to organizations.</p>
@@ -266,6 +308,12 @@
   </div>
 
   <script>
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
     // State
     let discoveredDomains = [];
     let slackDomains = [];
@@ -287,8 +335,110 @@
         console.log('Could not check enrichment config');
       }
 
-      await loadDomainDiscovery();
+      await Promise.all([
+        loadDomainDiscovery(),
+        loadMappingStats(),
+      ]);
     });
+
+    async function loadMappingStats() {
+      try {
+        const [statsRes, unmappedRes] = await Promise.all([
+          fetch('/api/admin/brand-enrichment/org-mapping-stats'),
+          fetch('/api/admin/brand-enrichment/unmapped-orgs?limit=50'),
+        ]);
+
+        if (statsRes.ok) {
+          const stats = await statsRes.json();
+          document.getElementById('stat-total').textContent = stats.total_with_domain;
+          document.getElementById('stat-mapped').textContent = stats.mapped;
+          document.getElementById('stat-unmapped').textContent = stats.unmapped;
+        }
+
+        if (unmappedRes.ok) {
+          const data = await unmappedRes.json();
+          if (data.orgs.length > 0) {
+            document.getElementById('unmapped-section').style.display = '';
+            document.getElementById('unmapped-count').textContent = `${data.count} unmapped organizations`;
+            renderUnmappedOrgs(data.orgs);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load mapping stats:', e);
+      }
+    }
+
+    function renderUnmappedOrgs(orgs) {
+      const tbody = document.getElementById('unmappedTableBody');
+      tbody.innerHTML = orgs.map(org => `
+        <tr id="unmapped-${escapeHtml(org.email_domain)}">
+          <td><a href="/admin/accounts/${encodeURIComponent(org.workos_organization_id)}">${escapeHtml(org.name)}</a></td>
+          <td><code>${escapeHtml(org.email_domain)}</code></td>
+          <td>${org.subscription_status === 'active'
+            ? '<span style="color: var(--color-success, #059669); font-weight: 500;">Member</span>'
+            : escapeHtml(org.prospect_status || 'none')}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm"
+                    data-domain="${escapeHtml(org.email_domain)}"
+                    data-org-id="${escapeHtml(org.workos_organization_id)}"
+                    onclick="researchSingle(this.dataset.domain, this.dataset.orgId)">
+              Research
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function researchSingle(domain, orgId) {
+      const row = document.getElementById('unmapped-' + domain);
+      const btn = row?.querySelector('button');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Researching...';
+      }
+      try {
+        const res = await fetch(`/api/admin/brand-enrichment/research/${domain}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ org_id: orgId }),
+        });
+        if (res.ok) {
+          if (btn) {
+            btn.textContent = 'Done';
+            btn.style.color = 'var(--color-success, #059669)';
+          }
+          await loadMappingStats();
+        } else {
+          if (btn) { btn.textContent = 'Failed'; btn.disabled = false; }
+        }
+      } catch (e) {
+        if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
+      }
+    }
+
+    async function runBackfill() {
+      const btn = document.getElementById('backfillBtn');
+      btn.disabled = true;
+      btn.textContent = 'Researching...';
+      try {
+        const res = await fetch('/api/admin/brand-enrichment/backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 25 }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          btn.textContent = `Done (${data.researched} researched)`;
+          await loadMappingStats();
+        } else {
+          btn.textContent = 'Failed';
+        }
+      } catch (e) {
+        btn.textContent = 'Error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
 
     async function loadDomainDiscovery() {
       try {

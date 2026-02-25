@@ -1,0 +1,3880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Account Management - AdCP Registry</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/js/company-types.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/manage-sidebar.js"></script>
+  <style>
+    /* =============================================================================
+       Admin Prospects styles
+       Uses design system variables - see /design-system.css for tokens
+       ============================================================================= */
+
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+
+    /* Markdown content styling */
+    .markdown-content h2 { font-size: var(--text-lg); font-weight: var(--font-semibold); margin: var(--space-4) 0 var(--space-2); color: var(--color-text-heading); }
+    .markdown-content h3 { font-size: var(--text-base); font-weight: var(--font-semibold); margin: var(--space-3) 0 var(--space-2); color: var(--color-text-heading); }
+    .markdown-content p { margin-bottom: var(--space-3); }
+    .markdown-content ul, .markdown-content ol { margin: var(--space-2) 0; padding-left: var(--space-5); }
+    .markdown-content li { margin-bottom: var(--space-1); }
+    .markdown-content strong { font-weight: var(--font-semibold); }
+    .markdown-content code { background: var(--color-bg-subtle); padding: var(--space-0.5) var(--space-1); border-radius: var(--radius-sm); font-size: 0.9em; }
+    .markdown-content pre { background: var(--color-bg-subtle); padding: var(--space-3); border-radius: var(--radius-md); overflow-x: auto; margin: var(--space-3) 0; }
+    .markdown-content pre code { background: none; padding: 0; }
+    .markdown-content blockquote { border-left: 3px solid var(--color-brand); padding-left: var(--space-3); margin: var(--space-3) 0; color: var(--color-text-secondary); }
+    .markdown-content table { width: 100%; border-collapse: collapse; margin: var(--space-3) 0; }
+    .markdown-content th, .markdown-content td { padding: var(--space-2); border: 1px solid var(--color-border); text-align: left; }
+    .markdown-content th { background: var(--color-bg-subtle); font-weight: var(--font-semibold); }
+
+    /* View Tabs */
+    .view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      margin-bottom: var(--space-5);
+      padding-bottom: var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .view-tab {
+      padding: var(--space-2) var(--space-4);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .view-tab:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-gray-300);
+    }
+    .view-tab.active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+    .view-tab .badge {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .view-tab.active .badge {
+      background: var(--color-primary-200);
+      color: var(--color-primary-900);
+    }
+
+    /* Section Headers */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+    .section-title {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+    }
+    .section-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Filters - simplified */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+      padding: var(--space-3);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+    }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .filter-group label {
+      font-weight: var(--font-medium);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .filter-group select,
+    .filter-group input {
+      padding: var(--space-1.5) var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      min-width: 120px;
+    }
+    .filter-group input[type="text"] {
+      min-width: 180px;
+    }
+
+    /* Actions */
+    .actions {
+      display: flex;
+      gap: var(--space-2.5);
+    }
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--color-primary-700);
+    }
+    .btn-secondary {
+      background: var(--color-gray-200);
+      color: var(--color-text-heading);
+    }
+    .btn-secondary:hover {
+      background: var(--color-gray-300);
+    }
+    .btn-sm {
+      padding: var(--space-1.5) var(--space-3);
+      font-size: var(--text-xs);
+    }
+
+    /* Table */
+    .prospects-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .prospects-table th {
+      background: var(--color-gray-50);
+      padding: var(--space-3);
+      text-align: left;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+      font-size: var(--text-sm);
+    }
+    .prospects-table td {
+      padding: var(--space-3);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+      font-size: var(--text-sm);
+    }
+    .prospects-table tr:hover {
+      background: var(--color-gray-50);
+    }
+
+    /* Engagement fires */
+    .engagement-fires {
+      font-size: var(--text-sm);
+      letter-spacing: 1px;
+      cursor: help;
+    }
+
+    /* Company link */
+    .company-link {
+      color: var(--color-text-heading);
+      text-decoration: none;
+      font-weight: var(--font-medium);
+    }
+    .company-link:hover {
+      color: var(--color-brand);
+      text-decoration: underline;
+    }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .status-member { background: var(--color-success-100); color: var(--color-success-700); }
+    .status-prospect { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .status-cold { background: var(--color-gray-200); color: var(--color-text-secondary); }
+    .status-disqualified { background: var(--color-gray-300); color: var(--color-text-muted); }
+
+    /* Source badges for domain discovery */
+    .source-badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .source-slack {
+      background: var(--color-primary-100);
+      color: var(--color-primary-700);
+    }
+    .source-email {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+
+    /* Source filter buttons */
+    .source-filter-btn {
+      padding: var(--space-1) var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .source-filter-btn:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-gray-300);
+    }
+    .source-filter-btn.active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+
+    /* Priority indicators */
+    .priority-high {
+      color: var(--color-error-600);
+      font-weight: var(--font-semibold);
+    }
+    .priority-medium {
+      color: var(--color-warning-600);
+    }
+    .priority-low {
+      color: var(--color-text-muted);
+    }
+
+    /* Stakeholder badges */
+    .stakeholder-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      background: var(--color-primary-50);
+      color: var(--color-primary-700);
+    }
+    .stakeholder-badge.owner {
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+    }
+    .stakeholder-badge.watching {
+      background: var(--color-info-bg);
+      color: var(--color-info);
+    }
+    .stakeholder-badge.connected {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
+    }
+
+    /* Owner cell with inline actions */
+    .owner-cell {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .owner-name {
+      font-weight: var(--font-medium);
+    }
+    .owner-name.me {
+      color: var(--color-success-600);
+    }
+    .owner-select {
+      padding: var(--space-1) var(--space-2);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      background: var(--color-bg-card);
+      cursor: pointer;
+      min-width: 100px;
+    }
+    .owner-select:hover {
+      border-color: var(--color-gray-300);
+    }
+    .owner-select:focus {
+      outline: none;
+      border-color: var(--color-brand);
+    }
+
+    /* Watch toggle button */
+    .watch-btn {
+      padding: var(--space-1);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: var(--text-base);
+      opacity: 0.4;
+      transition: var(--transition-all);
+    }
+    .watch-btn:hover {
+      opacity: 0.7;
+    }
+    .watch-btn.watching {
+      opacity: 1;
+      color: var(--color-warning-500);
+    }
+    .watch-btn.watching:hover {
+      opacity: 0.8;
+    }
+
+    /* Domain display */
+    .domain-cell {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .domain-primary {
+      color: var(--color-text-heading);
+      font-weight: var(--font-medium);
+    }
+    .domain-count {
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+
+    /* Users cell - Slack/Web counts */
+    .users-cell {
+      display: flex;
+      gap: var(--space-2);
+      font-size: var(--text-xs);
+    }
+    .user-count {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-0.5);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      background: var(--color-gray-100);
+    }
+    .user-count.slack {
+      background: var(--color-primary-50);
+      color: var(--color-primary-700);
+    }
+    .user-count.web {
+      background: var(--color-success-50);
+      color: var(--color-success-700);
+    }
+    .user-count.none {
+      background: transparent;
+      color: var(--color-text-muted);
+    }
+
+    /* Last activity */
+    .activity-cell {
+      font-size: var(--text-xs);
+    }
+    .activity-type {
+      text-transform: capitalize;
+      color: var(--color-text-heading);
+    }
+    .activity-date {
+      color: var(--color-text-muted);
+    }
+    .activity-date.recent {
+      color: var(--color-success-600);
+    }
+    .activity-date.stale {
+      color: var(--color-warning-600);
+    }
+    .activity-date.cold {
+      color: var(--color-error-600);
+    }
+
+    /* Pending steps badge */
+    .pending-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .pending-badge.overdue {
+      background: var(--color-error-100);
+      color: var(--color-error-700);
+    }
+
+    /* Interest level badges */
+    .interest-badge {
+      display: inline-block;
+      padding: var(--space-0.5) var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+    }
+    .interest-low { background: var(--color-gray-100); color: var(--color-text-muted); }
+    .interest-medium { background: var(--color-warning-100); color: var(--color-warning-700); }
+    .interest-high { background: var(--color-success-100); color: var(--color-success-700); }
+    .interest-very_high { background: var(--color-primary-100); color: var(--color-primary-700); }
+
+    /* Invoice badge */
+    .invoice-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-0.5) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      cursor: pointer;
+    }
+    .invoice-badge:hover {
+      background: var(--color-success-200);
+    }
+    .invoice-badge.draft {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .invoice-badge.draft:hover {
+      background: var(--color-warning-200);
+    }
+
+    /* Compact table styling */
+    .prospects-table th,
+    .prospects-table td {
+      white-space: nowrap;
+    }
+    .prospects-table .col-company { min-width: 180px; }
+    .prospects-table .col-domain { min-width: 120px; }
+    .prospects-table .col-users { min-width: 100px; }
+    .prospects-table .col-activity { min-width: 120px; }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+    .empty-state h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    /* Buttons */
+    .btn-icon {
+      padding: var(--space-1.5) var(--space-3);
+      border: var(--border-1) solid var(--color-gray-200);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .btn-icon:hover {
+      background: var(--color-gray-50);
+      border-color: var(--color-brand);
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--color-surface-overlay);
+    }
+    .modal-content {
+      background-color: var(--color-bg-card);
+      margin: var(--space-8) auto;
+      padding: var(--space-8);
+      border-radius: var(--radius-md);
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-5);
+      padding-bottom: var(--space-4);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+    }
+    .modal-close {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      line-height: 1;
+    }
+    .modal-close:hover {
+      color: var(--color-text-heading);
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: var(--space-4);
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: var(--space-2.5);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .form-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .form-hint {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+    .modal-actions {
+      display: flex;
+      gap: var(--space-2.5);
+      justify-content: flex-end;
+      margin-top: var(--space-6);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-gray-200);
+    }
+
+    /* Date badges */
+    .date-overdue {
+      color: var(--color-error-600);
+      font-weight: var(--font-semibold);
+    }
+    .date-soon {
+      color: var(--color-warning-600);
+      font-weight: var(--font-medium);
+    }
+
+    /* Quick Action Bar */
+    .quick-action-bar {
+      display: flex;
+      gap: var(--space-3);
+      align-items: center;
+      padding: var(--space-4);
+      background: linear-gradient(135deg, var(--color-primary-50), var(--color-info-50));
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-5);
+      border: var(--border-1) solid var(--color-primary-200);
+    }
+    .quick-action-bar .search-container {
+      flex: 1;
+      position: relative;
+    }
+    .quick-action-bar .search-input {
+      width: 100%;
+      padding: var(--space-3) var(--space-4);
+      padding-left: var(--space-10);
+      border: var(--border-2) solid var(--color-primary-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-base);
+      background: white;
+      transition: var(--transition-all);
+    }
+    .quick-action-bar .search-input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+    .quick-action-bar .search-icon {
+      position: absolute;
+      left: var(--space-3);
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-text-muted);
+    }
+    .quick-action-bar .search-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      margin-top: var(--space-1);
+      box-shadow: var(--shadow-lg);
+      max-height: 400px;
+      overflow-y: auto;
+      z-index: 100;
+      display: none;
+    }
+    .quick-action-bar .search-results.visible {
+      display: block;
+    }
+    .quick-action-bar .search-result-item {
+      padding: var(--space-3) var(--space-4);
+      cursor: pointer;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .quick-action-bar .search-result-item:hover {
+      background: var(--color-gray-50);
+    }
+    .quick-action-bar .search-result-item:last-child {
+      border-bottom: none;
+    }
+    .quick-action-bar .result-name {
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .quick-action-bar .result-name-link {
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+    .quick-action-bar .result-name-link:hover {
+      text-decoration: underline;
+    }
+    .quick-action-bar .result-meta {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+    .quick-action-bar .result-actions {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .quick-action-bar .result-action-btn {
+      padding: var(--space-1.5) var(--space-2.5);
+      font-size: var(--text-xs);
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: var(--transition-all);
+    }
+    .quick-action-bar .result-action-btn.payment {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .quick-action-bar .result-action-btn.payment:hover {
+      background: var(--color-success-200);
+    }
+    .quick-action-bar .result-action-btn.invoice {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .quick-action-bar .result-action-btn.invoice:hover {
+      background: var(--color-info-200);
+    }
+    .quick-action-bar .result-action-btn.view {
+      background: var(--color-gray-100);
+      color: var(--color-text-heading);
+    }
+    .quick-action-bar .result-action-btn.view:hover {
+      background: var(--color-gray-200);
+    }
+    .quick-action-bar .create-new-option {
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-primary-50);
+      border-top: var(--border-2) solid var(--color-primary-200);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      color: var(--color-brand);
+      font-weight: var(--font-medium);
+    }
+    .quick-action-bar .create-new-option:hover {
+      background: var(--color-primary-100);
+    }
+    .quick-action-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <!-- AAO top navigation -->
+  <div id="adcp-nav"></div>
+
+  <div id="loading" class="loading">
+    Loading accounts...
+  </div>
+
+  <div id="content" style="display: none;">
+    <div class="container">
+      <div class="card">
+        <div class="section-header">
+          <div>
+            <h1>Account Management</h1>
+            <p class="subtitle">Track and manage organization relationships</p>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary btn-sm" onclick="openAddProspectModal()">+ Add Prospect</button>
+          </div>
+        </div>
+
+        <!-- Quick Action Bar -->
+        <div class="quick-action-bar">
+          <span class="quick-action-label">Quick Action:</span>
+          <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              class="search-input"
+              id="quickActionSearch"
+              placeholder="Search company to send payment link or invoice..."
+              autocomplete="off"
+            >
+            <div class="search-results" id="quickActionResults"></div>
+          </div>
+        </div>
+
+        <!-- View Tabs -->
+        <div class="view-tabs">
+          <button class="view-tab" data-view="needs_followup" onclick="switchView('needs_followup')">
+            Needs Follow-up
+            <span class="badge" id="count-needs_followup">0</span>
+          </button>
+          <button class="view-tab" data-view="new_signups" onclick="switchView('new_signups')">
+            New Signups
+            <span class="badge" id="count-new_signups">0</span>
+          </button>
+          <button class="view-tab" data-view="open_invoices" onclick="switchView('open_invoices')" style="background: var(--color-success-50); border-color: var(--color-success-200);">
+            💰 Open Invoices
+            <span class="badge" id="count-open_invoices" style="background: var(--color-success-200);">0</span>
+          </button>
+          <button class="view-tab" data-view="hot_prospects" onclick="switchView('hot_prospects')">
+            Hot Prospects
+            <span class="badge" id="count-hot_prospects">0</span>
+          </button>
+          <button class="view-tab" data-view="going_cold" onclick="switchView('going_cold')">
+            Going Cold
+            <span class="badge" id="count-going_cold">0</span>
+          </button>
+          <button class="view-tab" data-view="renewals" onclick="switchView('renewals')">
+            Renewals
+            <span class="badge" id="count-renewals">0</span>
+          </button>
+          <button class="view-tab" data-view="low_engagement" onclick="switchView('low_engagement')">
+            Low Engagement
+            <span class="badge" id="count-low_engagement">0</span>
+          </button>
+          <button class="view-tab" data-view="my_accounts" onclick="switchView('my_accounts')">
+            My Accounts
+            <span class="badge" id="count-my_accounts">0</span>
+          </button>
+          <button class="view-tab active" data-view="all" onclick="switchView('all')">
+            All
+          </button>
+          <button class="view-tab" data-view="domain_discovery" onclick="switchView('domain_discovery')" style="margin-left: auto; background: var(--color-info-50); border-color: var(--color-info-200);">
+            Domain Discovery
+            <span class="badge" id="count-domain_discovery" style="background: var(--color-info-200);">0</span>
+          </button>
+          <button class="view-tab" data-view="prospect_search" onclick="switchView('prospect_search')" style="background: var(--color-success-50); border-color: var(--color-success-200);">
+            Prospect Search
+          </button>
+          <button class="view-tab" data-view="data_cleanup" onclick="switchView('data_cleanup')" style="background: var(--color-warning-50); border-color: var(--color-warning-200);">
+            Data Cleanup
+            <span class="badge" id="count-data_cleanup" style="background: var(--color-warning-200);">0</span>
+          </button>
+        </div>
+
+        <!-- View Description -->
+        <div id="viewDescription" class="section-description" style="margin-bottom: var(--space-4);"></div>
+
+        <!-- Filters -->
+        <div class="filters">
+          <div class="filter-group">
+            <label>Search</label>
+            <input type="text" id="filterSearch" placeholder="Name, domain, or contact..." oninput="applyFilters()">
+          </div>
+          <div class="filter-group">
+            <label>Owner</label>
+            <select id="filterOwner" onchange="applyFilters()">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Account Type</label>
+            <select id="filterAccountType" onchange="applyFilters()">
+              <option value="company" selected>Companies Only</option>
+              <option value="individual">Individuals Only</option>
+              <option value="">All</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Company Type</label>
+            <select id="filterType" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="adtech">Ad Tech</option>
+              <option value="agency">Agency</option>
+              <option value="brand">Brand</option>
+              <option value="publisher">Publisher</option>
+              <option value="data">Data & Measurement</option>
+              <option value="ai">AI & Tech Platforms</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="prospectsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5); font-size: var(--text-sm);">
+          Showing 0 accounts
+        </div>
+
+        <div style="overflow-x: auto;">
+        <table class="prospects-table">
+          <thead id="tableHeader">
+            <tr>
+              <th class="col-company">Company</th>
+              <th>🔥</th>
+              <th class="col-domain">Domain</th>
+              <th class="col-users">Users</th>
+              <th class="col-activity">Last Activity</th>
+              <th>Owner</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="prospectsTableBody">
+            <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit Prospect Modal -->
+  <div id="prospectModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="prospectModalTitle">Add Prospect</h2>
+        <button class="modal-close" onclick="closeProspectModal()">&times;</button>
+      </div>
+      <form id="prospectForm" onsubmit="saveProspect(event)">
+        <input type="hidden" id="editOrgId">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Company Name *</label>
+            <input type="text" id="prospectName" required>
+          </div>
+          <div class="form-group">
+            <label>Domain</label>
+            <input type="text" id="prospectDomain" placeholder="example.com">
+            <div class="form-hint">Email domain for auto-matching signups</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Company Type</label>
+            <select id="prospectCompanyType">
+              <option value="">Not specified</option>
+              <option value="adtech">Ad Tech</option>
+              <option value="agency">Agency</option>
+              <option value="brand">Brand</option>
+              <option value="publisher">Publisher</option>
+              <option value="data">Data & Measurement</option>
+              <option value="ai">AI & Tech Platforms</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Owner</label>
+            <select id="prospectOwner">
+              <option value="">Not assigned</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="prospectStatus">
+              <option value="prospect">Prospect</option>
+              <option value="signed_up">Signed Up</option>
+              <option value="contacted">Contacted</option>
+              <option value="responded">Responded</option>
+              <option value="interested">Interested</option>
+              <option value="negotiating">Negotiating</option>
+              <option value="converted">Converted</option>
+              <option value="declined">Declined</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Source</label>
+            <select id="prospectSource">
+              <option value="aao_launch_list">AAO Launch List</option>
+              <option value="slack">Slack</option>
+              <option value="referral">Referral</option>
+              <option value="inbound">Inbound</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Parent Company</label>
+          <select id="prospectParent">
+            <option value="">None (standalone company)</option>
+          </select>
+          <div class="form-hint">For subsidiaries, select the parent company</div>
+        </div>
+
+        <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact Info</h3>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Contact Name</label>
+            <input type="text" id="prospectContactName">
+          </div>
+          <div class="form-group">
+            <label>Contact Email</label>
+            <input type="email" id="prospectContactEmail">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Contact Title</label>
+          <input type="text" id="prospectContactTitle" placeholder="e.g., VP Engineering">
+        </div>
+
+        <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Follow-up</h3>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Next Action</label>
+            <input type="text" id="prospectNextAction" placeholder="e.g., Send follow-up email">
+          </div>
+          <div class="form-group">
+            <label>Next Action Date</label>
+            <input type="date" id="prospectNextActionDate">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="prospectNotes" placeholder="Any relevant notes about this prospect..."></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeProspectModal()">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="generateInvoiceBtn" onclick="openInvoiceModal()" style="display: none;">Generate Invoice</button>
+          <button type="button" class="btn btn-secondary" id="getPaymentLinkBtn" onclick="openPaymentLinkModal()" style="display: none;">Get Payment Link</button>
+          <button type="submit" class="btn btn-primary" id="saveProspectBtn">Save Prospect</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Generate Invoice Modal -->
+  <div id="invoiceModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h2>Generate Invoice</h2>
+        <button class="modal-close" onclick="closeInvoiceModal()">&times;</button>
+      </div>
+
+      <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <form id="invoiceForm" onsubmit="submitInvoice(event)">
+        <!-- Product Selection -->
+        <div id="invoiceProductSection">
+          <div class="form-group">
+            <label>Select Product</label>
+            <div id="invoiceProducts" style="margin-bottom: var(--space-4);">
+              Loading products...
+            </div>
+          </div>
+        </div>
+
+        <!-- Billing Details (shown after product selection) -->
+        <div id="invoiceBillingSection" style="display: none;">
+          <div class="form-group">
+            <label>Selected Product</label>
+            <div id="selectedProductDisplay" style="padding: var(--space-2); background: var(--color-gray-50); border-radius: var(--radius-md); margin-bottom: var(--space-3);"></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Contact Name *</label>
+              <input type="text" id="invoiceContactName" required>
+            </div>
+            <div class="form-group">
+              <label>Contact Email *</label>
+              <input type="email" id="invoiceContactEmail" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Company Name *</label>
+            <input type="text" id="invoiceCompanyName" required>
+          </div>
+
+          <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing Address</h4>
+
+          <div class="form-group">
+            <label>Street Address *</label>
+            <input type="text" id="invoiceAddressLine1" required>
+          </div>
+
+          <div class="form-group">
+            <label>Address Line 2</label>
+            <input type="text" id="invoiceAddressLine2">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>City *</label>
+              <input type="text" id="invoiceCity" required>
+            </div>
+            <div class="form-group">
+              <label>State/Province *</label>
+              <input type="text" id="invoiceState" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Postal Code *</label>
+              <input type="text" id="invoicePostalCode" required>
+            </div>
+            <div class="form-group">
+              <label>Country *</label>
+              <input type="text" id="invoiceCountry" value="US" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Success Message -->
+        <div id="invoiceResult" style="display: none;">
+          <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <strong style="color: var(--color-success-700);">Invoice Sent!</strong>
+            <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+              The invoice has been emailed to the contact. You can also share this link:
+            </p>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <input type="text" id="invoiceUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+            <button type="button" class="btn btn-primary btn-sm" onclick="copyInvoiceLink()">Copy</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Close</button>
+          <button type="submit" class="btn btn-primary" id="sendInvoiceBtn" style="display: none;">Send Invoice</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Link Modal -->
+  <div id="paymentLinkModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Generate Payment Link</h2>
+        <button class="modal-close" onclick="closePaymentLinkModal()">&times;</button>
+      </div>
+
+      <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
+
+      <div id="paymentLinkProducts" style="margin-bottom: var(--space-4);">
+        Loading products...
+      </div>
+
+      <div id="paymentLinkResult" style="display: none;">
+        <div style="background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+          <strong style="color: var(--color-success-700);">Payment Link Generated!</strong>
+          <p style="margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--color-text-secondary);">
+            Copy this link and send it to the prospect:
+          </p>
+        </div>
+        <div style="display: flex; gap: var(--space-2);">
+          <input type="text" id="paymentLinkUrl" readonly style="flex: 1; padding: var(--space-2); font-size: var(--text-sm); border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+          <button class="btn btn-primary btn-sm" onclick="copyPaymentLink()">Copy</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closePaymentLinkModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Import Modal -->
+  <div id="bulkModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h2>Bulk Import Prospects</h2>
+        <button class="modal-close" onclick="closeBulkImportModal()">&times;</button>
+      </div>
+
+      <p style="margin-bottom: var(--space-4); color: var(--color-text-secondary);">
+        Paste CSV data. If first row contains headers, they'll be auto-detected.
+      </p>
+      <p style="margin-bottom: var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm);">
+        Supported columns: <code>Company, Category, Who Owns Outreach, Steerco - names, Description</code><br>
+        Or basic format: <code>name, domain, company_type, prospect_owner, prospect_contact_name, prospect_notes</code>
+      </p>
+
+      <textarea id="bulkCsvData" class="bulk-textarea" placeholder="Company,Category,Who Owns Outreach,Steerco - names,Description
+Acme Corp,Ad Tech,Brian,John Smith,Leading SSP provider
+Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
+
+      <div id="importResults" class="import-results" style="display: none;"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeBulkImportModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="runBulkImport()" id="runImportBtn">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // HTML escape function to prevent XSS
+    function escapeHtml(text) {
+      if (text == null) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
+    let allProspects = [];
+    let filteredProspects = [];
+    let allOrganizations = [];
+    let currentView = 'all';
+    let viewCounts = {};
+    let discoveredDomains = [];
+    let slackDomains = [];
+    let emailDomains = [];
+    let currentDomainSource = 'all'; // 'all', 'slack', 'email'
+    let enrichmentCache = {}; // Cache enrichment results by domain
+    let enrichmentConfigured = false; // Whether Lusha API is configured
+
+    // Team members for owner assignment
+    let teamMembers = [];
+    let currentUser = null;
+
+    // Prospect search state
+    let prospectSearchFilters = null;
+    let prospectSearchResults = [];
+    let prospectSearchPage = 1;
+    let prospectSearchTotal = 0;
+
+    const viewDescriptions = {
+      needs_followup: 'Organizations with pending follow-up actions due within 7 days',
+      new_signups: 'Organizations that signed up in the last 14 days with no logged activities',
+      open_invoices: 'Organizations with open or draft invoices waiting for payment - follow up to close deals',
+      hot_prospects: 'Non-members with engagement score 30+ (Slack users, team members, activities, events, interest)',
+      going_cold: 'Organizations with no activity in the last 30 days - may need re-engagement',
+      renewals: 'Active members with subscriptions ending in the next 60 days',
+      low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
+      my_accounts: 'Organizations where you are the owner or watching',
+      all: 'All organizations in the system',
+      domain_discovery: 'Email domains from Slack and Email contacts not yet associated with organizations - potential prospects to add',
+      prospect_search: 'Search Lusha database for companies matching your ideal customer profile - find new prospects by industry, size, and location',
+      data_cleanup: 'AI-powered data quality analysis - find missing info, duplicates, and stale prospects'
+    };
+
+    // Data cleanup state
+    let cleanupConfigured = false;
+    let cleanupReport = null;
+    let cleanupInProgress = false;
+
+    async function loadData() {
+      try {
+        // Get current user from app config
+        currentUser = window.__APP_CONFIG__?.user || null;
+
+        // Load team members and view counts in parallel
+        const [countsRes, teamRes] = await Promise.all([
+          fetch('/api/admin/prospects/view-counts'),
+          fetch('/api/admin/team')
+        ]);
+
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+
+        if (teamRes.ok) {
+          teamMembers = await teamRes.json();
+          populateOwnerFilter();
+        }
+
+        // Check if enrichment and cleanup are configured
+        try {
+          const [enrichStatusRes, cleanupStatusRes] = await Promise.all([
+            fetch('/api/admin/enrichment/status').catch(() => null),
+            fetch('/api/admin/cleanup/status').catch(() => null)
+          ]);
+
+          if (enrichStatusRes && enrichStatusRes.ok) {
+            const status = await enrichStatusRes.json();
+            enrichmentConfigured = status.configured;
+          }
+
+          if (cleanupStatusRes && cleanupStatusRes.ok) {
+            const status = await cleanupStatusRes.json();
+            cleanupConfigured = status.configured;
+          }
+        } catch (e) {
+          console.log('Status check failed:', e);
+        }
+
+        // Load domain discovery counts for badge (both Slack and Email sources)
+        try {
+          const [slackRes, emailRes] = await Promise.all([
+            fetch('/api/admin/slack/domains?min_users=1&limit=100').catch(() => null),
+            fetch('/api/admin/email/domains?min_users=1&limit=100').catch(() => null)
+          ]);
+
+          // Merge and count unique new prospect domains
+          const domainSet = new Set();
+          if (slackRes && slackRes.ok) {
+            const data = await slackRes.json();
+            // Slack endpoint returns { domains: [...] }
+            const domains = Array.isArray(data) ? data : data.domains || [];
+            domains.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+          }
+          if (emailRes && emailRes.ok) {
+            const data = await emailRes.json();
+            // Email endpoint returns array directly
+            const domains = Array.isArray(data) ? data : data.domains || [];
+            domains.filter(d => d.is_new_prospect).forEach(d => domainSet.add(d.domain));
+          }
+          document.getElementById('count-domain_discovery').textContent = domainSet.size;
+        } catch (e) {
+          // Domain discovery may not be available, that's ok
+          console.log('Domain discovery not available:', e);
+        }
+
+        // Load organizations for dropdown
+        const orgsRes = await fetch('/api/admin/organizations');
+        if (orgsRes.ok) {
+          allOrganizations = await orgsRes.json();
+          populateParentDropdown();
+        }
+
+        // Load current view
+        await loadView(currentView);
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (error) {
+        console.error('Error loading data:', error);
+        document.getElementById('loading').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load data. <a href="/auth/login">Try logging in again</a></p>';
+      }
+    }
+
+    function updateViewCounts() {
+      document.getElementById('count-needs_followup').textContent = viewCounts.needs_followup || 0;
+      document.getElementById('count-new_signups').textContent = viewCounts.new_signups || 0;
+      document.getElementById('count-going_cold').textContent = viewCounts.going_cold || 0;
+      document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
+      document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
+      // hot_prospects and low_engagement are calculated client-side, so we don't show counts
+    }
+
+    function populateOwnerFilter() {
+      const filterOwner = document.getElementById('filterOwner');
+      const prospectOwner = document.getElementById('prospectOwner');
+
+      filterOwner.innerHTML = '<option value="">All</option>';
+      prospectOwner.innerHTML = '<option value="">Not assigned</option>';
+
+      teamMembers.forEach(member => {
+        const isMe = currentUser?.id && member.user_id === currentUser.id;
+        const displayName = isMe ? `${member.user_name} (me)` : member.user_name;
+
+        // Filter dropdown uses user_id (matches stakeholder records)
+        const filterOption = document.createElement('option');
+        filterOption.value = member.user_id;
+        filterOption.textContent = displayName;
+        filterOwner.appendChild(filterOption);
+
+        // Prospect owner dropdown uses name (legacy prospect_owner field)
+        const prospectOption = document.createElement('option');
+        prospectOption.value = member.user_name;
+        prospectOption.textContent = displayName;
+        prospectOwner.appendChild(prospectOption);
+      });
+    }
+
+    async function loadView(view) {
+      currentView = view;
+
+      // Update active tab
+      document.querySelectorAll('.view-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === view);
+      });
+
+      // Update description
+      document.getElementById('viewDescription').textContent = viewDescriptions[view] || '';
+
+      // Handle domain discovery view separately
+      if (view === 'domain_discovery') {
+        await loadDomainDiscovery();
+        return;
+      }
+
+      // Handle prospect search view separately
+      if (view === 'prospect_search') {
+        await loadProspectSearch();
+        return;
+      }
+
+      // Handle data cleanup view separately
+      if (view === 'data_cleanup') {
+        await loadDataCleanup();
+        return;
+      }
+
+      // Show filters (hidden for domain discovery, prospect search, and cleanup)
+      document.querySelector('.filters').style.display = 'flex';
+      updateTableHeaders(view);
+
+      // Fetch data for view
+      // open_invoices is filtered client-side since we already have the data
+      const serverViews = ['needs_followup', 'new_signups', 'hot_prospects', 'going_cold', 'renewals', 'low_engagement', 'my_accounts'];
+      const viewParam = (view === 'all' || view === 'open_invoices') ? '' : (serverViews.includes(view) ? `?view=${view}` : '');
+      const response = await fetch(`/api/admin/prospects${viewParam}`);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.ManageSidebar.redirectToLogin();
+          return;
+        }
+        throw new Error('Failed to load prospects');
+      }
+
+      allProspects = await response.json();
+
+      // Client-side filter for open_invoices view - only count invoices with non-zero amounts
+      const hasNonZeroInvoice = (p) => p.pending_invoices?.some(inv => inv.amount_due > 0);
+      if (view === 'open_invoices') {
+        filteredProspects = allProspects.filter(hasNonZeroInvoice);
+        // Update badge count
+        document.getElementById('count-open_invoices').textContent = filteredProspects.length;
+      } else {
+        filteredProspects = allProspects;
+        // Update open_invoices count when loading other views
+        const openInvoicesCount = allProspects.filter(hasNonZeroInvoice).length;
+        document.getElementById('count-open_invoices').textContent = openInvoicesCount;
+      }
+
+      applyFilters();
+    }
+
+    async function loadDomainDiscovery() {
+      // Hide standard filters, show domain source filter
+      document.querySelector('.filters').style.display = 'none';
+      updateTableHeaders(true);
+      // Clear selection when loading fresh data
+      selectedDomains.clear();
+
+      try {
+        // Load both Slack and Email domains in parallel
+        const [slackRes, emailRes] = await Promise.all([
+          fetch('/api/admin/slack/domains?min_users=1&limit=100').catch(() => null),
+          fetch('/api/admin/email/domains?min_users=1&limit=100').catch(() => null)
+        ]);
+
+        slackDomains = [];
+        emailDomains = [];
+
+        if (slackRes && slackRes.ok) {
+          const data = await slackRes.json();
+          // Slack endpoint may return { domains: [...] } or array directly
+          const domains = Array.isArray(data) ? data : data.domains || [];
+          slackDomains = domains.map(d => ({ ...d, source: 'slack' }));
+        }
+
+        if (emailRes && emailRes.ok) {
+          const data = await emailRes.json();
+          // Email endpoint may return { domains: [...] } or array directly
+          const domains = Array.isArray(data) ? data : data.domains || [];
+          emailDomains = domains.map(d => ({ ...d, source: 'email' }));
+        }
+
+        // Merge domains, combining those that appear in both sources
+        const domainMap = new Map();
+
+        slackDomains.forEach(d => {
+          domainMap.set(d.domain, {
+            ...d,
+            sources: ['slack'],
+            slack_users: d.users,
+            email_contacts: [],
+            total_users: d.user_count
+          });
+        });
+
+        emailDomains.forEach(d => {
+          if (domainMap.has(d.domain)) {
+            const existing = domainMap.get(d.domain);
+            existing.sources.push('email');
+            existing.email_contacts = d.users;
+            existing.total_users += d.user_count;
+            // Keep the existing_org if either source found one
+            if (d.existing_org && !existing.existing_org) {
+              existing.existing_org = d.existing_org;
+              existing.is_new_prospect = false;
+            }
+          } else {
+            domainMap.set(d.domain, {
+              ...d,
+              sources: ['email'],
+              slack_users: [],
+              email_contacts: d.users,
+              total_users: d.user_count
+            });
+          }
+        });
+
+        discoveredDomains = Array.from(domainMap.values());
+
+        // Update the badge count (new prospects only)
+        const newProspectCount = discoveredDomains.filter(d => d.is_new_prospect).length;
+        document.getElementById('count-domain_discovery').textContent = newProspectCount;
+
+        renderDomainDiscovery();
+
+        // Auto-enrich new prospect domains in the background
+        if (enrichmentConfigured) {
+          autoEnrichDiscoveredDomains();
+        }
+      } catch (error) {
+        console.error('Error loading domain discovery:', error);
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Error loading domain data</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    // Auto-enrich discovered domains in the background
+    async function autoEnrichDiscoveredDomains() {
+      // Get domains that need enrichment (new prospects without cached enrichment)
+      const domainsToEnrich = discoveredDomains
+        .filter(d => d.is_new_prospect && !enrichmentCache[d.domain])
+        .map(d => d.domain)
+        .slice(0, 20); // Max 20 per load
+
+      if (domainsToEnrich.length === 0) return;
+
+      console.log(`Auto-enriching ${domainsToEnrich.length} domains in background...`);
+
+      try {
+        const response = await fetch('/api/admin/enrichment/auto-enrich-domains', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: domainsToEnrich })
+        });
+
+        if (!response.ok) {
+          console.log('Auto-enrichment failed:', response.status);
+          return;
+        }
+
+        const result = await response.json();
+
+        // Cache the results
+        result.results.forEach(r => {
+          if (r.success && r.data) {
+            enrichmentCache[r.domain] = {
+              success: true,
+              enrichment: r.data,
+              suggested: { companyType: r.data.suggestedCompanyType }
+            };
+          } else {
+            enrichmentCache[r.domain] = { success: false, error: r.error || 'No data' };
+          }
+        });
+
+        console.log(`Auto-enriched ${result.successful} of ${result.total} domains`);
+
+        // Re-render to show the enrichment data
+        if (currentView === 'domain_discovery') {
+          renderDomainDiscovery();
+        }
+      } catch (error) {
+        console.log('Auto-enrichment error:', error);
+      }
+    }
+
+    function filterDomainsBySource(source) {
+      currentDomainSource = source;
+      // Update source filter buttons
+      document.querySelectorAll('.source-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+      });
+      renderDomainDiscovery();
+    }
+
+    // Track selected domains for bulk creation
+    let selectedDomains = new Set();
+
+    function updateTableHeaders(viewType) {
+      const header = document.getElementById('tableHeader');
+      if (viewType === true || viewType === 'domain_discovery') {
+        // Domain discovery view
+        header.innerHTML = `
+          <tr>
+            <th style="width: 40px;"><input type="checkbox" id="selectAllDomains" onchange="toggleSelectAllDomains(this.checked)" title="Select all new prospects"></th>
+            <th>Domain</th>
+            <th>Source</th>
+            <th>Users</th>
+            <th>Company Info</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        `;
+      } else if (viewType === 'prospect_search') {
+        // Prospect search view
+        header.innerHTML = `
+          <tr>
+            <th>Company</th>
+            <th>Details</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        `;
+      } else if (viewType === 'my_accounts') {
+        // My Accounts view — includes a Role column showing the current user's stakeholder role
+        header.innerHTML = `
+          <tr>
+            <th class="col-company">Company</th>
+            <th>🔥</th>
+            <th class="col-domain">Domain</th>
+            <th class="col-users">Users</th>
+            <th class="col-activity">Last Activity</th>
+            <th>Role</th>
+            <th>Owner</th>
+            <th></th>
+          </tr>
+        `;
+      } else {
+        // Default prospects view
+        header.innerHTML = `
+          <tr>
+            <th class="col-company">Company</th>
+            <th>🔥</th>
+            <th class="col-domain">Domain</th>
+            <th class="col-users">Users</th>
+            <th class="col-activity">Last Activity</th>
+            <th>Owner</th>
+            <th></th>
+          </tr>
+        `;
+      }
+    }
+
+    function renderDomainDiscovery() {
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Filter by source if needed
+      let domainsToShow = discoveredDomains;
+      if (currentDomainSource === 'slack') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('slack'));
+      } else if (currentDomainSource === 'email') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('email'));
+      }
+
+      const newProspects = domainsToShow.filter(d => d.is_new_prospect);
+      const existingOrgs = domainsToShow.filter(d => !d.is_new_prospect);
+
+      // Show source filter buttons
+      const slackCount = discoveredDomains.filter(d => d.sources.includes('slack') && d.is_new_prospect).length;
+      const emailCount = discoveredDomains.filter(d => d.sources.includes('email') && d.is_new_prospect).length;
+
+      const unenrichedCount = discoveredDomains.filter(d => d.is_new_prospect && !enrichmentCache[d.domain]).length;
+      const selectedCount = selectedDomains.size;
+
+      countDiv.innerHTML = `
+        <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
+          <span>Showing ${domainsToShow.length} domains (${newProspects.length} new prospects)${selectedCount > 0 ? ` \u2022 ${selectedCount} selected` : ''}</span>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="source-filter-btn ${currentDomainSource === 'all' ? 'active' : ''}" data-source="all" onclick="filterDomainsBySource('all')">
+              All
+            </button>
+            <button class="source-filter-btn ${currentDomainSource === 'slack' ? 'active' : ''}" data-source="slack" onclick="filterDomainsBySource('slack')">
+              Slack (${slackCount})
+            </button>
+            <button class="source-filter-btn ${currentDomainSource === 'email' ? 'active' : ''}" data-source="email" onclick="filterDomainsBySource('email')">
+              Email (${emailCount})
+            </button>
+          </div>
+          <div style="display: flex; gap: var(--space-2); margin-left: auto;">
+            ${selectedCount > 0 ? `
+              <button class="btn btn-primary btn-sm" onclick="createSelectedProspects()" id="createSelectedBtn">
+                Create ${selectedCount} Prospect${selectedCount > 1 ? 's' : ''}
+              </button>
+            ` : ''}
+            ${enrichmentConfigured && unenrichedCount > 0 ? `
+              <button class="btn btn-secondary btn-sm" onclick="enrichAllNewDomains()">
+                Research All (${Math.min(unenrichedCount, 25)})
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      if (domainsToShow.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="empty-state">
+              <h3>No unmapped domains found</h3>
+              <p>No contacts from this source need organization mapping.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Sort: new prospects first, then by total user count descending
+      const sortedDomains = [...domainsToShow].sort((a, b) => {
+        if (a.is_new_prospect !== b.is_new_prospect) {
+          return a.is_new_prospect ? -1 : 1;
+        }
+        return b.total_users - a.total_users;
+      });
+
+      tbody.innerHTML = sortedDomains.map(domain => {
+        // Source badges
+        const sourceBadges = domain.sources.map(s => {
+          if (s === 'slack') {
+            return `<span class="source-badge source-slack" title="Found in Slack">Slack</span>`;
+          } else {
+            return `<span class="source-badge source-email" title="Found via Email">Email</span>`;
+          }
+        }).join(' ');
+
+        // Company info - show enrichment data if available, otherwise show enrich button
+        const enrichment = enrichmentCache[domain.domain];
+        let companyInfoHtml;
+        if (enrichment && enrichment.success) {
+          const e = enrichment.enrichment;
+          const parts = [];
+          if (e.companyName) parts.push(`<strong>${e.companyName}</strong>`);
+          if (e.industry) parts.push(`<span class="source-badge" style="background: var(--color-gray-100); color: var(--color-text-secondary);">${e.industry}</span>`);
+          if (e.employeeCountRange || e.employeeCount) parts.push(`${e.employeeCountRange || e.employeeCount + ' employees'}`);
+          if (e.revenueRange) parts.push(`${e.revenueRange}`);
+          if (enrichment.suggested?.companyType) {
+            parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${getCompanyTypeLabel(enrichment.suggested.companyType)}</span>`);
+          }
+          companyInfoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">No data</span>';
+        } else if (enrichment && enrichment.error) {
+          companyInfoHtml = `<span style="color: var(--color-text-muted);">${enrichment.error}</span>`;
+        } else if (enrichmentConfigured && domain.is_new_prospect) {
+          companyInfoHtml = `<button class="btn btn-secondary btn-sm" onclick="enrichDomain('${domain.domain}')" id="enrich-btn-${domain.domain.replace(/\./g, '-')}">Research</button>`;
+        } else if (!enrichmentConfigured) {
+          companyInfoHtml = '<span style="color: var(--color-text-muted);">-</span>';
+        } else {
+          companyInfoHtml = '<span style="color: var(--color-text-muted);">-</span>';
+        }
+
+        // Status badge
+        let statusHtml;
+        if (domain.existing_org) {
+          statusHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
+        } else {
+          statusHtml = '<span class="status-badge status-prospect">New Prospect</span>';
+        }
+
+        // Action button - use primary source for create
+        const primarySource = domain.sources.includes('slack') ? 'slack' : 'email';
+        let actionHtml;
+        if (domain.is_new_prospect) {
+          actionHtml = `<button class="btn btn-primary btn-sm" onclick="createProspectFromDomain('${domain.domain}', '${primarySource}')">Create Prospect</button>`;
+        } else {
+          actionHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View account</a>`;
+        }
+
+        // Checkbox for new prospects
+        const checkboxHtml = domain.is_new_prospect
+          ? `<input type="checkbox" class="domain-checkbox" data-domain="${domain.domain}" data-source="${primarySource}" ${selectedDomains.has(domain.domain) ? 'checked' : ''} onchange="toggleDomainSelection('${domain.domain}', '${primarySource}', this.checked)">`
+          : '';
+
+        return `
+          <tr${domain.is_new_prospect ? '' : ' style="opacity: 0.6;"'}>
+            <td>${checkboxHtml}</td>
+            <td><strong>${domain.domain}</strong></td>
+            <td>${sourceBadges}</td>
+            <td><span title="${domain.total_users} total users">${domain.total_users}</span></td>
+            <td style="max-width: 250px; font-size: var(--text-sm);">${companyInfoHtml}</td>
+            <td>${statusHtml}</td>
+            <td>${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Sync "select all" checkbox state
+      const selectAllCheckbox = document.getElementById('selectAllDomains');
+      if (selectAllCheckbox && newProspects.length > 0) {
+        const allSelected = newProspects.every(d => selectedDomains.has(d.domain));
+        selectAllCheckbox.checked = allSelected;
+      }
+    }
+
+    async function enrichDomain(domain) {
+      const btnId = `enrich-btn-${domain.replace(/\./g, '-')}`;
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+      }
+
+      try {
+        const response = await fetch(`/api/admin/enrichment/domain/${encodeURIComponent(domain)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          enrichmentCache[domain] = { success: false, error: error.error || 'Failed' };
+        } else {
+          const result = await response.json();
+          enrichmentCache[domain] = result;
+        }
+
+        // Re-render to show the enrichment data
+        renderDomainDiscovery();
+      } catch (error) {
+        enrichmentCache[domain] = { success: false, error: 'Network error' };
+        renderDomainDiscovery();
+      }
+    }
+
+    async function enrichAllNewDomains() {
+      const newDomains = discoveredDomains
+        .filter(d => d.is_new_prospect && !enrichmentCache[d.domain])
+        .map(d => d.domain)
+        .slice(0, 25); // Max 25 at a time
+
+      if (newDomains.length === 0) {
+        alert('No new domains to enrich');
+        return;
+      }
+
+      if (!confirm(`Enrich ${newDomains.length} domains? This will use Lusha API credits.`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/admin/enrichment/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: newDomains })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          throw new Error('Bulk enrichment failed');
+        }
+
+        const result = await response.json();
+
+        // Cache the results
+        result.results.forEach(r => {
+          enrichmentCache[r.domain] = r.success
+            ? { success: true, enrichment: r.enrichment, suggested: { companyType: r.suggestedCompanyType } }
+            : { success: false, error: r.error };
+        });
+
+        alert(`Enriched ${result.successful} of ${result.total} domains`);
+        renderDomainDiscovery();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    async function createProspectFromDomain(domain, source = 'slack') {
+      if (!confirm(`Create prospect for domain "${domain}"?`)) return;
+
+      try {
+        // Use the appropriate endpoint based on source
+        const endpoint = source === 'email'
+          ? `/api/admin/email/domains/${domain}/create-prospect`
+          : `/api/admin/slack/domains/${domain}/create-prospect`;
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create prospect');
+        }
+
+        const result = await response.json();
+        alert(`Created prospect: ${result.name}`);
+
+        // Refresh domain discovery view
+        await loadDomainDiscovery();
+        // Also refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function toggleDomainSelection(domain, source, checked) {
+      if (checked) {
+        selectedDomains.add(domain);
+      } else {
+        selectedDomains.delete(domain);
+      }
+      // Re-render to update button and selection count
+      renderDomainDiscovery();
+    }
+
+    function toggleSelectAllDomains(checked) {
+      // Get currently visible new prospects based on filter
+      let domainsToShow = discoveredDomains;
+      if (currentDomainSource === 'slack') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('slack'));
+      } else if (currentDomainSource === 'email') {
+        domainsToShow = discoveredDomains.filter(d => d.sources.includes('email'));
+      }
+
+      const newProspects = domainsToShow.filter(d => d.is_new_prospect);
+
+      if (checked) {
+        newProspects.forEach(d => selectedDomains.add(d.domain));
+      } else {
+        newProspects.forEach(d => selectedDomains.delete(d.domain));
+      }
+
+      renderDomainDiscovery();
+    }
+
+    async function createSelectedProspects() {
+      if (selectedDomains.size === 0) {
+        alert('No domains selected');
+        return;
+      }
+
+      const count = selectedDomains.size;
+      if (!confirm(`Create ${count} prospect${count > 1 ? 's' : ''} from the selected domains?`)) {
+        return;
+      }
+
+      const btn = document.getElementById('createSelectedBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+      }
+
+      // Disable all checkboxes during creation
+      document.querySelectorAll('.domain-checkbox, #selectAllDomains').forEach(cb => cb.disabled = true);
+
+      try {
+        // Build the domains array with source info
+        const domainsToCreate = [];
+        for (const domain of selectedDomains) {
+          const domainInfo = discoveredDomains.find(d => d.domain === domain);
+          if (domainInfo) {
+            const primarySource = domainInfo.sources.includes('slack') ? 'slack' : 'email';
+            domainsToCreate.push({ domain, source: primarySource });
+          }
+        }
+
+        const response = await fetch('/api/admin/domains/bulk-create-prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domains: domainsToCreate })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to create prospects');
+        }
+
+        const result = await response.json();
+
+        // Clear selection
+        selectedDomains.clear();
+
+        // Show results
+        if (result.failed > 0) {
+          const failedDomains = result.results
+            .filter(r => !r.success)
+            .map(r => `${r.domain}: ${r.error}`)
+            .join('\n');
+          alert(`Created ${result.successful} of ${result.total} prospects.\n\nFailed:\n${failedDomains}`);
+        } else {
+          alert(`Successfully created ${result.successful} prospect${result.successful > 1 ? 's' : ''}`);
+        }
+
+        // Refresh domain discovery view
+        await loadDomainDiscovery();
+        // Also refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+        // Re-enable checkboxes and button on error
+        document.querySelectorAll('.domain-checkbox, #selectAllDomains').forEach(cb => cb.disabled = false);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = `Create ${selectedDomains.size} Prospect${selectedDomains.size > 1 ? 's' : ''}`;
+        }
+      }
+    }
+
+    // =========================================================================
+    // PROSPECT SEARCH FUNCTIONS
+    // =========================================================================
+
+    async function loadProspectSearch() {
+      document.querySelector('.filters').style.display = 'none';
+      updateTableHeaders('prospect_search');
+
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Check if Lusha is configured
+      if (!enrichmentConfigured) {
+        countDiv.innerHTML = '';
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Lusha API Not Configured</h3>
+              <p>Set LUSHA_API_KEY environment variable to enable prospect search.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Load filters if not already loaded
+      if (!prospectSearchFilters) {
+        countDiv.innerHTML = '<span>Loading filters...</span>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8);">Loading...</td></tr>';
+
+        try {
+          const filtersRes = await fetch('/api/admin/prospecting/filters');
+          if (filtersRes.ok) {
+            prospectSearchFilters = await filtersRes.json();
+          }
+        } catch (e) {
+          console.error('Failed to load prospect filters:', e);
+        }
+      }
+
+      renderProspectSearchUI();
+    }
+
+    function renderProspectSearchUI() {
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      // Build the search UI
+      const presets = prospectSearchFilters?.presets || {};
+      const industries = prospectSearchFilters?.industries || [];
+      const sizes = prospectSearchFilters?.sizes || [];
+      const revenues = prospectSearchFilters?.revenues || [];
+
+      countDiv.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <!-- Preset Quick Filters -->
+          <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+            <span style="font-weight: var(--font-medium);">Quick Filters:</span>
+            ${Object.entries(presets).map(([key, preset]) => `
+              <button class="source-filter-btn" onclick="searchByPreset('${key}')" title="${preset.description}">
+                ${preset.label}
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Advanced Search Form -->
+          <div style="display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: flex-end;">
+            <div class="filter-group" style="flex: 1; min-width: 200px;">
+              <label>Keywords</label>
+              <input type="text" id="prospectKeywords" placeholder="e.g., programmatic, DSP, SSP..." style="width: 100%;">
+            </div>
+            <div class="filter-group">
+              <label>Min Employees</label>
+              <select id="prospectMinEmployees">
+                <option value="">Any</option>
+                <option value="11">11+</option>
+                <option value="51">51+</option>
+                <option value="201">201+</option>
+                <option value="501">501+</option>
+                <option value="1001">1001+</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Max Employees</label>
+              <select id="prospectMaxEmployees">
+                <option value="">Any</option>
+                <option value="50">Up to 50</option>
+                <option value="200">Up to 200</option>
+                <option value="500">Up to 500</option>
+                <option value="1000">Up to 1000</option>
+                <option value="5000">Up to 5000</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Country</label>
+              <select id="prospectCountry">
+                <option value="">Any</option>
+                <option value="US">United States</option>
+                <option value="UK">United Kingdom</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="runProspectSearch()">Search</button>
+          </div>
+        </div>
+      `;
+
+      // Render results or empty state
+      if (prospectSearchResults.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Search for Companies</h3>
+              <p>Use the filters above to find potential prospects from Lusha's database of 60+ million companies.</p>
+              <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-2);">
+                Try a quick filter like "Ad Tech" or enter custom keywords.
+              </p>
+            </td>
+          </tr>
+        `;
+      } else {
+        renderProspectSearchResults();
+      }
+    }
+
+    async function searchByPreset(presetKey) {
+      const presets = prospectSearchFilters?.presets || {};
+      const preset = presets[presetKey];
+      if (!preset) return;
+
+      // Set keywords from preset
+      document.getElementById('prospectKeywords').value = preset.industryKeywords.join(', ');
+      await runProspectSearch();
+    }
+
+    async function runProspectSearch() {
+      const tbody = document.getElementById('prospectsTableBody');
+
+      const keywords = document.getElementById('prospectKeywords').value
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k);
+
+      const minEmployees = document.getElementById('prospectMinEmployees').value;
+      const maxEmployees = document.getElementById('prospectMaxEmployees').value;
+      const country = document.getElementById('prospectCountry').value;
+
+      if (keywords.length === 0 && !minEmployees && !maxEmployees && !country) {
+        alert('Please enter at least one search criteria');
+        return;
+      }
+
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: var(--space-8);">Searching...</td></tr>';
+
+      try {
+        const searchParams = {
+          keywords: keywords.length > 0 ? keywords : undefined,
+          minEmployees: minEmployees ? parseInt(minEmployees) : undefined,
+          maxEmployees: maxEmployees ? parseInt(maxEmployees) : undefined,
+          countries: country ? [country] : undefined,
+          page: prospectSearchPage,
+          pageSize: 25
+        };
+
+        const response = await fetch('/api/admin/prospecting/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(searchParams)
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.error || 'Search failed');
+        }
+
+        const result = await response.json();
+        prospectSearchResults = result.companies;
+        prospectSearchTotal = result.total;
+
+        renderProspectSearchResults();
+      } catch (error) {
+        console.error('Prospect search error:', error);
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Search Error</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function renderProspectSearchResults() {
+      const tbody = document.getElementById('prospectsTableBody');
+
+      if (prospectSearchResults.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No Results Found</h3>
+              <p>Try adjusting your search criteria.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = prospectSearchResults.map(company => {
+        // Company info
+        const parts = [];
+        if (company.mainIndustry) parts.push(`<span class="source-badge" style="background: var(--color-gray-100); color: var(--color-text-secondary);">${company.mainIndustry}</span>`);
+        if (company.employeeCountRange || company.employeeCount) parts.push(`${company.employeeCountRange || company.employeeCount + ' employees'}`);
+        if (company.suggestedRevenueRange) parts.push(`${company.suggestedRevenueRange}`);
+        if (company.suggestedCompanyType) {
+          parts.push(`<span class="source-badge" style="background: var(--color-success-100); color: var(--color-success-700);">${getCompanyTypeLabel(company.suggestedCompanyType)}</span>`);
+        }
+        const infoHtml = parts.join('<br>') || '<span style="color: var(--color-text-muted);">-</span>';
+
+        // Location
+        const location = [company.city, company.country].filter(Boolean).join(', ') || '-';
+
+        // Status
+        let statusHtml;
+        if (company.existingOrg) {
+          statusHtml = `<span class="status-badge status-member" title="Already in database">${company.existingOrg.name}</span>`;
+        } else {
+          statusHtml = '<span class="status-badge status-prospect">New</span>';
+        }
+
+        // Action
+        let actionHtml;
+        if (company.isNewProspect) {
+          actionHtml = `<button class="btn btn-primary btn-sm" onclick='importProspect(${JSON.stringify(company).replace(/'/g, "\\'")})'>Import</button>`;
+        } else {
+          actionHtml = `<span style="color: var(--color-text-muted);">Already exists</span>`;
+        }
+
+        return `
+          <tr${!company.isNewProspect ? ' style="opacity: 0.6;"' : ''}>
+            <td>
+              <strong>${company.companyName || company.domain}</strong>
+              ${company.domain ? `<br><a href="https://${company.domain}" target="_blank" style="font-size: var(--text-xs); color: var(--color-text-secondary);">${company.domain}</a>` : ''}
+            </td>
+            <td style="max-width: 200px; font-size: var(--text-sm);">${infoHtml}</td>
+            <td>${location}</td>
+            <td>${statusHtml}</td>
+            <td>${actionHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Add pagination info
+      const viewDesc = document.getElementById('viewDescription');
+      viewDesc.innerHTML = `${viewDescriptions.prospect_search}<br><span style="font-size: var(--text-sm); color: var(--color-text-muted);">Found ${prospectSearchTotal} companies (showing ${prospectSearchResults.length})</span>`;
+    }
+
+    async function importProspect(company) {
+      if (!confirm(`Import "${company.companyName || company.domain}" as a prospect?`)) return;
+
+      try {
+        const response = await fetch('/api/admin/prospecting/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company, autoAssignOwner: true })
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          if (response.status === 409) {
+            alert('This organization already exists in the database.');
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.error || 'Import failed');
+        }
+
+        const result = await response.json();
+        alert(`Imported: ${result.organization.name}`);
+
+        // Remove from results
+        prospectSearchResults = prospectSearchResults.filter(c => c.domain !== company.domain);
+        renderProspectSearchResults();
+
+        // Refresh view counts
+        const countsRes = await fetch('/api/admin/prospects/view-counts');
+        if (countsRes.ok) {
+          viewCounts = await countsRes.json();
+          updateViewCounts();
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    }
+
+    function switchView(view) {
+      loadView(view);
+    }
+
+    // =========================================================================
+    // DATA CLEANUP FUNCTIONS
+    // =========================================================================
+
+    async function loadDataCleanup() {
+      // Hide standard filters
+      document.querySelector('.filters').style.display = 'none';
+
+      document.getElementById('prospectsTableBody').innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <div class="loading-dots">Loading cleanup analysis...</div>
+          </td>
+        </tr>
+      `;
+
+      if (!cleanupConfigured) {
+        renderCleanupNotConfigured();
+        return;
+      }
+
+      try {
+        // Analyze prospects for issues
+        const response = await fetch('/api/admin/cleanup/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ limit: 100, onlyProblematic: true })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze prospects');
+        }
+
+        cleanupReport = await response.json();
+        document.getElementById('count-data_cleanup').textContent = cleanupReport.issues_found;
+        renderDataCleanup();
+      } catch (error) {
+        console.error('Error loading cleanup:', error);
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>Error loading cleanup analysis</h3>
+              <p>${error.message}</p>
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    function renderCleanupNotConfigured() {
+      document.getElementById('prospectsTableBody').innerHTML = `
+        <tr>
+          <td colspan="6" class="empty-state">
+            <h3>Data Cleanup Not Configured</h3>
+            <p>ANTHROPIC_API_KEY is required for intelligent cleanup analysis.</p>
+            <p style="margin-top: var(--space-2); color: var(--color-text-muted);">
+              Add ANTHROPIC_API_KEY to your environment to enable AI-powered data cleanup.
+            </p>
+          </td>
+        </tr>
+      `;
+    }
+
+    function renderDataCleanup() {
+      if (!cleanupReport || cleanupReport.analyses.length === 0) {
+        document.getElementById('prospectsTableBody').innerHTML = `
+          <tr>
+            <td colspan="6" class="empty-state">
+              <h3>No Issues Found</h3>
+              <p>All prospects have complete data. Great job!</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Show summary header and action buttons
+      const summaryHtml = `
+        <tr>
+          <td colspan="3" style="padding: var(--space-4); background: var(--color-bg-subtle);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
+              <div>
+                <strong>${cleanupReport.total_analyzed}</strong> prospects analyzed,
+                <strong style="color: var(--color-warning-600);">${cleanupReport.issues_found}</strong> issues found,
+                <strong style="color: var(--color-success-600);">${cleanupReport.auto_fixable}</strong> auto-fixable
+              </div>
+              <div style="display: flex; gap: var(--space-2);">
+                ${cleanupReport.auto_fixable > 0 ? `
+                  <button class="button" onclick="autoFixAll()" ${cleanupInProgress ? 'disabled' : ''}>
+                    Auto-Fix All (${cleanupReport.auto_fixable})
+                  </button>
+                ` : ''}
+                <button class="button button-secondary" onclick="loadDataCleanup()" ${cleanupInProgress ? 'disabled' : ''}>
+                  Refresh Analysis
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+
+      // Render each problematic prospect
+      const rowsHtml = cleanupReport.analyses.map(analysis => {
+        const severityColors = {
+          high: 'var(--color-error-500)',
+          medium: 'var(--color-warning-500)',
+          low: 'var(--color-gray-400)'
+        };
+
+        const issuesHtml = analysis.issues.map(issue => {
+          const icon = issue.auto_fixable ? '🔧' : '⚠️';
+          return `
+            <div style="margin: var(--space-1) 0; padding: var(--space-1) var(--space-2); background: var(--color-bg-card); border-left: 3px solid ${severityColors[issue.severity]}; border-radius: var(--radius-sm);">
+              <span title="${issue.severity} severity">${icon}</span>
+              <strong>${issue.type.replace(/_/g, ' ')}</strong>: ${issue.description}
+              ${issue.suggestion ? `<br><small style="color: var(--color-text-muted);">→ ${issue.suggestion}</small>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        const actionsHtml = analysis.suggested_actions.map(action =>
+          `<li style="margin-left: var(--space-4);">${action}</li>`
+        ).join('');
+
+        return `
+          <tr style="vertical-align: top;">
+            <td>
+              <a href="/admin/accounts/${analysis.org_id}" target="_blank">
+                <strong>${analysis.org_name}</strong>
+              </a>
+              <div style="margin-top: var(--space-2); display: flex; gap: var(--space-1); flex-wrap: wrap;">
+                ${analysis.can_auto_fix ? `
+                  <button class="button button-sm" onclick="autoFixSingle('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
+                    Auto-Fix
+                  </button>
+                ` : ''}
+                <button class="button button-sm button-secondary" onclick="analyzeWithAI('${analysis.org_id}')" ${cleanupInProgress ? 'disabled' : ''}>
+                  AI Analyze
+                </button>
+              </div>
+            </td>
+            <td style="white-space: normal;">${issuesHtml}</td>
+            <td style="white-space: normal;">
+              ${actionsHtml ? `<ul style="margin: 0; padding: 0; list-style: disc;">${actionsHtml}</ul>` : '-'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Update table headers for cleanup view (3 columns - actions moved into Organization cell)
+      document.querySelector('thead tr').innerHTML = `
+        <th style="min-width: 180px;">Organization</th>
+        <th style="min-width: 350px;">Issues</th>
+        <th style="min-width: 250px;">Suggested Actions</th>
+      `;
+
+      document.getElementById('prospectsTableBody').innerHTML = summaryHtml + rowsHtml;
+    }
+
+    async function autoFixAll() {
+      if (!cleanupReport || cleanupReport.auto_fixable === 0) return;
+      if (!confirm(`Auto-fix ${cleanupReport.auto_fixable} issues across ${cleanupReport.analyses.filter(a => a.can_auto_fix).length} organizations?`)) {
+        return;
+      }
+
+      cleanupInProgress = true;
+      renderDataCleanup();
+
+      try {
+        const analysesToFix = cleanupReport.analyses.filter(a => a.can_auto_fix);
+        const response = await fetch('/api/admin/cleanup/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analyses: analysesToFix })
+        });
+
+        if (!response.ok) {
+          throw new Error('Auto-fix failed');
+        }
+
+        const result = await response.json();
+        alert(`Fixed ${result.successful} of ${result.total} issues.`);
+
+        // Reload cleanup analysis
+        await loadDataCleanup();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        cleanupInProgress = false;
+        renderDataCleanup();
+      }
+    }
+
+    async function autoFixSingle(orgId) {
+      const analysis = cleanupReport?.analyses.find(a => a.org_id === orgId);
+      if (!analysis || !analysis.can_auto_fix) return;
+
+      cleanupInProgress = true;
+      renderDataCleanup();
+
+      try {
+        const response = await fetch('/api/admin/cleanup/auto-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analyses: [analysis] })
+        });
+
+        if (!response.ok) {
+          throw new Error('Auto-fix failed');
+        }
+
+        const result = await response.json();
+
+        // Reload cleanup analysis
+        await loadDataCleanup();
+
+        if (result.successful > 0) {
+          alert(`Fixed ${result.successful} issue(s) for ${analysis.org_name}.`);
+        } else {
+          alert('No issues were fixed. They may require manual attention.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        cleanupInProgress = false;
+      }
+    }
+
+    async function analyzeWithAI(orgId) {
+      const analysis = cleanupReport?.analyses.find(a => a.org_id === orgId);
+      const orgName = analysis?.org_name || orgId;
+
+      // Show loading state
+      const modal = document.createElement('div');
+      modal.id = 'aiAnalysisModal';
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 800px; width: 90%; max-height: 80vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">AI Analysis: ${orgName}</h3>
+            <div class="loading-dots">Analyzing with Claude... (may take 30-60 seconds)</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/analyze-with-ai/${orgId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error('AI analysis failed');
+        }
+
+        const result = await response.json();
+
+        // Render markdown analysis
+        // Sanitize markdown output to prevent XSS
+        const renderedAnalysis = DOMPurify.sanitize(marked.parse(result.analysis));
+
+        // Show results
+        const toolCallsHtml = result.tool_calls.length > 0 ? `
+          <details style="margin-top: var(--space-4);">
+            <summary style="cursor: pointer; color: var(--color-text-secondary);">Tool calls (${result.tool_calls.length})</summary>
+            <div style="margin-top: var(--space-2); font-size: 0.85em; background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); max-height: 200px; overflow: auto;">
+              ${result.tool_calls.map(tc => `
+                <div style="margin-bottom: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border);">
+                  <strong>${escapeHtml(tc.tool)}</strong>
+                  <pre style="margin: var(--space-1) 0; white-space: pre-wrap; font-size: 0.9em;">${escapeHtml(JSON.stringify(tc.input, null, 2))}</pre>
+                </div>
+              `).join('')}
+            </div>
+          </details>
+        ` : '';
+
+        // Build actionable items from suggested_actions
+        const mergeActions = result.suggested_actions.filter(a => a.action === 'merge');
+        const updateActions = result.suggested_actions.filter(a => a.action === 'update_type' || a.action === 'add_domain');
+        const enrichActions = result.suggested_actions.filter(a => a.action === 'enrich');
+        const otherActions = result.suggested_actions.filter(a =>
+          !['merge', 'update_type', 'add_domain', 'enrich'].includes(a.action)
+        );
+
+        let actionsHtml = '';
+
+        // Merge actions with preview button
+        if (mergeActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-warning-700);">Duplicate Organizations Found</strong>
+              ${mergeActions.map(a => `
+                <div style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-card); border-radius: var(--radius-sm);">
+                  <div style="margin-bottom: var(--space-2);">
+                    <strong>Primary:</strong> ${escapeHtml(a.details.primary_name || a.details.primary_org_id)}<br>
+                    <strong>Duplicate:</strong> ${escapeHtml(a.details.duplicate_name || a.details.duplicate_org_id)}
+                  </div>
+                  <div style="display: flex; gap: var(--space-2);">
+                    <button class="button button-secondary" onclick="previewMerge('${a.details.primary_org_id}', '${a.details.duplicate_org_id}')">
+                      Preview Merge
+                    </button>
+                    <button class="button" onclick="executeMerge('${a.details.primary_org_id}', '${a.details.duplicate_org_id}')">
+                      Merge Organizations
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        // Update actions (company type, domain)
+        if (updateActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-info-50); border: 1px solid var(--color-info-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-info-700);">Recommended Updates</strong>
+              <ul style="margin: var(--space-2) 0 0 var(--space-4); list-style: none; padding: 0;">
+                ${updateActions.map(a => {
+                  if (a.action === 'add_domain') {
+                    return `<li style="margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2);">
+                      <span>Add domain: <strong>${escapeHtml(a.details.domain)}</strong></span>
+                      <button class="button button-small" onclick="quickAddDomain('${escapeHtml(a.org_id)}', '${escapeHtml(a.details.domain)}')">Add</button>
+                    </li>`;
+                  } else if (a.action === 'update_type') {
+                    return `<li style="margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-2);">
+                      <span>Set company type to: <strong>${escapeHtml(a.details.company_type)}</strong></span>
+                      <button class="button button-small" onclick="quickUpdateType('${escapeHtml(a.org_id)}', '${escapeHtml(a.details.company_type)}')">Update</button>
+                    </li>`;
+                  }
+                  return `<li>${escapeHtml(a.action)}: ${escapeHtml(JSON.stringify(a.details))}</li>`;
+                }).join('')}
+              </ul>
+            </div>
+          `;
+        }
+
+        // Enrich actions
+        if (enrichActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-success-50); border: 1px solid var(--color-success-200); border-radius: var(--radius-md);">
+              <strong style="color: var(--color-success-700);">Enrichment Available</strong>
+              <div style="margin-top: var(--space-2);">
+                <button class="button" onclick="enrichProspect('${orgId}')">Enrich with Lusha</button>
+              </div>
+            </div>
+          `;
+        }
+
+        // Other/completed actions
+        if (otherActions.length > 0) {
+          actionsHtml += `
+            <div style="margin-top: var(--space-4); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-md);">
+              <strong>Other Actions:</strong>
+              <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+                ${otherActions.map(a => `<li>${escapeHtml(a.action)}: ${escapeHtml(JSON.stringify(a.details))}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 800px; width: 90%; max-height: 80vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>AI Analysis: ${orgName}</h3>
+                <button onclick="document.getElementById('aiAnalysisModal').remove()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+              <div class="markdown-content" style="line-height: 1.6;">${renderedAnalysis}</div>
+              ${actionsHtml}
+              ${toolCallsHtml}
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Done</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-error-600); margin-bottom: var(--space-4);">Analysis Failed</h3>
+              <p>${error.message}</p>
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove();">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Preview merge operation
+    async function previewMerge(primaryOrgId, secondaryOrgId) {
+      const modal = document.getElementById('aiAnalysisModal');
+      const originalContent = modal.innerHTML;
+
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+            <h3 style="margin-bottom: var(--space-4);">Loading merge preview...</h3>
+            <div class="loading-dots">Fetching organization details...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const response = await fetch(`/api/admin/cleanup/preview-merge?primary=${primaryOrgId}&secondary=${secondaryOrgId}`);
+        if (!response.ok) throw new Error('Failed to load preview');
+        const preview = await response.json();
+
+        const warningsHtml = preview.warnings.length > 0 ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-warning-700);">Warnings:</strong>
+            <ul style="margin: var(--space-2) 0 0 var(--space-4);">
+              ${preview.warnings.map(w => `<li>${w}</li>`).join('')}
+            </ul>
+          </div>
+        ` : '';
+
+        // Stripe customer conflict handling
+        const stripeConflict = preview.stripe_customer_conflict || {};
+        const stripeConflictHtml = stripeConflict.has_conflict ? `
+          <div style="margin-bottom: var(--space-4); padding: var(--space-3); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+            <strong style="color: var(--color-error-700);">🔴 Stripe Customer Conflict</strong>
+            <p style="margin: var(--space-2) 0;">Both organizations have Stripe customers. Choose which to keep:</p>
+            <ul style="margin: var(--space-2) 0 var(--space-2) var(--space-4); font-size: var(--text-sm);">
+              <li><strong>Primary:</strong> ${escapeHtml(stripeConflict.primary_customer_id || 'None')}</li>
+              <li><strong>Secondary:</strong> ${escapeHtml(stripeConflict.secondary_customer_id || 'None')}</li>
+            </ul>
+            <div style="margin-top: var(--space-3);">
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="keep_primary" checked>
+                <strong>Keep Primary</strong> - Keep primary's Stripe customer, orphan secondary's
+              </label>
+              <label style="display: block; margin-bottom: var(--space-2);">
+                <input type="radio" name="stripe_resolution" value="use_secondary">
+                <strong>Use Secondary</strong> - Replace primary's with secondary's Stripe customer
+              </label>
+              <label style="display: block;">
+                <input type="radio" name="stripe_resolution" value="keep_both_unlinked">
+                <strong>Unlink Both</strong> - Unlink both for manual resolution later
+              </label>
+            </div>
+          </div>
+        ` : '';
+
+        const changesHtml = preview.estimated_changes.length > 0 ? `
+          <div style="margin-bottom: var(--space-4);">
+            <strong>Data to be moved:</strong>
+            <table style="width: 100%; margin-top: var(--space-2); border-collapse: collapse;">
+              <thead>
+                <tr style="background: var(--color-bg-subtle);">
+                  <th style="padding: var(--space-2); text-align: left; border-bottom: 1px solid var(--color-border);">Table</th>
+                  <th style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${preview.estimated_changes.map(c => `
+                  <tr>
+                    <td style="padding: var(--space-2); border-bottom: 1px solid var(--color-border);">${c.table_name}</td>
+                    <td style="padding: var(--space-2); text-align: right; border-bottom: 1px solid var(--color-border);">${c.rows_to_move}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<p>No data to move - secondary organization appears empty.</p>';
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; width: 95%; max-height: 85vh; overflow: auto; box-shadow: var(--shadow-lg);">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4);">
+                <h3>Merge Preview</h3>
+                <button onclick="document.getElementById('aiAnalysisModal').remove()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--color-text-secondary);">&times;</button>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
+                <div style="padding: var(--space-4); background: var(--color-success-50); border: 2px solid var(--color-success-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-success-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">PRIMARY (keep)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.primary_org.name)}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(preview.primary_org.id)}</div>
+                  ${preview.primary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.primary_org.email_domain)}</div>` : ''}
+                  ${preview.primary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.primary_org.company_type)}</div>` : ''}
+                  ${preview.primary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${escapeHtml(preview.primary_org.member_count)}</div>` : ''}
+                  ${preview.primary_org.created_by ? `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary);">Created by: ${escapeHtml(preview.primary_org.created_by)}</div>` : ''}
+                </div>
+
+                <div style="padding: var(--space-4); background: var(--color-error-50); border: 2px solid var(--color-error-300); border-radius: var(--radius-md);">
+                  <div style="font-size: var(--text-xs); color: var(--color-error-700); font-weight: var(--font-semibold); margin-bottom: var(--space-1);">DUPLICATE (delete)</div>
+                  <div style="font-size: var(--text-lg); font-weight: var(--font-semibold);">${escapeHtml(preview.secondary_org.name)}</div>
+                  <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">${escapeHtml(preview.secondary_org.id)}</div>
+                  ${preview.secondary_org.email_domain ? `<div style="margin-top: var(--space-2);"><strong>Domain:</strong> ${escapeHtml(preview.secondary_org.email_domain)}</div>` : ''}
+                  ${preview.secondary_org.company_type ? `<div><strong>Type:</strong> ${escapeHtml(preview.secondary_org.company_type)}</div>` : ''}
+                  ${preview.secondary_org.member_count !== undefined ? `<div><strong>Members:</strong> ${escapeHtml(preview.secondary_org.member_count)}</div>` : ''}
+                  ${preview.secondary_org.created_by ? `<div style="margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-text-secondary);">Created by: ${escapeHtml(preview.secondary_org.created_by)}</div>` : ''}
+                </div>
+              </div>
+
+              ${stripeConflictHtml}
+              ${warningsHtml}
+              ${changesHtml}
+
+              <div style="margin-top: var(--space-4); display: flex; justify-content: space-between;">
+                <button class="button button-secondary" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Cancel</button>
+                <button class="button button-danger" onclick="executeMerge('${primaryOrgId}', '${secondaryOrgId}', ${stripeConflict.has_conflict || false})">
+                  Confirm Merge
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        alert('Failed to load merge preview: ' + error.message);
+      }
+    }
+
+    // Execute merge operation
+    async function executeMerge(primaryOrgId, secondaryOrgId, hasStripeConflict = false) {
+      if (!confirm('Are you sure you want to merge these organizations? This action cannot be undone.')) {
+        return;
+      }
+
+      // Get Stripe customer resolution if there's a conflict
+      let stripeCustomerResolution = null;
+      if (hasStripeConflict) {
+        const selected = document.querySelector('input[name="stripe_resolution"]:checked');
+        stripeCustomerResolution = selected ? selected.value : 'keep_primary';
+      }
+
+      const modal = document.getElementById('aiAnalysisModal');
+      modal.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+          <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+            <h3 style="margin-bottom: var(--space-4);">Merging organizations...</h3>
+            <div class="loading-dots">Please wait...</div>
+          </div>
+        </div>
+      `;
+
+      try {
+        const body = { primary_org_id: primaryOrgId, secondary_org_id: secondaryOrgId };
+        if (stripeCustomerResolution) {
+          body.stripe_customer_resolution = stripeCustomerResolution;
+        }
+        const response = await fetch('/api/admin/cleanup/merge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Merge failed');
+        }
+
+        const result = await response.json();
+
+        const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
+
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-success-600); margin-bottom: var(--space-4);">Merge Complete</h3>
+              <p>Successfully merged organizations. ${totalMoved} records were moved.</p>
+              ${result.warnings.length > 0 ? `
+                <div style="margin-top: var(--space-3); padding: var(--space-2); background: var(--color-warning-50); border-radius: var(--radius-sm);">
+                  <strong>Notes:</strong>
+                  <ul style="margin: var(--space-1) 0 0 var(--space-4);">
+                    ${result.warnings.map(w => `<li>${w}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove(); loadDataCleanup();">Done</button>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        modal.innerHTML = `
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-surface-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: var(--color-bg-card); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 600px; width: 90%;">
+              <h3 style="color: var(--color-error-600); margin-bottom: var(--space-4);">Merge Failed</h3>
+              <p>${error.message}</p>
+              <div style="margin-top: var(--space-4); text-align: right;">
+                <button class="button" onclick="document.getElementById('aiAnalysisModal').remove();">Close</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // Quick action: add domain
+    async function quickAddDomain(orgId, domain) {
+      if (!confirm(`Add domain "${domain}" to this organization?`)) return;
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email_domain: domain })
+        });
+        if (!response.ok) throw new Error('Failed to update');
+        alert(`Domain "${domain}" added successfully.`);
+        loadDataCleanup();
+      } catch (error) {
+        alert('Failed to add domain: ' + error.message);
+      }
+    }
+
+    // Quick action: update company type
+    async function quickUpdateType(orgId, companyType) {
+      if (!confirm(`Set company type to "${companyType}"?`)) return;
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_type: companyType })
+        });
+        if (!response.ok) throw new Error('Failed to update');
+        alert(`Company type updated to "${companyType}".`);
+        loadDataCleanup();
+      } catch (error) {
+        alert('Failed to update company type: ' + error.message);
+      }
+    }
+
+    function populateParentDropdown() {
+      const select = document.getElementById('prospectParent');
+      select.innerHTML = '<option value="">None (standalone company)</option>';
+
+      allOrganizations
+        .filter(org => !org.prospect_status || org.prospect_status === 'joined')
+        .forEach(org => {
+          select.innerHTML += `<option value="${org.workos_organization_id}">${org.name}</option>`;
+        });
+    }
+
+    function applyFilters() {
+      const ownerFilter = document.getElementById('filterOwner').value;
+      const typeFilter = document.getElementById('filterType').value;
+      const searchFilter = document.getElementById('filterSearch').value.toLowerCase().trim();
+      const accountTypeFilter = document.getElementById('filterAccountType').value;
+
+      filteredProspects = allProspects.filter(prospect => {
+        // Account type filter (Individual vs Company)
+        if (accountTypeFilter === 'company' && prospect.is_personal) return false;
+        if (accountTypeFilter === 'individual' && !prospect.is_personal) return false;
+
+        // Filter by owner stakeholder (using user_id)
+        if (ownerFilter) {
+          const ownerStakeholder = prospect.stakeholders?.find(s => s.role === 'owner');
+          if (!ownerStakeholder || ownerStakeholder.user_id !== ownerFilter) return false;
+        }
+        // Support both new array and legacy single value for type filter
+        if (typeFilter) {
+          const types = prospect.company_types || (prospect.company_type ? [prospect.company_type] : []);
+          if (!types.includes(typeFilter)) return false;
+        }
+
+        // Search filter: match name, email_domain, or any linked domain
+        if (searchFilter) {
+          const nameMatch = prospect.name.toLowerCase().includes(searchFilter);
+          const emailDomainMatch = prospect.email_domain && prospect.email_domain.toLowerCase().includes(searchFilter);
+          const linkedDomainMatch = prospect.domains && prospect.domains.some(d =>
+            d.domain && d.domain.toLowerCase().includes(searchFilter)
+          );
+          const contactMatch = prospect.prospect_contact_name &&
+            prospect.prospect_contact_name.toLowerCase().includes(searchFilter);
+
+          if (!nameMatch && !emailDomainMatch && !linkedDomainMatch && !contactMatch) return false;
+        }
+        return true;
+      });
+
+      renderProspects();
+    }
+
+    function renderProspects() {
+      const tbody = document.getElementById('prospectsTableBody');
+      const countDiv = document.getElementById('prospectsCount');
+
+      countDiv.textContent = `Showing ${filteredProspects.length} account${filteredProspects.length !== 1 ? 's' : ''}`;
+
+      if (filteredProspects.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="empty-state">
+              <h3>No accounts found</h3>
+              <p>No organizations match the current view and filters.</p>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      // Helper function to format relative time
+      function formatRelativeTime(date) {
+        if (!date) return null;
+        const now = new Date();
+        const then = new Date(date);
+        const diffMs = now - then;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return 'Today';
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+        if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+        return `${Math.floor(diffDays / 365)}y ago`;
+      }
+
+      // Helper function to get activity date class
+      function getActivityDateClass(date) {
+        if (!date) return '';
+        const now = new Date();
+        const then = new Date(date);
+        const diffDays = Math.floor((now - then) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 7) return 'recent';
+        if (diffDays <= 30) return '';
+        if (diffDays <= 60) return 'stale';
+        return 'cold';
+      }
+
+      tbody.innerHTML = filteredProspects.map(prospect => {
+        // Company name with link and type badge
+        let companyHtml = `<a href="/admin/accounts/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
+        // Add type label inline - support both array and legacy single value
+        let typeLabel = '';
+        if (prospect.is_personal) {
+          typeLabel = 'Individual';
+        } else {
+          const types = prospect.company_types || (prospect.company_type ? [prospect.company_type] : []);
+          typeLabel = formatCompanyTypes(types);
+          if (typeLabel === '-') typeLabel = '';
+        }
+        if (typeLabel) {
+          companyHtml += `<br><small style="color: var(--color-text-muted);">${typeLabel}</small>`;
+        }
+        // Add member status badge
+        if (prospect.subscription_status === 'active') {
+          companyHtml += ` <span class="status-badge status-member">Member</span>`;
+        }
+
+        // Engagement fires with score
+        const fires = '\u{1F525}'.repeat(prospect.engagement_level || 1);
+        const score = prospect.engagement_score || 0;
+        const reasons = prospect.engagement_reasons?.join(', ') || 'New prospect';
+        const engagementTooltip = `Score: ${score}/100\n${reasons}`;
+        const engagementHtml = `<span class="engagement-fires" title="${engagementTooltip}">${fires}</span>`;
+
+        // Domain - show primary domain and count of others
+        let domainHtml = '<span style="color: var(--color-text-muted);">-</span>';
+        if (prospect.domains && prospect.domains.length > 0) {
+          const primaryDomain = prospect.domains.find(d => d.is_primary) || prospect.domains[0];
+          domainHtml = `<span class="domain-primary">${primaryDomain.domain}</span>`;
+          if (prospect.domains.length > 1) {
+            domainHtml += `<br><span class="domain-count">+${prospect.domains.length - 1} more</span>`;
+          }
+        } else if (prospect.email_domain) {
+          domainHtml = `<span class="domain-cell">${prospect.email_domain}</span>`;
+        }
+
+        // Users - Slack and Web counts
+        const slackCount = prospect.slack_user_count || 0;
+        const webCount = prospect.member_count || 0;
+        let usersHtml = '<div class="users-cell">';
+        if (slackCount > 0 || webCount > 0) {
+          if (slackCount > 0) {
+            usersHtml += `<span class="user-count slack" title="Slack users">💬 ${slackCount}</span>`;
+          }
+          if (webCount > 0) {
+            usersHtml += `<span class="user-count web" title="Web users">👤 ${webCount}</span>`;
+          }
+        } else {
+          usersHtml += '<span class="user-count none">-</span>';
+        }
+        usersHtml += '</div>';
+
+        // Last activity
+        let activityHtml = '<span style="color: var(--color-text-muted);">No activity</span>';
+
+        // Check for open invoices first - this is the most important signal (only non-zero amounts, sorted by largest first)
+        const nonZeroInvoices = (prospect.pending_invoices?.filter(inv => inv.amount_due > 0) || []).sort((a, b) => b.amount_due - a.amount_due);
+        if (nonZeroInvoices.length > 0) {
+          const invoice = nonZeroInvoices[0];
+          const amount = (invoice.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: invoice.currency || 'USD' });
+          const statusClass = invoice.status === 'draft' ? 'draft' : '';
+          const statusLabel = invoice.status === 'draft' ? 'Draft' : 'Open';
+          const invoiceUrl = invoice.hosted_invoice_url || `/admin/accounts/${prospect.workos_organization_id}`;
+          activityHtml = `<a href="${invoiceUrl}" target="_blank" class="invoice-badge ${statusClass}" title="Click to view invoice">
+            💰 ${statusLabel}: ${amount}
+          </a>`;
+          if (nonZeroInvoices.length > 1) {
+            activityHtml += `<br><small style="color: var(--color-text-muted);">+${nonZeroInvoices.length - 1} more</small>`;
+          }
+        } else if (prospect.last_activity) {
+          const activityDate = formatRelativeTime(prospect.last_activity.date);
+          const dateClass = getActivityDateClass(prospect.last_activity.date);
+          const activityType = prospect.last_activity.type?.replace(/_/g, ' ') || 'Activity';
+          activityHtml = `
+            <div class="activity-cell">
+              <span class="activity-type">${activityType}</span><br>
+              <span class="activity-date ${dateClass}">${activityDate}</span>
+            </div>`;
+        } else if (prospect.last_activity_at) {
+          const activityDate = formatRelativeTime(prospect.last_activity_at);
+          const dateClass = getActivityDateClass(prospect.last_activity_at);
+          activityHtml = `<span class="activity-date ${dateClass}">${activityDate}</span>`;
+        }
+        // Add pending tasks indicator (unless we're showing a non-zero invoice)
+        if (!nonZeroInvoices.length && prospect.pending_steps?.pending > 0) {
+          const overdueClass = prospect.pending_steps.overdue > 0 ? 'overdue' : '';
+          const pendingText = prospect.pending_steps.overdue > 0
+            ? `${prospect.pending_steps.overdue} overdue`
+            : `${prospect.pending_steps.pending} pending`;
+          activityHtml += `<br><span class="pending-badge ${overdueClass}">${pendingText}</span>`;
+        }
+
+        // Owner - from stakeholders, show "Me!" if current user is owner
+        const ownerStakeholder = prospect.stakeholders?.find(s => s.role === 'owner');
+        const isCurrentUserOwner = ownerStakeholder && currentUser?.id && ownerStakeholder.user_id === currentUser.id;
+        const ownerName = isCurrentUserOwner ? 'Me!' : (ownerStakeholder?.user_name || null);
+
+        // Build owner select options
+        const ownerOptions = teamMembers.map(m => {
+          const isMe = currentUser?.id && m.user_id === currentUser.id;
+          const displayName = isMe ? 'Me!' : m.user_name;
+          const selected = ownerStakeholder?.user_id === m.user_id ? 'selected' : '';
+          return `<option value="${m.user_id}" ${selected}>${displayName}</option>`;
+        }).join('');
+
+        const ownerHtml = `
+          <div class="owner-cell">
+            <select class="owner-select" onchange="assignOwner('${prospect.workos_organization_id}', this.value)" title="Assign owner">
+              <option value="">Unassigned</option>
+              ${ownerOptions}
+            </select>
+          </div>`;
+
+        // Watch toggle - check if current user is watching (interested or connected)
+        // If user is the owner, don't show watch toggle (they already own it)
+        const isWatching = prospect.stakeholders?.some(s =>
+          currentUser?.id && s.user_id === currentUser.id && (s.role === 'interested' || s.role === 'connected')
+        );
+        let watchHtml = '';
+        if (!isCurrentUserOwner) {
+          const watchClass = isWatching ? 'watching' : '';
+          const watchTitle = isWatching ? 'Stop watching' : 'Watch this prospect';
+          const watchIcon = isWatching ? '⭐' : '☆';
+          watchHtml = `<button class="watch-btn ${watchClass}" onclick="toggleWatch('${prospect.workos_organization_id}', ${isWatching})" title="${watchTitle}">${watchIcon}</button>`;
+        }
+
+        // Role badge for My Accounts view
+        let roleHtml = '';
+        if (currentView === 'my_accounts') {
+          const role = prospect.user_stakeholder_role;
+          if (role === 'owner') {
+            roleHtml = `<span class="stakeholder-badge owner">owner</span>`;
+          } else if (role === 'interested') {
+            roleHtml = `<span class="stakeholder-badge watching">watching</span>`;
+          } else if (role === 'connected') {
+            roleHtml = `<span class="stakeholder-badge connected">connected</span>`;
+          }
+        }
+
+        return `
+          <tr>
+            <td>${companyHtml}</td>
+            <td>${engagementHtml}</td>
+            <td>${domainHtml}</td>
+            <td>${usersHtml}</td>
+            <td>${activityHtml}</td>
+            ${currentView === 'my_accounts' ? `<td>${roleHtml}</td>` : ''}
+            <td>${ownerHtml}</td>
+            <td>
+              ${watchHtml}
+              <button class="btn-icon" onclick="editProspect('${prospect.workos_organization_id}')" title="Edit">Edit</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Assign owner to a prospect
+    async function assignOwner(orgId, userId) {
+      try {
+        if (!userId) {
+          // Remove owner - find and delete owner stakeholder
+          const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+          const ownerStakeholder = prospect?.stakeholders?.find(s => s.role === 'owner');
+          if (ownerStakeholder) {
+            // We need to find the stakeholder ID first
+            const stakeholdersRes = await fetch(`/api/admin/organizations/${orgId}/stakeholders`);
+            if (stakeholdersRes.ok) {
+              const stakeholders = await stakeholdersRes.json();
+              const owner = stakeholders.find(s => s.role === 'owner');
+              if (owner) {
+                await fetch(`/api/admin/organizations/${orgId}/stakeholders/${owner.id}`, {
+                  method: 'DELETE'
+                });
+              }
+            }
+          }
+        } else {
+          // Assign new owner
+          const teamMember = teamMembers.find(m => m.user_id === userId);
+          await fetch(`/api/admin/organizations/${orgId}/stakeholders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: userId,
+              user_name: teamMember?.user_name || userId,
+              user_email: teamMember?.user_email,
+              role: 'owner'
+            })
+          });
+        }
+
+        // Refresh data
+        await loadView(currentView);
+      } catch (error) {
+        console.error('Error assigning owner:', error);
+        alert('Failed to assign owner. Please try again.');
+      }
+    }
+
+    // Toggle watching a prospect
+    async function toggleWatch(orgId, isCurrentlyWatching) {
+      try {
+        if (isCurrentlyWatching) {
+          // Stop watching - remove self as stakeholder
+          await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'DELETE'
+          });
+        } else {
+          // Start watching - add self as interested
+          await fetch(`/api/admin/organizations/${orgId}/stakeholders/me`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'interested' })
+          });
+        }
+
+        // Refresh data
+        await loadView(currentView);
+      } catch (error) {
+        console.error('Error toggling watch:', error);
+        alert('Failed to update watch status. Please try again.');
+      }
+    }
+
+    // Modal functions
+    function openAddProspectModal() {
+      document.getElementById('prospectModalTitle').textContent = 'Add Prospect';
+      document.getElementById('prospectForm').reset();
+      document.getElementById('editOrgId').value = '';
+      document.getElementById('prospectCompanyType').value = '';
+      document.getElementById('prospectOwner').value = '';
+      document.getElementById('prospectStatus').value = 'prospect';
+      document.getElementById('prospectSource').value = 'aao_launch_list';
+      document.getElementById('prospectDomain').disabled = false;
+      document.getElementById('prospectName').disabled = false;
+      // Hide payment link button for new prospects
+      document.getElementById('getPaymentLinkBtn').style.display = 'none';
+      document.getElementById('prospectModal').style.display = 'block';
+    }
+
+    function editProspect(orgId) {
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+      if (!prospect) return;
+
+      document.getElementById('prospectModalTitle').textContent = 'Edit Prospect';
+      document.getElementById('editOrgId').value = orgId;
+      document.getElementById('prospectName').value = prospect.name;
+      document.getElementById('prospectName').disabled = true;
+      document.getElementById('prospectDomain').value = '';
+      document.getElementById('prospectDomain').disabled = true;
+      document.getElementById('prospectCompanyType').value = prospect.company_type || '';
+      document.getElementById('prospectOwner').value = prospect.prospect_owner || '';
+      document.getElementById('prospectStatus').value = prospect.prospect_status || 'prospect';
+      document.getElementById('prospectSource').value = prospect.prospect_source || 'aao_launch_list';
+      document.getElementById('prospectParent').value = prospect.parent_organization_id || '';
+      document.getElementById('prospectContactName').value = prospect.prospect_contact_name || '';
+      document.getElementById('prospectContactEmail').value = prospect.prospect_contact_email || '';
+      document.getElementById('prospectContactTitle').value = prospect.prospect_contact_title || '';
+      document.getElementById('prospectNextAction').value = prospect.prospect_next_action || '';
+      document.getElementById('prospectNextActionDate').value = prospect.prospect_next_action_date ? prospect.prospect_next_action_date.split('T')[0] : '';
+      document.getElementById('prospectNotes').value = prospect.prospect_notes || '';
+
+      // Show payment link and invoice buttons for non-members
+      const paymentLinkBtn = document.getElementById('getPaymentLinkBtn');
+      const invoiceBtn = document.getElementById('generateInvoiceBtn');
+      const isNotMember = prospect.subscription_status !== 'active';
+      paymentLinkBtn.style.display = isNotMember ? 'inline-block' : 'none';
+      invoiceBtn.style.display = isNotMember ? 'inline-block' : 'none';
+
+      document.getElementById('prospectModal').style.display = 'block';
+    }
+
+    function closeProspectModal() {
+      document.getElementById('prospectModal').style.display = 'none';
+    }
+
+    async function saveProspect(event) {
+      event.preventDefault();
+
+      const orgId = document.getElementById('editOrgId').value;
+      const isEdit = !!orgId;
+
+      const data = {
+        name: document.getElementById('prospectName').value,
+        domain: document.getElementById('prospectDomain').value || null,
+        company_type: document.getElementById('prospectCompanyType').value || null,
+        prospect_owner: document.getElementById('prospectOwner').value || null,
+        prospect_status: document.getElementById('prospectStatus').value,
+        prospect_source: document.getElementById('prospectSource').value,
+        parent_organization_id: document.getElementById('prospectParent').value || null,
+        prospect_contact_name: document.getElementById('prospectContactName').value || null,
+        prospect_contact_email: document.getElementById('prospectContactEmail').value || null,
+        prospect_contact_title: document.getElementById('prospectContactTitle').value || null,
+        prospect_next_action: document.getElementById('prospectNextAction').value || null,
+        prospect_next_action_date: document.getElementById('prospectNextActionDate').value || null,
+        prospect_notes: document.getElementById('prospectNotes').value || null
+      };
+
+      const btn = document.getElementById('saveProspectBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const url = isEdit ? `/api/admin/prospects/${orgId}` : '/api/admin/prospects';
+        const method = isEdit ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.ManageSidebar.redirectToLogin();
+            return;
+          }
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to save prospect');
+        }
+
+        closeProspectModal();
+        loadData();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Prospect';
+      }
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+      if (event.target.classList.contains('modal')) {
+        event.target.style.display = 'none';
+      }
+    }
+
+    // Payment link functionality
+    let paymentLinkOrgId = null;
+
+    function openPaymentLinkModal() {
+      const orgId = document.getElementById('editOrgId').value;
+      if (!orgId) return;
+
+      paymentLinkOrgId = orgId;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      document.getElementById('paymentLinkOrgName').textContent = `For: ${prospect?.name || 'Unknown'}`;
+      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
+      document.getElementById('paymentLinkResult').style.display = 'none';
+      document.getElementById('paymentLinkModal').style.display = 'block';
+
+      loadPaymentLinkProducts(orgId);
+    }
+
+    async function loadPaymentLinkProducts(orgId) {
+      try {
+        const response = await fetch(`/api/admin/prospects/${orgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}) // No lookup_key = get product list
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load products');
+        }
+
+        const data = await response.json();
+
+        if (data.needs_selection && data.products) {
+          renderPaymentLinkProducts(data.products);
+        }
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('paymentLinkProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderPaymentLinkProducts(products) {
+      const container = document.getElementById('paymentLinkProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No products available for this account type.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const tiers = product.revenue_tiers?.length > 0
+          ? `<span style="font-size: var(--text-xs); color: var(--color-text-muted);">(${product.revenue_tiers.join(', ')})</span>`
+          : '';
+
+        return `
+          <button class="product-select-btn" onclick="generatePaymentLink('${product.lookup_key}')" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${product.display_name}</strong> ${tiers}
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}/year</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    async function generatePaymentLink(lookupKey) {
+      if (!paymentLinkOrgId) return;
+
+      const container = document.getElementById('paymentLinkProducts');
+      container.innerHTML = '<p>Generating payment link...</p>';
+
+      try {
+        const response = await fetch(`/api/admin/prospects/${paymentLinkOrgId}/payment-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lookup_key: lookupKey })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to generate payment link');
+        }
+
+        if (data.success && data.payment_url) {
+          container.style.display = 'none';
+          document.getElementById('paymentLinkUrl').value = data.payment_url;
+          document.getElementById('paymentLinkResult').style.display = 'block';
+        } else {
+          throw new Error(data.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error generating payment link:', error);
+        container.innerHTML = `<p style="color: var(--color-error-600);">Error: ${error.message}</p>`;
+      }
+    }
+
+    function copyPaymentLink() {
+      const input = document.getElementById('paymentLinkUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Payment link copied to clipboard!');
+      }).catch(() => {
+        // Fallback for older browsers
+        document.execCommand('copy');
+        alert('Payment link copied to clipboard!');
+      });
+    }
+
+    function closePaymentLinkModal() {
+      document.getElementById('paymentLinkModal').style.display = 'none';
+      paymentLinkOrgId = null;
+    }
+
+    // Invoice functionality
+    let invoiceOrgId = null;
+    let selectedInvoiceProduct = null;
+
+    function openInvoiceModal() {
+      const orgId = document.getElementById('editOrgId').value;
+      if (!orgId) return;
+
+      invoiceOrgId = orgId;
+      selectedInvoiceProduct = null;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      document.getElementById('invoiceOrgName').textContent = `For: ${prospect?.name || 'Unknown'}`;
+      document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
+      document.getElementById('invoiceProductSection').style.display = 'block';
+      document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceResult').style.display = 'none';
+      document.getElementById('sendInvoiceBtn').style.display = 'none';
+      document.getElementById('invoiceForm').reset();
+
+      // Pre-fill from prospect data
+      if (prospect) {
+        document.getElementById('invoiceContactName').value = prospect.prospect_contact_name || '';
+        document.getElementById('invoiceContactEmail').value = prospect.prospect_contact_email || '';
+        document.getElementById('invoiceCompanyName').value = prospect.name || '';
+      }
+
+      document.getElementById('invoiceModal').style.display = 'block';
+
+      loadInvoiceProducts();
+    }
+
+    async function loadInvoiceProducts() {
+      try {
+        const response = await fetch('/api/admin/products');
+        if (!response.ok) throw new Error('Failed to load products');
+
+        const data = await response.json();
+        const invoiceableProducts = data.products.filter(p => p.is_invoiceable);
+
+        renderInvoiceProducts(invoiceableProducts);
+      } catch (error) {
+        console.error('Error loading products:', error);
+        document.getElementById('invoiceProducts').innerHTML =
+          '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
+      }
+    }
+
+    function renderInvoiceProducts(products) {
+      const container = document.getElementById('invoiceProducts');
+
+      if (products.length === 0) {
+        container.innerHTML = '<p style="color: var(--color-text-secondary);">No invoiceable products available.</p>';
+        return;
+      }
+
+      container.innerHTML = products.map(product => {
+        const price = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD'
+        }).format(product.amount_cents / 100);
+
+        const interval = product.billing_interval ? `/${product.billing_interval}` : '';
+
+        return `
+          <button type="button" class="product-select-btn" onclick="selectInvoiceProduct('${product.lookup_key}', '${product.display_name || product.product_name}', ${product.amount_cents})" style="
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: var(--space-3);
+            margin-bottom: var(--space-2);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background: var(--color-bg-card);
+            cursor: pointer;
+            transition: var(--transition-all);
+          " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
+            <strong>${product.display_name || product.product_name}</strong>
+            <br>
+            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${product.description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${product.description}</span>` : ''}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function selectInvoiceProduct(lookupKey, productName, amountCents) {
+      selectedInvoiceProduct = { lookupKey, productName, amountCents };
+
+      const price = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(amountCents / 100);
+
+      document.getElementById('selectedProductDisplay').innerHTML = `
+        <strong>${productName}</strong> - <span style="color: var(--color-brand);">${price}</span>
+      `;
+
+      document.getElementById('invoiceProductSection').style.display = 'none';
+      document.getElementById('invoiceBillingSection').style.display = 'block';
+      document.getElementById('sendInvoiceBtn').style.display = 'inline-block';
+    }
+
+    async function submitInvoice(event) {
+      event.preventDefault();
+
+      if (!selectedInvoiceProduct || !invoiceOrgId) {
+        alert('Please select a product first');
+        return;
+      }
+
+      const btn = document.getElementById('sendInvoiceBtn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      const data = {
+        lookup_key: selectedInvoiceProduct.lookupKey,
+        company_name: document.getElementById('invoiceCompanyName').value,
+        contact_name: document.getElementById('invoiceContactName').value,
+        contact_email: document.getElementById('invoiceContactEmail').value,
+        billing_address: {
+          line1: document.getElementById('invoiceAddressLine1').value,
+          line2: document.getElementById('invoiceAddressLine2').value || undefined,
+          city: document.getElementById('invoiceCity').value,
+          state: document.getElementById('invoiceState').value,
+          postal_code: document.getElementById('invoicePostalCode').value,
+          country: document.getElementById('invoiceCountry').value,
+        }
+      };
+
+      try {
+        const response = await fetch(`/api/admin/prospects/${invoiceOrgId}/invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to send invoice');
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.invoice_url) {
+          document.getElementById('invoiceBillingSection').style.display = 'none';
+          document.getElementById('sendInvoiceBtn').style.display = 'none';
+          document.getElementById('invoiceUrl').value = result.invoice_url;
+          document.getElementById('invoiceResult').style.display = 'block';
+        } else {
+          throw new Error(result.message || 'Unknown error');
+        }
+      } catch (error) {
+        console.error('Error sending invoice:', error);
+        alert('Error: ' + error.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send Invoice';
+      }
+    }
+
+    function copyInvoiceLink() {
+      const input = document.getElementById('invoiceUrl');
+      input.select();
+      navigator.clipboard.writeText(input.value).then(() => {
+        alert('Invoice link copied to clipboard!');
+      }).catch(() => {
+        document.execCommand('copy');
+        alert('Invoice link copied to clipboard!');
+      });
+    }
+
+    function closeInvoiceModal() {
+      document.getElementById('invoiceModal').style.display = 'none';
+      invoiceOrgId = null;
+      selectedInvoiceProduct = null;
+    }
+
+    // =========================================================================
+    // Quick Action Bar - Search and quick payment/invoice actions
+    // =========================================================================
+
+    let quickActionTimeout = null;
+
+    function initQuickAction() {
+      const searchInput = document.getElementById('quickActionSearch');
+      const resultsContainer = document.getElementById('quickActionResults');
+
+      if (!searchInput || !resultsContainer) return;
+
+      // Search as you type (debounced)
+      searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+
+        if (quickActionTimeout) {
+          clearTimeout(quickActionTimeout);
+        }
+
+        if (query.length < 2) {
+          resultsContainer.classList.remove('visible');
+          return;
+        }
+
+        quickActionTimeout = setTimeout(() => {
+          performQuickSearch(query);
+        }, 200);
+      });
+
+      // Close results when clicking outside
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.quick-action-bar')) {
+          resultsContainer.classList.remove('visible');
+        }
+      });
+
+      // Handle escape key
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          resultsContainer.classList.remove('visible');
+          searchInput.blur();
+        }
+      });
+    }
+
+    function performQuickSearch(query) {
+      const resultsContainer = document.getElementById('quickActionResults');
+      const lowerQuery = query.toLowerCase();
+
+      // Search through allProspects
+      const matches = allProspects
+        .filter(p =>
+          p.name.toLowerCase().includes(lowerQuery) ||
+          (p.email_domain && p.email_domain.toLowerCase().includes(lowerQuery)) ||
+          (p.prospect_contact_name && p.prospect_contact_name.toLowerCase().includes(lowerQuery))
+        )
+        .slice(0, 8);
+
+      if (matches.length === 0) {
+        resultsContainer.innerHTML = `
+          <div class="create-new-option" onclick="createNewFromQuickAction('${escapeHtml(query)}')">
+            <span>+</span> Create new prospect: "${escapeHtml(query)}"
+          </div>
+        `;
+      } else {
+        let html = matches.map(org => {
+          const contactInfo = org.prospect_contact_email || org.email_domain || '';
+          const statusBadge = getQuickStatusBadge(org);
+
+          return `
+            <div class="search-result-item">
+              <div>
+                <a href="/admin/accounts/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
+                <div class="result-meta">${escapeHtml(contactInfo)}</div>
+              </div>
+              <div class="result-actions">
+                <button class="result-action-btn payment" onclick="quickPaymentLink('${org.workos_organization_id}')" title="Generate payment link">
+                  💳 Pay Link
+                </button>
+                <button class="result-action-btn invoice" onclick="quickInvoice('${org.workos_organization_id}')" title="Send invoice">
+                  📄 Invoice
+                </button>
+                <button class="result-action-btn view" onclick="window.location='/admin/accounts/${org.workos_organization_id}'" title="View details">
+                  👁️
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Add option to create new if query doesn't exactly match any result
+        const exactMatch = matches.some(m => m.name.toLowerCase() === lowerQuery);
+        if (!exactMatch) {
+          html += `
+            <div class="create-new-option" onclick="createNewFromQuickAction('${escapeHtml(query)}')">
+              <span>+</span> Create new prospect: "${escapeHtml(query)}"
+            </div>
+          `;
+        }
+
+        resultsContainer.innerHTML = html;
+      }
+
+      resultsContainer.classList.add('visible');
+    }
+
+    function getQuickStatusBadge(org) {
+      if (org.subscription_status === 'active') {
+        return '<span style="font-size: var(--text-xs); background: var(--color-success-100); color: var(--color-success-700); padding: 2px 6px; border-radius: 4px; margin-left: 8px;">Member</span>';
+      }
+      if (org.pending_invoices?.length > 0) {
+        return '<span style="font-size: var(--text-xs); background: var(--color-warning-100); color: var(--color-warning-700); padding: 2px 6px; border-radius: 4px; margin-left: 8px;">Open Invoice</span>';
+      }
+      return '';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function quickPaymentLink(orgId) {
+      const resultsContainer = document.getElementById('quickActionResults');
+      resultsContainer.classList.remove('visible');
+
+      // Use the existing payment link modal
+      paymentLinkOrgId = orgId;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      document.getElementById('paymentLinkOrgName').textContent = `For: ${prospect?.name || 'Unknown'}`;
+      document.getElementById('paymentLinkProducts').innerHTML = 'Loading products...';
+      document.getElementById('paymentLinkResult').style.display = 'none';
+      document.getElementById('paymentLinkModal').style.display = 'block';
+
+      loadPaymentLinkProducts(orgId);
+    }
+
+    function quickInvoice(orgId) {
+      const resultsContainer = document.getElementById('quickActionResults');
+      resultsContainer.classList.remove('visible');
+
+      // Use the existing invoice modal
+      invoiceOrgId = orgId;
+      const prospect = allProspects.find(p => p.workos_organization_id === orgId);
+
+      // Reset form
+      document.getElementById('invoiceForm').reset();
+      if (prospect) {
+        document.getElementById('invoiceCompanyName').value = prospect.name || '';
+        document.getElementById('invoiceContactName').value = prospect.prospect_contact_name || '';
+        document.getElementById('invoiceContactEmail').value = prospect.prospect_contact_email || '';
+      }
+
+      // Reset form to product selection view
+      document.getElementById('invoiceProductSection').style.display = 'block';
+      document.getElementById('invoiceBillingSection').style.display = 'none';
+      document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
+      document.getElementById('invoiceModal').style.display = 'block';
+
+      loadInvoiceProducts(orgId);
+    }
+
+    function createNewFromQuickAction(name) {
+      const resultsContainer = document.getElementById('quickActionResults');
+      resultsContainer.classList.remove('visible');
+      document.getElementById('quickActionSearch').value = '';
+
+      // Open the add prospect modal with the name pre-filled
+      document.getElementById('prospectModalTitle').textContent = 'Add Prospect';
+      document.getElementById('prospectForm').reset();
+      document.getElementById('editOrgId').value = '';
+      document.getElementById('prospectName').value = name;
+      document.getElementById('prospectCompanyType').value = '';
+      document.getElementById('prospectModal').style.display = 'block';
+    }
+
+    // Initialize quick action when page loads
+    document.addEventListener('DOMContentLoaded', initQuickAction);
+
+    // Initialize
+    loadData();
+  </script>
+</body>
+</html>

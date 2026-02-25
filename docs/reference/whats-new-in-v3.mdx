@@ -13,7 +13,7 @@ AdCP v3 expands the protocol beyond media buying into brand identity, governance
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
 | **Governance** | No brand suitability protocol | Property lists, content standards, and brand calibration |
 | **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
-| **Accounts** | No formal account model | `sync_accounts` with billing models and trust levels |
+| **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
 | **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 12 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
 | **Channel model** | 9 channels | 19 planning-oriented channels |
@@ -98,16 +98,16 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 | Entity | Question | How identified |
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
-| **Account** | Who gets billed? | `account_id` from `sync_accounts` |
-| **Operator** | Who operates the seat? | Domain (e.g., `acmeagency.example.com`) |
+| **Account** | Who gets billed? | [Account reference](/docs/building/integration/accounts-and-agents#account-references) — `account_id` from `list_accounts` or natural key |
+| **Operator** | Who operates on the brand's behalf? | Domain (e.g., `acmeagency.example.com`) |
 | **Agent** | What software places buys? | Authenticated session |
 
-**Three billing models:** `brand` (brand invoiced directly), `operator` (agency invoiced), `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
+**Two billing models:** `operator` (operator or brand buying direct is invoiced) and `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
 
-**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account_id` -> `create_media_buy` with `account_id`.
+**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account` -> `create_media_buy` with `account`.
 
-<Card title="Accounts and agents" icon="arrow-right" href="/docs/building/integration/accounts-and-agents">
-  Complete documentation including operator authorization via brand.json.
+<Card title="Accounts Protocol" icon="arrow-right" href="/docs/accounts/overview">
+  Accounts Protocol overview: identity verification, billing models, and settlement.
 </Card>
 
 ---

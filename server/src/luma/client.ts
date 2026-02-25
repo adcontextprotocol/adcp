@@ -95,6 +95,7 @@ export interface UpdateEventInput {
   meeting_url?: string;
   cover_url?: string;
   visibility?: 'public' | 'private';
+  require_rsvp_approval?: boolean;
 }
 
 // ============================================================================

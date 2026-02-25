@@ -887,7 +887,7 @@
           const hotList = document.getElementById('hotProspectsList');
           if (data.hot_prospects.length > 0) {
             hotList.innerHTML = data.hot_prospects.map(p => `
-              <div class="prospect-item" onclick="window.location.href='/admin/organizations/${p.org_id}'">
+              <div class="prospect-item" onclick="window.location.href='/admin/accounts/${p.org_id}'">
                 <div>
                   <div class="prospect-item-name">${escapeHtml(p.name)}</div>
                   <div class="prospect-item-meta">Score: ${p.engagement_score || 0}</div>
@@ -905,7 +905,7 @@
               const badgeClass = isOverdue ? 'overdue' : 'stale';
               const badgeText = isOverdue ? '⚠️ Overdue' : `⏰ ${Math.round(p.days_since_activity)}d`;
               return `
-                <div class="prospect-item" onclick="window.location.href='/admin/organizations/${p.org_id}'">
+                <div class="prospect-item" onclick="window.location.href='/admin/accounts/${p.org_id}'">
                   <div>
                     <div class="prospect-item-name">${escapeHtml(p.name)}</div>
                     <div class="prospect-item-meta">${isOverdue ? p.next_step || 'Action needed' : 'Last activity: ' + (p.last_activity ? new Date(p.last_activity).toLocaleDateString() : 'Never')}</div>

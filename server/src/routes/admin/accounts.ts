@@ -13,13 +13,14 @@
 import { Router, Request, Response } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
+  resolveEffectiveMembership,
   type OrgTier,
 } from "../../db/org-filters.js";
 import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
@@ -88,17 +89,12 @@ export function setupAccountRoutes(
 ): void {
 
   // Page route for unified account list
-  pageRouter.get(
-    "/accounts",
-    requireAuth,
-    requireAdmin,
-    (req, res) => {
-      serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
-        logger.error({ err }, "Error serving admin accounts page");
-        res.status(500).send("Internal server error");
-      });
-    }
-  );
+  pageRouter.get("/accounts", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
+      logger.error({ err }, "Error serving accounts page");
+      res.status(500).send("Internal server error");
+    });
+  });
 
   // Page route for domain discovery tool
   pageRouter.get(
@@ -154,7 +150,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/view-counts",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const pool = getPool();
@@ -349,9 +345,11 @@ export function setupAccountRoutes(
           SELECT
             o.*,
             p.name as parent_name,
-            (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count
+            p.email_domain as parent_domain,
+            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
           FROM organizations o
-          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
           WHERE o.workos_organization_id = $1
         `,
           [orgId]
@@ -366,6 +364,9 @@ export function setupAccountRoutes(
         // Derive member status from subscription
         const memberStatus = deriveOrgTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
+
+        // Resolve effective membership (direct or inherited via brand hierarchy)
+        const effectiveMembership = await resolveEffectiveMembership(orgId);
 
         // Run parallel queries for related data (including members from local cache)
         const [
@@ -647,17 +648,21 @@ export function setupAccountRoutes(
              ORDER BY created_at DESC`,
             [orgId]
           );
-          pendingInvoices = localInvoices.rows.map((inv) => ({
-            id: inv.id,
-            status: inv.status as "draft" | "open",
-            amount_due: inv.amount_due,
-            currency: inv.currency,
-            created: inv.created_at || new Date(),
-            due_date: inv.due_date,
-            hosted_invoice_url: inv.hosted_invoice_url,
-            product_name: null,
-            customer_email: null,
-          }));
+          pendingInvoices = localInvoices.rows.map((inv) => {
+            const dueDate = inv.due_date ? new Date(inv.due_date) : null;
+            return {
+              id: inv.id,
+              status: inv.status as "draft" | "open",
+              is_past_due: inv.status === 'open' && dueDate !== null && dueDate < new Date(),
+              amount_due: inv.amount_due,
+              currency: inv.currency,
+              created: inv.created_at || new Date(),
+              due_date: dueDate,
+              hosted_invoice_url: inv.hosted_invoice_url,
+              product_name: null,
+              customer_email: null,
+            };
+          });
         }
 
         // Find owner from stakeholders
@@ -777,10 +782,19 @@ export function setupAccountRoutes(
               }
             : null,
 
-          // Hierarchy
-          parent_organization_id: org.parent_organization_id,
+          // Hierarchy (derived from brand registry via email_domain → house_domain)
           parent_name: org.parent_name,
+          parent_domain: org.parent_domain,
           subsidiary_count: parseInt(org.subsidiary_count) || 0,
+
+          // Effective membership (direct or inherited via brand registry hierarchy)
+          effective_membership: {
+            is_member: effectiveMembership.is_member,
+            is_inherited: effectiveMembership.is_inherited,
+            paying_org_id: effectiveMembership.paying_org_id,
+            paying_org_name: effectiveMembership.paying_org_name,
+            hierarchy_chain: effectiveMembership.hierarchy_chain,
+          },
 
           // Activity
           activities: activitiesResult.rows,

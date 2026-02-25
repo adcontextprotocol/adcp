@@ -17,10 +17,9 @@
       {
         label: 'Account Management',
         items: [
-          { href: '/admin/accounts', label: 'Accounts', icon: '📋' },
           { href: '/admin/users', label: 'Users & Actions', icon: '👤' },
-          { href: '/admin/prospects', label: 'Prospects', icon: '🎯' },
           { href: '/admin/members', label: 'Organizations', icon: '🏢' },
+          { href: '/admin/accounts', label: 'Accounts', icon: '📋' },
           { href: '/admin/domain-health', label: 'Domain Health', icon: '🔗' },
         ]
       },
@@ -53,7 +52,6 @@
           { href: '/admin/notification-channels', label: 'Alert Channels', icon: '📢' },
           { href: '/admin/api-keys', label: 'API Keys', icon: '🔑' },
           { href: '/admin/bans', label: 'Bans', icon: '🚫' },
-          { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
           { href: '/admin/audit', label: 'Audit Log', icon: '📜' },
         ]
       },
@@ -296,7 +294,10 @@
         </nav>
         <div class="admin-sidebar-footer">
           <a href="/dashboard" class="admin-back-link">
-            ← Back to Dashboard
+            ← Back to dashboard
+          </a>
+          <a href="/manage" class="admin-back-link">
+            Manage AAO →
           </a>
         </div>
       </aside>

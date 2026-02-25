@@ -25,6 +25,7 @@ import { getPool } from '../db/client.js';
 import { workos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { researchDomain } from '../services/brand-enrichment.js';
 
 const logger = createLogger('workos-webhooks');
 
@@ -732,7 +733,18 @@ export function createWorkOSWebhooksRouter(): Router {
             break;
           }
 
-          case 'organization.created':
+          case 'organization.created': {
+            const newOrg = event.data as unknown as OrganizationData;
+            await syncOrganizationDomains(newOrg);
+            // Auto-research the primary domain for brand registry coverage
+            const primaryDomain = newOrg.domains.length > 0 ? newOrg.domains[0].domain : null;
+            if (primaryDomain) {
+              researchDomain(primaryDomain, { org_id: newOrg.id }).catch(err => {
+                logger.warn({ err, orgId: newOrg.id, domain: primaryDomain }, 'Background research failed for new org');
+              });
+            }
+            break;
+          }
           case 'organization.updated': {
             const org = event.data as unknown as OrganizationData;
             await syncOrganizationDomains(org);
@@ -823,13 +835,14 @@ export async function backfillOrganizationMemberships(): Promise<{
 
             for (const user of usersResponse.data) {
               try {
-                // Also get the membership to get the membership ID
+                // Get the membership ID for this user in this org
                 const membershipsResponse = await workos.userManagement.listOrganizationMemberships({
                   userId: user.id,
-                  organizationId: org.workos_organization_id,
                 });
 
-                const membership = membershipsResponse.data[0];
+                const membership = membershipsResponse.data.find(
+                  (m) => m.organizationId === org.workos_organization_id,
+                );
                 if (membership && membership.status === 'active') {
                   await pool.query(
                     `INSERT INTO organization_memberships (

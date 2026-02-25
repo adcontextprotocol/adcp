@@ -20,15 +20,15 @@
     },
     "catalog": {
       "$ref": "/schemas/latest/core/catalog.json",
-      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist."
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
     },
     "account_id": {
       "type": "string",
-      "description": "Account ID for product lookup. Returns products with pricing specific to this account's rate card."
+      "description": "Account ID for product lookup. Required when the seller declares account.required_for_products = true in capabilities. Returns products with pricing specific to this account's rate card."
     },
-    "campaign_ref": {
+    "buyer_campaign_ref": {
       "type": "string",
-      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation."
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
     },
     "filters": {
       "$ref": "/schemas/latest/core/product-filters.json"
@@ -72,5 +72,8 @@
       ]
     }
   ],
+  "dependencies": {
+    "catalog": ["brand"]
+  },
   "additionalProperties": true
 }

@@ -131,6 +131,27 @@ export const ResolvedBrandSchema = z
   })
   .openapi("ResolvedBrand");
 
+export const CompanySearchResultSchema = z
+  .object({
+    domain: z.string().openapi({ example: "coca-cola.com" }),
+    canonical_domain: z.string().openapi({ example: "coca-cola.com" }),
+    brand_name: z.string().openapi({ example: "The Coca-Cola Company" }),
+    house_domain: z.string().optional().openapi({ example: "coca-cola.com" }),
+    keller_type: z
+      .enum(["master", "sub_brand", "endorsed", "independent"])
+      .optional(),
+    parent_brand: z.string().optional(),
+    brand_agent_url: z.string().optional(),
+    source: z.string().openapi({ example: "community" }),
+  })
+  .openapi("CompanySearchResult");
+
+export const FindCompanyResultSchema = z
+  .object({
+    results: z.array(CompanySearchResultSchema),
+  })
+  .openapi("FindCompanyResult");
+
 export const ResolvedPropertySchema = z
   .object({
     publisher_domain: z.string().openapi({ example: "examplepub.com" }),

@@ -1,113 +1,170 @@
 ---
-title: Webhooks
-description: Push notification architecture, reliability patterns, and webhook handlers for AdCP
+title: Push Notifications
+description: How AdCP delivers async task updates to your webhook endpoint
 ---
 
-Both MCP and A2A use HTTP webhooks for async task updates. Instead of polling, you provide a webhook URL and the server POSTs status changes to you directly.
+Push notifications let publishers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the publisher POSTs status changes to that URL as the task progresses.
 
-## Protocol Comparison
+## How it works
 
-| Aspect | MCP | A2A |
-|--------|-----|-----|
-| **Spec Status** | AdCP specifies this | Native protocol feature |
-| **Configuration** | `pushNotificationConfig` | `pushNotificationConfig` |
-| **Envelope** | `mcp-webhook-payload.json` | `Task` or `TaskStatusUpdateEvent` |
-| **Data Location** | `result` field | `status.message.parts[].data` |
-| **Data Schemas** | **Identical** AdCP schemas | **Identical** AdCP schemas |
+1. A unique operation ID is generated per task invocation
+2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
+3. `push_notification_config` is injected into the task request body with that URL and HMAC credentials
+4. The publisher POSTs webhook notifications to your URL as the task status changes
+5. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
 
-## Configuring Webhooks
+```
+create_media_buy request
+  └── push_notification_config
+        ├── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
+        └── authentication: { schemes: ["HMAC-SHA256"], credentials: "..." }
 
-### MCP Webhooks
+              ↓ publisher processes task ↓
 
-MCP doesn't define push notifications. AdCP fills this gap by specifying the webhook configuration (`pushNotificationConfig`) and payload format.
-
-```javascript
-const response = await session.call('create_media_buy',
-  { /* task params */ },
+POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
   {
-    pushNotificationConfig: {
-      url: "https://buyer.com/webhooks/adcp",
-      authentication: {
-        schemes: ["HMAC-SHA256"],
-        credentials: "shared_secret_32_chars"
-      }
-    }
+    "task_id": "task_456",
+    "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",   ← echoed from your URL
+    "status": "completed",
+    "result": { ... }
   }
-);
 ```
 
-### A2A Webhooks
+If you're using the `@adcp/client` library, this entire flow is handled automatically — configure `webhookUrlTemplate` and `webhookSecret` once on the client and `push_notification_config` is injected into every outgoing task call.
 
-A2A defines push notifications natively:
+## Naming: snake_case vs camelCase
 
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "data",
-      data: {
-        skill: "create_media_buy",
-        parameters: { /* task params */ }
+This trips people up. There are two naming conventions in play:
+
+| Context | Field name | Example |
+|---------|-----------|---------|
+| **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ... } }` |
+| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ... } }` |
+
+The AdCP field name is always **`push_notification_config`** (snake_case). It goes in the task request body alongside your other task parameters.
+
+For A2A, the A2A protocol wraps it in a `configuration` envelope using camelCase — but the object's contents are identical.
+
+## Adding push_notification_config to a request
+
+### MCP
+
+Include `push_notification_config` as a task argument, merged with the rest of your task parameters:
+
+```json
+{
+  "buyer_ref": "campaign_q1",
+  "brand": { "brand_id": "acme" },
+  "start_time": { "type": "date", "date": "2025-03-01" },
+  "end_time": "2025-06-30T23:59:59Z",
+  "packages": [...],
+  "push_notification_config": {
+    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "your_shared_secret_min_32_chars"
+    }
+  }
+}
+```
+
+### A2A
+
+For A2A, skill parameters stay in `message.parts[].data.parameters`. The push notification config goes in the top-level `configuration` object:
+
+```json
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "campaign_q1",
+          "packages": [...]
+        }
       }
     }]
   },
-  pushNotificationConfig: {
-    url: "https://buyer.com/webhooks/a2a",
-    authentication: {
-      schemes: ["bearer"],
-      credentials: "shared_secret_32_chars"
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
+      "authentication": {
+        "schemes": ["HMAC-SHA256"],
+        "credentials": "your_shared_secret_min_32_chars"
+      }
     }
   }
-});
+}
 ```
 
-## When Webhooks Are Called
+## Operation IDs and URL templates
 
-Webhooks are triggered when **all** of the following are true:
+Operation IDs let you route incoming webhooks to the right handler. The typical pattern:
 
-1. **Task type supports async execution** (e.g., `get_products`, `create_media_buy`, `sync_creatives`)
-2. **`pushNotificationConfig` is provided** in the request
-3. **Task requires async processing** — initial response is `working` or `submitted`
+1. Generate a unique ID per task call
+2. Embed it in the webhook URL path
+3. The publisher echoes `operation_id` in the payload — no URL parsing needed
 
-If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent — the client already has the final result.
+**URL template pattern:**
+```
+https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
+```
+
+**Example (client library handles this automatically):**
+```typescript
+import { randomUUID } from 'crypto';
+
+const operationId = randomUUID(); // e.g. "cd51e063-2b79-4a6d-afac-ed7789c3a443"
+const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${operationId}`;
+
+// pass webhookUrl in push_notification_config.url
+```
+
+The publisher's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+
+## When webhooks fire
+
+Webhooks are sent for each status change after the initial response, as long as `push_notification_config` is in the request.
+
+If the task completes synchronously (initial response is already `completed` or `failed`), no webhook is sent — you already have the result.
 
 **Status changes that trigger webhooks:**
-- `working` → Progress update
-- `input-required` → Human input needed
-- `completed` → Final result available
-- `failed` → Error details
-- `canceled` → Cancellation confirmed
 
-## Webhook Payload Formats
+| Status | Meaning |
+|--------|---------|
+| `working` | Task is processing — may include progress info |
+| `input-required` | Waiting for human approval or clarification |
+| `completed` | Final result available |
+| `failed` | Task failed with error details |
+| `canceled` | Task was canceled |
 
-### MCP Payload
+## Webhook payload formats
 
-```http
-POST /webhooks/adcp/create_media_buy/agent_123/op_456 HTTP/1.1
-Host: buyer.example.com
-Authorization: Bearer your-secret-token
-Content-Type: application/json
+### MCP
 
+```json
 {
   "task_id": "task_456",
+  "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",
   "task_type": "create_media_buy",
+  "domain": "media-buy",
   "status": "completed",
   "timestamp": "2025-01-22T10:30:00Z",
   "message": "Media buy created successfully",
   "result": {
     "media_buy_id": "mb_12345",
-    "buyer_ref": "nike_q1_campaign_2024",
-    "creative_deadline": "2024-01-30T23:59:59Z",
+    "buyer_ref": "campaign_q1",
     "packages": [
-      { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package" }
+      { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
     ]
   }
 }
 ```
 
-### A2A Payload
+### A2A
 
-A2A sends `Task` (for final states) or `TaskStatusUpdateEvent` (for progress updates):
+A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). The AdCP result data is in `status.message.parts[].data`:
 
 ```json
 {
@@ -118,14 +175,14 @@ A2A sends `Task` (for final states) or `TaskStatusUpdateEvent` (for progress upd
     "message": {
       "role": "agent",
       "parts": [
-        { "text": "Media buy created successfully" },
+        { "kind": "text", "text": "Media buy created successfully" },
         {
+          "kind": "data",
           "data": {
             "media_buy_id": "mb_12345",
-            "buyer_ref": "nike_q1_campaign_2024",
-            "creative_deadline": "2024-01-30T23:59:59Z",
+            "buyer_ref": "campaign_q1",
             "packages": [
-              { "package_id": "pkg_12345_001", "buyer_ref": "nike_ctv_sports_package" }
+              { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
             ]
           }
         }
@@ -136,481 +193,131 @@ A2A sends `Task` (for final states) or `TaskStatusUpdateEvent` (for progress upd
 }
 ```
 
-### Status-Specific Data Schemas
+### Protocol comparison
 
-| Status | Data Schema | Contents |
-|--------|-------------|----------|
-| `completed` | `[task]-response.json` | Full task response (success branch) |
-| `failed` | `[task]-response.json` | Full task response (error branch) |
-| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
-| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
-| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+| | MCP | A2A |
+|---|---|---|
+| **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
+| **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
+| **Result location** | `result` field | `status.message.parts[].data` |
+| **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
 
-## Webhook Authentication
+### Status-specific result data
 
-AdCP adopts A2A's PushNotificationConfig structure for webhook configuration:
+| Status | `result` / `data` contains |
+|--------|---------------------------|
+| `completed` / `failed` | Full task response |
+| `working` | Progress: `percentage`, `current_step`, `total_steps` |
+| `input-required` | Reason and any validation errors |
+| `submitted` | Minimal acknowledgment |
 
-```json
-{
-  "push_notification_config": {
-    "url": "https://buyer.example.com/webhooks/adcp",
-    "authentication": {
-      "schemes": ["Bearer"],
-      "credentials": "secret_token_min_32_chars"
-    }
-  }
-}
-```
+## Authentication
 
-### Supported Authentication Schemes
+### Bearer token
 
-**Bearer Token (Simple, Recommended for Development)**
+Simple token auth — the publisher sends your token in the `Authorization` header.
+
+**Configuration:**
 ```json
 {
   "authentication": {
     "schemes": ["Bearer"],
-    "credentials": "secret_token_32_chars"
+    "credentials": "your_bearer_token_min_32_chars"
   }
 }
 ```
 
-**HMAC Signature (Enterprise, Recommended for Production)**
+**Verifying on your server:**
+```javascript
+app.post('/webhooks/adcp', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
+    return res.status(401).end();
+  }
+  processWebhook(req.body);
+  res.status(200).end();
+});
+```
+
+### HMAC-SHA256 (recommended for production)
+
+The publisher signs each request with a shared secret. You verify the signature on receipt.
+
+**Configuration:**
 ```json
 {
   "authentication": {
     "schemes": ["HMAC-SHA256"],
-    "credentials": "shared_secret_32_chars"
+    "credentials": "your_shared_secret_min_32_chars"
   }
 }
 ```
 
-### Publisher Implementation (Bearer)
-
-```javascript
-const config = pushNotificationConfig;
-const scheme = config.authentication.schemes[0];
-
-if (scheme === 'Bearer') {
-  await axios.post(config.url, payload, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.authentication.credentials}`
-    }
-  });
-}
+**Publisher sends:**
+```
+X-ADCP-Signature: <hex digest>
 ```
 
-### Publisher Implementation (HMAC-SHA256)
+Signature is computed as: `HMAC-SHA256(secret, rawBody)`
 
-```javascript
-if (scheme === 'HMAC-SHA256') {
-  const timestamp = new Date().toISOString();
-  const signature = crypto
-    .createHmac('sha256', config.authentication.credentials)
-    .update(timestamp + JSON.stringify(payload))
-    .digest('hex');
+**Verifying on your server:**
+```typescript
+import { createHmac } from 'crypto';
 
-  await axios.post(config.url, payload, {
-    headers: {
-      'Content-Type': 'application/json',
-      'X-ADCP-Signature': `sha256=${signature}`,
-      'X-ADCP-Timestamp': timestamp
-    }
-  });
+function verifyWebhook(payload: string, signature: string, secret: string): boolean {
+  const expected = createHmac('sha256', secret).update(payload).digest('hex');
+  return expected === signature;
 }
-```
 
-### Buyer Implementation (Bearer)
-
-```javascript
-app.post('/webhooks/adcp', async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing Authorization header' });
+app.post('/webhooks/adcp', (req, res) => {
+  const sig = req.headers['x-adcp-signature'] as string;
+  if (!sig || !verifyWebhook(req.rawBody, sig, process.env.ADCP_WEBHOOK_SECRET)) {
+    return res.status(401).end();
   }
-
-  const token = authHeader.substring(7);
-  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-
-  await processWebhook(req.body);
-  res.status(200).json({ status: 'processed' });
+  processWebhook(req.body);
+  res.status(200).end();
 });
 ```
 
-### Buyer Implementation (HMAC-SHA256)
+## Reliability
+
+Webhooks use **at-least-once delivery** — you may receive the same event more than once, and events may arrive out of order.
+
+Use `task_id` + `status` + `timestamp` to handle this:
 
 ```javascript
-app.post('/webhooks/adcp', async (req, res) => {
-  const signature = req.headers['x-adcp-signature'];
-  const timestamp = req.headers['x-adcp-timestamp'];
+async function processWebhook(payload) {
+  const { task_id, status, timestamp, result } = payload;
 
-  if (!signature || !timestamp) {
-    return res.status(401).json({ error: 'Missing signature headers' });
-  }
+  const task = await db.getTask(task_id);
 
-  // Reject old webhooks (prevent replay attacks)
-  const eventTime = new Date(timestamp);
-  if (Date.now() - eventTime > 5 * 60 * 1000) {
-    return res.status(401).json({ error: 'Webhook too old' });
-  }
+  // Skip if we've already processed a newer status
+  if (task?.updated_at >= timestamp) return;
 
-  // Verify signature
-  const expectedSig = crypto
-    .createHmac('sha256', process.env.ADCP_WEBHOOK_SECRET)
-    .update(timestamp + JSON.stringify(req.body))
-    .digest('hex');
-
-  if (signature !== `sha256=${expectedSig}`) {
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
-
-  await processWebhook(req.body);
-  res.status(200).json({ status: 'processed' });
-});
-```
-
-## Webhook Reliability
-
-### Delivery Semantics
-
-AdCP webhooks use **at-least-once delivery** semantics:
-
-- **Not guaranteed**: Webhooks may fail due to network issues, server downtime, or configuration problems
-- **May be duplicated**: The same event might be delivered multiple times
-- **May arrive out of order**: Later events could arrive before earlier ones
-- **Timeout behavior**: Webhook delivery has limited retry attempts and timeouts
-
-### Retry Strategy
-
-Publishers should use exponential backoff with jitter:
-
-```javascript
-class WebhookDelivery {
-  constructor() {
-    this.maxRetries = 3;
-    this.baseDelay = 1000; // 1 second
-    this.maxDelay = 60000; // 1 minute
-  }
-
-  async deliverWithRetry(url, payload, attempt = 0) {
-    try {
-      const response = await this.sendWebhook(url, payload);
-
-      if (response.status >= 200 && response.status < 300) {
-        return { success: true, attempts: attempt + 1 };
-      }
-
-      // Retry on 5xx errors and timeouts
-      if (response.status >= 500 && attempt < this.maxRetries) {
-        await this.delayWithJitter(attempt);
-        return this.deliverWithRetry(url, payload, attempt + 1);
-      }
-
-      // Don't retry 4xx errors (client errors)
-      return { success: false, error: 'Client error', attempts: attempt + 1 };
-
-    } catch (error) {
-      if (attempt < this.maxRetries) {
-        await this.delayWithJitter(attempt);
-        return this.deliverWithRetry(url, payload, attempt + 1);
-      }
-      return { success: false, error: error.message, attempts: attempt + 1 };
-    }
-  }
-
-  async delayWithJitter(attempt) {
-    const exponentialDelay = Math.min(
-      this.baseDelay * Math.pow(2, attempt),
-      this.maxDelay
-    );
-    // Add ±25% jitter to prevent thundering herd
-    const jitter = exponentialDelay * (0.75 + Math.random() * 0.5);
-    await new Promise(resolve => setTimeout(resolve, jitter));
-  }
+  await db.updateTask(task_id, { status, updated_at: timestamp, result });
+  await triggerBusinessLogic(task_id, status);
 }
 ```
 
-**Retry Schedule:**
-- Attempt 1: Immediate
-- Attempt 2: After ~1 second (with jitter)
-- Attempt 3: After ~2 seconds (with jitter)
-- Attempt 4: After ~4 seconds (with jitter)
-- Give up after 4 total attempts
+**Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
 
-### Circuit Breaker Pattern
+## Best practices
 
-Publishers must implement circuit breakers to prevent webhook queues from growing unbounded:
+1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
+2. **Handle duplicates** — use `task_id` + `timestamp` to skip already-processed or out-of-order events
+3. **Verify signatures** — always validate `X-ADCP-Signature` before processing
+4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
+5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
 
-```javascript
-class CircuitBreaker {
-  constructor(endpoint) {
-    this.endpoint = endpoint;
-    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
-    this.failureCount = 0;
-    this.failureThreshold = 5;
-    this.successThreshold = 2;
-    this.timeout = 60000; // 1 minute
-    this.halfOpenTime = null;
-    this.successCount = 0;
-  }
+## Reporting webhooks
 
-  async execute(fn) {
-    if (this.state === 'OPEN') {
-      // Check if circuit should move to HALF_OPEN
-      if (Date.now() - this.halfOpenTime > this.timeout) {
-        this.state = 'HALF_OPEN';
-        this.successCount = 0;
-      } else {
-        throw new Error('Circuit breaker is OPEN');
-      }
-    }
+Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
 
-    try {
-      const result = await fn();
-      this.onSuccess();
-      return result;
-    } catch (error) {
-      this.onFailure();
-      throw error;
-    }
-  }
+See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
-  onSuccess() {
-    this.failureCount = 0;
+## Next steps
 
-    if (this.state === 'HALF_OPEN') {
-      this.successCount++;
-      if (this.successCount >= this.successThreshold) {
-        this.state = 'CLOSED';
-        console.log(`Circuit breaker CLOSED for ${this.endpoint}`);
-      }
-    }
-  }
-
-  onFailure() {
-    this.failureCount++;
-
-    if (this.failureCount >= this.failureThreshold) {
-      this.state = 'OPEN';
-      this.halfOpenTime = Date.now();
-      console.error(`Circuit breaker OPEN for ${this.endpoint}`);
-    }
-  }
-}
-```
-
-**Circuit Breaker States:**
-- **CLOSED**: Normal operation, webhooks delivered
-- **OPEN**: Endpoint is down, webhooks are dropped (not queued)
-- **HALF_OPEN**: Testing if endpoint recovered, limited webhooks sent
-
-### Queue Management
-
-Publishers should implement bounded queues with overflow policies:
-
-```javascript
-class BoundedWebhookQueue {
-  constructor(maxSize = 1000) {
-    this.maxSize = maxSize;
-    this.queue = [];
-    this.droppedCount = 0;
-  }
-
-  enqueue(webhook) {
-    if (this.queue.length >= this.maxSize) {
-      // Overflow policy: drop oldest webhooks
-      const dropped = this.queue.shift();
-      this.droppedCount++;
-      console.warn(`Dropped webhook ${dropped.id} due to queue overflow`);
-    }
-    this.queue.push(webhook);
-  }
-}
-```
-
-**Best Practices:**
-- Set max queue size based on available memory and recovery time
-- Monitor queue depth and dropped webhook counts
-- Alert operations when queues are consistently full
-- Use dead letter queues for manual investigation of persistent failures
-- Implement queue per buyer endpoint (not global queue)
-
-## Idempotent Webhook Handlers
-
-Always implement idempotent handlers that can safely process the same event multiple times:
-
-```javascript
-app.post('/webhooks/adcp', async (req, res) => {
-  const { task_id, current_status, timestamp, event_id } = req.body;
-
-  // Idempotent check - avoid duplicate processing
-  const existing = await db.getWebhookEvent(event_id);
-  if (existing) {
-    console.log(`Webhook ${event_id} already processed`);
-    return res.status(200).json({ status: 'already_processed' });
-  }
-
-  // Record this webhook event
-  await db.recordWebhookEvent(event_id, timestamp);
-
-  // Process the status change
-  await processTaskStatusChange(task_id, current_status, timestamp);
-
-  // Always return 200 for successful processing
-  res.status(200).json({ status: 'processed' });
-});
-```
-
-## Sequence Handling
-
-Use timestamps to ensure proper event ordering:
-
-```javascript
-async function processTaskStatusChange(taskId, newStatus, timestamp) {
-  const currentTask = await db.getTask(taskId);
-
-  // Ignore out-of-order events
-  if (currentTask?.updated_at >= timestamp) {
-    console.log(`Ignoring out-of-order webhook for task ${taskId}`);
-    return;
-  }
-
-  // Update task with new status
-  await db.updateTask(taskId, {
-    status: newStatus,
-    updated_at: timestamp
-  });
-
-  // Trigger any business logic
-  await handleStatusChange(taskId, newStatus);
-}
-```
-
-## Polling as Backup
-
-Never rely solely on webhooks. Use polling as a reliable backup:
-
-```javascript
-class TaskTracker {
-  constructor() {
-    this.pendingTasks = new Map();
-    this.pollInterval = 30000; // 30 seconds
-  }
-
-  async trackTask(taskId, webhookConfigured = false) {
-    this.pendingTasks.set(taskId, {
-      lastPolled: Date.now(),
-      webhookConfigured,
-      pollAttempts: 0
-    });
-
-    // Start polling backup even if webhook is configured
-    this.schedulePolling(taskId);
-  }
-
-  async schedulePolling(taskId) {
-    const task = this.pendingTasks.get(taskId);
-    if (!task) return;
-
-    // Increase polling interval if webhook is configured
-    const interval = task.webhookConfigured ?
-      this.pollInterval * 4 : // 2 minutes with webhook
-      this.pollInterval;      // 30 seconds without webhook
-
-    setTimeout(async () => {
-      if (this.pendingTasks.has(taskId)) {
-        await this.pollTask(taskId);
-        this.schedulePolling(taskId); // Continue polling
-      }
-    }, interval);
-  }
-
-  async pollTask(taskId) {
-    try {
-      const response = await adcp.call('tasks/get', {
-        task_id: taskId,
-        include_result: true
-      });
-
-      await this.updateTaskState(taskId, response);
-
-      // Stop tracking if complete
-      if (['completed', 'failed', 'canceled'].includes(response.status)) {
-        this.pendingTasks.delete(taskId);
-      }
-
-    } catch (error) {
-      console.error(`Polling failed for task ${taskId}:`, error);
-    }
-  }
-}
-```
-
-## Reporting Webhooks
-
-In addition to task status webhooks, AdCP supports **reporting webhooks** for automated delivery performance notifications.
-
-### Configuration
-
-```json
-{
-  "buyer_ref": "campaign_2024",
-  "reporting_webhook": {
-    "url": "https://buyer.example.com/webhooks/reporting",
-    "auth_type": "bearer",
-    "auth_token": "secret_token",
-    "reporting_frequency": "daily"
-  }
-}
-```
-
-### Payload Structure
-
-```json
-{
-  "notification_type": "scheduled",
-  "sequence_number": 5,
-  "next_expected_at": "2024-02-06T08:00:00Z",
-  "reporting_period": {
-    "start": "2024-02-05T00:00:00Z",
-    "end": "2024-02-05T23:59:59Z"
-  },
-  "currency": "USD",
-  "media_buy_deliveries": [
-    {
-      "media_buy_id": "mb_001",
-      "buyer_ref": "campaign_a",
-      "status": "active",
-      "totals": {...},
-      "by_package": [...]
-    }
-  ]
-}
-```
-
-### Implementation Requirements
-
-1. **Array Handling**: Always process `media_buy_deliveries` as an array (may contain 1 to N media buys)
-2. **Idempotent Processing**: Same as task webhooks - handle duplicates safely
-3. **Sequence Tracking**: Use `sequence_number` to detect gaps or out-of-order delivery
-4. **Fallback Strategy**: Continue polling `get_media_buy_delivery` as backup
-5. **Delay Handling**: Treat `"delayed"` notifications as normal, not errors
-
-## Best Practices Summary
-
-1. **Always implement polling backup** - Don't rely solely on webhooks
-2. **Handle duplicates gracefully** - Use idempotent processing with event IDs
-3. **Check timestamps** - Ignore out-of-order events based on timestamps
-4. **Return 200 quickly** - Acknowledge webhook receipt immediately
-5. **Verify authenticity** - Always validate webhook signatures
-6. **Log webhook events** - Keep audit trail for debugging
-7. **Set reasonable timeouts** - Don't wait forever for webhook delivery
-8. **Graceful degradation** - Fall back to polling if webhooks consistently fail
-
-## Next Steps
-
-- **Task Lifecycle**: See [Task Lifecycle](/docs/building/implementation/task-lifecycle) for status handling
-- **Error Handling**: See [Error Handling](/docs/building/implementation/error-handling) for webhook errors
-- **Security**: See [Security](/docs/building/implementation/security) for webhook security patterns
+- [Task Lifecycle](/docs/building/implementation/task-lifecycle) — status values and transitions
+- [Async Operations](/docs/building/implementation/async-operations) — handling long-running tasks
+- [Error Handling](/docs/building/implementation/error-handling) — webhook error patterns

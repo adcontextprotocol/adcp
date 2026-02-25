@@ -29,6 +29,7 @@ export interface ThreadContext {
   viewing_channel_description?: string;
   viewing_channel_topic?: string;
   // Working group associated with the viewing channel (if any)
+  viewing_channel_is_private?: boolean;
   viewing_channel_working_group_slug?: string;
   viewing_channel_working_group_name?: string;
   viewing_channel_working_group_id?: string;
@@ -194,6 +195,8 @@ export interface ThreadSummary {
   message_count: number;
   flagged: boolean;
   reviewed: boolean;
+  slack_deleted: boolean;
+  slack_channel_name: string | null;
   started_at: Date;
   last_message_at: Date;
   first_user_message: string | null;
@@ -361,6 +364,21 @@ export class ThreadService {
       `UPDATE addie_threads SET flagged = FALSE, flag_reason = NULL, updated_at = NOW() WHERE thread_id = $1`,
       [threadId]
     );
+  }
+
+  /**
+   * Mark a thread's originating Slack message as deleted.
+   * The thread remains visible in admin for auditing.
+   * Returns true if a thread was found and flagged.
+   */
+  async markSlackDeleted(channel: ThreadChannel, externalId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE addie_threads
+         SET slack_deleted = TRUE, updated_at = NOW()
+         WHERE channel = $1 AND external_id = $2 AND slack_deleted = FALSE`,
+      [channel, externalId]
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   // =====================================================

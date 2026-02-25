@@ -19,15 +19,15 @@
   "additionalProperties": false,
   "examples": [
     {
-      "domain": "pg.com",
-      "brand_id": "tide"
+      "domain": "nova-brands.com",
+      "brand_id": "spark"
     },
     {
-      "domain": "nikeinc.com",
-      "brand_id": "air_jordan"
+      "domain": "nova-brands.com",
+      "brand_id": "glow"
     },
     {
-      "domain": "bobsburgers.com"
+      "domain": "acme-corp.com"
     }
   ]
 }

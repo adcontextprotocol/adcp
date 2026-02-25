@@ -15,7 +15,7 @@ Retrieve the current operational state of media buys: configuration, creative ap
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | No | Filter to a specific account. When omitted, returns data across all accessible accounts. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"active"`, `"pending_activation"`, `"paused"`, `"completed"`. Defaults to `["active"]` only when both `media_buy_ids` and `buyer_refs` are omitted. |
