@@ -35,7 +35,7 @@ jobs:
         PUPPETEER_SKIP_DOWNLOAD: 'true'
 
     - name: Check for broken links in docs
-      run: npx mintlify@latest broken-links
+      run: npx --no-install mintlify broken-links
 
     - name: Check README links
-      run: npx markdown-link-check README.md --config .markdown-link-check.json
+      run: npx --no-install markdown-link-check README.md --config .markdown-link-check.json

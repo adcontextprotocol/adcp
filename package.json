@@ -97,6 +97,7 @@
     "glob": "^11.1.0",
     "husky": "^9.1.7",
     "jest": "^30.2.0",
+    "markdown-link-check": "^3.14.2",
     "mintlify": "^4.2.296",
     "msw": "^2.12.4",
     "puppeteer": "^24.33.0",
