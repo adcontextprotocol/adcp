@@ -15,6 +15,7 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import { COMMITTEE_TYPE_LABELS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
@@ -38,6 +39,7 @@ import {
   enrichOrganization,
   enrichDomain,
 } from '../../services/enrichment.js';
+import { researchDomain } from '../../services/brand-enrichment.js';
 import {
   getLushaClient,
   isLushaConfigured,
@@ -60,6 +62,7 @@ import {
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
   createChannel,
+  getSlackChannels,
   setChannelPurpose,
 } from '../../slack/client.js';
 import {
@@ -89,6 +92,9 @@ const wgDb = new WorkingGroupDatabase();
 
 // The slug for the AAO admin working group
 const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
+
+// The slug for the kitchen cabinet management group
+const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
 
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -171,6 +177,40 @@ export function invalidateWebAdminStatusCache(workosUserId?: string): void {
 export function invalidateAllAdminCaches(): void {
   adminStatusCache.clear();
   webAdminStatusCache.clear();
+  webCouncilStatusCache.clear();
+}
+
+// Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
+const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();
+
+/**
+ * Check if a web user is a kitchen cabinet council member.
+ * Results are cached for 30 minutes to reduce DB load.
+ */
+export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean> {
+  const cached = webCouncilStatusCache.get(workosUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isCouncil;
+  }
+
+  try {
+    const group = await wgDb.getWorkingGroupBySlug(KITCHEN_CABINET_SLUG);
+
+    if (!group) {
+      logger.warn('Kitchen Cabinet working group not found');
+      webCouncilStatusCache.set(workosUserId, { isCouncil: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return false;
+    }
+
+    const isCouncil = await wgDb.isMember(group.id, workosUserId);
+    webCouncilStatusCache.set(workosUserId, { isCouncil, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
+    logger.debug({ workosUserId, isCouncil }, 'Checked web user council status');
+    return isCouncil;
+  } catch (error) {
+    logger.error({ error, workosUserId }, 'Error checking if web user is council member');
+    return false;
+  }
 }
 
 /**
@@ -433,6 +473,21 @@ Returns a list of organizations with open or draft invoices.`,
         org_id: { type: 'string', description: 'Organization ID to save enrichment to' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'research_domain',
+    description:
+      'Comprehensive domain research: checks brand registry, enriches via Brandfetch + Sonnet classification + Lusha firmographics. Skips sources that already have fresh data (< 30 days). Returns brand identity, corporate hierarchy (house_domain/parent_brand), and firmographics in one call.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Domain to research (e.g., mindshare.com)' },
+        org_id: { type: 'string', description: 'Organization ID to attach Lusha data to (auto-detected from domain if not provided)' },
+        skip_brandfetch: { type: 'boolean', description: 'Skip Brandfetch/Sonnet enrichment' },
+        skip_lusha: { type: 'boolean', description: 'Skip Lusha firmographic enrichment' },
+      },
+      required: ['domain'],
     },
   },
   {
@@ -744,6 +799,30 @@ Returns a list of organizations with open or draft invoices.`,
       type: 'object',
       properties: {},
       required: [],
+    },
+  },
+
+  // ============================================
+  // COMMITTEE TOOLS
+  // ============================================
+  {
+    name: 'create_committee',
+    description: 'Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.',
+    usage_hints: 'Use when an admin wants to create a new working group, council, or governance body.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Committee name' },
+        committee_type: {
+          type: 'string',
+          enum: ['working_group', 'council', 'governance'],
+          description: 'Type of committee. Default: working_group',
+        },
+        description: { type: 'string', description: 'What the committee is for' },
+        is_private: { type: 'boolean', description: 'Whether the group is private (invite-only). Default: false' },
+        slack_channel_name: { type: 'string', description: 'Existing Slack channel name (without #) to link. Leave blank to skip.' },
+      },
+      required: ['name'],
     },
   },
 
@@ -1371,10 +1450,16 @@ function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
 
 function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
   if (pendingInvoices.length === 0) return '';
-  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  const pastDueCount = pendingInvoices.filter(inv => inv.is_past_due).length;
+  const header = pastDueCount > 0
+    ? `⚠️ **Unpaid invoices (${pastDueCount} past due):** ${pendingInvoices.length}\n`
+    : `**Pending invoices:** ${pendingInvoices.length}\n`;
+  let result = header;
   for (const inv of pendingInvoices.slice(0, 3)) {
     const formatted = formatPendingInvoice(inv);
-    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    const statusLabel = inv.is_past_due ? 'past due' : formatted.status;
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${statusLabel})`;
+    if (formatted.due_date !== 'Not set') result += ` due ${formatted.due_date}`;
     if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
     result += '\n';
   }
@@ -1391,6 +1476,7 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
   return {
     id: invoice.id,
     status: invoice.status,
+    is_past_due: invoice.is_past_due,
     amount: formatCurrency(invoice.amount_due, invoice.currency),
     product: invoice.product_name || 'Unknown product',
     customer_name: invoice.customer_name || 'Unknown',
@@ -1655,7 +1741,8 @@ export function createAdminToolHandlers(
         `SELECT o.*,
                 p.name as parent_name
          FROM organizations o
-         LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+         LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+         LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
          WHERE o.is_personal = false
            AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
          ORDER BY
@@ -1806,7 +1893,11 @@ export function createAdminToolHandlers(
       if (lifecycleStage === 'member' || lifecycleStage === 'churned' || org.subscription_status) {
         response += `### Membership\n`;
         if (org.subscription_status === 'active') {
-          response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          const hasPastDueInvoice = pendingInvoices.some(inv => inv.is_past_due);
+          const statusLabel = hasPastDueInvoice
+            ? `Active (⚠️ unpaid invoice overdue) - ${org.subscription_product_name || 'Subscription'}`
+            : `Active - ${org.subscription_product_name || 'Subscription'}`;
+          response += `**Status:** ${statusLabel}\n`;
           if (org.subscription_amount) {
             const amount = formatCurrency(org.subscription_amount);
             const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
@@ -2209,6 +2300,66 @@ export function createAdminToolHandlers(
       } else {
         response = `No results found for "${companyName}" in Lusha's database.`;
       }
+    }
+
+    return response;
+  });
+
+  // Research domain (unified enrichment)
+  handlers.set('research_domain', async (input) => {
+    const domain = (input.domain as string)?.toLowerCase().trim();
+    if (!domain) return 'Please provide a domain to research.';
+
+    const result = await researchDomain(domain, {
+      org_id: input.org_id as string | undefined,
+      skip_brandfetch: input.skip_brandfetch as boolean | undefined,
+      skip_lusha: input.skip_lusha as boolean | undefined,
+    });
+
+    let response = `## Domain Research: ${domain}\n\n`;
+
+    // Brand info
+    if (result.brand) {
+      response += `### Brand identity\n`;
+      response += `**Name:** ${result.brand.brand_name}\n`;
+      if (result.brand.keller_type) response += `**Type:** ${result.brand.keller_type}\n`;
+      if (result.brand.house_domain) response += `**House:** ${result.brand.house_domain}\n`;
+      if (result.brand.parent_brand) response += `**Parent:** ${result.brand.parent_brand}\n`;
+      response += `**Source:** ${result.brand.source_type}`;
+      if (result.brand.classification_confidence) response += ` (${result.brand.classification_confidence} confidence)`;
+      response += `\n\n`;
+    } else {
+      response += `_No brand data found._\n\n`;
+    }
+
+    // Firmographics
+    if (result.firmographics) {
+      response += `### Firmographics\n`;
+      if (result.firmographics.company_name) response += `**Company:** ${result.firmographics.company_name}\n`;
+      if (result.firmographics.industry) response += `**Industry:** ${result.firmographics.industry}\n`;
+      if (result.firmographics.employee_count) response += `**Employees:** ${result.firmographics.employee_count.toLocaleString()}\n`;
+      if (result.firmographics.revenue_range) response += `**Revenue:** ${result.firmographics.revenue_range}\n`;
+      if (result.firmographics.country) response += `**Country:** ${result.firmographics.country}\n`;
+      response += `\n`;
+    }
+
+    // Org info
+    if (result.org) {
+      response += `### Organization\n`;
+      response += `**Name:** ${result.org.name}\n`;
+      response += `**Status:** ${result.org.subscription_status || 'none'}\n`;
+      response += `**ID:** ${result.org.workos_organization_id}\n\n`;
+    }
+
+    // Actions log
+    response += `### Actions\n`;
+    for (const action of result.actions) {
+      const icon = action.action === 'fetched' ? '✅' :
+                   action.action.startsWith('skipped') ? '⏭️' :
+                   action.action === 'failed' ? '❌' : '🔍';
+      response += `${icon} **${action.source}**: ${action.action}`;
+      if (action.detail) response += ` — ${action.detail}`;
+      response += `\n`;
     }
 
     return response;
@@ -4163,6 +4314,83 @@ export function createAdminToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Error listing industry gatherings');
       return '❌ Failed to list industry gatherings. Please try again.';
+    }
+  });
+
+  // ============================================
+  // WORKING GROUP HANDLERS
+  // ============================================
+
+  handlers.set('create_committee', async (input) => {
+
+    const name = (input.name as string)?.trim();
+    const committeeType = ((input.committee_type as string) || 'working_group') as 'working_group' | 'council' | 'governance';
+    const description = input.description as string | undefined;
+    const isPrivate = (input.is_private as boolean) ?? false;
+    const slackChannelName = (input.slack_channel_name as string)?.trim();
+    const typeLabel = COMMITTEE_TYPE_LABELS[committeeType];
+
+    if (!name) {
+      return '❌ Please provide a committee name.';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    if (!slug) {
+      return '❌ Committee name must contain at least one letter or number.';
+    }
+
+    try {
+      // Check for duplicate
+      const existing = await wgDb.getWorkingGroupBySlug(slug);
+      if (existing) {
+        return `⚠️ A committee with slug "${slug}" already exists: **${existing.name}**`;
+      }
+
+      let channelId: string | undefined;
+      let channelUrl: string | undefined;
+      let channelMention = '';
+
+      if (slackChannelName) {
+        const allChannels = await getSlackChannels({ types: 'public_channel,private_channel', exclude_archived: true });
+        const normalized = slackChannelName.toLowerCase().replace(/^#/, '');
+        const found = allChannels.find((c) => c.name.toLowerCase() === normalized);
+        if (!found) {
+          return `❌ Could not find a Slack channel named "#${normalized}". Check the channel name and try again.`;
+        }
+        channelId = found.id;
+        channelUrl = `https://app.slack.com/archives/${found.id}`;
+        channelMention = `<#${found.id}>`;
+      }
+
+      const wg = await wgDb.createWorkingGroup({
+        name,
+        slug,
+        description,
+        is_private: isPrivate,
+        committee_type: committeeType,
+        slack_channel_id: channelId,
+        slack_channel_url: channelUrl,
+      });
+
+      logger.info({ wgId: wg.id, name: wg.name, committeeType, isPrivate, channelId }, 'Addie: Created committee');
+
+      let response = `✅ Created **${name}** (${typeLabel})!\n\n`;
+      response += `**Slug:** ${slug}\n`;
+      response += `**Privacy:** ${isPrivate ? 'Private (invite-only)' : 'Public'}\n`;
+      if (channelMention) {
+        response += `**Slack Channel:** ${channelMention}\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, committeeType }, 'Error creating committee');
+      return `❌ Failed to create ${typeLabel}. Please try again.`;
     }
   });
 

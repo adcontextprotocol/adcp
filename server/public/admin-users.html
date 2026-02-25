@@ -1391,7 +1391,7 @@
         const listContent = document.getElementById('reviewOrgsListContent');
         listContent.innerHTML = multiMemberOrgs.map(org => {
           const memberEmails = org.members.map(m => m.email).join(', ');
-          return `<a href="/admin/organizations/${encodeURIComponent(org.org_id)}"
+          return `<a href="/admin/accounts/${encodeURIComponent(org.org_id)}"
                      class="btn btn-small btn-secondary"
                      style="font-size: var(--text-xs);"
                      title="Members: ${memberEmails}">
@@ -1626,7 +1626,7 @@
             </td>
             <td>
               ${user.org_id && displayOrg
-                ? `<a href="/admin/organizations/${encodeURIComponent(user.org_id)}" class="user-org">${escapeHtml(displayOrg)}</a>`
+                ? `<a href="/admin/accounts/${encodeURIComponent(user.org_id)}" class="user-org">${escapeHtml(displayOrg)}</a>`
                 : '<span class="user-org"><em style="color: var(--color-text-muted);">No org</em></span>'}
             </td>
             <td>

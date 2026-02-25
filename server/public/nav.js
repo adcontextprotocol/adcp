@@ -87,18 +87,20 @@
       if (user) {
         // User is logged in - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
+        const manageLink = user.isManage ? `<a href="${authBaseUrl}/manage" class="navbar__dropdown-item">Manage AAO</a>` : '';
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
-              <span class="navbar__account-name">${displayName}</span>
+              <span class="navbar__account-name">${escapeHtml(displayName)}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                 <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
               </svg>
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
-              <div class="navbar__dropdown-header">${user.email}</div>
+              <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
               <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
+              ${manageLink}
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>

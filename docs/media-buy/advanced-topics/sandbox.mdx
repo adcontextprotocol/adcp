@@ -26,13 +26,14 @@ Check this before requesting a sandbox account. If `sandbox` is not declared or 
 
 ## Setting up a sandbox account
 
-Request a sandbox account via `sync_accounts` using `"sandbox": true` on the account object:
+Request a sandbox account via `sync_accounts` using `"sandbox": true`:
 
 ```json
-// sync_accounts
+// sync_accounts request
 {
   "accounts": [{
-    "house": "acme-corp.com",
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
     "sandbox": true
   }]
 }
@@ -70,7 +71,7 @@ Pass your sandbox `account_id` in requests exactly as you would a production acc
 ```json
 // get_products
 {
-  "account_id": "acct_sandbox_acme_001",
+  "account": { "account_id": "acct_sandbox_acme_001" },
   "brief": "Premium CTV inventory for Q2 campaign"
 }
 ```
@@ -91,7 +92,7 @@ The seller detects the sandbox account and returns simulated data. Success respo
 ```json
 // get_products
 {
-  "account_id": "acct_sandbox_acme_001",
+  "account": { "account_id": "acct_sandbox_acme_001" },
   "brief": "CTV inventory for brand awareness"
 }
 ```
@@ -102,10 +103,10 @@ The seller detects the sandbox account and returns simulated data. Success respo
 // create_media_buy
 {
   "buyer_ref": "sandbox_test_001",
-  "account_id": "acct_sandbox_acme_001",
+  "account": { "account_id": "acct_sandbox_acme_001" },
   "proposal_id": "prop_abc",
   "total_budget": { "amount": 50000, "currency": "USD" },
-  "brand": { "house": "acme-corp.com" },
+  "brand": { "domain": "acme-corp.com" },
   "start_time": { "start_type": "asap" },
   "end_time": "2026-04-01T00:00:00Z"
 }
@@ -118,7 +119,7 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
 ```json
 // sync_creatives
 {
-  "account_id": "acct_sandbox_acme_001",
+  "account": { "account_id": "acct_sandbox_acme_001" },
   "creatives": [{
     "creative_id": "hero_video_30s",
     "name": "Brand Hero Video 30s",
@@ -146,7 +147,7 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
 ```json
 // get_media_buy_delivery
 {
-  "account_id": "acct_sandbox_acme_001",
+  "account": { "account_id": "acct_sandbox_acme_001" },
   "media_buy_ids": ["mb_sandbox_123"]
 }
 ```
@@ -155,12 +156,12 @@ The seller returns simulated delivery metrics — impressions, spend, pacing —
 
 ## Sandbox vs dry run
 
-Some tasks (`sync_creatives`, `sync_accounts`) also support a `dry_run` parameter. These serve different purposes:
+Some tasks (e.g., `sync_creatives`) also support a `dry_run` parameter. These serve different purposes:
 
 | | Sandbox account | `dry_run` |
 |---|---|---|
 | **Meaning** | Nothing is real | Preview changes without applying |
-| **Scope** | All tasks | sync_creatives, sync_accounts only |
+| **Scope** | All tasks | sync_creatives only |
 | **Side effects** | None (simulated) | None (preview only) |
 | **Use case** | Test the full lifecycle | Check what a sync would change |
 

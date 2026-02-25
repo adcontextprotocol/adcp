@@ -5,9 +5,9 @@
   "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Account to manage audiences for"
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account to manage audiences for."
     },
     "audiences": {
       "type": "array",
@@ -66,7 +66,7 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account_id"],
+  "required": ["account"],
   "if": {
     "properties": { "delete_missing": { "const": true } },
     "required": ["delete_missing"]

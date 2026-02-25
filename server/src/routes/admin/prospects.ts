@@ -7,7 +7,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { createProspect } from "../../services/prospect.js";
 import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
 import { VALID_REVENUE_TIERS } from "../../db/organization-db.js";
@@ -26,8 +26,38 @@ interface ProspectRoutesConfig {
 export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesConfig): void {
   const { workos } = config;
 
+  // GET /api/admin/prospects/typeahead - Lightweight prospect search for typeaheads
+  apiRouter.get("/prospects/typeahead", requireAuth, requireManage, async (req, res) => {
+    const q = ((req.query.q as string) || "").trim();
+    if (q.length < 2) {
+      return res.status(400).json({ error: "Query must be at least 2 characters" });
+    }
+    try {
+      const pool = getPool();
+      const result = await pool.query<{
+        workos_organization_id: string;
+        name: string;
+        email_domain: string | null;
+        prospect_status: string | null;
+      }>(
+        `SELECT workos_organization_id, name, email_domain, prospect_status
+         FROM organizations
+         WHERE prospect_status IS NOT NULL
+           AND prospect_status != 'disqualified'
+           AND (name ILIKE $1 OR email_domain ILIKE $1)
+         ORDER BY name
+         LIMIT 8`,
+        [`%${q}%`]
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      logger.error({ err: error }, "Error in prospects typeahead");
+      return res.status(500).json({ error: "Search failed" });
+    }
+  });
+
   // GET /api/admin/prospects - List all prospects with action-based views
-  apiRouter.get("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/prospects", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
       const { status, source, view, owner, mine } = req.query;
@@ -50,7 +80,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           o.prospect_contact_title,
           o.prospect_next_action,
           o.prospect_next_action_date,
-          o.parent_organization_id,
           o.created_at,
           o.updated_at,
           o.invoice_requested_at,
@@ -60,7 +89,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           o.stripe_customer_id,
           o.disqualification_reason,
           p.name as parent_name,
-          (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count,
+          p.email_domain as parent_domain,
+          (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count,
           o.subscription_status,
           o.subscription_product_name,
           o.subscription_current_period_end,
@@ -83,7 +113,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
               na.next_step_due_date as followup_due,
               na.description as followup_description
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               INNER JOIN org_activities na ON na.organization_id = o.workos_organization_id
                 AND na.is_next_step = TRUE
                 AND na.next_step_completed_at IS NULL
@@ -98,7 +129,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE (
                 ${NOT_MEMBER_ALIASED}
                 OR o.subscription_canceled_at IS NOT NULL
@@ -113,7 +145,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE o.created_at >= NOW() - INTERVAL '14 days'
                 AND NOT EXISTS (
                   SELECT 1 FROM org_activities WHERE organization_id = o.workos_organization_id
@@ -127,7 +160,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE (
                 ${NOT_MEMBER_ALIASED}
                 OR o.subscription_canceled_at IS NOT NULL
@@ -145,7 +179,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE ${MEMBER_FILTER_ALIASED}
                 AND o.subscription_current_period_end IS NOT NULL
                 AND o.subscription_current_period_end <= NOW() + INTERVAL '60 days'
@@ -159,7 +194,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE ${MEMBER_FILTER_ALIASED}
             `;
             orderBy = ` ORDER BY o.last_activity_at ASC NULLS FIRST`;
@@ -174,7 +210,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               INNER JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
                 AND os.user_id = $1
             `;
@@ -213,7 +250,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             query = `
               ${selectFields}
               FROM organizations o
-              LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+              LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+              LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
               WHERE 1=1
             `;
             orderBy = ` ORDER BY o.updated_at DESC`;
@@ -223,7 +261,8 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         query = `
           ${selectFields}
           FROM organizations o
-          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
           WHERE 1=1
         `;
         orderBy = ` ORDER BY o.updated_at DESC`;
@@ -248,7 +287,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         query += ` AND o.prospect_owner = $${params.length}`;
       }
 
-      // mine=true filter: only show prospects where current user is owner in org_stakeholders
+      // mine=true filter: show prospects where current user has any stakeholder role
       if (mine === "true") {
         const currentUserId = req.user?.id;
         if (currentUserId) {
@@ -257,7 +296,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             SELECT 1 FROM org_stakeholders os
             WHERE os.organization_id = o.workos_organization_id
               AND os.user_id = $${params.length}
-              AND os.role = 'owner'
           )`;
         }
       }
@@ -489,6 +527,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
       }
 
       // Enrich with membership count and engagement data
+      const currentUserId = req.user?.id;
       const prospects = result.rows.map((row) => {
         const memberCount = memberCountMap.get(row.workos_organization_id) || 0;
         const wgCount = wgCountMap.get(row.workos_organization_id) || 0;
@@ -554,6 +593,9 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           pending_steps: pendingStepsMap.get(row.workos_organization_id) || { pending: 0, overdue: 0 },
           recent_activity_count: recentActivityCount,
           pending_invoices: pendingInvoices,
+          user_stakeholder_role: currentUserId
+            ? (stakeholdersMap.get(row.workos_organization_id) || []).find(s => s.user_id === currentUserId)?.role ?? null
+            : null,
         };
       });
 
@@ -575,7 +617,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
   });
 
   // POST /api/admin/prospects - Create a new prospect
-  apiRouter.post("/prospects", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/prospects", requireAuth, requireManage, async (req, res) => {
     try {
       const {
         name,
@@ -590,7 +632,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         prospect_next_action,
         prospect_next_action_date,
         prospect_owner,
-        parent_organization_id,
       } = req.body;
 
       if (!name || typeof name !== "string") {
@@ -603,7 +644,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         domain,
         company_type,
         prospect_status,
-        prospect_source: prospect_source || "aao_launch_list",
+        prospect_source: prospect_source || "referral",
         prospect_notes,
         prospect_contact_name,
         prospect_contact_email,
@@ -611,7 +652,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
         prospect_next_action,
         prospect_next_action_date,
         prospect_owner,
-        parent_organization_id,
       });
 
       if (!result.success) {
@@ -696,7 +736,6 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
           "prospect_contact_title",
           "prospect_next_action",
           "prospect_next_action_date",
-          "parent_organization_id",
           "disqualification_reason",
         ];
 

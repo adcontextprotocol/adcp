@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Manage - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/manage-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+    }
+
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-6) auto;
+      padding: 0 var(--space-5);
+    }
+
+    .page-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .page-header h1 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .page-header .subtitle {
+      color: var(--color-text-secondary);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: var(--space-5);
+    }
+
+    .summary-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      text-decoration: none;
+      display: block;
+    }
+
+    .summary-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--color-brand);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+
+    .card-icon {
+      font-size: 24px;
+    }
+
+    .card-title {
+      font-size: var(--text-lg);
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .card-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .metrics-row {
+      display: flex;
+      gap: var(--space-4);
+      margin-top: var(--space-3);
+    }
+
+    .metric {
+      flex: 1;
+    }
+
+    .metric-value {
+      font-size: var(--text-2xl);
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .metric-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-cta {
+      margin-top: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Manage AAO</h1>
+      <p class="subtitle">Growth operations overview</p>
+    </div>
+
+    <div class="summary-grid">
+      <!-- Referrals card -->
+      <a href="/manage/referrals" class="summary-card">
+        <div class="card-header">
+          <span class="card-icon">🔗</span>
+          <div>
+            <div class="card-title">Referrals</div>
+            <div class="card-subtitle">Member referral codes and conversions</div>
+          </div>
+        </div>
+        <div class="metrics-row">
+          <div class="metric">
+            <div class="metric-value" id="activeCodes">—</div>
+            <div class="metric-label">Active codes</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="totalConversions">—</div>
+            <div class="metric-label">Conversions</div>
+          </div>
+        </div>
+        <div class="card-cta">Manage referrals →</div>
+      </a>
+
+      <!-- Pipeline card -->
+      <a href="/manage/prospects" class="summary-card">
+        <div class="card-header">
+          <span class="card-icon">🎯</span>
+          <div>
+            <div class="card-title">Pipeline</div>
+            <div class="card-subtitle">Prospect and account funnel</div>
+          </div>
+        </div>
+        <div class="metrics-row">
+          <div class="metric">
+            <div class="metric-value" id="hotProspects">—</div>
+            <div class="metric-label">Hot prospects</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="needsAttention">—</div>
+            <div class="metric-label">Needs attention</div>
+          </div>
+        </div>
+        <div class="card-cta">View prospects →</div>
+      </a>
+
+      <!-- Revenue card -->
+      <a href="/manage/analytics" class="summary-card">
+        <div class="card-header">
+          <span class="card-icon">📈</span>
+          <div>
+            <div class="card-title">Revenue</div>
+            <div class="card-subtitle">Monthly recurring revenue</div>
+          </div>
+        </div>
+        <div class="metrics-row">
+          <div class="metric">
+            <div class="metric-value" id="mrr">—</div>
+            <div class="metric-label">MRR</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value" id="memberCount">—</div>
+            <div class="metric-label">Members</div>
+          </div>
+        </div>
+        <div class="card-cta">View analytics →</div>
+      </a>
+    </div>
+  </div>
+
+  <script>
+    function formatCurrency(cents) {
+      if (!cents && cents !== 0) return '—';
+      const dollars = cents / 100;
+      if (dollars >= 1000) return '$' + (dollars / 1000).toFixed(1) + 'k';
+      return '$' + dollars.toLocaleString();
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value != null ? value : '—';
+    }
+
+    async function loadData() {
+      try {
+        const [referralsRes, viewCountsRes, analyticsRes] = await Promise.all([
+          ManageSidebar.fetch('/api/admin/referrals'),
+          ManageSidebar.fetch('/api/admin/accounts/view-counts'),
+          ManageSidebar.fetch('/api/admin/analytics-data'),
+        ]);
+
+        if (referralsRes.ok) {
+          const rows = await referralsRes.json();
+          const activeCodes = new Set(
+            rows.filter(r => r.code_status === 'active').map(r => r.code_id)
+          ).size;
+          const conversions = rows.filter(r => r.referral_status === 'converted').length;
+          setText('activeCodes', activeCodes);
+          setText('totalConversions', conversions);
+        }
+
+        if (viewCountsRes.ok) {
+          const counts = await viewCountsRes.json();
+          setText('hotProspects', counts.hot ?? '—');
+          setText('needsAttention', counts.needsAttention ?? '—');
+        }
+
+        if (analyticsRes.ok) {
+          const analytics = await analyticsRes.json();
+          const mrr = analytics.subscription_metrics?.mrr;
+          setText('mrr', formatCurrency(mrr));
+          setText('memberCount', analytics.subscription_metrics?.total_customers ?? '—');
+        }
+      } catch (err) {
+        console.error('Error loading manage home data:', err);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadData);
+    } else {
+      loadData();
+    }
+  </script>
+
+  <div id="adcp-footer"></div>
+</body>
+</html>

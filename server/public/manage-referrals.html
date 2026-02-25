@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Referrals - Manage - AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/manage-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+    }
+
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-6) auto;
+      padding: 0 var(--space-5);
+    }
+
+    .page-header {
+      margin-bottom: var(--space-6);
+    }
+
+    .page-header h1 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .page-header .subtitle {
+      color: var(--color-text-secondary);
+    }
+
+    .section {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      margin-bottom: var(--space-5);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-4);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .section-title {
+      font-size: var(--text-lg);
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .section-subtitle {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* Create code form */
+    .create-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-4);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .form-group label {
+      font-size: var(--text-sm);
+      font-weight: 500;
+      color: var(--color-text-secondary);
+    }
+
+    .form-group input {
+      padding: var(--space-2) var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-page);
+      color: var(--color-text-body);
+      font-size: var(--text-sm);
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px var(--color-primary-100);
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-2);
+    }
+
+    .btn {
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .form-error {
+      color: var(--color-error);
+      font-size: var(--text-sm);
+    }
+
+    /* Tables */
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+
+    th {
+      text-align: left;
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-muted);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    td {
+      padding: var(--space-3);
+      border-bottom: 1px solid var(--color-border-subtle);
+      color: var(--color-text-body);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .code-cell {
+      font-family: monospace;
+      font-size: var(--text-sm);
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .copy-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      color: var(--color-brand);
+      cursor: pointer;
+      font-size: var(--text-xs);
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .copy-link:hover {
+      text-decoration: underline;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: 500;
+    }
+
+    .status-active { background: var(--color-success-bg); color: var(--color-success); }
+    .status-revoked { background: var(--color-error-bg); color: var(--color-error); }
+    .status-expired { background: var(--color-bg-subtle); color: var(--color-text-muted); }
+    .status-converted { background: var(--color-brand-bg); color: var(--color-brand); }
+    .status-pending { background: var(--color-warning-bg); color: var(--color-warning); }
+    .status-accepted { background: var(--color-info-bg); color: var(--color-info); }
+
+    .revoke-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 2px 8px;
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      cursor: pointer;
+    }
+
+    .revoke-btn:hover {
+      border-color: var(--color-error);
+      color: var(--color-error);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-8) 0;
+      color: var(--color-text-muted);
+    }
+
+    .loading-text {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      padding: var(--space-4) 0;
+    }
+
+    /* Company typeahead */
+    .company-search {
+      position: relative;
+    }
+
+    .company-search__dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      z-index: 100;
+      overflow: hidden;
+    }
+
+    .company-search__dropdown.open {
+      display: block;
+    }
+
+    .company-search__item {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+    }
+
+    .company-search__item:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__item-name {
+      font-weight: 500;
+      color: var(--color-text-body);
+    }
+
+    .company-search__item-domain {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    .company-search__create {
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      border-top: 1px solid var(--color-border-subtle);
+    }
+
+    .company-search__create:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__empty {
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+    }
+
+    .company-search__section-label {
+      padding: var(--space-1) var(--space-3);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__lusha {
+      padding: var(--space-2) var(--space-3);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      color: var(--color-brand);
+      border-top: 1px solid var(--color-border-subtle);
+    }
+
+    .company-search__lusha:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .company-search__lusha-tag {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      padding: 1px 5px;
+    }
+
+    /* Inline create-company form */
+    .create-company-form {
+      display: none;
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: var(--color-bg-subtle);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      gap: var(--space-2);
+      flex-direction: column;
+    }
+
+    .create-company-form.open {
+      display: flex;
+    }
+
+    .create-company-form__title {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .create-company-form__fields {
+      display: flex;
+      gap: var(--space-2);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .create-company-form__fields input {
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-page);
+      color: var(--color-text-body);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--color-bg-subtle);
+    }
+  </style>
+</head>
+<body>
+  <div id="adcp-nav"></div>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Referrals</h1>
+      <p class="subtitle">Create and track member referral codes</p>
+    </div>
+
+    <!-- My referral codes -->
+    <div class="section" id="myCodesSection">
+      <div class="section-header">
+        <div>
+          <div class="section-title">My referral codes</div>
+          <div class="section-subtitle" id="orgName">Loading...</div>
+        </div>
+      </div>
+
+      <form id="createForm" onsubmit="handleCreateCode(event)">
+        <div class="create-form" style="grid-template-columns: 1fr;">
+          <div class="form-group">
+            <label for="targetCompany">Target company (optional)</label>
+            <div class="company-search">
+              <input type="text" id="targetCompany" placeholder="Search prospects…" maxlength="200" autocomplete="off">
+              <div class="company-search__dropdown" id="companyDropdown"></div>
+            </div>
+            <div class="create-company-form" id="createCompanyForm">
+              <div class="create-company-form__title" id="createFormTitle">Enter company domain</div>
+              <div class="create-company-form__fields">
+                <input type="text" id="newCompanyDomain" placeholder="domain.com">
+                <input type="text" id="newCompanyName" placeholder="Company name" style="display:none;">
+                <button type="button" class="btn btn-primary" id="addCompanyBtn" onclick="handleAddCompany()" style="display:none;">Create</button>
+                <button type="button" class="btn btn-secondary" onclick="cancelCreateCompany()">Cancel</button>
+              </div>
+              <span class="form-error" id="addCompanyError"></span>
+            </div>
+            <div class="form-hint" id="selectedProspectHint" style="display:none; font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);"></div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="createBtn">Create code</button>
+          <span class="form-error" id="createError"></span>
+        </div>
+      </form>
+
+      <div class="table-wrapper" style="margin-top: var(--space-4);">
+        <div class="loading-text" id="myCodesLoading">Loading your codes...</div>
+        <table id="myCodesTable" style="display: none;">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Target</th>
+              <th>Used</th>
+              <th>Status</th>
+              <th>Expires</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="myCodesBody"></tbody>
+        </table>
+        <div class="empty-state" id="myCodesEmpty" style="display: none;">
+          No referral codes yet. Create one above.
+        </div>
+      </div>
+    </div>
+
+    <!-- All referral activity -->
+    <div class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-title">All referral activity</div>
+          <div class="section-subtitle">Aggregate view across all members</div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <div class="loading-text" id="allActivityLoading">Loading activity...</div>
+        <table id="allActivityTable" style="display: none;">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Referrer</th>
+              <th>Target</th>
+              <th>Referred org</th>
+              <th>Status</th>
+              <th>Converted</th>
+            </tr>
+          </thead>
+          <tbody id="allActivityBody"></tbody>
+        </table>
+        <div class="empty-state" id="allActivityEmpty" style="display: none;">
+          No referral activity yet.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentOrgId = null;
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '—';
+      return new Date(dateStr).toLocaleDateString();
+    }
+
+    function statusBadge(status) {
+      const safe = escapeHtml(status);
+      return `<span class="status-badge status-${safe}">${safe}</span>`;
+    }
+
+    function copyJoinLink(code) {
+      const url = `${window.location.origin}/join/${code}`;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.querySelector(`[data-copy="${code}"]`);
+        if (btn) {
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        }
+      });
+    }
+
+    function renderMyCodes(rows) {
+      const loading = document.getElementById('myCodesLoading');
+      const table = document.getElementById('myCodesTable');
+      const empty = document.getElementById('myCodesEmpty');
+      const tbody = document.getElementById('myCodesBody');
+
+      loading.style.display = 'none';
+
+      if (!rows || rows.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+
+      // Deduplicate by code_id
+      const byCodeId = new Map();
+      for (const row of rows) {
+        if (!byCodeId.has(row.code_id)) byCodeId.set(row.code_id, row);
+      }
+
+      tbody.innerHTML = Array.from(byCodeId.values()).map(row => `
+        <tr>
+          <td>
+            <div class="code-cell">${escapeHtml(row.code)}</div>
+            <button class="copy-link" data-copy="${escapeHtml(row.code)}" onclick="copyJoinLink('${escapeHtml(row.code)}')">
+              Copy join link
+            </button>
+          </td>
+          <td>${row.target_company_name ? escapeHtml(row.target_company_name) : '—'}</td>
+          <td>${row.used_count > 0 ? '✓ Used' : 'Unused'}</td>
+          <td>${statusBadge(row.code_status)}</td>
+          <td>${formatDate(row.expires_at)}</td>
+          <td>
+            ${row.code_status === 'active'
+              ? `<button class="revoke-btn" onclick="revokeCode(${row.code_id})">Revoke</button>`
+              : ''}
+          </td>
+        </tr>
+      `).join('');
+
+      table.style.display = 'table';
+    }
+
+    function renderAllActivity(rows) {
+      const loading = document.getElementById('allActivityLoading');
+      const table = document.getElementById('allActivityTable');
+      const empty = document.getElementById('allActivityEmpty');
+      const tbody = document.getElementById('allActivityBody');
+
+      loading.style.display = 'none';
+
+      // Only show rows that have a referral (have been used)
+      const used = rows.filter(r => r.referral_id != null);
+
+      if (used.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+
+      tbody.innerHTML = used.map(row => `
+        <tr>
+          <td class="code-cell">${escapeHtml(row.code)}</td>
+          <td>${row.referrer_org_name ? escapeHtml(row.referrer_org_name) : '—'}</td>
+          <td>${row.target_company_name ? escapeHtml(row.target_company_name) : '—'}</td>
+          <td>${(row.referred_org_name || row.referred_company_name) ? escapeHtml(row.referred_org_name || row.referred_company_name) : '—'}</td>
+          <td>${statusBadge(row.referral_status || 'pending')}</td>
+          <td>${formatDate(row.converted_at)}</td>
+        </tr>
+      `).join('');
+
+      table.style.display = 'table';
+    }
+
+    async function loadMyCodes() {
+      if (!currentOrgId) return;
+      try {
+        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`);
+        if (res.ok) {
+          const data = await res.json();
+          renderMyCodes(data.referral_codes || []);
+        } else {
+          document.getElementById('myCodesLoading').textContent = 'Failed to load codes.';
+        }
+      } catch (err) {
+        console.error('Error loading my codes:', err);
+        document.getElementById('myCodesLoading').textContent = 'Failed to load codes.';
+      }
+    }
+
+    async function loadAllActivity() {
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/referrals');
+        if (res.ok) {
+          renderAllActivity(await res.json());
+        } else {
+          document.getElementById('allActivityLoading').textContent = 'Failed to load activity.';
+        }
+      } catch (err) {
+        console.error('Error loading all activity:', err);
+        document.getElementById('allActivityLoading').textContent = 'Failed to load activity.';
+      }
+    }
+
+    async function handleCreateCode(e) {
+      e.preventDefault();
+      const errorEl = document.getElementById('createError');
+      const btn = document.getElementById('createBtn');
+      errorEl.textContent = '';
+      btn.disabled = true;
+
+      const body = {};
+      if (selectedProspectId) body.target_org_id = selectedProspectId;
+
+      try {
+        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Failed to create code';
+        } else {
+          document.getElementById('createForm').reset();
+          document.getElementById('createCompanyForm').classList.remove('open');
+          document.getElementById('selectedProspectHint').style.display = 'none';
+          selectedProspectId = null;
+          await loadMyCodes();
+          await loadAllActivity();
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error — please try again';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function revokeCode(codeId) {
+      if (!confirm('Revoke this referral code? Existing referrals are not affected.')) return;
+      try {
+        const res = await ManageSidebar.fetch(`/api/organizations/${currentOrgId}/referral-codes/${codeId}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          await loadMyCodes();
+        } else {
+          alert('Failed to revoke code');
+        }
+      } catch (err) {
+        alert('Network error');
+      }
+    }
+
+    // ── Prospect typeahead ─────────────────────────────────────────────────
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = String(str || '');
+      return div.innerHTML;
+    }
+
+    let companySearchTimer;
+    let selectedProspectId = null;
+    let lushaConfigured = false;
+
+    const STATUS_LABELS = {
+      prospect: 'Prospect', contacted: 'Contacted', responded: 'Responded',
+      interested: 'Interested', negotiating: 'Negotiating',
+    };
+
+    function prospectStatusBadge(status) {
+      const label = STATUS_LABELS[status] || status;
+      return '<span class="company-search__item-domain">' + escapeHtml(label) + '</span>';
+    }
+
+    function selectProspect(id, name) {
+      selectedProspectId = id;
+      document.getElementById('targetCompany').value = name;
+      const hint = document.getElementById('selectedProspectHint');
+      hint.textContent = 'Prospect selected: ' + name;
+      hint.style.display = 'block';
+    }
+
+    function setupCompanySearch() {
+      const input = document.getElementById('targetCompany');
+      const dropdown = document.getElementById('companyDropdown');
+
+      input.addEventListener('input', function () {
+        clearTimeout(companySearchTimer);
+        selectedProspectId = null;
+        document.getElementById('selectedProspectHint').style.display = 'none';
+        const q = input.value.trim();
+        if (q.length < 2) {
+          dropdown.classList.remove('open');
+          return;
+        }
+        companySearchTimer = setTimeout(() => searchProspects(q), 280);
+      });
+
+      input.addEventListener('blur', function () {
+        setTimeout(() => dropdown.classList.remove('open'), 180);
+      });
+
+      input.addEventListener('focus', function () {
+        if (input.value.trim().length >= 2 && !selectedProspectId) {
+          searchProspects(input.value.trim());
+        }
+      });
+
+      // Domain blur in manual create form: look up company via enrichment
+      const domainInput = document.getElementById('newCompanyDomain');
+      domainInput.addEventListener('blur', function () {
+        handleDomainLookup();
+      });
+    }
+
+    async function searchProspects(q) {
+      const dropdown = document.getElementById('companyDropdown');
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospects/typeahead?q=' + encodeURIComponent(q));
+        const prospects = res.ok ? await res.json() : [];
+
+        let html = '';
+        if (prospects.length > 0) {
+          prospects.forEach(function (p) {
+            html += '<div class="company-search__item" data-id="' + escapeHtml(p.workos_organization_id) + '" data-name="' + escapeHtml(p.name) + '">' +
+              '<span class="company-search__item-name">' + escapeHtml(p.name) + '</span>' +
+              prospectStatusBadge(p.prospect_status) +
+              '</div>';
+          });
+        } else {
+          html += '<div class="company-search__empty">No matching prospects</div>';
+        }
+
+        if (lushaConfigured) {
+          html += '<div class="company-search__lusha" data-query="' + escapeHtml(q) + '">🔍 Search external companies for "' + escapeHtml(q) + '"</div>';
+        } else {
+          html += '<div class="company-search__create" data-query="' + escapeHtml(q) + '">+ Create "' + escapeHtml(q) + '" as prospect</div>';
+        }
+
+        dropdown.innerHTML = html;
+        dropdown.classList.add('open');
+
+        dropdown.querySelectorAll('.company-search__item').forEach(function (el) {
+          el.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            selectProspect(el.dataset.id, el.dataset.name);
+            dropdown.classList.remove('open');
+          });
+        });
+
+        const lushaRow = dropdown.querySelector('.company-search__lusha');
+        if (lushaRow) {
+          lushaRow.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            searchLusha(lushaRow.dataset.query);
+          });
+        }
+
+        const createRow = dropdown.querySelector('.company-search__create');
+        if (createRow) {
+          createRow.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            dropdown.classList.remove('open');
+            openCreateCompany();
+          });
+        }
+      } catch (err) {
+        dropdown.innerHTML = '<div class="company-search__empty">Search failed</div>';
+        dropdown.classList.add('open');
+      }
+    }
+
+    async function searchLusha(q) {
+      const dropdown = document.getElementById('companyDropdown');
+      dropdown.innerHTML = '<div class="company-search__empty">Searching external companies…</div>';
+      dropdown.classList.add('open');
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospecting/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords: [q], pageSize: 8 }),
+        });
+
+        if (!res.ok) {
+          dropdown.innerHTML = '<div class="company-search__empty">Search failed — try again</div>';
+          return;
+        }
+
+        const data = await res.json();
+        const companies = data.companies || [];
+        let html = '';
+
+        if (companies.length > 0) {
+          html += '<div class="company-search__section-label">External companies</div>';
+          companies.forEach(function (c) {
+            const companyJson = escapeHtml(JSON.stringify(c));
+            html += '<div class="company-search__item" data-company="' + companyJson + '">' +
+              '<span class="company-search__item-name">' + escapeHtml(c.companyName || c.domain || '') + '</span>' +
+              (c.domain ? '<span class="company-search__item-domain">' + escapeHtml(c.domain) + '</span>' : '') +
+              (c.mainIndustry ? '<span class="company-search__lusha-tag">' + escapeHtml(c.mainIndustry) + '</span>' : '') +
+              (c.employeeCountRange ? '<span class="company-search__item-domain">' + escapeHtml(c.employeeCountRange) + '</span>' : '') +
+              '</div>';
+          });
+        } else {
+          html += '<div class="company-search__empty">No external companies found</div>';
+        }
+
+        html += '<div class="company-search__create">+ Create manually</div>';
+        dropdown.innerHTML = html;
+
+        dropdown.querySelectorAll('.company-search__item[data-company]').forEach(function (el) {
+          el.addEventListener('mousedown', async function (e) {
+            e.preventDefault();
+            try {
+              const company = JSON.parse(el.dataset.company);
+              await importLushaCompany(company);
+            } catch (err) {
+              console.error('Failed to parse company data', err);
+            }
+          });
+        });
+
+        dropdown.querySelector('.company-search__create').addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          dropdown.classList.remove('open');
+          openCreateCompany();
+        });
+      } catch (err) {
+        dropdown.innerHTML = '<div class="company-search__empty">Search failed — try again</div>';
+      }
+    }
+
+    async function importLushaCompany(company) {
+      const dropdown = document.getElementById('companyDropdown');
+      dropdown.innerHTML = '<div class="company-search__empty">Importing…</div>';
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospecting/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company }),
+        });
+
+        const data = await res.json();
+        dropdown.classList.remove('open');
+
+        if (res.ok && data.organization) {
+          selectProspect(data.organization.workos_organization_id, data.organization.name);
+        } else if (res.status === 409 && data.existing) {
+          selectProspect(data.existing.workos_organization_id, data.existing.name);
+        } else {
+          document.getElementById('addCompanyError').textContent = data.error || 'Import failed — enter details manually';
+          openCreateCompany();
+        }
+      } catch (err) {
+        dropdown.classList.remove('open');
+        document.getElementById('addCompanyError').textContent = 'Network error — enter details manually';
+        openCreateCompany();
+      }
+    }
+
+    async function handleDomainLookup() {
+      if (!lushaConfigured) return;
+      const domain = document.getElementById('newCompanyDomain').value.trim();
+      if (!domain) return;
+      // Skip if already in manual-entry mode
+      if (document.getElementById('newCompanyName').style.display !== 'none') return;
+
+      const errorEl = document.getElementById('addCompanyError');
+      errorEl.textContent = 'Looking up…';
+
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/enrichment/domain/' + encodeURIComponent(domain), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          errorEl.textContent = '';
+          const company = {
+            companyName: data.suggested?.companyName || data.enrichment?.companyName || domain,
+            domain,
+            mainIndustry: data.enrichment?.industry,
+            subIndustry: data.enrichment?.subIndustry,
+            revenue: data.enrichment?.revenue,
+            revenueRange: data.enrichment?.revenueRange,
+            employeeCount: data.enrichment?.employeeCount,
+            employeeCountRange: data.enrichment?.employeeCountRange,
+            foundedYear: data.enrichment?.foundedYear,
+            country: data.enrichment?.country,
+            city: data.enrichment?.city,
+            linkedinUrl: data.enrichment?.linkedinUrl,
+            description: data.enrichment?.description,
+          };
+          // Guard: user may have clicked Cancel while lookup was in flight
+          if (!document.getElementById('createCompanyForm').classList.contains('open')) return;
+          document.getElementById('createCompanyForm').classList.remove('open');
+          await importLushaCompany(company);
+          return;
+        }
+      } catch (_err) {
+        // fall through to manual
+      }
+
+      // Company not found — reveal name field for manual entry
+      errorEl.textContent = '';
+      document.getElementById('createFormTitle').textContent = 'Create prospect';
+      document.getElementById('newCompanyName').style.display = '';
+      document.getElementById('addCompanyBtn').style.display = '';
+      document.getElementById('newCompanyName').focus();
+    }
+
+    function openCreateCompany() {
+      document.getElementById('newCompanyDomain').value = '';
+      document.getElementById('newCompanyName').value = '';
+      document.getElementById('newCompanyName').style.display = 'none';
+      document.getElementById('addCompanyBtn').style.display = 'none';
+      document.getElementById('addCompanyError').textContent = '';
+      document.getElementById('createFormTitle').textContent = lushaConfigured ? 'Enter company domain' : 'Create prospect';
+      document.getElementById('createCompanyForm').classList.add('open');
+      if (!lushaConfigured) {
+        document.getElementById('newCompanyName').style.display = '';
+        document.getElementById('addCompanyBtn').style.display = '';
+      }
+      document.getElementById('newCompanyDomain').focus();
+    }
+
+    function cancelCreateCompany() {
+      document.getElementById('createCompanyForm').classList.remove('open');
+    }
+
+    async function handleAddCompany() {
+      const name = document.getElementById('newCompanyName').value.trim();
+      const domain = document.getElementById('newCompanyDomain').value.trim();
+      const errorEl = document.getElementById('addCompanyError');
+      const btn = document.getElementById('addCompanyBtn');
+      errorEl.textContent = '';
+
+      if (!name || !domain) {
+        errorEl.textContent = 'Name and domain are required';
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const res = await ManageSidebar.fetch('/api/admin/prospects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, domain, prospect_source: 'referral' }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          if (res.status === 409 && data.organization) {
+            // Already exists — select it
+            selectProspect(data.organization.workos_organization_id, data.organization.name);
+            document.getElementById('createCompanyForm').classList.remove('open');
+            return;
+          }
+          errorEl.textContent = data.error || 'Failed to create prospect';
+          return;
+        }
+        selectProspect(data.workos_organization_id, data.name);
+        document.getElementById('createCompanyForm').classList.remove('open');
+      } catch (err) {
+        errorEl.textContent = 'Network error — please try again';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── End prospect typeahead ─────────────────────────────────────────────
+
+    async function init() {
+      try {
+        const res = await fetch('/api/me', { credentials: 'include' });
+        if (res.status === 401) {
+          window.location.href = '/auth/login?return_to=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        if (!res.ok) throw new Error('Failed to load user');
+
+        const data = await res.json();
+        const { org } = (window.DashboardNav && window.DashboardNav.resolveOrg)
+          ? DashboardNav.resolveOrg(data.organizations)
+          : { org: data.organizations?.[0] };
+
+        if (!org) {
+          document.getElementById('orgName').textContent = 'No organization found';
+          return;
+        }
+
+        currentOrgId = org.id;
+        document.getElementById('orgName').textContent = org.name;
+
+        const statusRes = await ManageSidebar.fetch('/api/admin/enrichment/status').catch(() => null);
+        if (statusRes && statusRes.ok) {
+          const statusData = await statusRes.json();
+          lushaConfigured = statusData.configured === true;
+        }
+
+        setupCompanySearch();
+
+        await Promise.all([loadMyCodes(), loadAllActivity()]);
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+
+  <div id="adcp-footer"></div>
+</body>
+</html>

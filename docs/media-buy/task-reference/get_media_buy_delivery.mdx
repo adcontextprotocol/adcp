@@ -15,7 +15,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | No | Filter to a specific account. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
@@ -432,7 +432,7 @@ import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
 // Get delivery for a specific advertiser account
 const result = await testAgent.getMediaBuyDelivery({
-  account_id: 'acc_acme_pinnacle',
+  account: { account_id: 'acc_acme_pinnacle' },
   status_filter: 'active',
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -461,7 +461,7 @@ async def main():
     # Get delivery for a specific advertiser account
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            account_id='acc_acme_pinnacle',
+            account={'account_id': 'acc_acme_pinnacle'},
             status_filter='active',
             start_date='2024-02-01',
             end_date='2024-02-07'

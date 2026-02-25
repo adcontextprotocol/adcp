@@ -29,6 +29,7 @@ import {
   PublisherPropertySelectorSchema,
   PropertyIdentifierSchema,
   ErrorSchema,
+  FindCompanyResultSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -807,6 +808,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to list brands");
       return res.status(500).json({ error: "Failed to list brands" });
+    }
+  });
+
+  router.get("/brands/find", async (req, res) => {
+    try {
+      const q = (req.query.q as string | undefined)?.trim();
+      if (!q || q.length < 2) {
+        return res.status(400).json({ error: "q parameter required (min 2 characters)" });
+      }
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, 50) : 10;
+      const results = await brandDb.findCompany(q, { limit });
+      return res.json({ results });
+    } catch (error) {
+      logger.error({ error }, "Failed to find company");
+      return res.status(500).json({ error: "Failed to find company" });
     }
   });
 

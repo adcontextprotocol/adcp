@@ -41,6 +41,10 @@
             "name": "Acme c/o Pinnacle",
             "advertiser": "Acme Corp",
             "billing_proxy": "Pinnacle Media",
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator_brand",
             "status": "active"
           },
           {
@@ -48,12 +52,20 @@
             "name": "Nova c/o Pinnacle",
             "advertiser": "Nova Brands",
             "billing_proxy": "Pinnacle Media",
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator_brand",
             "status": "active"
           },
           {
             "account_id": "acc_pinnacle",
             "name": "Pinnacle",
             "advertiser": "Pinnacle Media",
+            "brand": { "domain": "pinnacle-media.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator",
             "status": "active"
           }
         ],
@@ -71,6 +83,10 @@
             "account_id": "acc_acme_direct",
             "name": "Acme",
             "advertiser": "Acme Corp",
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "billing": "operator",
+            "account_scope": "brand",
             "status": "active",
             "rate_card": "acme_vip_2024"
           }

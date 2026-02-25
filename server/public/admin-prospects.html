@@ -176,6 +176,24 @@
       padding: var(--space-1.5) var(--space-3);
       font-size: var(--text-xs);
     }
+    .btn-danger {
+      background: var(--color-error-600);
+      color: white;
+      border-color: var(--color-error-600);
+    }
+    .btn-danger:hover {
+      background: var(--color-error-700);
+    }
+    #statusMessage {
+      display: none;
+      padding: var(--space-2) var(--space-4);
+      margin-bottom: var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      border: 1px solid var(--color-success-200);
+    }
 
     /* Table */
     .prospects-table {
@@ -230,6 +248,13 @@
     .status-prospect { background: var(--color-warning-100); color: var(--color-warning-700); }
     .status-cold { background: var(--color-gray-200); color: var(--color-text-secondary); }
     .status-disqualified { background: var(--color-gray-300); color: var(--color-text-muted); }
+    .status-signed_up { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .status-contacted { background: var(--color-primary-100); color: var(--color-primary-700); }
+    .status-responded { background: var(--color-primary-200); color: var(--color-primary-800); }
+    .status-interested { background: var(--color-warning-100); color: var(--color-warning-800); }
+    .status-negotiating { background: var(--color-warning-200); color: var(--color-warning-900); }
+    .status-converted { background: var(--color-success-100); color: var(--color-success-700); }
+    .status-declined { background: var(--color-gray-200); color: var(--color-text-secondary); }
 
     /* Source badges for domain discovery */
     .source-badge {
@@ -873,6 +898,8 @@
           </div>
         </div>
 
+        <div id="statusMessage"></div>
+
         <div id="prospectsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5); font-size: var(--text-sm);">
           Showing 0 accounts
         </div>
@@ -946,7 +973,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Status</label>
-            <select id="prospectStatus">
+            <select id="prospectStatus" onchange="toggleDisqualificationReason()">
               <option value="prospect">Prospect</option>
               <option value="signed_up">Signed Up</option>
               <option value="contacted">Contacted</option>
@@ -969,12 +996,9 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label>Parent Company</label>
-          <select id="prospectParent">
-            <option value="">None (standalone company)</option>
-          </select>
-          <div class="form-hint">For subsidiaries, select the parent company</div>
+        <div class="form-group" id="disqualificationReasonGroup" style="display: none;">
+          <label>Disqualification reason</label>
+          <input type="text" id="prospectDisqualificationReason" placeholder="e.g. Trade association, competitor, not in target market">
         </div>
 
         <h3 style="margin-top: var(--space-6); margin-bottom: var(--space-4); font-size: var(--text-base);">Contact Info</h3>
@@ -1307,13 +1331,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           console.log('Domain discovery not available:', e);
         }
 
-        // Load organizations for dropdown
-        const orgsRes = await fetch('/api/admin/organizations');
-        if (orgsRes.ok) {
-          allOrganizations = await orgsRes.json();
-          populateParentDropdown();
-        }
-
         // Load current view
         await loadView(currentView);
 
@@ -1329,6 +1346,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
     function updateViewCounts() {
       document.getElementById('count-needs_followup').textContent = viewCounts.needs_followup || 0;
       document.getElementById('count-new_signups').textContent = viewCounts.new_signups || 0;
+      document.getElementById('count-open_invoices').textContent = viewCounts.open_invoices || 0;
       document.getElementById('count-going_cold').textContent = viewCounts.going_cold || 0;
       document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
       document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
@@ -1415,13 +1433,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const hasNonZeroInvoice = (p) => p.pending_invoices?.some(inv => inv.amount_due > 0);
       if (view === 'open_invoices') {
         filteredProspects = allProspects.filter(hasNonZeroInvoice);
-        // Update badge count
+        // Update badge to reflect actual filtered count for this view
         document.getElementById('count-open_invoices').textContent = filteredProspects.length;
       } else {
         filteredProspects = allProspects;
-        // Update open_invoices count when loading other views
-        const openInvoicesCount = allProspects.filter(hasNonZeroInvoice).length;
-        document.getElementById('count-open_invoices').textContent = openInvoicesCount;
+        // Don't overwrite the open_invoices badge — it's managed by the server-side view-counts
       }
 
       applyFilters();
@@ -1730,7 +1746,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // Status badge
         let statusHtml;
         if (domain.existing_org) {
-          statusHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
+          statusHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="status-badge status-member">${domain.existing_org.name}</a>`;
         } else {
           statusHtml = '<span class="status-badge status-prospect">New Prospect</span>';
         }
@@ -1741,7 +1757,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         if (domain.is_new_prospect) {
           actionHtml = `<button class="btn btn-primary btn-sm" onclick="createProspectFromDomain('${domain.domain}', '${primarySource}')">Create Prospect</button>`;
         } else {
-          actionHtml = `<a href="/admin/organizations/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View Org</a>`;
+          actionHtml = `<a href="/admin/accounts/${domain.existing_org.id}" class="btn btn-secondary btn-sm">View Org</a>`;
         }
 
         // Checkbox for new prospects
@@ -2436,7 +2452,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         return `
           <tr style="vertical-align: top;">
             <td>
-              <a href="/admin/organizations/${analysis.org_id}" target="_blank">
+              <a href="/admin/accounts/${analysis.org_id}" target="_blank">
                 <strong>${analysis.org_name}</strong>
               </a>
               <div style="margin-top: var(--space-2); display: flex; gap: var(--space-1); flex-wrap: wrap;">
@@ -2936,17 +2952,6 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       }
     }
 
-    function populateParentDropdown() {
-      const select = document.getElementById('prospectParent');
-      select.innerHTML = '<option value="">None (standalone company)</option>';
-
-      allOrganizations
-        .filter(org => !org.prospect_status || org.prospect_status === 'joined')
-        .forEach(org => {
-          select.innerHTML += `<option value="${org.workos_organization_id}">${org.name}</option>`;
-        });
-    }
-
     function applyFilters() {
       const ownerFilter = document.getElementById('filterOwner').value;
       const typeFilter = document.getElementById('filterType').value;
@@ -3035,7 +3040,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
 
       tbody.innerHTML = filteredProspects.map(prospect => {
         // Company name with link and type badge
-        let companyHtml = `<a href="/admin/organizations/${prospect.workos_organization_id}" class="company-link">${prospect.name}</a>`;
+        let companyHtml = `<a href="/admin/accounts/${escapeHtml(prospect.workos_organization_id)}" class="company-link">${escapeHtml(prospect.name)}</a>`;
         // Add type label inline - support both array and legacy single value
         let typeLabel = '';
         if (prospect.is_personal) {
@@ -3046,19 +3051,39 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           if (typeLabel === '-') typeLabel = '';
         }
         if (typeLabel) {
-          companyHtml += `<br><small style="color: var(--color-text-muted);">${typeLabel}</small>`;
+          companyHtml += `<br><small style="color: var(--color-text-muted);">${escapeHtml(typeLabel)}</small>`;
         }
         // Add member status badge
         if (prospect.subscription_status === 'active') {
           companyHtml += ` <span class="status-badge status-member">Member</span>`;
         }
+        // Add prospect pipeline status badge — only on "All" and "My Accounts" views
+        // where it adds context; on single-purpose views (New Signups, Hot Prospects, etc.)
+        // the tab already implies the status so the badge is redundant.
+        const pStatus = prospect.prospect_status;
+        if (pStatus && pStatus !== 'prospect' && (currentView === 'all' || currentView === 'my_accounts')) {
+          const statusLabels = { signed_up: 'Signed up', contacted: 'Contacted', responded: 'Responded',
+            interested: 'Interested', negotiating: 'Negotiating', converted: 'Converted',
+            declined: 'Declined', disqualified: 'Disqualified' };
+          const label = statusLabels[pStatus] ? statusLabels[pStatus] : escapeHtml(pStatus);
+          const safeClass = statusLabels[pStatus] ? `status-${pStatus}` : 'status-unknown';
+          companyHtml += `<br><span class="status-badge ${safeClass}">${label}</span>`;
+          if (pStatus === 'disqualified' && prospect.disqualification_reason) {
+            companyHtml += `<small style="color: var(--color-text-muted); margin-left: var(--space-1);">${escapeHtml(prospect.disqualification_reason)}</small>`;
+          }
+        }
 
-        // Engagement fires with score
+        // Engagement fires with score and top reason as visible text
         const fires = '\u{1F525}'.repeat(prospect.engagement_level || 1);
         const score = prospect.engagement_score || 0;
-        const reasons = prospect.engagement_reasons?.join(', ') || 'New prospect';
-        const engagementTooltip = `Score: ${score}/100\n${reasons}`;
-        const engagementHtml = `<span class="engagement-fires" title="${engagementTooltip}">${fires}</span>`;
+        const reasonsList = prospect.engagement_reasons || [];
+        const reasons = reasonsList.join(', ') || 'New prospect';
+        const engagementTooltip = escapeHtml(`Score: ${score}/100\n${reasons}`);
+        const topReason = reasonsList[0] || null;
+        const engagementHtml = `<div style="text-align: center;">
+          <span class="engagement-fires" title="${engagementTooltip}">${fires}</span>
+          ${topReason ? `<br><small style="color: var(--color-text-muted); font-size: 0.7em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px; display: block; margin: 0 auto;" title="${escapeHtml(reasons)}">${escapeHtml(topReason)}</small>` : ''}
+        </div>`;
 
         // Domain - show primary domain and count of others
         let domainHtml = '<span style="color: var(--color-text-muted);">-</span>';
@@ -3098,7 +3123,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           const amount = (invoice.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: invoice.currency || 'USD' });
           const statusClass = invoice.status === 'draft' ? 'draft' : '';
           const statusLabel = invoice.status === 'draft' ? 'Draft' : 'Open';
-          const invoiceUrl = invoice.hosted_invoice_url || `/admin/organizations/${prospect.workos_organization_id}`;
+          const invoiceUrl = invoice.hosted_invoice_url || `/admin/accounts/${prospect.workos_organization_id}`;
           activityHtml = `<a href="${invoiceUrl}" target="_blank" class="invoice-badge ${statusClass}" title="Click to view invoice">
             💰 ${statusLabel}: ${amount}
           </a>`;
@@ -3170,8 +3195,10 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
             <td>${usersHtml}</td>
             <td>${activityHtml}</td>
             <td>${ownerHtml}</td>
-            <td>
+            <td id="actions-${prospect.workos_organization_id}">
               ${watchHtml}
+              <button class="btn-icon" onclick="showNoteForm('${prospect.workos_organization_id}')" title="Add note">📝</button>
+              ${prospect.subscription_status !== 'active' ? `<button class="btn-icon" onclick="showDisqualifyForm('${prospect.workos_organization_id}')" title="Disqualify">DQ</button>` : ''}
               <button class="btn-icon" onclick="editProspect('${prospect.workos_organization_id}')" title="Edit">Edit</button>
             </td>
           </tr>
@@ -3247,6 +3274,11 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       }
     }
 
+    function toggleDisqualificationReason() {
+      const status = document.getElementById('prospectStatus').value;
+      document.getElementById('disqualificationReasonGroup').style.display = status === 'disqualified' ? 'block' : 'none';
+    }
+
     // Modal functions
     function openAddProspectModal() {
       document.getElementById('prospectModalTitle').textContent = 'Add Prospect';
@@ -3277,13 +3309,14 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('prospectOwner').value = prospect.prospect_owner || '';
       document.getElementById('prospectStatus').value = prospect.prospect_status || 'prospect';
       document.getElementById('prospectSource').value = prospect.prospect_source || 'aao_launch_list';
-      document.getElementById('prospectParent').value = prospect.parent_organization_id || '';
       document.getElementById('prospectContactName').value = prospect.prospect_contact_name || '';
       document.getElementById('prospectContactEmail').value = prospect.prospect_contact_email || '';
       document.getElementById('prospectContactTitle').value = prospect.prospect_contact_title || '';
       document.getElementById('prospectNextAction').value = prospect.prospect_next_action || '';
       document.getElementById('prospectNextActionDate').value = prospect.prospect_next_action_date ? prospect.prospect_next_action_date.split('T')[0] : '';
       document.getElementById('prospectNotes').value = prospect.prospect_notes || '';
+      document.getElementById('prospectDisqualificationReason').value = prospect.disqualification_reason || '';
+      toggleDisqualificationReason();
 
       // Show payment link and invoice buttons for non-members
       const paymentLinkBtn = document.getElementById('getPaymentLinkBtn');
@@ -3312,13 +3345,13 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         prospect_owner: document.getElementById('prospectOwner').value || null,
         prospect_status: document.getElementById('prospectStatus').value,
         prospect_source: document.getElementById('prospectSource').value,
-        parent_organization_id: document.getElementById('prospectParent').value || null,
         prospect_contact_name: document.getElementById('prospectContactName').value || null,
         prospect_contact_email: document.getElementById('prospectContactEmail').value || null,
         prospect_contact_title: document.getElementById('prospectContactTitle').value || null,
         prospect_next_action: document.getElementById('prospectNextAction').value || null,
         prospect_next_action_date: document.getElementById('prospectNextActionDate').value || null,
-        prospect_notes: document.getElementById('prospectNotes').value || null
+        prospect_notes: document.getElementById('prospectNotes').value || null,
+        disqualification_reason: document.getElementById('prospectDisqualificationReason').value || null
       };
 
       const btn = document.getElementById('saveProspectBtn');
@@ -3351,6 +3384,104 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       } finally {
         btn.disabled = false;
         btn.textContent = 'Save Prospect';
+      }
+    }
+
+    let _statusTimer = null;
+    function showStatusMessage(msg) {
+      const el = document.getElementById('statusMessage');
+      if (!el) return;
+      el.textContent = msg;
+      el.style.display = 'block';
+      clearTimeout(_statusTimer);
+      _statusTimer = setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    function restoreCell(orgId) {
+      const cell = document.getElementById(`actions-${orgId}`);
+      if (cell) cell.innerHTML = cell.dataset.originalHtml || '';
+    }
+
+    // Quick action: show inline disqualify form in the row's actions cell
+    function showDisqualifyForm(orgId) {
+      const cell = document.getElementById(`actions-${orgId}`);
+      if (!cell) return;
+      cell.dataset.originalHtml = cell.innerHTML;
+      cell.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: var(--space-2); min-width: 200px;">
+          <input type="text" id="disq-reason-${orgId}" placeholder="Reason (optional)"
+            style="font-size: var(--text-sm); padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm);">
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn-sm btn-danger" onclick="confirmDisqualify('${orgId}')">Disqualify</button>
+            <button class="btn-sm" onclick="restoreCell('${orgId}')">Cancel</button>
+          </div>
+        </div>`;
+      document.getElementById(`disq-reason-${orgId}`)?.focus();
+    }
+
+    async function confirmDisqualify(orgId) {
+      const reason = document.getElementById(`disq-reason-${orgId}`)?.value || null;
+      try {
+        const res = await fetch(`/api/admin/prospects/${orgId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prospect_status: 'disqualified', disqualification_reason: reason })
+        });
+        if (!res.ok) throw new Error('Failed to disqualify');
+        allProspects = allProspects.filter(p => p.workos_organization_id !== orgId);
+        filteredProspects = filteredProspects.filter(p => p.workos_organization_id !== orgId);
+        renderProspects();
+        showStatusMessage('Marked as disqualified');
+      } catch (err) {
+        console.error('Disqualify failed:', err);
+        restoreCell(orgId);
+        alert('Failed to disqualify. Please try again.');
+      }
+    }
+
+    // Quick action: show inline add-note form in the row's actions cell
+    function showNoteForm(orgId) {
+      const cell = document.getElementById(`actions-${orgId}`);
+      if (!cell) return;
+      cell.dataset.originalHtml = cell.innerHTML;
+      cell.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: var(--space-2); min-width: 220px;">
+          <textarea id="note-text-${orgId}" placeholder="Add a note..." rows="2"
+            style="font-size: var(--text-sm); padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm); resize: vertical;"></textarea>
+          <div style="display: flex; gap: var(--space-2);">
+            <button class="btn-sm btn-primary" onclick="saveNote('${orgId}')">Save note</button>
+            <button class="btn-sm" onclick="restoreCell('${orgId}')">Cancel</button>
+          </div>
+        </div>`;
+      document.getElementById(`note-text-${orgId}`)?.focus();
+    }
+
+    async function saveNote(orgId) {
+      const text = document.getElementById(`note-text-${orgId}`)?.value?.trim();
+      if (!text) { restoreCell(orgId); return; }
+      try {
+        const res = await fetch(`/api/admin/organizations/${orgId}/activities`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activity_type: 'note', description: text })
+        });
+        if (!res.ok) throw new Error('Failed to save note');
+        // On going_cold view: a new note means recent activity, so remove from list
+        // and decrement the tab badge to stay consistent with the displayed count
+        if (currentView === 'going_cold') {
+          allProspects = allProspects.filter(p => p.workos_organization_id !== orgId);
+          filteredProspects = filteredProspects.filter(p => p.workos_organization_id !== orgId);
+          const badge = document.getElementById('count-going_cold');
+          if (badge) badge.textContent = Math.max(0, parseInt(badge.textContent || '0') - 1);
+          renderProspects();
+        } else {
+          restoreCell(orgId);
+        }
+        showStatusMessage('Note saved');
+      } catch (err) {
+        console.error('Save note failed:', err);
+        restoreCell(orgId);
+        alert('Failed to save note. Please try again.');
       }
     }
 
@@ -3742,7 +3873,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
           return `
             <div class="search-result-item">
               <div>
-                <a href="/admin/organizations/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
+                <a href="/admin/accounts/${org.workos_organization_id}" class="result-name-link">${escapeHtml(org.name)}</a> ${statusBadge}
                 <div class="result-meta">${escapeHtml(contactInfo)}</div>
               </div>
               <div class="result-actions">
@@ -3752,7 +3883,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
                 <button class="result-action-btn invoice" onclick="quickInvoice('${org.workos_organization_id}')" title="Send invoice">
                   📄 Invoice
                 </button>
-                <button class="result-action-btn view" onclick="window.location='/admin/organizations/${org.workos_organization_id}'" title="View details">
+                <button class="result-action-btn view" onclick="window.location='/admin/accounts/${org.workos_organization_id}'" title="View details">
                   👁️
                 </button>
               </div>

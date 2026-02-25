@@ -1498,14 +1498,20 @@
       btn.textContent = 'Redirecting to checkout...';
 
       try {
+        const inlineCheckoutBody = {
+          priceId: inlineCheckoutProduct.price_id,
+          orgId: currentOrg.id,
+        };
+        const storedReferralCode = localStorage.getItem('aao_referral_code');
+        if (storedReferralCode) {
+          inlineCheckoutBody.referral_code = storedReferralCode;
+        }
+
         const response = await fetch('/api/checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            priceId: inlineCheckoutProduct.price_id,
-            orgId: currentOrg.id,
-          }),
+          body: JSON.stringify(inlineCheckoutBody),
         });
 
         if (!response.ok) {
@@ -1936,11 +1942,17 @@
           btn.textContent = 'Processing...';
         });
 
+        const checkoutBody = { priceId, orgId };
+        const referralCode = localStorage.getItem('aao_referral_code');
+        if (referralCode) {
+          checkoutBody.referral_code = referralCode;
+        }
+
         const response = await fetch('/api/checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ priceId, orgId }),
+          body: JSON.stringify(checkoutBody),
         });
 
         if (!response.ok) {

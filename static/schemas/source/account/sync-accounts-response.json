@@ -20,19 +20,9 @@
           "items": {
             "type": "object",
             "properties": {
-              "account_id": {
-                "type": "string",
-                "description": "Seller-assigned account identifier. When billing is 'agent', multiple brands may share the same account_id."
-              },
-              "house": {
-                "type": "string",
-                "description": "House domain, echoed from the request",
-                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-              },
-              "brand_id": {
-                "type": "string",
-                "description": "Brand ID within the house portfolio, echoed from request",
-                "pattern": "^[a-z0-9_]+$"
+              "brand": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Brand reference, echoed from the request"
               },
               "operator": {
                 "type": "string",
@@ -57,24 +47,25 @@
                 "enum": [
                   "active",
                   "pending_approval",
+                  "rejected",
                   "payment_required",
                   "suspended",
                   "closed"
                 ],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: terminated."
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
               },
               "billing": {
                 "type": "string",
                 "enum": [
-                  "brand",
                   "operator",
                   "agent"
                 ],
-                "description": "Who is invoiced on this account. May differ from the requested billing if the seller doesn't support it."
+                "description": "Who is invoiced on this account. Matches the requested billing model."
               },
-              "parent_account_id": {
+              "account_scope": {
                 "type": "string",
-                "description": "Parent account ID when this account is a sub-account under a shared billing account"
+                "enum": ["operator", "brand", "operator_brand", "agent"],
+                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to this operator+brand pair. agent: the agent's default account."
               },
               "setup": {
                 "type": "object",
@@ -145,7 +136,8 @@
               }
             },
             "required": [
-              "house",
+              "brand",
+              "operator",
               "action",
               "status"
             ],
@@ -211,32 +203,29 @@
   ],
   "examples": [
     {
-      "description": "Mixed results - one active, one pending approval",
+      "description": "Mixed results — one active, one pending approval",
       "data": {
         "accounts": [
           {
-            "account_id": "sub_tide_001",
-            "house": "pg.com",
-            "brand_id": "tide",
-            "operator": "groupm.com",
-            "name": "Tide (via GroupM)",
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "name": "Spark (via Pinnacle)",
             "action": "created",
             "status": "active",
-            "billing": "agent",
-            "parent_account_id": "acc_agent_house"
+            "billing": "operator",
+            "account_scope": "operator_brand"
           },
           {
-            "account_id": "acc_dove_pending",
-            "house": "unilever.com",
-            "brand_id": "dove",
-            "operator": "mindshare.com",
-            "name": "Dove",
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
+            "name": "Glow",
             "action": "created",
             "status": "pending_approval",
-            "billing": "brand",
+            "billing": "operator",
+            "account_scope": "operator_brand",
             "setup": {
-              "url": "https://seller.com/onboard/dove",
-              "message": "Credit application required for direct billing",
+              "url": "https://seller.example.com/advertiser-onboard",
+              "message": "Complete advertiser registration and credit application",
               "expires_at": "2026-03-10T00:00:00Z"
             }
           }
@@ -244,18 +233,35 @@
       }
     },
     {
-      "description": "Seller doesn't support direct billing, maps to agent billing",
+      "description": "Rejected account — no account_id assigned",
       "data": {
         "accounts": [
           {
-            "account_id": "acc_agent_house",
-            "house": "acme-corp.com",
-            "name": "Acme Corp (via agent)",
+            "brand": { "domain": "acme-corp.com", "brand_id": "clearance" },
+            "operator": "acme-corp.com",
             "action": "created",
-            "status": "active",
-            "billing": "agent",
+            "status": "rejected",
             "warnings": [
-              "Direct billing (brand) not supported. Mapped to agent billing."
+              "Account request declined: advertiser category not accepted on this platform."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Unsupported billing — seller rejects the request",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "action": "failed",
+            "status": "rejected",
+            "errors": [
+              {
+                "code": "BILLING_NOT_SUPPORTED",
+                "message": "Operator billing is not supported. This seller only accepts agent billing."
+              }
             ]
           }
         ]

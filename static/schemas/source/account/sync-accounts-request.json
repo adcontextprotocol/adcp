@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates each seat, and the billing model. The seller provisions or links accounts accordingly, returning per-account status. Brands are identified by house domain + brand_id, resolved via /.well-known/brand.json.",
+  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
   "type": "object",
   "properties": {
     "accounts": {
@@ -12,29 +12,22 @@
         "type": "object",
         "description": "An advertiser account the agent wants to operate on the seller",
         "properties": {
-          "house": {
-            "type": "string",
-            "description": "House domain where brand.json is hosted (e.g., 'unilever.com', 'acme-corp.com'). This is the canonical identity anchor for the brand, resolved via /.well-known/brand.json. For single-brand houses, this alone identifies the brand.",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-          },
-          "brand_id": {
-            "type": "string",
-            "description": "Brand ID within the house portfolio (from brand.json). Required when the house has multiple brands (e.g., 'dove' under unilever.com, 'tide' under pg.com). Omit for single-brand houses.",
-            "pattern": "^[a-z0-9_]+$"
+          "brand": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Brand reference identifying the advertiser. Uses the brand's house domain and optional brand_id from brand.json."
           },
           "operator": {
             "type": "string",
-            "description": "Domain of the entity operating the seat (e.g., 'groupm.com', 'mindshare.com'). Verified against the brand's authorized_operators in brand.json. Omit if the brand operates its own seat.",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
           "billing": {
             "type": "string",
             "enum": [
-              "brand",
               "operator",
               "agent"
             ],
-            "description": "Who should be invoiced. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing across brands. Omit to accept the seller's default."
+            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
           },
           "sandbox": {
             "type": "boolean",
@@ -42,7 +35,9 @@
           }
         },
         "required": [
-          "house"
+          "brand",
+          "operator",
+          "billing"
         ],
         "additionalProperties": true
       },
@@ -60,7 +55,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
+      "description": "Webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -79,27 +74,26 @@
       "data": {
         "accounts": [
           {
-            "house": "unilever.com",
-            "brand_id": "dove",
-            "operator": "mindshare.com",
-            "billing": "brand"
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator"
           },
           {
-            "house": "pg.com",
-            "brand_id": "tide",
-            "operator": "groupm.com",
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
             "billing": "agent"
           }
         ]
       }
     },
     {
-      "description": "Brand buying direct, no operator",
+      "description": "Brand buying direct",
       "data": {
         "accounts": [
           {
-            "house": "acme-corp.com",
-            "billing": "brand"
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "billing": "operator"
           }
         ]
       }
@@ -109,13 +103,13 @@
       "data": {
         "accounts": [
           {
-            "house": "unilever.com",
-            "brand_id": "dove",
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
             "billing": "agent"
           },
           {
-            "house": "unilever.com",
-            "brand_id": "axe",
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
             "billing": "agent"
           }
         ]

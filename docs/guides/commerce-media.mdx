@@ -29,7 +29,7 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 | Real-time inventory / in-stock | Inventory catalog via `sync_catalogs` | [Catalogs](/docs/creative/catalogs) |
 | Proximity / catchment targeting | Store catchment areas (isochrone, radius, GeoJSON) | [Catalogs — Catchment areas](/docs/creative/catalogs#catchment-areas) |
 
-Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
 
 ## The Product Spectrum
 
@@ -280,10 +280,10 @@ The buyer provides a brand reference that includes their product catalog feed. T
 
 ```json
 {
-  "name": "Kraft Heinz",
-  "url": "https://kraftheinz.com",
+  "name": "Nova Foods",
+  "url": "https://novafoods.example.com",
   "product_catalog": {
-    "feed_url": "https://kraftheinz.com/products.xml",
+    "feed_url": "https://novafoods.example.com/products.xml",
     "feed_format": "google_merchant_center",
     "categories": ["food/sauces", "food/condiments", "beverages"],
     "update_frequency": "daily"
@@ -299,13 +299,13 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
 
 ```json
 {
-  "account_id": "kraft_grocery_acct_001",
+  "account": { "account_id": "acct_novafoods_grocery_001" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
-      "name": "Kraft Heinz Product Catalog",
+      "name": "Nova Foods Product Catalog",
       "type": "product",
-      "url": "https://kraftheinz.com/products.xml",
+      "url": "https://novafoods.example.com/products.xml",
       "feed_format": "google_merchant_center",
       "update_frequency": "daily"
     },
@@ -313,7 +313,7 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
       "catalog_id": "inventory-feed",
       "name": "Store-Level Inventory",
       "type": "inventory",
-      "url": "https://feeds.kraftheinz.com/inventory.json",
+      "url": "https://feeds.novafoods.example.com/inventory.json",
       "feed_format": "custom",
       "update_frequency": "hourly"
     }
@@ -326,7 +326,7 @@ The platform ingests each feed:
 - **Inventory feed** — refreshes stock data hourly so creatives can show "In stock nearby"
 
 <Note>
-**Store locations are seller-provided, not buyer-synced.** In retail media, the retailer owns their store locations — Kraft Heinz doesn't sync Walmart's stores to Walmart. The retailer's store catalog (with catchment areas for proximity targeting) is platform-side data that the buyer can reference in targeting. Buyers who operate their own physical locations (e.g., a DTC brand with retail stores, a restaurant chain) would sync their store catalogs to other platforms via `sync_catalogs`.
+**Store locations are seller-provided, not buyer-synced.** In retail media, the retailer owns their store locations — a CPG brand doesn't sync the retailer's stores to the retailer. The retailer's store catalog (with catchment areas for proximity targeting) is platform-side data that the buyer can reference in targeting. Buyers who operate their own physical locations (e.g., a DTC brand with retail stores, a restaurant chain) would sync their store catalogs to other platforms via `sync_catalogs`.
 </Note>
 
 Formats that require synced catalogs declare this via `catalog_requirements` — the buying agent checks these before submitting creatives. A sponsored product carousel might require both a `product` and `inventory` catalog.
@@ -339,7 +339,7 @@ Query `get_products` with `channels: ["retail_media"]` to find commerce media pr
 {
   "brief": "Promote our organic ketchup line across grocery retailers. Focus on high-intent shoppers.",
   "brand": {
-    "domain": "kraftheinz.com"
+    "domain": "novafoods.example.com"
   },
   "filters": {
     "channels": ["retail_media"]
@@ -373,10 +373,10 @@ A single media buy can span multiple product types and retailers. Each package t
 
 ```json
 {
-  "buyer_ref": "kraft_ketchup_q2",
-  "account_id": "kraft_grocery_acct_001",
+  "buyer_ref": "nova_ketchup_q2",
+  "account": { "account_id": "acct_novafoods_grocery_001" },
   "brand": {
-    "domain": "kraftheinz.com"
+    "domain": "novafoods.example.com"
   },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-04-30T23:59:59Z",
@@ -411,7 +411,7 @@ A single media buy can span multiple product types and retailers. Each package t
 }
 ```
 
-The `account_id` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goal` to tell the retailer to optimize for purchases at a 3x ROAS target. The display and premium packages use standard creative workflows.
+The `account` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goal` to tell the retailer to optimize for purchases at a 3x ROAS target. The display and premium packages use standard creative workflows.
 
 ### Delivery Reporting
 
@@ -432,7 +432,7 @@ Commerce media delivery reports include attribution metrics that traditional med
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_grocery_001",
-      "buyer_ref": "kraft_ketchup_q2",
+      "buyer_ref": "nova_ketchup_q2",
       "status": "active",
       "totals": {
         "impressions": 850000,

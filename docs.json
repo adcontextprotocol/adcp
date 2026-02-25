@@ -181,7 +181,8 @@
                 "pages": [
                   "docs/accounts/tasks/sync_accounts",
                   "docs/accounts/tasks/list_accounts",
-                  "docs/accounts/tasks/report_usage"
+                  "docs/accounts/tasks/report_usage",
+                  "docs/accounts/tasks/get_account_financials"
                 ]
               }
             ]
@@ -683,7 +684,8 @@
                 "pages": [
                   "docs/accounts/tasks/sync_accounts",
                   "docs/accounts/tasks/list_accounts",
-                  "docs/accounts/tasks/report_usage"
+                  "docs/accounts/tasks/report_usage",
+                  "docs/accounts/tasks/get_account_financials"
                 ]
               }
             ]

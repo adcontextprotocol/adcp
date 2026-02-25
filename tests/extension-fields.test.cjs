@@ -375,7 +375,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -465,7 +465,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -495,7 +495,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -524,7 +524,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'

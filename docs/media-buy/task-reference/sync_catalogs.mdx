@@ -37,7 +37,7 @@ Sync a product feed:
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -55,7 +55,7 @@ Sync a product feed:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Conditional | Account that owns these catalogs. Required when the agent has multiple accounts. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Conditional | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required when the agent has multiple accounts. |
 | `catalogs` | Catalog[] | No | Catalog feeds to sync (max 50). Omit for discovery mode. |
 | `catalog_ids` | string[] | No | Limit sync scope to specific catalog IDs. Others on the account are unaffected. |
 | `delete_missing` | boolean | No | When true, buyer-managed catalogs not in this sync are removed. Does not affect seller-managed catalogs. Requires `catalogs` to be present. Default: false. |
@@ -134,7 +134,7 @@ Omit `catalogs` to list all catalogs on the account without modification:
 
 ```json
 {
-  "account_id": "acct_acmecorp"
+  "account": { "account_id": "acct_acmecorp" }
 }
 ```
 
@@ -157,7 +157,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -188,7 +188,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_restaurants",
+  "account": { "account_id": "acct_restaurants" },
   "catalogs": [
     {
       "catalog_id": "chef-vacancies",
@@ -213,7 +213,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "dry_run": true,
   "catalogs": [
     {

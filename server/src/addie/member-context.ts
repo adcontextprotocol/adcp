@@ -19,6 +19,7 @@ import { logger } from '../logger.js';
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
+import { resolveEffectiveMembership } from '../db/org-filters.js';
 
 const slackDb = new SlackDatabase();
 const memberDb = new MemberDatabase();
@@ -169,8 +170,17 @@ export interface MemberContext {
   /** Whether the user is mapped to a WorkOS user */
   is_mapped: boolean;
 
-  /** Whether the user's organization is an AgenticAdvertising.org member (has active subscription) */
+  /** Whether the user's organization is an AgenticAdvertising.org member (has active subscription or inherited) */
   is_member: boolean;
+
+  /** Whether membership is inherited through the brand registry hierarchy */
+  is_inherited_member?: boolean;
+
+  /** If inherited, which org covers them */
+  covered_by?: {
+    org_id: string;
+    org_name: string;
+  };
 
   /** Slack user info */
   slack_user?: {
@@ -465,8 +475,19 @@ export async function getMemberContext(slackUserId: string): Promise<MemberConte
         subscription_status: org.subscription_status,
         is_personal: org.is_personal,
       };
-      // Only consider them a member if they have an active subscription AND it's not a personal workspace
-      context.is_member = org.subscription_status === 'active' && !org.is_personal;
+
+      // Check membership including inheritance through brand hierarchy
+      if (!org.is_personal) {
+        const membership = await resolveEffectiveMembership(organizationId);
+        context.is_member = membership.is_member;
+        if (membership.is_inherited && membership.paying_org_id) {
+          context.is_inherited_member = true;
+          context.covered_by = {
+            org_id: membership.paying_org_id,
+            org_name: membership.paying_org_name ?? 'Unknown',
+          };
+        }
+      }
     }
 
     // Process member profile (only for non-personal workspaces)
@@ -730,8 +751,19 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
         subscription_status: org.subscription_status,
         is_personal: org.is_personal,
       };
-      // Only consider them a member if they have an active subscription AND it's not a personal workspace
-      context.is_member = org.subscription_status === 'active' && !org.is_personal;
+
+      // Check membership including inheritance through brand hierarchy
+      if (!org.is_personal) {
+        const membership = await resolveEffectiveMembership(organizationId);
+        context.is_member = membership.is_member;
+        if (membership.is_inherited && membership.paying_org_id) {
+          context.is_inherited_member = true;
+          context.covered_by = {
+            org_id: membership.paying_org_id,
+            org_name: membership.paying_org_name ?? 'Unknown',
+          };
+        }
+      }
     }
 
     // Step 6: Get member profile if exists (only for non-personal workspaces)

@@ -308,6 +308,7 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
     const channelInfo = await getChannelInfo(channelId);
     if (channelInfo) {
       context.viewing_channel_name = channelInfo.name;
+      context.viewing_channel_is_private = channelInfo.is_private;
       if (channelInfo.purpose?.value) {
         context.viewing_channel_description = channelInfo.purpose.value;
       }
@@ -617,11 +618,12 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
  */
 async function buildRequestContext(
   userId: string,
-  threadContext?: ThreadContext
+  threadContext?: ThreadContext,
+  existingMemberContext?: MemberContext | null
 ): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
   try {
-    const memberContext = await getMemberContext(userId);
-    const memberContextText = formatMemberContextForPrompt(memberContext);
+    const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
+    const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
 
     // Build channel context if available
     let channelContextText = '';
@@ -639,6 +641,11 @@ async function buildRequestContext(
       if (threadContext.viewing_channel_working_group_name && threadContext.viewing_channel_working_group_slug) {
         channelLines.push(`**Working Group:** ${threadContext.viewing_channel_working_group_name} (slug: "${threadContext.viewing_channel_working_group_slug}")`);
         channelLines.push(`When scheduling meetings for this channel, use working_group_slug="${threadContext.viewing_channel_working_group_slug}" by default.`);
+      }
+      // Public channels are visible to all workspace members — never share sensitive data there
+      if (threadContext.viewing_channel_is_private === false) {
+        channelLines.push('');
+        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members. You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.**');
       }
       channelContextText = channelLines.join('\n');
     }
@@ -1529,14 +1536,24 @@ async function handleAppMention({
     }
   }
 
+  // Fetch member context early so we can store display name on the thread
+  let mentionMemberContext: MemberContext | null = null;
+  try {
+    mentionMemberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for mention');
+  }
+
   // Get or create unified thread for this mention
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
+    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
     context: {
       mention_channel_id: channelId,
+      channel_name: mentionChannelContext.viewing_channel_name,
       mention_type: 'app_mention',
     },
   });
@@ -1570,9 +1587,11 @@ async function handleAppMention({
   }
 
   // Build per-request context (member info, channel, goals) for system prompt
+  // Pass pre-fetched member context to avoid a duplicate DB call
   const { requestContext: memberRequestContext, memberContext } = await buildRequestContext(
     userId,
-    mentionChannelContext
+    mentionChannelContext,
+    mentionMemberContext
   );
 
   // Include Slack thread context in requestContext (reference info, not user speech)
@@ -2521,6 +2540,7 @@ async function handleActiveThreadReply({
     user_display_name: memberContext?.slack_user?.display_name || undefined,
     context: {
       channel_id: channelId,
+      channel_name: channelContext?.viewing_channel_name,
       message_type: 'active_thread_reply',
     },
   });
@@ -2723,6 +2743,20 @@ async function handleChannelMessage({
 
   const userId = 'user' in event ? event.user : undefined;
 
+  // Handle message_deleted for any channel type (DMs included)
+  if (hasSubtype && 'subtype' in event && event.subtype === 'message_deleted') {
+    const deletedTs = 'deleted_ts' in event ? (event as { deleted_ts: string }).deleted_ts : undefined;
+    if (deletedTs) {
+      const externalId = `${event.channel}:${deletedTs}`;
+      const threadService = getThreadService();
+      const deleted = await threadService.markSlackDeleted('slack', externalId);
+      if (deleted) {
+        logger.info({ channelId: event.channel, deletedTs }, 'Addie Bolt: Marked thread slack_deleted for deleted Slack message');
+      }
+    }
+    return;
+  }
+
   // Handle DMs differently - route to the user message handler
   // For DMs, allow messages with attachments or files even if text is empty
   if (event.channel_type === 'im') {
@@ -2754,7 +2788,7 @@ async function handleChannelMessage({
     return;
   }
 
-  // For channel messages, require text and skip subtypes
+  // For channel messages, require text and skip remaining subtypes
   if (!hasText || hasSubtype) {
     return;
   }
@@ -2941,8 +2975,10 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
+      user_display_name: memberContext?.slack_user?.display_name || undefined,
       context: {
         channel_id: channelId,
+        channel_name: channelContext?.viewing_channel_name,
         message_type: 'channel_message',
       },
     });

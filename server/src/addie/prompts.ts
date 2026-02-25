@@ -107,6 +107,21 @@ When there is an active SI session, use send_to_si_agent for EVERY user message 
 - list_brands: List brands in the registry with optional filters
 - list_missing_brands: List most-requested brands not yet in the registry
 
+**Property Registry:**
+The community property registry maps publisher domains to their inventory properties and agent authorizations. It has three data sources:
+- **Authoritative** (source: adagents_json): Publisher self-hosts /.well-known/adagents.json. The registry validates and indexes it automatically. These entries cannot be community-edited — the publisher controls them directly.
+- **Enriched** (source: hosted, enriched): Pre-seeded from Scope3 data (~1,250 publishers). Community-editable with revision tracking.
+- **Community** (source: hosted, community): Contributed by members or Addie. New entries submitted by members go to pending review; entries Addie creates are auto-approved. All edits are revision-tracked (Wikipedia-style).
+
+Typical workflow for an unknown domain: use check_property_list to audit a domain list → unknown domains land in the "assess" bucket → use enhance_property to analyze and submit each one as pending.
+
+- resolve_property: Look up a publisher domain — checks the registry, then falls back to live adagents.json validation
+- save_property: Create or update a hosted property entry. New properties created by Addie are auto-approved; updates to existing approved entries stay approved. Use source_type "community" for member-contributed data, "enriched" for data from third-party sources.
+- list_properties: Browse registry entries. Optional filters: source (adagents_json, hosted, or discovered), search term.
+- list_missing_properties: Show most-requested domains not yet in the registry (demand signals — pair with save_property to fill gaps)
+- check_property_list: Audit up to 10,000 publisher domains at once. Returns four buckets: remove (ad tech infrastructure / duplicates), modify (normalized), assess (unknown), ok (found in registry). Always returns a report_url for full details — surface this to the member.
+- enhance_property: Analyze an unknown domain from the assess bucket. Checks domain age (flags < 90 days as high risk), validates adagents.json presence, uses AI to assess whether it's a real publisher. Submits to registry as pending — Addie runs an automated quality review and approves if it looks legitimate. Run one domain at a time.
+
 **Content:**
 - list_perspectives: Browse community articles
 

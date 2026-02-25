@@ -19,7 +19,7 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 2. **Brand Protocol** - Brand discovery and identity resolution via `brand.json`. Four manifest variants (authoritative redirect, house redirect, brand agent, house portfolio) with builder tools, registry, and admin UI. Brands declare `authorized_operators` to control which agents can represent them.
 
-3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Three-party billing model (brand, operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
+3. **Account Management** - `sync_accounts` task lets agents declare brand portfolios to sellers with upsert semantics. Account capabilities in `get_adcp_capabilities` describe billing requirements and operator authorization. Two billing models (operator, agent) with account lifecycle (active, pending_approval, payment_required, suspended, closed). `account_id` is optional on `create_media_buy` — single-account agents can omit it.
 
 4. **Commerce Media** - Catalog-driven product discovery (`catalog` on `get_products`), catalog-driven packages, per-catalog-item delivery reporting (`by_catalog_item`), store catchment targeting, and `catalog_types` on products. Cross-retailer GTIN matching via catalog selectors. Commerce attribution metrics (`roas`, `new_to_brand_rate`) in delivery response. See the [Commerce Media Guide](/docs/guides/commerce-media) and [Catalogs](/docs/creative/catalogs).
 

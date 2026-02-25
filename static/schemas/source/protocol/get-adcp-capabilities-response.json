@@ -42,6 +42,12 @@
       "type": "object",
       "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
+        "account_resolution": {
+          "type": "string",
+          "description": "How the seller resolves account references. explicit_account_id: accounts are managed out-of-band (advertiser portal, sales rep) and discovered via list_accounts. implicit_from_sync: buyer declares intent via sync_accounts and the seller provisions accounts.",
+          "enum": ["explicit_account_id", "implicit_from_sync"],
+          "default": "explicit_account_id"
+        },
         "require_operator_auth": {
           "type": "boolean",
           "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
@@ -54,21 +60,21 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. The buyer must pass one of these values in sync_accounts.",
           "items": {
             "type": "string",
-            "enum": ["brand", "operator", "agent"]
+            "enum": ["operator", "agent"]
           },
           "minItems": 1
         },
-        "default_billing": {
-          "type": "string",
-          "enum": ["brand", "operator", "agent"],
-          "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
-        },
         "required_for_products": {
           "type": "boolean",
-          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "default": false
+        },
+        "account_financials": {
+          "type": "boolean",
+          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
           "default": false
         }
       },
