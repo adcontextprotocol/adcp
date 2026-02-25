@@ -12,7 +12,8 @@ COMMENT ON COLUMN addie_threads.slack_deleted IS
   'True when the originating Slack message was deleted. Thread remains visible in admin for auditing.';
 
 -- Rebuild the summary view to include slack_deleted
-CREATE OR REPLACE VIEW addie_threads_summary AS
+DROP VIEW IF EXISTS addie_threads_summary;
+CREATE VIEW addie_threads_summary AS
 SELECT
   t.thread_id,
   t.channel,
