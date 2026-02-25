@@ -117,8 +117,8 @@ const ADMIN_PROMPT_ROUTING: Array<{
       'What prospects need follow up?',
       'Show the prospect pipeline',
     ],
-    expectedTools: ['list_prospects'],
-    description: 'Listing multiple prospects should use list_prospects',
+    expectedTools: ['query_prospects'],
+    description: 'Listing multiple prospects should use query_prospects',
   },
 
   // Billing Queries
@@ -219,7 +219,7 @@ describe('Admin Prompt Routing', () => {
         'find_prospect',
         'add_prospect',
         'update_prospect',
-        'list_prospects',
+        'query_prospects',
         'lookup_organization',
         'list_pending_invoices',
         'enrich_company',

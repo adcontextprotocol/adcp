@@ -243,6 +243,60 @@
           </div>
         </div>
 
+        <!-- Prospect Notifications Channel -->
+        <div class="setting-section">
+          <h3>Prospect notifications channel</h3>
+          <p>
+            Choose which Slack channel receives prospect triage notifications.
+            New prospects, triage decisions, and claims are posted here.
+          </p>
+
+          <div class="current-value" id="currentProspectChannel">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="prospectChannel">Select channel</label>
+              <select id="prospectChannel" disabled>
+                <option value="">Loading channels...</option>
+              </select>
+              <small>Only private channels are shown. Invite Addie to your prospect channel first.</small>
+            </div>
+            <button class="btn btn-primary" id="saveProspectChannelBtn" onclick="saveProspectChannel()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Prospect Triage Toggle -->
+        <div class="setting-section">
+          <h3>Automatic prospect triage</h3>
+          <p>
+            When enabled, Addie automatically triages new domains from Slack joins and website signups,
+            creating prospect records and routing them to Addie or a human owner.
+            Disable this to pause automatic prospect creation.
+          </p>
+
+          <div class="current-value" id="currentTriageStatus">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="triageEnabled">Prospect triage</label>
+              <select id="triageEnabled">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+              <small>Changes take effect immediately for new Slack joins and signups.</small>
+            </div>
+            <button class="btn btn-primary" id="saveTriageBtn" onclick="saveTriageEnabled()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -267,6 +321,8 @@
         updateCurrentChannelDisplay();
         updateCurrentEscalationChannelDisplay();
         updateCurrentAdminChannelDisplay();
+        updateCurrentProspectChannelDisplay();
+        updateTriageDisplay();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -285,6 +341,7 @@
       const billingSelect = document.getElementById('billingChannel');
       const escalationSelect = document.getElementById('escalationChannel');
       const adminSelect = document.getElementById('adminChannel');
+      const prospectSelect = document.getElementById('prospectChannel');
 
       try {
         const response = await fetch('/api/admin/settings/slack-channels');
@@ -300,21 +357,25 @@
         let billingHtml = '<option value="">-- No channel (disabled) --</option>';
         let escalationHtml = '<option value="">-- No channel (disabled) --</option>';
         let adminHtml = '<option value="">-- No channel (disabled) --</option>';
+        let prospectHtml = '<option value="">-- No channel (disabled) --</option>';
 
         if (slackChannels.length === 0) {
           const emptyOption = '<option value="">No private channels found - invite Addie first</option>';
           billingSelect.innerHTML = emptyOption;
           escalationSelect.innerHTML = emptyOption;
           adminSelect.innerHTML = emptyOption;
+          prospectSelect.innerHTML = emptyOption;
           showStatusMessage('Addie is not in any private channels. Invite @Addie to your channels and refresh.', 'error');
         } else {
           slackChannels.forEach(ch => {
             const billingSelected = currentSettings?.billing_channel?.channel_id === ch.id ? 'selected' : '';
             const escalationSelected = currentSettings?.escalation_channel?.channel_id === ch.id ? 'selected' : '';
             const adminSelected = currentSettings?.admin_channel?.channel_id === ch.id ? 'selected' : '';
+            const prospectSelected = currentSettings?.prospect_channel?.channel_id === ch.id ? 'selected' : '';
             billingHtml += `<option value="${ch.id}" ${billingSelected}>#${escapeHtml(ch.name)}</option>`;
             escalationHtml += `<option value="${ch.id}" ${escalationSelected}>#${escapeHtml(ch.name)}</option>`;
             adminHtml += `<option value="${ch.id}" ${adminSelected}>#${escapeHtml(ch.name)}</option>`;
+            prospectHtml += `<option value="${ch.id}" ${prospectSelected}>#${escapeHtml(ch.name)}</option>`;
           });
           billingSelect.innerHTML = billingHtml;
           billingSelect.disabled = false;
@@ -327,12 +388,17 @@
           adminSelect.innerHTML = adminHtml;
           adminSelect.disabled = false;
           document.getElementById('saveAdminChannelBtn').disabled = false;
+
+          prospectSelect.innerHTML = prospectHtml;
+          prospectSelect.disabled = false;
+          document.getElementById('saveProspectChannelBtn').disabled = false;
         }
       } catch (error) {
         console.error('Error loading Slack channels:', error);
         billingSelect.innerHTML = '<option value="">Error loading channels</option>';
         escalationSelect.innerHTML = '<option value="">Error loading channels</option>';
         adminSelect.innerHTML = '<option value="">Error loading channels</option>';
+        prospectSelect.innerHTML = '<option value="">Error loading channels</option>';
         showStatusMessage('Failed to load Slack channels: ' + error.message, 'error');
       }
     }
@@ -519,6 +585,126 @@
         }, 2000);
       } catch (error) {
         console.error('Error saving admin channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Update the current prospect channel display
+    function updateCurrentProspectChannelDisplay() {
+      const el = document.getElementById('currentProspectChannel');
+      const channel = currentSettings?.prospect_channel;
+
+      if (channel?.channel_id && channel?.channel_name) {
+        el.className = 'current-value';
+        el.innerHTML = `<strong>Current:</strong> #${escapeHtml(channel.channel_name)}`;
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Current:</strong> Not configured (prospect notifications disabled)';
+      }
+    }
+
+    // Save prospect channel
+    async function saveProspectChannel() {
+      const select = document.getElementById('prospectChannel');
+      const saveBtn = document.getElementById('saveProspectChannelBtn');
+      const channelId = select.value || null;
+
+      let channelName = null;
+      if (channelId) {
+        const channel = slackChannels.find(c => c.id === channelId);
+        channelName = channel?.name || null;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/prospect-channel', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId, channel_name: channelName }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.prospect_channel = data.prospect_channel;
+        updateCurrentProspectChannelDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage('Prospect channel updated successfully', 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving prospect channel:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    // Update triage toggle display
+    function updateTriageDisplay() {
+      const el = document.getElementById('currentTriageStatus');
+      const enabled = currentSettings?.prospect_triage_enabled !== false;
+      const select = document.getElementById('triageEnabled');
+
+      if (enabled) {
+        el.className = 'current-value';
+        el.innerHTML = '<strong>Status:</strong> Enabled';
+      } else {
+        el.className = 'current-value not-set';
+        el.innerHTML = '<strong>Status:</strong> Disabled';
+      }
+      select.value = String(enabled);
+      document.getElementById('saveTriageBtn').disabled = false;
+    }
+
+    // Save triage enabled setting
+    async function saveTriageEnabled() {
+      const select = document.getElementById('triageEnabled');
+      const saveBtn = document.getElementById('saveTriageBtn');
+      const enabled = select.value === 'true';
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/admin/settings/prospect-triage-enabled', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        currentSettings.prospect_triage_enabled = enabled;
+        updateTriageDisplay();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage(`Prospect triage ${enabled ? 'enabled' : 'disabled'}`, 'success');
+
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving triage setting:', error);
         showStatusMessage('Failed to save: ' + error.message, 'error');
         saveBtn.textContent = 'Save';
         saveBtn.disabled = false;

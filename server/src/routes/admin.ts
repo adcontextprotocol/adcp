@@ -394,6 +394,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           goingCold,
           renewals,
           myAccounts,
+          addiePipeline,
+          needsHuman,
           openInvoices,
         ] = await Promise.all([
           pool.query(`
@@ -443,6 +445,20 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               )
             : Promise.resolve({ rows: [{ count: 0 }] }),
           pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.prospect_owner = 'addie'
+              AND o.subscription_status IS NULL
+              AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+          `),
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.prospect_owner IS NULL
+              AND o.subscription_status IS NULL
+              AND COALESCE(o.prospect_status, 'prospect') = 'prospect'
+          `),
+          pool.query(`
             SELECT COUNT(DISTINCT oi.workos_organization_id) as count
             FROM org_invoices oi
             JOIN organizations o ON o.workos_organization_id = oi.workos_organization_id
@@ -458,6 +474,8 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           going_cold: parseInt(goingCold.rows[0]?.count || "0"),
           renewals: parseInt(renewals.rows[0]?.count || "0"),
           my_accounts: parseInt(myAccounts.rows[0]?.count || "0"),
+          addie_pipeline: parseInt(addiePipeline.rows[0]?.count || "0"),
+          needs_human: parseInt(needsHuman.rows[0]?.count || "0"),
           open_invoices: parseInt(openInvoices.rows[0]?.count || "0"),
         });
       } catch (error) {

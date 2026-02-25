@@ -27,6 +27,7 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
@@ -240,6 +241,29 @@ export function registerAllJobs(): void {
     options: { limit: 200 },
     shouldLogResult: (r) => r.staleEntries > 0,
   });
+
+  // Prospect triage - assesses unmapped Slack domains and creates prospects
+  jobScheduler.register({
+    name: 'prospect-triage',
+    description: 'Prospect triage for unmapped domains',
+    interval: { value: 4, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: processUntriagedDomains,
+    options: { limit: 20 },
+    businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
+    shouldLogResult: (r) => r.created > 0,
+  });
+
+  // Prospect escalation - auto-assigns unclaimed prospects to Addie after 48h
+  jobScheduler.register({
+    name: 'prospect-escalation',
+    description: 'Escalate unclaimed prospects to Addie',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 20, unit: 'minutes' },
+    runner: escalateUnclaimedProspects,
+    businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
+    shouldLogResult: (r) => r.escalated > 0,
+  });
 }
 
 /**
@@ -261,4 +285,6 @@ export const JOB_NAMES = {
   PERSONA_INFERENCE: 'persona-inference',
   JOURNEY_COMPUTATION: 'journey-computation',
   KNOWLEDGE_STALENESS: 'knowledge-staleness',
+  PROSPECT_TRIAGE: 'prospect-triage',
+  PROSPECT_ESCALATION: 'prospect-escalation',
 } as const;

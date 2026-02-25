@@ -25,6 +25,7 @@ import { getPool } from '../db/client.js';
 import { workos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
+import { triageAndCreateProspect } from '../services/prospect-triage.js';
 import { researchDomain } from '../services/brand-enrichment.js';
 
 const logger = createLogger('workos-webhooks');
@@ -712,6 +713,14 @@ export function createWorkOSWebhooksRouter(): Router {
                 { userId: user.id, email: user.email, slackUserId: linkResult.slack_user_id },
                 'Auto-linked new website user to Slack account'
               );
+            }
+            // Fire-and-forget prospect triage for business emails
+            if (user.email && process.env.ANTHROPIC_API_KEY) {
+              const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || undefined;
+              const domain = user.email.split('@')[1];
+              triageAndCreateProspect(domain, { name, email: user.email, source: 'inbound' }).catch(err => {
+                logger.error({ err, domain }, 'Prospect triage failed for new website user');
+              });
             }
             invalidateUnifiedUsersCache();
             break;
