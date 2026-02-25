@@ -320,7 +320,7 @@
             },
             "attribution_windows": {
               "type": "array",
-              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via optimization_goal.attribution_window on packages.",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via attribution_window on optimization goals.",
               "items": {
                 "type": "object",
                 "properties": {

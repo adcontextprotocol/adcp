@@ -2,49 +2,140 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/optimization-goal.json",
   "title": "Optimization Goal",
-  "description": "Conversion optimization goal for a package. Tells the seller which event source and event type to optimize delivery against. Provide at most one of target_roas or target_cpa. If neither is provided, the seller optimizes for maximum conversions within budget.",
-  "type": "object",
-  "properties": {
-    "event_source_id": {
-      "type": "string",
-      "description": "Event source to optimize against (must be configured on this account via sync_event_sources)"
-    },
-    "event_type": {
-      "$ref": "/schemas/enums/event-type.json",
-      "description": "Event type to optimize for (e.g. purchase, lead)"
-    },
-    "target_roas": {
-      "type": "number",
-      "description": "Target return on ad spend (e.g. 4.0 = $4 conversion value per $1 spent). Mutually exclusive with target_cpa.",
-      "exclusiveMinimum": 0
-    },
-    "target_cpa": {
-      "type": "number",
-      "description": "Target cost per acquisition in the buy currency. Mutually exclusive with target_roas.",
-      "exclusiveMinimum": 0
-    },
-    "attribution_window": {
+  "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
+  "oneOf": [
+    {
       "type": "object",
-      "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. When omitted, the seller uses their default window.",
+      "description": "Optimize for a seller-tracked delivery metric. No event source required — the seller tracks these natively.",
       "properties": {
-        "click_through": {
+        "kind": { "type": "string", "const": "metric" },
+        "metric": {
           "type": "string",
-          "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score"],
+          "description": "Seller-native metric to optimize for. Count metrics: clicks, views (viewable impressions), completed_views (video or audio completions). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score per impression)."
         },
-        "view_through": {
-          "type": "string",
-          "description": "View-through attribution window (e.g. '1d', '7d')"
+        "target": {
+          "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Target cost per unit of the metric (e.g., cost per click, cost per view).",
+              "properties": {
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Minimum per-impression rate for this metric. The metric defines the units: proportions for count metrics (e.g., 0.001 for 0.1% CTR, 0.70 for 70% viewability), seconds for duration metrics (e.g., 3.0 for 3s in view), or score for score metrics.",
+              "properties": {
+                "kind": { "type": "string", "const": "threshold_rate" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views), seconds (viewed_seconds, attention_seconds), or score (attention_score)." }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
         }
       },
-      "required": [
-        "click_through"
-      ],
+      "required": ["kind", "metric"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Optimize for advertiser-tracked conversion events. Requires event sources registered via sync_event_sources.",
+      "properties": {
+        "kind": { "type": "string", "const": "event" },
+        "event_sources": {
+          "type": "array",
+          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. The seller deduplicates by event_id across all entries — the same business event reported by multiple sources (e.g., web analytics and an MMP) counts once. When a deduplicated event_id appears from multiple sources with different value_fields, the seller uses the value_field and value_factor from the first matching entry in the event_sources array. All event sources must be configured via sync_event_sources.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_source_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Event source to include (must be configured on this account via sync_event_sources)"
+              },
+              "event_type": {
+                "$ref": "/schemas/enums/event-type.json",
+                "description": "Event type to include from this source (e.g., purchase, lead, app_install, refund)"
+              },
+              "custom_event_name": {
+                "type": "string",
+                "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
+              },
+              "value_field": {
+                "type": "string",
+                "description": "Field on the event's custom_data that carries the monetary value. Required on at least one entry when target.kind is 'per_ad_spend'. The field must contain a numeric value in the buy currency. Common values: 'value', 'order_total', 'profit_margin'."
+              },
+              "value_factor": {
+                "type": "number",
+                "default": 1,
+                "description": "Multiplier applied to the value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1."
+              }
+            },
+            "required": ["event_source_id", "event_type"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "target": {
+          "description": "Target cost or return for this event goal. When omitted, the seller optimizes for maximum conversions within budget.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Target cost per conversion event (after deduplication across event_sources).",
+              "properties": {
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per event in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Target return per unit of ad spend, calculated as sum(value_field * value_factor) / spend across all deduplicated events. Requires value_field on at least one event_sources entry.",
+              "properties": {
+                "kind": { "type": "string", "const": "per_ad_spend" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "attribution_window": {
+          "type": "object",
+          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
+          "properties": {
+            "click_through": {
+              "type": "string",
+              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            },
+            "view_through": {
+              "type": "string",
+              "description": "View-through attribution window (e.g. '1d', '7d')"
+            }
+          },
+          "required": ["click_through"],
+          "additionalProperties": true
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
+        }
+      },
+      "required": ["kind", "event_sources"],
       "additionalProperties": true
     }
-  },
-  "required": [
-    "event_source_id",
-    "event_type"
-  ],
-  "additionalProperties": true
+  ]
 }

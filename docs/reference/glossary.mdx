@@ -183,7 +183,7 @@ The AI capability that allows audience discovery through conversational descript
 ## O
 
 **Optimization Goal**
-A package-level setting that tells the seller what to optimize delivery for. For conversion goals (purchases, leads, ROAS), the buyer specifies an event source and event type, with strategies `maximize_conversions` (default), `target_cpa`, or `target_roas`. Delivery goals (clicks, video completions) are implied by the pricing model — CPC optimizes for clicks, CPCV optimizes for completed views — and do not require an event source.
+A single entry in a package's `optimization_goals` array. Two kinds: `kind: "event"` (optimize for advertiser-tracked conversion events via an `event_sources` array of source-type pairs, with optional `cost_per` or `per_ad_spend` target) and `kind: "metric"` (optimize for a seller-native delivery metric — clicks, views, completed views, attention, etc. — with optional `cost_per` or `threshold_rate` target). Event goals with `per_ad_spend` targets require `value_field` on event source entries. The seller deduplicates by `event_id` across sources. When multiple goals are present, `priority` (1 = highest) controls which the seller treats as primary.
 
 **Owned Signal**
 First-party signal data belonging to the advertiser or platform.
