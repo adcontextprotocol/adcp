@@ -851,6 +851,17 @@
         // Users who ONLY have personal workspaces should still see onboarding to join companies
         const hasCompanyOrgs = data.organizations && data.organizations.some(org => !org.is_personal);
         if (hasCompanyOrgs) {
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.get('step') === 'brand') {
+            const companyOrg = data.organizations.find(org => !org.is_personal);
+            if (companyOrg) {
+              const domain = currentUser.email ? currentUser.email.split('@')[1] : '';
+              document.getElementById('loading').style.display = 'none';
+              document.getElementById('mainContent').style.display = 'block';
+              showBrandSetup(companyOrg.name, domain);
+              return;
+            }
+          }
           window.location.href = '/dashboard';
           return;
         }

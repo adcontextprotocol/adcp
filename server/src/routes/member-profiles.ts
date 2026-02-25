@@ -71,8 +71,11 @@ async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<Mem
   const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
   if (discovered) {
     const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-    const logos = manifest?.logos as Array<Record<string, unknown>> | undefined;
-    const colors = manifest?.colors as Record<string, unknown> | undefined;
+    // house_portfolio: logos are in brands[0].logos; fall back to top-level logos for other structures
+    const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+    const primaryBrand = brands?.[0];
+    const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+    const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
     return {
       domain,
       logo_url: logos?.[0]?.url as string | undefined,
