@@ -125,6 +125,7 @@ Technical execution capabilities:
 | `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
@@ -177,6 +178,18 @@ Inventory portfolio information:
 | `primary_countries` | string[] | Main countries (ISO codes) |
 | `description` | string | Markdown portfolio description |
 | `advertising_policies` | string | Content policies and restrictions |
+
+#### reporting
+
+Reporting dimension capabilities. Declares which dimensional breakdowns the seller supports in `get_media_buy_delivery` responses when buyers include `reporting_dimensions` in the request.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_geo_breakdown` | object | Geographic breakdown support. Contains boolean fields for `country`, `region`, and nested objects for `metro` and `postal_area` with system-specific booleans (mirrors targeting geo structure). |
+| `supports_device_type_breakdown` | boolean | Device type breakdown (`by_device_type` in `by_package`) |
+| `supports_device_platform_breakdown` | boolean | Device platform breakdown (`by_device_platform` in `by_package`) |
+| `supports_audience_breakdown` | boolean | Audience segment breakdown (`by_audience` in `by_package`) |
+| `supports_placement_breakdown` | boolean | Placement breakdown (`by_placement` in `by_package`) |
 
 ### signals
 
@@ -494,7 +507,9 @@ const buy = await client.createMediaBuy({
           "gb_outward": true,
           "gb_full": false,
           "ca_fsa": true
-        }
+        },
+        "device_platform": true,
+        "device_type": true
       }
     },
     "conversion_tracking": {
@@ -509,6 +524,17 @@ const buy = await client.createMediaBuy({
       "publisher_domains": ["example.com", "news.example.com"],
       "primary_channels": ["display", "olv"],
       "primary_countries": ["US", "CA"]
+    },
+    "reporting": {
+      "supports_geo_breakdown": {
+        "country": true,
+        "region": true,
+        "metro": { "nielsen_dma": true }
+      },
+      "supports_device_type_breakdown": true,
+      "supports_device_platform_breakdown": false,
+      "supports_audience_breakdown": false,
+      "supports_placement_breakdown": false
     }
   },
   "extensions_supported": ["scope3"],

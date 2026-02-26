@@ -612,6 +612,10 @@
           "$ref": "/schemas/enums/device-platform.json",
           "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
         },
+        "device-type": {
+          "$ref": "/schemas/enums/device-type.json",
+          "description": "Device form factor categories for targeting and reporting (desktop, mobile, tablet, ctv, dooh, unknown)"
+        },
         "signal-value-type": {
           "$ref": "/schemas/enums/signal-value-type.json",
           "description": "Signal value types for targeting (binary, categorical, numeric)"
@@ -639,6 +643,10 @@
         "attribution-model": {
           "$ref": "/schemas/enums/attribution-model.json",
           "description": "Attribution model used for conversion measurement"
+        },
+        "audience-source": {
+          "$ref": "/schemas/enums/audience-source.json",
+          "description": "Origin of an audience segment in delivery reporting (synced, platform, third_party, lookalike, retargeting)"
         },
         "wcag-level": {
           "$ref": "/schemas/enums/wcag-level.json",

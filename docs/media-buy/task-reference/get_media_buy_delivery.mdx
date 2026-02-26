@@ -21,6 +21,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
+| `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Keys: `geo`, `device_type`, `device_platform`, `audience`, `placement`. Each accepts optional `limit` and `sort_by` (default: `spend` descending). Geo also requires `geo_level` and optionally `system`. Unsupported dimensions are silently omitted. |
 
 > **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00`). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
 
@@ -664,6 +665,53 @@ This is optional. Sellers that support item-level reporting populate `by_catalog
   ]
 }
 ```
+
+## Dimension Breakdowns
+
+When you include `reporting_dimensions` in the request, the response includes dimensional breakdown arrays within each `by_package` entry. Each breakdown entry inherits all fields from `delivery-metrics` plus dimension-specific identifiers.
+
+### Requesting breakdowns
+
+```json test=false
+{
+  "media_buy_ids": ["mb_123"],
+  "reporting_dimensions": {
+    "geo": { "geo_level": "metro", "system": "nielsen_dma", "limit": 10 },
+    "device_type": {},
+    "placement": { "limit": 5, "sort_by": "roas" }
+  }
+}
+```
+
+Each dimension accepts optional `limit` (max rows) and `sort_by` (metric to sort by, default `spend` descending). Geo also requires `geo_level` (`country`, `region`, `metro`, `postal_area`) and `system` for metro/postal levels.
+
+### Available dimensions
+
+| Dimension | Breakdown field | Required fields | Capability flag |
+|-----------|----------------|-----------------|-----------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `supports_placement_breakdown` |
+
+Check `reporting_capabilities` on the product or the `reporting` section of `get_adcp_capabilities` to discover which dimensions are available.
+
+### Truncation
+
+Each breakdown array has a sibling boolean flag (e.g., `by_geo_truncated`). When `true`, additional rows exist beyond the returned set. Rows are sorted by the requested `sort_by` metric descending.
+
+### Audience sources
+
+The `audience_source` field indicates where the audience segment originated:
+
+| Source | Description | Targetable? |
+|--------|-------------|-------------|
+| `synced` | Buyer's first-party data via `sync_audiences` | Yes — use `audience_include`/`audience_exclude` |
+| `platform` | Seller's native segments (interest, behavioral) | No — informational |
+| `third_party` | External data provider segments | No — informational |
+| `lookalike` | Platform-generated expansion from a seed | No — informational |
+| `retargeting` | Prior engagement via seller's pixel/tag | No — informational |
 
 ## Best Practices
 

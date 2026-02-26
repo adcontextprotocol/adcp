@@ -50,6 +50,107 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
       "description": "End date for reporting period (YYYY-MM-DD). When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
+    "reporting_dimensions": {
+      "type": "object",
+      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package. Omit entirely for no dimensional breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response.",
+      "properties": {
+        "geo": {
+          "type": "object",
+          "description": "Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdown for available levels and systems.",
+          "properties": {
+            "geo_level": {
+              "$ref": "/schemas/enums/geo-level.json",
+              "description": "Geographic granularity level for the breakdown"
+            },
+            "system": {
+              "type": "string",
+              "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Required when geo_level is 'metro' or 'postal_area'."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of geo entries to return. When truncated, by_geo_truncated is true in the response."
+            },
+            "sort_by": {
+              "type": "string",
+              "description": "Metric to sort results by when limit is applied. Falls back to 'spend' if the requested metric is unavailable.",
+              "default": "spend"
+            }
+          },
+          "required": ["geo_level"],
+          "additionalProperties": true
+        },
+        "device_type": {
+          "type": "object",
+          "description": "Request device type breakdown.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of entries to return"
+            },
+            "sort_by": {
+              "type": "string",
+              "description": "Metric to sort results by when limit is applied",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        },
+        "device_platform": {
+          "type": "object",
+          "description": "Request device platform breakdown.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of entries to return"
+            },
+            "sort_by": {
+              "type": "string",
+              "description": "Metric to sort results by when limit is applied",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        },
+        "audience": {
+          "type": "object",
+          "description": "Request audience segment breakdown.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of entries to return"
+            },
+            "sort_by": {
+              "type": "string",
+              "description": "Metric to sort results by when limit is applied",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        },
+        "placement": {
+          "type": "object",
+          "description": "Request placement breakdown.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of entries to return"
+            },
+            "sort_by": {
+              "type": "string",
+              "description": "Metric to sort results by when limit is applied",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

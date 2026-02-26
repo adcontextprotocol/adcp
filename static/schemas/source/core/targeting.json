@@ -211,6 +211,22 @@
       },
       "minItems": 1
     },
+    "device_type": {
+      "type": "array",
+      "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",
+      "items": {
+        "$ref": "/schemas/enums/device-type.json"
+      },
+      "minItems": 1
+    },
+    "device_type_exclude": {
+      "type": "array",
+      "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns).",
+      "items": {
+        "$ref": "/schemas/enums/device-type.json"
+      },
+      "minItems": 1
+    },
     "store_catchments": {
       "type": "array",
       "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",

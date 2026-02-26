@@ -67,6 +67,58 @@
       "type": "boolean",
       "description": "Whether this product supports keyword-level metric breakdowns in delivery reporting (by_keyword within by_package)"
     },
+    "supports_geo_breakdown": {
+      "type": "object",
+      "description": "Geographic breakdown support for this product. Declares which geo levels and systems are available for by_geo reporting within by_package.",
+      "properties": {
+        "country": {
+          "type": "boolean",
+          "description": "Supports country-level geo breakdown (ISO 3166-1 alpha-2)"
+        },
+        "region": {
+          "type": "boolean",
+          "description": "Supports region/state-level geo breakdown (ISO 3166-2)"
+        },
+        "metro": {
+          "type": "object",
+          "description": "Metro area breakdown support by classification system",
+          "properties": {
+            "nielsen_dma": { "type": "boolean" },
+            "uk_itl1": { "type": "boolean" },
+            "uk_itl2": { "type": "boolean" },
+            "eurostat_nuts2": { "type": "boolean" }
+          }
+        },
+        "postal_area": {
+          "type": "object",
+          "description": "Postal area breakdown support by postal system",
+          "properties": {
+            "us_zip": { "type": "boolean" },
+            "gb_outward": { "type": "boolean" },
+            "ca_fsa": { "type": "boolean" },
+            "de_plz": { "type": "boolean" },
+            "fr_code_postal": { "type": "boolean" },
+            "au_postcode": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "supports_device_type_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports device type breakdowns in delivery reporting (by_device_type within by_package)"
+    },
+    "supports_device_platform_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports device platform breakdowns in delivery reporting (by_device_platform within by_package)"
+    },
+    "supports_audience_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports audience segment breakdowns in delivery reporting (by_audience within by_package)"
+    },
+    "supports_placement_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"
+    },
     "date_range_support": {
       "type": "string",
       "enum": ["date_range", "lifetime_only"],

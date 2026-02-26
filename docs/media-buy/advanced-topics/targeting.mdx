@@ -204,6 +204,33 @@ Use for **technical requirements**:
 - CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
 - Other: `unknown`
 
+### Device type (form factor)
+Use for **performance optimization** targeting by hardware category rather than OS:
+- **Mobile campaigns**: Target all mobile devices regardless of OS
+- **CTV campaigns**: Target connected TVs across all platforms
+- **Exclude form factors**: Skip CTV for app-install campaigns
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "device_type": ["mobile", "tablet"]
+}
+```
+
+**Exclusion** — use `device_type_exclude` to exclude specific form factors:
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "device_type_exclude": ["dooh"]
+}
+```
+
+**Available types** (defined in [`device-type.json`](https://adcontextprotocol.org/schemas/latest/enums/device-type.json)):
+- `desktop`, `mobile`, `tablet`, `ctv`, `dooh`, `unknown`
+
+**Device type vs device platform**: `device_type` targets form factors (mobile, desktop, CTV). `device_platform` targets operating systems (iOS, Android, tvOS). Use `device_type` for performance optimization; use `device_platform` for technical compatibility.
+
 ### Language (Localization)
 Use for **localization requirements**:
 - Creative is in a specific language
@@ -450,6 +477,21 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
 - **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
 - **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### device_type
+- **Description**: Restrict to specific device form factors
+- **Format**: Array of device type identifiers
+- **Examples**: `["mobile"]`, `["mobile", "tablet"]`, `["ctv"]`
+- **Use cases**: Mobile-only promotions, CTV campaigns targeting all TV platforms, excluding DOOH from certain campaigns
+- **Values**: `desktop`, `mobile`, `tablet`, `ctv`, `dooh`, `unknown`
+- **Note**: Seller must declare `device_type: true` in `get_adcp_capabilities` targeting
+
+### device_type_exclude
+- **Description**: Exclude specific device form factors from delivery
+- **Format**: Array of device type identifiers
+- **Examples**: `["dooh"]`, `["ctv", "dooh"]`
+- **Use cases**: Exclude CTV for app-install campaigns, exclude DOOH for direct-response campaigns
+- **Note**: Supported when seller declares `device_type: true` in `get_adcp_capabilities`
 
 ### language
 - **Description**: Restrict to users with specific language preferences
