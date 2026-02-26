@@ -100,10 +100,12 @@ jobs:
           HAS_ERRORS="false"
           TOTAL_URLS=$(echo "$SCHEMA_URLS" | wc -l | tr -d ' ')
           
-          # Build commit info header
-          COMMIT_SHA="${GITHUB_SHA:0:7}"
-          COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
-          COMMIT_INFO="**Commit**: \`$COMMIT_SHA\` - $COMMIT_MSG"
+          # Build commit info header - use PR head SHA, not merge commit
+          # GITHUB_SHA points to merge commit, we want the actual PR commit
+          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          COMMIT_SHA_SHORT="${COMMIT_SHA:0:7}"
+          COMMIT_MSG=$(git log -1 --format='%s' "$COMMIT_SHA" 2>/dev/null || echo "Unknown")
+          COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
           
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
             echo "has_issues=true" >> $GITHUB_OUTPUT
