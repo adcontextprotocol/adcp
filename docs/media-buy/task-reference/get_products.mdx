@@ -850,9 +850,7 @@ Response (200 OK):
 {
   "status": "completed",
   "message": "Found 3 products matching your requirements",
-  "data": {
-    "products": [...]
-  }
+  "products": [...]
 }
 ```
 
@@ -867,11 +865,9 @@ Response (200 OK):
   "message": "I need a bit more information. What's your budget range and campaign duration?",
   "task_id": "task_789",
   "context_id": "ctx_123",
-  "data": {
-    "reason": "CLARIFICATION_NEEDED",
-    "partial_results": [],
-    "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
-  }
+  "reason": "CLARIFICATION_NEEDED",
+  "partial_results": [],
+  "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
 }
 ```
 
@@ -889,9 +885,7 @@ Response (200 OK):
 {
   "status": "completed",
   "message": "Perfect! Found 5 products within your budget",
-  "data": {
-    "products": [...]
-  }
+  "products": [...]
 }
 ```
 
@@ -924,10 +918,8 @@ Response (200 OK):
   "message": "Searching premium inventory across display, video, and audio",
   "task_id": "task_456",
   "context_id": "ctx_123",
-  "data": {
-    "percentage": 10,
-    "current_step": "searching_inventory"
-  }
+  "percentage": 10,
+  "current_step": "searching_inventory"
 }
 
 // Later, webhook POST to https://buyer.com/webhooks/adcp/get_products
