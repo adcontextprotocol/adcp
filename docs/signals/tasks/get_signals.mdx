@@ -97,7 +97,8 @@ The response structure is identical across protocols, with only the transport wr
       "pricing_options": [
         {
           "pricing_option_id": "string",
-          "pricing": { "model": "cpm | percent_of_media | flat_fee", "...": "..." }
+          "model": "cpm | percent_of_media | flat_fee",
+          "...": "..."
         }
       ]
     }
@@ -122,10 +123,10 @@ The response structure is identical across protocols, with only the transport wr
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
     - **pricing_option_id**: Unique identifier for this pricing option
-    - **pricing** (object): Pricing model, discriminated by `model`:
-      - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
-      - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
-      - `model: "flat_fee"` — `amount` (fixed charge per reporting period), `currency` (ISO 4217)
+    - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
+    - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
+    - `model: "flat_fee"` — `amount` (fixed charge per reporting period), `currency` (ISO 4217)
 
 Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
@@ -213,7 +214,9 @@ Because the authenticated caller matches the deployment target, the response inc
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
         }
       ]
     }
@@ -252,11 +255,16 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
       "pricing_options": [
         {
           "pricing_option_id": "po_eco_cpm",
-          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
         },
         {
           "pricing_option_id": "po_eco_pom",
-          "pricing": { "model": "percent_of_media", "percent": 15, "max_cpm": 1.50, "currency": "USD" }
+          "model": "percent_of_media",
+          "percent": 15,
+          "max_cpm": 1.50,
+          "currency": "USD"
         }
       ]
     }
@@ -334,7 +342,9 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
         }
       ]
     }
@@ -433,7 +443,9 @@ A2A returns results as artifacts with the same data structure:
                 "pricing_options": [
                   {
                     "pricing_option_id": "po_cpm_usd",
-                    "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+                    "model": "cpm",
+                    "cpm": 3.50,
+                    "currency": "USD"
                   }
                 ]
               }
@@ -525,7 +537,9 @@ Discover all available deployments across platforms:
     "pricing_options": [
       {
         "pricing_option_id": "po_cpm_usd",
-        "pricing": { "model": "cpm", "cpm": 2.50, "currency": "USD" }
+        "model": "cpm",
+        "cpm": 2.50,
+        "currency": "USD"
       }
     ]
   }]
@@ -551,7 +565,7 @@ Discover all available deployments across platforms:
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
   - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
-    - **pricing** (object): Pricing model, discriminated by `model` (`cpm`, `percent_of_media`, `flat_fee`)
+    - **model** (string): Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
 
 ## Error Codes
 
@@ -609,7 +623,9 @@ Discover all available deployments across platforms:
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
         }
       ]
     }
@@ -645,7 +661,9 @@ Discover all available deployments across platforms:
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing": { "model": "cpm", "cpm": 4.50, "currency": "USD" }
+          "model": "cpm",
+          "cpm": 4.50,
+          "currency": "USD"
         }
       ]
     }
