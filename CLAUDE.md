@@ -23,7 +23,7 @@ This project uses **Mintlify** for documentation:
 - Enum values that reference industry standards (e.g., `"groupm"` viewability standard) are protocol terms, not examples
 
 ### Schema Compliance
-All documentation and examples MUST match JSON schemas in `static/schemas/v1/`:
+All documentation and examples MUST match JSON schemas in `static/schemas/source/`:
 - Verify fields exist in schema before documenting
 - Remove examples that don't match schema (don't mark as `test=false`)
 - Test with: `npm test -- --file docs/path/to/file.mdx`
@@ -72,11 +72,38 @@ Use explicit discriminator fields with `"type"` before `"const"`:
 Include common fields (like `ext`) inside each variant, not at root level.
 
 ### Schema Locations
-- Task schemas: `static/schemas/v1/media-buy/` and `static/schemas/v1/signals/`
-- Core objects: `static/schemas/v1/core/`
-- Enums: `static/schemas/v1/enums/`
-- Registry: `static/schemas/v1/index.json`
-- Local access: `http://localhost:3000/schemas/v1/` when running dev server
+- Source schemas: `static/schemas/source/` (development, serves as `latest`)
+- Released versions: `dist/schemas/{version}/` (e.g., `2.5.3`, `3.0.0-beta.3`)
+- Local access: `http://localhost:3000/schemas/latest/` when running dev server
+
+### Schema URLs in Documentation
+
+When linking to schemas in docs, use the correct version alias:
+
+**Released schemas** - Use the major version alias:
+```markdown
+[$schema](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json)
+```
+
+**Unreleased schemas** (exist in `static/schemas/source/` but not in any `dist/schemas/{version}/`) - Use `/schemas/latest/`:
+```markdown
+<!-- Using latest because this schema is not yet released in any version.
+     Update to correct version alias after the next release. -->
+[$schema](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json)
+```
+
+**How to check if a schema is released:**
+1. Check `dist/schemas/` for the highest version number under each major (e.g., `3.0.0-beta.3` for v3, `2.5.3` for v2)
+2. If the schema exists in a released version, use that major version alias (v3, v2)
+3. If only in `static/schemas/source/`, use `latest`
+
+**Version aliases:**
+- `/schemas/v3/` → latest 3.x release (currently 3.0.0-beta.3)
+- `/schemas/v2/` → latest 2.x release (currently 2.5.3)
+- `/schemas/v1/` → points to `latest` (for backward compatibility)
+- `/schemas/latest/` → development version (`static/schemas/source/`)
+
+**CI validation:** The `check-schema-links.yml` workflow validates schema URLs in PRs and will warn about unreleased schemas or suggest the correct version.
 
 ### Protocol vs Task Response Separation
 Task responses contain ONLY domain data. Protocol concerns (message, context_id, task_id, status) are handled by transport layer.
