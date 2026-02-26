@@ -78,7 +78,7 @@ Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/event.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event.json",
   "event_id": "evt_purchase_12345",
   "event_type": "purchase",
   "event_time": "2026-01-15T14:30:00Z",
@@ -230,7 +230,7 @@ Where the conversion event originated:
 
 Optimization goals tell the seller what to optimize delivery toward. Set them on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization). A package accepts an array of goals — each with an optional `priority` (1 = highest). Products declare `max_optimization_goals` when they limit how many goals a package can carry (most social platforms accept only 1).
 
-**Schema**: [`/schemas/v2/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v2/core/optimization-goal.json)
+**Schema**: [`/schemas/v2/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json)
 
 There are two kinds of goals, discriminated by `kind`:
 

@@ -81,7 +81,7 @@ Catalog types fall into two categories: **structural** types that describe the d
 
 | Type | Item Schema | Description |
 |------|-------------|-------------|
-| `offering` | [Offering](https://adcontextprotocol.org/schemas/v1/core/offering.json) | AdCP Offering objects — campaigns, vacancies, events, services |
+| `offering` | [Offering](https://adcontextprotocol.org/schemas/v3/core/offering.json) | AdCP Offering objects — campaigns, vacancies, events, services |
 | `product` | *(freeform)* | Ecommerce product entries (Google Merchant Center, Shopify, etc.) |
 | `inventory` | *(freeform)* | Stock and availability per product per location |
 | `store` | [StoreItem](https://adcontextprotocol.org/schemas/v1/core/store-item.json) | Physical locations with addresses and catchment areas |
@@ -563,7 +563,7 @@ When a format declares `catalog_requirements`, the buying agent syncs the requir
 
 ## Offerings
 
-**Schema URL**: [`/schemas/core/offering.json`](https://adcontextprotocol.org/schemas/v1/core/offering.json)
+**Schema URL**: [`/schemas/core/offering.json`](https://adcontextprotocol.org/schemas/v3/core/offering.json)
 
 An Offering is an individual promotable item within an `offering`-type catalog — a campaign, product, service, promotion, or vacancy. Each offering is a semantic unit with its own name, validity window, landing URL, creative assets, and geographic scope.
 

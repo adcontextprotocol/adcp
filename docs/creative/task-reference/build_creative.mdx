@@ -17,7 +17,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
-| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
+| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v1/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.catalogs` field.
 
