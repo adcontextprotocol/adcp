@@ -118,8 +118,8 @@ jobs:
                   # Schema is in latest - it will be included in the next release
                   WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in \`latest\` but not yet released in $VERSION\n  - **Action**: This link will work after **$NEXT_RELEASE** is published"
                 else
-                  # Schema not in any version - shouldn't happen if source check passed
-                  ERRORS="$ERRORS\n- \`$url\`\n  - Schema exists in source but not in any release or latest\n  - This may indicate a build issue"
+                  # Schema exists in source but not yet built to latest
+                  WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in source but not yet in \`latest\` or any release\n  - **Action**: Change to \`latest\` or wait for **$NEXT_RELEASE**"
                 fi
               fi
             else
