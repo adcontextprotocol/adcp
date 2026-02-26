@@ -128,7 +128,15 @@
           "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here.",
           "items": {
             "type": "string",
-            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits"]
+            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+          },
+          "minItems": 1
+        },
+        "supported_reach_units": {
+          "type": "array",
+          "description": "Reach units this product can optimize for. Only relevant when supported_metrics includes 'reach'. Buyers must set reach_unit to a value in this list on reach optimization goals — sellers reject unsupported values.",
+          "items": {
+            "$ref": "/schemas/enums/reach-unit.json"
           },
           "minItems": 1
         },

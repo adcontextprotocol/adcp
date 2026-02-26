@@ -2,17 +2,32 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/frequency-cap.json",
   "title": "Frequency Cap",
-  "description": "Frequency capping settings for package-level application",
+  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress_minutes enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window.",
   "type": "object",
   "properties": {
     "suppress_minutes": {
       "type": "number",
-      "description": "Minutes to suppress after impression",
+      "description": "Cooldown period in minutes between consecutive exposures to the same entity. Prevents back-to-back ad delivery (e.g., 60 = at least 1 hour between impressions).",
       "minimum": 0
+    },
+    "max_impressions": {
+      "type": "integer",
+      "description": "Maximum number of impressions per entity per window. Caps total exposure over a rolling time period.",
+      "minimum": 1
+    },
+    "per": {
+      "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
+      "description": "Entity granularity for impression counting. Required when max_impressions is set."
+    },
+    "window": {
+      "type": "string",
+      "description": "Time window for the max_impressions cap. Duration string (e.g., '1h', '6h', '1d', '7d', '30d', 'campaign'). 'campaign' applies the cap across the full campaign flight. Required when max_impressions is set."
     }
   },
-  "required": [
-    "suppress_minutes"
-  ],
+  "dependencies": {
+    "max_impressions": ["per", "window"],
+    "per": ["max_impressions"],
+    "window": ["max_impressions"]
+  },
   "additionalProperties": true
 }
