@@ -97,12 +97,14 @@ jobs:
           done <<< "$SCHEMA_URLS"
           
           # Output results
+          HAS_ERRORS="false"
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
             echo "has_issues=true" >> $GITHUB_OUTPUT
             
             COMMENT="## Schema Link Check Results\n\n"
             
             if [ -n "$ERRORS" ]; then
+              HAS_ERRORS="true"
               COMMENT="$COMMENT### ❌ Errors (schema not found)\n\nThese schemas do not exist and the links will be broken:\n$ERRORS\n\n"
             fi
             
@@ -120,6 +122,8 @@ jobs:
             echo "has_issues=false" >> $GITHUB_OUTPUT
             echo "All schema links are valid!"
           fi
+          
+          echo "has_errors=$HAS_ERRORS" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
         if: steps.check.outputs.has_issues == 'true'
@@ -159,3 +163,9 @@ jobs:
                 body: comment
               });
             }
+
+      - name: Fail on errors
+        if: steps.check.outputs.has_errors == 'true'
+        run: |
+          echo "❌ Schema link check failed: some schemas do not exist"
+          exit 1
