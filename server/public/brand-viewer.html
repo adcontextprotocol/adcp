@@ -868,7 +868,7 @@
               <textarea id="edit-description" class="edit-form-input" rows="3" placeholder="Brief description of the brand"></textarea>
             </div>
             <div class="edit-form-field">
-              <label class="edit-form-label" for="edit-tagline">Tagline / slogan</label>
+              <label class="edit-form-label" for="edit-tagline">Tagline</label>
               <input type="text" id="edit-tagline" class="edit-form-input" placeholder="e.g. Just Do It">
             </div>
             <div class="edit-form-field">
@@ -1144,7 +1144,15 @@
             description: document.getElementById('edit-description').value.trim() || undefined,
             industry: document.getElementById('edit-industry').value.trim() || undefined,
             tagline: document.getElementById('edit-tagline').value.trim() || undefined,
-            tone: document.getElementById('edit-tone').value.trim() || undefined,
+            tone: (() => {
+              const toneValue = document.getElementById('edit-tone').value.trim();
+              if (!toneValue) return undefined;
+              const existingTone = currentEditStatus?.brand_manifest?.tone;
+              if (typeof existingTone === 'object' && existingTone !== null) {
+                return { ...existingTone, voice: toneValue };
+              }
+              return toneValue;
+            })(),
           }
         };
 
@@ -1153,16 +1161,13 @@
           body.brand_manifest.colors = colors;
         }
 
-        // Only include fonts if at least one field is set
+        // Always write fonts to allow clearing empty fields; undefined gets removed by cleanup below
         const fontPrimary = document.getElementById('edit-font-primary').value.trim();
         const fontSecondary = document.getElementById('edit-font-secondary').value.trim();
-        if (fontPrimary || fontSecondary) {
-          body.brand_manifest.fonts = {
-            ...(currentEditStatus?.brand_manifest?.fonts || {}),
-            ...(fontPrimary ? { primary: fontPrimary } : {}),
-            ...(fontSecondary ? { secondary: fontSecondary } : {}),
-          };
-        }
+        body.brand_manifest.fonts = (fontPrimary || fontSecondary) ? {
+          ...(fontPrimary ? { primary: fontPrimary } : {}),
+          ...(fontSecondary ? { secondary: fontSecondary } : {}),
+        } : undefined;
 
         // Clean undefined values from manifest
         Object.keys(body.brand_manifest).forEach(k => {
