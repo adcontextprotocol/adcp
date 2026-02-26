@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/frequency-cap.json",
   "title": "Frequency Cap",
-  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress_minutes enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window.",
+  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress_minutes enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window. At least one of suppress_minutes or max_impressions must be set.",
   "type": "object",
   "properties": {
     "suppress_minutes": {
@@ -12,7 +12,7 @@
     },
     "max_impressions": {
       "type": "integer",
-      "description": "Maximum number of impressions per entity per window. Caps total exposure over a rolling time period.",
+      "description": "Maximum number of impressions per entity per window. For duration windows (e.g., '1d', '7d'), implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
       "minimum": 1
     },
     "per": {
@@ -24,6 +24,10 @@
       "description": "Time window for the max_impressions cap. Duration string (e.g., '1h', '6h', '1d', '7d', '30d', 'campaign'). 'campaign' applies the cap across the full campaign flight. Required when max_impressions is set."
     }
   },
+  "anyOf": [
+    { "required": ["suppress_minutes"] },
+    { "required": ["max_impressions"] }
+  ],
   "dependencies": {
     "max_impressions": ["per", "window"],
     "per": ["max_impressions"],

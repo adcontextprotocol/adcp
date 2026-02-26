@@ -34,9 +34,10 @@
             },
             "window": {
               "type": "string",
-              "description": "Time window over which frequency is measured (e.g., '1d', '7d', '30d', 'campaign'). 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response. When omitted, sellers use 'campaign' or their platform default."
+              "description": "Time window over which frequency is measured (e.g., '1d', '7d', '30d', 'campaign'). 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
             }
           },
+          "required": ["window"],
           "anyOf": [
             { "required": ["min"] },
             { "required": ["max"] }
@@ -80,6 +81,13 @@
         }
       },
       "required": ["kind", "metric"],
+      "if": {
+        "properties": { "metric": { "const": "reach" } },
+        "required": ["metric"]
+      },
+      "then": {
+        "required": ["reach_unit"]
+      },
       "additionalProperties": true
     },
     {
