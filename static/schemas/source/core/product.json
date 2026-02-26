@@ -134,7 +134,7 @@
         },
         "supported_reach_units": {
           "type": "array",
-          "description": "Reach units this product can optimize for. Only relevant when supported_metrics includes 'reach'. Buyers must set reach_unit to a value in this list on reach optimization goals — sellers reject unsupported values. When absent, buyers may use any reach-unit value and the seller applies their platform default.",
+          "description": "Reach units this product can optimize for. Required when supported_metrics includes 'reach'. Buyers must set reach_unit to a value in this list on reach optimization goals — sellers reject unsupported values.",
           "items": {
             "$ref": "/schemas/enums/reach-unit.json"
           },
