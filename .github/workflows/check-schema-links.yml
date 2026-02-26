@@ -65,9 +65,20 @@ jobs:
             fi
             
             # Check if schema exists in the versioned release
+            # v1 -> latest (special case, no 1.x releases exist)
             # vN -> latest N.x.x release in dist/schemas/
-            # Extract major version number (e.g., v3 -> 3)
             MAJOR_NUM=$(echo "$VERSION" | sed 's/v//')
+            
+            # v1 is a special case - it points to latest, not to 1.x releases
+            if [ "$VERSION" = "v1" ]; then
+              RELEASE_PATH="dist/schemas/latest/$SCHEMA_PATH"
+              if [ ! -f "$RELEASE_PATH" ]; then
+                ERRORS="$ERRORS\n- \`$url\`\n  - Schema not found in latest: \`$RELEASE_PATH\`"
+              else
+                echo "  ✓ Schema exists in source and latest"
+              fi
+              continue
+            fi
             
             # Find latest release for this major version
             LATEST_RELEASE=$(ls -d dist/schemas/${MAJOR_NUM}.* 2>/dev/null | sort -V | tail -1 | xargs basename 2>/dev/null || echo "")
