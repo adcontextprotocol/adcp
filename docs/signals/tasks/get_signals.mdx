@@ -214,9 +214,7 @@ Because the authenticated caller matches the deployment target, the response inc
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing_model": "cpm",
-          "currency": "USD",
-          "fixed_price": 3.50
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
         }
       ]
     }
@@ -255,18 +253,11 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
       "pricing_options": [
         {
           "pricing_option_id": "po_eco_cpm",
-          "pricing_model": "cpm",
-          "currency": "USD",
-          "fixed_price": 3.50
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
         },
         {
-          "pricing_option_id": "po_eco_monthly",
-          "pricing_model": "time",
-          "currency": "USD",
-          "fixed_price": 500.00,
-          "parameters": {
-            "time_unit": "month"
-          }
+          "pricing_option_id": "po_eco_pom",
+          "pricing": { "model": "percent_of_media", "percent": 15, "currency": "USD" }
         }
       ]
     }
@@ -344,9 +335,7 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing_model": "cpm",
-          "currency": "USD",
-          "fixed_price": 3.50
+          "pricing": { "model": "cpm", "cpm": 3.50, "currency": "USD" }
         }
       ]
     }
@@ -539,9 +528,7 @@ Discover all available deployments across platforms:
     "pricing_options": [
       {
         "pricing_option_id": "po_cpm_usd",
-        "pricing_model": "cpm",
-        "currency": "USD",
-        "fixed_price": 2.50
+        "pricing": { "model": "cpm", "cpm": 2.50, "currency": "USD" }
       }
     ]
   }]
@@ -665,9 +652,7 @@ Discover all available deployments across platforms:
       "pricing_options": [
         {
           "pricing_option_id": "po_cpm_usd",
-          "pricing_model": "cpm",
-          "currency": "USD",
-          "fixed_price": 4.50
+          "pricing": { "model": "cpm", "cpm": 4.50, "currency": "USD" }
         }
       ]
     }

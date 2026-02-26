@@ -230,6 +230,14 @@
           "$ref": "/schemas/core/signal-filters.json",
           "description": "Filters to refine signal discovery results"
         },
+        "signal-pricing": {
+          "$ref": "/schemas/core/signal-pricing.json",
+          "description": "Signal pricing model — discriminated union of cpm (fixed CPM) and percent_of_media (percentage of spend, with optional CPM cap)"
+        },
+        "signal-pricing-option": {
+          "$ref": "/schemas/core/signal-pricing-option.json",
+          "description": "A pricing option offered by a signals agent, combining a pricing_option_id with a signal pricing model. Returned in get_signals, referenced in report_usage."
+        },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
           "description": "Identifier for a publisher property - lowercase alphanumeric with underscores only"
