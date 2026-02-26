@@ -256,10 +256,10 @@
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "Hashed PII types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "description": "Identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
                 "type": "string",
-                "enum": ["hashed_email", "hashed_phone"]
+                "enum": ["hashed_email", "hashed_phone", "external_id"]
               },
               "minItems": 1
             },

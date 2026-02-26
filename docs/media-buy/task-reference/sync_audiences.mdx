@@ -37,8 +37,8 @@ const result = await testAgent.syncAudiences({
       audience_id: "existing_customers",
       name: "Existing customers",
       add: [
-        { hashed_email: hashEmail("alice@example.com") },
-        { hashed_email: hashEmail("bob@example.com"), hashed_phone: hashPhone("+12065551234") },
+        { external_id: "crm_1001", hashed_email: hashEmail("alice@example.com") },
+        { external_id: "crm_1002", hashed_email: hashEmail("bob@example.com"), hashed_phone: hashPhone("+12065551234") },
       ],
     },
   ],
@@ -82,8 +82,8 @@ async def main():
             'audience_id': 'existing_customers',
             'name': 'Existing customers',
             'add': [
-                {'hashed_email': hash_email('alice@example.com')},
-                {'hashed_email': hash_email('bob@example.com'), 'hashed_phone': hash_phone('+12065551234')},
+                {'external_id': 'crm_1001', 'hashed_email': hash_email('alice@example.com')},
+                {'external_id': 'crm_1002', 'hashed_email': hash_email('bob@example.com'), 'hashed_phone': hash_phone('+12065551234')},
             ]
         }]
     )
@@ -123,10 +123,11 @@ asyncio.run(main())
 
 ### Audience Member
 
-At least one identifier is required. Hash all values with SHA-256 before sending — normalize emails to lowercase+trim, phone numbers to E.164 format (e.g. `+12065551234`).
+Every member requires an `external_id` (buyer-assigned stable identifier) plus at least one matchable identifier. Hash all values with SHA-256 before sending — normalize emails to lowercase+trim, phone numbers to E.164 format (e.g. `+12065551234`).
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `external_id` | string | **Required.** Buyer-assigned stable identifier for this member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. |
 | `hashed_email` | string | SHA-256 hash of lowercase, trimmed email (64-char hex) |
 | `hashed_phone` | string | SHA-256 hash of E.164-formatted phone number (64-char hex) |
 | `uids` | UID[] | Universal IDs: `type` (rampid, uid2, maid, etc.) + `value` |
