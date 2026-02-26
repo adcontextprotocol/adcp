@@ -78,12 +78,6 @@
             }
           },
           "required": ["geo_level"],
-          "if": {
-            "properties": { "geo_level": { "enum": ["metro", "postal_area"] } }
-          },
-          "then": {
-            "required": ["geo_level", "system"]
-          },
           "additionalProperties": true
         },
         "device_type": {
