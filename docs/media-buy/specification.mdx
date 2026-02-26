@@ -41,7 +41,7 @@ Sales agents MUST declare Media Buy Protocol support via `get_adcp_capabilities`
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": { "major_versions": [2] },
   "supported_protocols": ["media_buy"]
 }
@@ -239,7 +239,7 @@ Submit performance signals to enable publisher optimization.
 
 ### sync_event_sources
 
-**Schema**: [`media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-request.json) / [`media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-response.json)
+**Schema**: [`media-buy/sync-event-sources-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json) / [`media-buy/sync-event-sources-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json)
 
 **Reference**: [`sync_event_sources` task](/docs/media-buy/task-reference/sync_event_sources)
 
@@ -256,7 +256,7 @@ Configure event sources on a seller account for conversion tracking with upsert 
 
 ### log_event
 
-**Schema**: [`media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-request.json) / [`media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/log-event-response.json)
+**Schema**: [`media-buy/log-event-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json) / [`media-buy/log-event-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/log-event-response.json)
 
 **Reference**: [`log_event` task](/docs/media-buy/task-reference/log_event)
 
