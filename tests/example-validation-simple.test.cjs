@@ -139,15 +139,13 @@ async function runTests() {
   await validateExample(
     {
       "signal_spec": "High-income households",
-      "deliver_to": {
-        "deployments": [
-          {
-            "type": "platform",
-            "platform": "the-trade-desk"
-          }
-        ],
-        "countries": ["US"]
-      }
+      "destinations": [
+        {
+          "type": "platform",
+          "platform": "the-trade-desk"
+        }
+      ],
+      "countries": ["US"]
     },
     '/schemas/signals/get-signals-request.json',
     'get_signals request'

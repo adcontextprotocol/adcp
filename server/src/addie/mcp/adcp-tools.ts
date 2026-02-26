@@ -594,30 +594,25 @@ export const ADCP_SIGNALS_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Natural language description of desired signals (e.g., "High-income households interested in luxury goods")',
         },
-        deliver_to: {
-          type: 'object',
-          description: 'Where signals will be used',
-          properties: {
-            deployments: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  type: { type: 'string', enum: ['platform', 'agent'] },
-                  platform: { type: 'string', description: 'DSP name (e.g., "the-trade-desk")' },
-                  agent_url: { type: 'string', description: 'Sales agent URL' },
-                  account: { type: 'string', description: 'Optional account identifier' },
-                },
-                required: ['type'],
-              },
+        destinations: {
+          type: 'array',
+          description:
+            'Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent.',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['platform', 'agent'] },
+              platform: { type: 'string', description: 'DSP name (e.g., "the-trade-desk")' },
+              agent_url: { type: 'string', description: 'Sales agent URL' },
+              account: { type: 'string', description: 'Optional account identifier' },
             },
-            countries: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'ISO country codes',
-            },
+            required: ['type'],
           },
-          required: ['deployments'],
+        },
+        countries: {
+          type: 'array',
+          description: 'Countries where signals will be used (ISO 3166-1 alpha-2 codes)',
+          items: { type: 'string' },
         },
         filters: {
           type: 'object',
@@ -637,7 +632,7 @@ export const ADCP_SIGNALS_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'signal_spec', 'deliver_to'],
+      required: ['agent_url', 'signal_spec'],
     },
   },
   {
@@ -1574,10 +1569,11 @@ export function createAdcpToolHandlers(
   handlers.set('get_signals', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
     const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      signal_spec: input.signal_spec,
-      deliver_to: input.deliver_to,
-    };
+    const params: Record<string, unknown> = {};
+    if (input.signal_spec) params.signal_spec = input.signal_spec;
+    if (input.signal_ids) params.signal_ids = input.signal_ids;
+    if (input.destinations) params.destinations = input.destinations;
+    if (input.countries) params.countries = input.countries;
     if (input.filters) params.filters = input.filters;
     if (input.max_results) params.max_results = input.max_results;
 

@@ -81,7 +81,7 @@ The Signals Protocol defines two tasks. See task reference pages for complete re
 Discover signals matching campaign criteria.
 
 **Requirements:**
-- Orchestrators MUST include `signal_spec` and `deliver_to`
+- Orchestrators MUST include `signal_spec` or `signal_ids`
 - Signal agents MUST return all required fields per response schema
 - Signal agents MUST include `activation_key` when `is_live: true` AND caller has deployment access
 

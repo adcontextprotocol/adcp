@@ -16,18 +16,13 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `signal_spec` | string | Yes | Natural language description of the desired signals |
-| `deliver_to` | DeliverTo | Yes | Deployment targets where signals need to be activated (see Deliver To Object below) |
+| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required unless `signal_ids` is provided. |
+| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required unless `signal_spec` is provided. |
+| `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
+| `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 | `pagination` | object | No | Pagination: `cursor` (opaque cursor from previous response) for paging through large result sets |
-
-### Deliver To Object
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `deployments` | Destination[] | Yes | List of deployment targets (DSPs, sales agents, etc.) - see Destination Object below |
-| `countries` | string[] | Yes | Countries where signals will be used (ISO 3166-1 alpha-2 codes, case-insensitive, uppercase recommended) |
 
 ### Destination Object
 
@@ -42,7 +37,9 @@ Each deployment target uses a `type` field to discriminate between platform-base
 
 *`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
-**Activation Keys**: If the authenticated caller has access to any of the deployment targets in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
+**Destination filtering**: Signals are returned if they are available on *any* of the requested destinations (OR semantics). Destinations where a signal is not available are omitted from that signal's response `deployments` array. A `PARTIAL_COVERAGE` warning may be included when some destinations don't support the signal.
+
+**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
 
 **Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
 - A sales agent receives keys for deployments matching its `agent_url`
@@ -164,15 +161,13 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
   "tool": "get_signals",
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "deployments": [
-        {
-          "type": "agent",
-          "agent_url": "https://wonderstruck.salesagents.com"
-        }
-      ],
-      "countries": ["US"]
-    },
+    "destinations": [
+      {
+        "type": "agent",
+        "agent_url": "https://wonderstruck.salesagents.com"
+      }
+    ],
+    "countries": ["US"],
     "filters": {
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
@@ -283,20 +278,18 @@ A buyer checking availability across multiple DSP platforms:
   "tool": "get_signals",
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "deployments": [
-        {
-          "type": "platform",
-          "platform": "the-trade-desk",
-          "account": "agency-123"
-        },
-        {
-          "type": "platform",
-          "platform": "amazon-dsp"
-        }
-      ],
-      "countries": ["US"]
-    },
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "account": "agency-123"
+      },
+      {
+        "type": "platform",
+        "platform": "amazon-dsp"
+      }
+    ],
+    "countries": ["US"],
     "filters": {
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
@@ -378,20 +371,18 @@ await a2a.send({
         skill: "get_signals",
         parameters: {
           signal_spec: "High-income households interested in luxury goods",
-          deliver_to: {
-            deployments: [
-              {
-                type: "agent",
-                agent_url: "https://thetradedesk.com",
-                account: "agency-123"
-              },
-              {
-                type: "agent",
-                agent_url: "https://advertising.amazon.com/dsp"
-              }
-            ],
-            countries: ["US"]
-          },
+          destinations: [
+            {
+              type: "agent",
+              agent_url: "https://thetradedesk.com",
+              account: "agency-123"
+            },
+            {
+              type: "agent",
+              agent_url: "https://advertising.amazon.com/dsp"
+            }
+          ],
+          countries: ["US"],
           filters: {
             max_cpm: 5.0,
             catalog_types: ["marketplace"]
@@ -474,14 +465,12 @@ Discover all available deployments across platforms:
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
-  "deliver_to": {
-    "deployments": [
-      { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
-      { "type": "platform", "platform": "openx" },
-      { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
-    ],
-    "countries": ["US"]
-  },
+  "destinations": [
+    { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
+    { "type": "platform", "platform": "openx" },
+    { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
+  ],
+  "countries": ["US"],
   "filters": {
     "data_providers": ["Peer39"],
     "catalog_types": ["marketplace"]
@@ -724,7 +713,7 @@ def generate_signals_message(signals, request):
 
     if len(signals) == 1:
         signal = signals[0]
-        deployment_status = get_deployment_summary(signal, request.deliver_to.deployments)
+        deployment_status = get_deployment_summary(signal, request.destinations)
         pricing = signal.pricing_options[0] if signal.pricing_options else None
         price_commentary = f"Priced at {pricing.pricing_model.upper()} {pricing.fixed_price} {pricing.currency}." if pricing else ""
         return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"

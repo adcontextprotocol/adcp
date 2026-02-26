@@ -276,10 +276,11 @@ const exampleData = {
   // Signals examples
   getSignalsRequest: {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "platforms": ["the-trade-desk", "amazon-dsp"],
-      "countries": ["US"]
-    }
+    "destinations": [
+      { "type": "platform", "platform": "the-trade-desk" },
+      { "type": "platform", "platform": "amazon-dsp" }
+    ],
+    "countries": ["US"]
   },
   
   getSignalsResponse: {
