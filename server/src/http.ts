@@ -548,8 +548,11 @@ export class HTTPServer {
       const requestedMinor = versionMatch[2] ? parseInt(versionMatch[2], 10) : undefined;
       const restOfPath = versionMatch[3] || '/';
 
-      // v1 resolves to 1.0.0 like any other major version
-      // (no special case needed - findMatchingVersion handles it)
+      // Special case: v1 always points to latest
+      if (requestedMajor === 1 && requestedMinor === undefined) {
+        req.url = '/latest' + restOfPath;
+        return next();
+      }
 
       try {
         const versions = await getSchemaVersions();
@@ -599,16 +602,12 @@ export class HTTPServer {
         // Build aliases list
         const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
 
-        // v1 -> 1.0.0 (frozen release for schemas not in v2/v3)
-        // Find latest 1.x version
-        const v1Version = versions.find(v => v.startsWith('1.'));
-        if (v1Version) {
-          aliases.push({
-            alias: "v1",
-            resolves_to: v1Version,
-            path: "/schemas/v1/"
-          });
-        }
+        // v1 -> latest (backward compatibility)
+        aliases.push({
+          alias: "v1",
+          resolves_to: "latest",
+          path: "/schemas/v1/"
+        });
 
         // Major version aliases (e.g., v2 -> 2.6.0)
         if (latestMajorVersion) {
