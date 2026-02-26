@@ -11,15 +11,20 @@
         "kind": { "type": "string", "const": "metric" },
         "metric": {
           "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score"],
-          "description": "Seller-native metric to optimize for. Count metrics: clicks, views (viewable impressions), completed_views (video or audio completions). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score per impression)."
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits"],
+          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks')."
+        },
+        "view_duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Minimum video view duration in seconds that qualifies as a completed_view for this goal. Only applicable when metric is 'completed_views'. When omitted, the seller uses their platform default (typically 2–15 seconds). Common values: 2 (Snap/LinkedIn default), 6 (TikTok), 15 (Snap 15-second views, Meta ThruPlay). Sellers declare which durations they support in metric_optimization.supported_view_durations. Sellers must reject goals with unsupported values — silent rounding would create measurement discrepancies."
         },
         "target": {
           "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
           "oneOf": [
             {
               "type": "object",
-              "description": "Target cost per unit of the metric (e.g., cost per click, cost per view).",
+              "description": "Target cost per unit of the metric (e.g., cost per click, cost per completed view).",
               "properties": {
                 "kind": { "type": "string", "const": "cost_per" },
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
@@ -55,7 +60,7 @@
         "kind": { "type": "string", "const": "event" },
         "event_sources": {
           "type": "array",
-          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. The seller deduplicates by event_id across all entries — the same business event reported by multiple sources (e.g., web analytics and an MMP) counts once. When a deduplicated event_id appears from multiple sources with different value_fields, the seller uses the value_field and value_factor from the first matching entry in the event_sources array. All event sources must be configured via sync_event_sources.",
+          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. When the seller supports multi_source_event_dedup (declared in get_adcp_capabilities), they deduplicate by event_id across all entries — the same business event from multiple sources counts once, using value_field and value_factor from the first matching entry. When multi_source_event_dedup is false or absent, buyers should use a single entry per goal; the seller will use only the first entry. All event sources must be configured via sync_event_sources.",
           "items": {
             "type": "object",
             "properties": {
@@ -74,12 +79,12 @@
               },
               "value_field": {
                 "type": "string",
-                "description": "Field on the event's custom_data that carries the monetary value. Required on at least one entry when target.kind is 'per_ad_spend'. The field must contain a numeric value in the buy currency. Common values: 'value', 'order_total', 'profit_margin'."
+                "description": "Which field in the event's custom_data carries the monetary value. The seller must use this field for value extraction and aggregation when computing ROAS and conversion value metrics. Required on at least one entry when target.kind is 'per_ad_spend' or 'maximize_value'. Common values: 'value', 'order_total', 'profit_margin'. This is not passed as a parameter to underlying platform APIs — the seller maps it to their platform's value ingestion mechanism."
               },
               "value_factor": {
                 "type": "number",
                 "default": 1,
-                "description": "Multiplier applied to the value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1."
+                "description": "Multiplier the seller must apply to value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1. This is not passed as a parameter to underlying platform APIs — the seller applies it when computing aggregated value metrics."
               }
             },
             "required": ["event_source_id", "event_type"],
@@ -108,6 +113,15 @@
                 "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)" }
               },
               "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Maximize total conversion value within budget, without a specific return ratio target. Steers spend toward higher-value conversions rather than maximizing conversion count. Requires value_field on at least one event_sources entry.",
+              "properties": {
+                "kind": { "type": "string", "const": "maximize_value" }
+              },
+              "required": ["kind"],
               "additionalProperties": true
             }
           ]

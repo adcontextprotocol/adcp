@@ -151,6 +151,19 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `fr_code_postal` | French code postal (e.g., `75001`) |
 | `au_postcode` | Australian postcode (e.g., `2000`) |
 
+#### conversion_tracking
+
+Seller-level conversion tracking capabilities. Declares what the seller supports for `kind: "event"` optimization goals.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `multi_source_event_dedup` | boolean | Whether the seller can deduplicate events across multiple event sources within a single goal. When `true`, the same `event_id` from multiple sources counts once. When `false` or absent, buyers should use a single event source per goal. |
+| `supported_event_types` | string[] | Event types this seller can track. If omitted, all standard event types are supported. |
+| `supported_uid_types` | string[] | Universal ID types accepted for user matching. |
+| `supported_hashed_identifiers` | string[] | Hashed PII types accepted (`hashed_email`, `hashed_phone`). Buyers must hash before sending (SHA-256, normalized). |
+| `supported_action_sources` | string[] | Action sources this seller accepts events from. |
+| `attribution_windows` | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals. |
+
 #### portfolio
 
 Inventory portfolio information:
@@ -482,6 +495,14 @@ const buy = await client.createMediaBuy({
         }
       }
     },
+    "conversion_tracking": {
+      "multi_source_event_dedup": false,
+      "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
+      "supported_action_sources": ["website", "app"],
+      "attribution_windows": [
+        { "click_through": ["7d", "28d"], "view_through": ["1d", "7d"] }
+      ]
+    },
     "portfolio": {
       "publisher_domains": ["example.com", "news.example.com"],
       "primary_channels": ["display", "olv"],
@@ -502,6 +523,7 @@ This tells buyers:
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
+- **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
 - **Extensions**: Scope3 sustainability data in `ext.scope3`
 
 ### Geo Standards Reference

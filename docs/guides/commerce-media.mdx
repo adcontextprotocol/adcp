@@ -74,7 +74,7 @@ The simplest commerce media product. The retailer renders the creative from the 
   },
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["target_cost_per", "target_per_ad_spend"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
     "platform_managed": true
   },
   "creative_policy": {
@@ -94,7 +94,7 @@ The `catalog_types` field declares what catalog types this product supports. The
 Key characteristics:
 - **CPC pricing** with auction-based bidding
 - **`platform_managed: true`** — the retailer provides always-on purchase attribution
-- **`supported_optimization_strategies`** — tells buyers which optimization strategies are available when setting `optimization_goals` on packages
+- **`supported_targets`** — tells buyers which target kinds are available when setting `optimization_goals` on packages
 - **`templates_available: true`** — the retailer renders creatives from catalog data
 - **`action_sources`** includes `in_store` for omnichannel attribution
 
@@ -497,7 +497,7 @@ Products signal closed-loop capability through two fields:
 {
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["target_cost_per", "target_per_ad_spend"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
     "platform_managed": true
   }
 }
@@ -550,7 +550,7 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 
 1. **Model product types separately** — sponsored products, on-site display, off-site, and premium placements should be distinct products with appropriate pricing and formats
 2. **Declare `catalog_requirements`** on formats that need product or inventory data — buying agents check these before syncing catalogs
-3. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_optimization_strategies` so buyers know which goal targets are available on packages
+3. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_targets` so buyers know which target kinds are available on packages
 4. **Include `attribution_window`** in delivery responses — buyers comparing across retailers need to know your lookback windows and model
 5. **Report `by_action_source`** to show omnichannel impact — website, app, and in-store conversions
 6. **Return `catalog_match`** on sponsored product listings so buyers can see which GTINs/SKUs are eligible
