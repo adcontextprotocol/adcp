@@ -113,14 +113,9 @@ jobs:
                 # Schema exists in another released version - use that instead
                 ERRORS="$ERRORS\n- \`$url\`\n  - Schema not released in $VERSION but available in:$AVAILABLE_IN\n  - **Action**: Change URL to use the correct version"
               else
-                # Not in any released version - check if it's in latest (dev)
-                if [ -f "dist/schemas/latest/$SCHEMA_PATH" ]; then
-                  # Schema is in latest - it will be included in the next release
-                  WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in \`latest\` but not yet released in $VERSION\n  - **Action**: This link will work after **$NEXT_RELEASE** is published"
-                else
-                  # Schema exists in source but not yet built to latest
-                  WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in source but not yet in \`latest\` or any release\n  - **Action**: Change to \`latest\` or wait for **$NEXT_RELEASE**"
-                fi
+                # Not in any released version - schema is in source which serves as 'latest'
+                # In production, /schemas/latest/ serves from source, so this link will work
+                WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in \`latest\` (source) but not yet released in $VERSION\n  - **Action**: This link will work after **$NEXT_RELEASE** is published"
               fi
             else
               echo "  ✓ Schema exists in both source and release"
