@@ -27,7 +27,52 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
+- `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
+- `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
+- `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
+
+### Metric optimization
+
+Products that support `optimization_goals` with `kind: "metric"` declare their capabilities in `metric_optimization`. No event source or conversion tracking setup is required for metric goals — the seller tracks these metrics natively.
+
+```json
+{
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "views", "completed_views", "engagements"],
+    "supported_view_durations": [2, 6, 15],
+    "supported_targets": ["cost_per", "threshold_rate"]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_metrics` | string[] | Yes | Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. |
+| `supported_view_durations` | number[] | No | Video view duration thresholds (in seconds) supported for `completed_views` goals. When absent, the seller uses their platform default. |
+| `supported_targets` | string[] | No | Target kinds available: `cost_per`, `threshold_rate`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can set target-less metric goals (maximize volume) but cannot set specific targets. |
+
+### Conversion tracking
+
+Products that support `optimization_goals` with `kind: "event"` declare their capabilities in `conversion_tracking`. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+
+```json
+{
+  "conversion_tracking": {
+    "action_sources": ["website", "app"],
+    "supported_targets": ["cost_per", "per_ad_spend", "maximize_value"],
+    "platform_managed": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action_sources` | string[] | No | Action sources relevant to this product (e.g., a retail media product might have `in_store` and `website`). |
+| `supported_targets` | string[] | No | Target kinds available for event goals: `cost_per`, `per_ad_spend`, `maximize_value`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can still set target-less event goals. |
+| `platform_managed` | boolean | No | Whether the seller provides always-on measurement (e.g., retailer purchase attribution). When true, `sync_event_sources` returns seller-managed event sources. |
+
+See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracking) for the full optimization goals reference.
 
 ### Pricing Models
 

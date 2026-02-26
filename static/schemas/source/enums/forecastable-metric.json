@@ -13,7 +13,11 @@
     "spend",
     "views",
     "completed_views",
-    "grps"
+    "grps",
+    "engagements",
+    "follows",
+    "saves",
+    "profile_visits"
   ],
   "enumDescriptions": {
     "audience_size": "Estimated addressable audience size",
@@ -23,7 +27,11 @@
     "clicks": "Estimated clicks",
     "spend": "Estimated spend in the forecast currency",
     "views": "Estimated views at threshold (for CPV)",
-    "completed_views": "Estimated 100% completions (for CPCV)",
-    "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic_system and demographic fields on DeliveryForecast should specify the target demographic."
+    "completed_views": "Estimated video/audio completions. Threshold depends on view_duration_seconds if set on the optimization goal.",
+    "grps": "Estimated Gross Rating Points (for CPP). When present, the demographic_system and demographic fields on DeliveryForecast should specify the target demographic.",
+    "engagements": "Estimated engagements (social reactions, comments, shares, story opens, overlay taps, etc.)",
+    "follows": "Estimated new followers, page likes, or channel subscribes",
+    "saves": "Estimated saves, bookmarks, playlist adds, or pins",
+    "profile_visits": "Estimated visits to the brand's page or profile"
   }
 }

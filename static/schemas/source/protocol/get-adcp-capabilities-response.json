@@ -285,6 +285,10 @@
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
           "properties": {
+            "multi_source_event_dedup": {
+              "type": "boolean",
+              "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
+            },
             "supported_event_types": {
               "type": "array",
               "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
