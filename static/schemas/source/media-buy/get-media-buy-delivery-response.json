@@ -376,7 +376,7 @@
                     },
                     "by_geo_truncated": {
                       "type": "boolean",
-                      "description": "When true, by_geo was truncated due to the requested limit or a seller-imposed maximum. Additional geo entries exist but are not included."
+                      "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers SHOULD return this flag whenever by_geo is present (false means the list is complete)."
                     },
                     "by_device_type": {
                       "type": "array",
@@ -405,7 +405,7 @@
                     },
                     "by_device_type_truncated": {
                       "type": "boolean",
-                      "description": "When true, by_device_type was truncated due to the requested limit or a seller-imposed maximum."
+                      "description": "Whether by_device_type was truncated. Sellers SHOULD return this flag whenever by_device_type is present (false means the list is complete)."
                     },
                     "by_device_platform": {
                       "type": "array",
@@ -434,7 +434,7 @@
                     },
                     "by_device_platform_truncated": {
                       "type": "boolean",
-                      "description": "When true, by_device_platform was truncated due to the requested limit or a seller-imposed maximum."
+                      "description": "Whether by_device_platform was truncated. Sellers SHOULD return this flag whenever by_device_platform is present (false means the list is complete)."
                     },
                     "by_audience": {
                       "type": "array",
@@ -472,7 +472,7 @@
                     },
                     "by_audience_truncated": {
                       "type": "boolean",
-                      "description": "When true, by_audience was truncated due to the requested limit or a seller-imposed maximum."
+                      "description": "Whether by_audience was truncated. Sellers SHOULD return this flag whenever by_audience is present (false means the list is complete)."
                     },
                     "by_placement": {
                       "type": "array",
@@ -505,7 +505,7 @@
                     },
                     "by_placement_truncated": {
                       "type": "boolean",
-                      "description": "When true, by_placement was truncated due to the requested limit or a seller-imposed maximum."
+                      "description": "Whether by_placement was truncated. Sellers SHOULD return this flag whenever by_placement is present (false means the list is complete)."
                     }
                   },
                   "required": [

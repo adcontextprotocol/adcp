@@ -73,11 +73,17 @@
             },
             "sort_by": {
               "type": "string",
-              "description": "Metric to sort results by when limit is applied. Falls back to 'spend' if the requested metric is unavailable.",
+              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if the requested metric is unavailable.",
               "default": "spend"
             }
           },
           "required": ["geo_level"],
+          "if": {
+            "properties": { "geo_level": { "enum": ["metro", "postal_area"] } }
+          },
+          "then": {
+            "required": ["geo_level", "system"]
+          },
           "additionalProperties": true
         },
         "device_type": {
@@ -91,7 +97,7 @@
             },
             "sort_by": {
               "type": "string",
-              "description": "Metric to sort results by when limit is applied",
+              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
               "default": "spend"
             }
           },
@@ -108,7 +114,7 @@
             },
             "sort_by": {
               "type": "string",
-              "description": "Metric to sort results by when limit is applied",
+              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
               "default": "spend"
             }
           },
@@ -125,7 +131,7 @@
             },
             "sort_by": {
               "type": "string",
-              "description": "Metric to sort results by when limit is applied",
+              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
               "default": "spend"
             }
           },
@@ -142,7 +148,7 @@
             },
             "sort_by": {
               "type": "string",
-              "description": "Metric to sort results by when limit is applied",
+              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
               "default": "spend"
             }
           },
