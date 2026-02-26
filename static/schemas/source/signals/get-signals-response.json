@@ -56,7 +56,7 @@
             "type": "array",
             "description": "Pricing options available for this signal. The buyer selects one and passes its pricing_option_id in report_usage for billing verification.",
             "items": {
-              "$ref": "/schemas/core/pricing-option.json"
+              "$ref": "/schemas/core/signal-pricing-option.json"
             },
             "minItems": 1
           }

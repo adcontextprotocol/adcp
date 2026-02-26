@@ -19,7 +19,15 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time and is referenced in subsequent report_usage calls."
+      "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time; pass this same value in report_usage for billing verification."
+    },
+    "account_id": {
+      "type": "string",
+      "description": "The caller's account with the signals agent. Associates this activation with a commercial relationship established via sync_accounts."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's campaign reference for this activation. Enables the signals agent to correlate activations with subsequent report_usage calls."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

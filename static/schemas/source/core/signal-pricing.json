@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-pricing.json",
+  "title": "Signal Pricing",
+  "description": "Pricing model for a signal. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), or 'flat_fee' (fixed charge per reporting period, e.g. monthly licensed segments).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "CpmPricing",
+      "description": "Fixed cost per thousand impressions",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "cpm"
+        },
+        "cpm": {
+          "type": "number",
+          "description": "Cost per thousand impressions",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "cpm", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "PercentOfMediaPricing",
+      "description": "Percentage of media spend charged for this signal. When max_cpm is set, the effective rate is capped at that CPM — useful for platforms like The Trade Desk that use percent-of-media pricing with a CPM ceiling.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "percent_of_media"
+        },
+        "percent": {
+          "type": "number",
+          "description": "Percentage of media spend, e.g. 15 = 15%",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "max_cpm": {
+          "type": "number",
+          "description": "Optional CPM cap. When set, the effective charge is min(percent × media_spend_per_mille, max_cpm).",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code for the resulting charge",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "percent", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "FlatFeePricing",
+      "description": "Fixed charge per reporting period, regardless of impressions or spend. Used for licensed data bundles and monthly audience subscriptions.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "flat_fee"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Fixed charge for the reporting period",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "amount", "currency"],
+      "additionalProperties": true
+    }
+  ]
+}
