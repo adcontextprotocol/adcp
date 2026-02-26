@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/signal-pricing.json",
   "title": "Signal Pricing",
-  "description": "Pricing model for a signal. Discriminated by model: 'cpm' for cost per thousand impressions, 'percent_of_media' for a percentage of media spend.",
+  "description": "Pricing model for a signal. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), or 'flat_fee' (fixed charge per reporting period, e.g. monthly licensed segments).",
   "type": "object",
   "oneOf": [
     {
@@ -61,6 +61,32 @@
         }
       },
       "required": ["model", "percent", "currency"],
+      "additionalProperties": true
+    },
+    {
+      "title": "FlatFeePricing",
+      "description": "Fixed charge per reporting period, regardless of impressions or spend. Used for licensed data bundles and monthly audience subscriptions.",
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "flat_fee"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Fixed charge for the reporting period",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["model", "amount", "currency"],
       "additionalProperties": true
     }
   ]
