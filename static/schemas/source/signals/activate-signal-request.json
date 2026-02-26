@@ -17,6 +17,10 @@
       },
       "minItems": 1
     },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time and is referenced in subsequent report_usage calls."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

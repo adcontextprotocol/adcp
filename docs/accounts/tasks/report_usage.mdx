@@ -5,7 +5,7 @@ testable: false
 
 Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing.
 
-Each usage record is self-contained — it carries its own `account`, `operator_id`, and `buyer_campaign_ref`. A single request can span multiple accounts, operators, and campaigns.
+Each usage record is self-contained — it carries its own `account` and `buyer_campaign_ref`. A single request can span multiple accounts and campaigns.
 
 **Response Time**: ~1s.
 
@@ -16,26 +16,24 @@ Each usage record is self-contained — it carries its own `account`, `operator_
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `idempotency_key` | string | Recommended | Client-generated unique key for this request (UUID recommended). If a request with the same key has already been accepted, the server returns the original response without re-processing. Prevents duplicate billing on retries. |
 | `reporting_period` | object | Yes | `start` and `end` as ISO 8601 date-time in UTC. Applies to all records in the request. |
-| `usage` | UsageRecord[] | Yes | One or more usage records. Each record is self-contained with its own account, operator, and campaign reference. |
+| `usage` | UsageRecord[] | Yes | One or more usage records. |
 
 ### Usage Record Fields
 
-Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `currency`. Additional fields depend on `kind`:
+Each record requires `account`, `vendor_cost`, and `currency`. Additional fields depend on the vendor type:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `account` | object | Yes | [Account reference](/docs/building/integration/accounts-and-agents#account-references) for this record (by `account_id` or natural key). |
-| `operator_id` | string | Yes | The operator on whose behalf this usage is reported. Identifies the billing party. |
-| `kind` | string | Yes | `"signal"`, `"content_standards"`, or `"creative"` |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
+| `pricing_option_id` | string | Signals: Yes | Pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. The vendor uses this to verify the correct rate was applied. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign reference (e.g., a `media_buy_id`). Used to group records by campaign. |
-| `impressions` | number | Signal: Yes | Impressions delivered |
+| `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
-| `signal_agent_segment_id` | string | Signal: Yes | Signal identifier from `get_signals` |
-| `pricing_option_id` | string | Signal: Yes | Pricing option from `get_signals`. The vendor uses this to verify the correct rate was applied. |
-| `standards_id` | string | content_standards: Yes | Content standards configuration identifier |
+| `signal_agent_segment_id` | string | Signals: Yes | Signal identifier from `get_signals` |
 
 ## Response
 
@@ -52,6 +50,7 @@ Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `curre
 
 ```json Request
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
   "reporting_period": {
     "start": "2025-03-01T00:00:00Z",
     "end": "2025-03-31T23:59:59Z"
@@ -59,9 +58,7 @@ Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `curre
   "usage": [
     {
       "account": { "account_id": "acct_pinnacle_signals" },
-      "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_launch_001",
-      "kind": "signal",
       "signal_agent_segment_id": "luxury_auto_intenders",
       "pricing_option_id": "po_lux_auto_cpm",
       "impressions": 4200000,
@@ -83,10 +80,11 @@ Each record requires `account`, `operator_id`, `kind`, `vendor_cost`, and `curre
 
 ### Multi-account batch
 
-A single request spanning two brands with different accounts and operators:
+A single request spanning two campaigns across two accounts:
 
 ```json
 {
+  "idempotency_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "reporting_period": {
     "start": "2025-03-01T00:00:00Z",
     "end": "2025-03-31T23:59:59Z"
@@ -94,9 +92,7 @@ A single request spanning two brands with different accounts and operators:
   "usage": [
     {
       "account": { "account_id": "acct_pinnacle_signals" },
-      "operator_id": "pinnacle-media.com",
       "buyer_campaign_ref": "mb_spring_q1_001",
-      "kind": "signal",
       "signal_agent_segment_id": "luxury_auto_intenders",
       "pricing_option_id": "po_lux_auto_cpm",
       "impressions": 2100000,
@@ -104,11 +100,10 @@ A single request spanning two brands with different accounts and operators:
       "currency": "USD"
     },
     {
-      "account": { "account_id": "acct_nova_signals" },
-      "operator_id": "nova-brands.com",
+      "account": { "account_id": "acct_nova" },
       "buyer_campaign_ref": "mb_summer_preview_002",
-      "kind": "content_standards",
-      "standards_id": "brand_safety_v2",
+      "signal_agent_segment_id": "eco_conscious_shoppers",
+      "pricing_option_id": "po_eco_cpm",
       "impressions": 800000,
       "vendor_cost": 400.00,
       "currency": "USD"
@@ -134,6 +129,12 @@ If some records fail validation, the response identifies how many were accepted:
 }
 ```
 
+## Retry Safety
+
+Always include `idempotency_key` in production usage. If a request times out or returns a network error, retry with the same key — the server will return the original result without double-counting.
+
+Generate a fresh UUID per request, not per usage record. If you need to report additional records for the same period, submit a new request with a new key.
+
 ## Reporting cadence
 
 Report at regular intervals — monthly at minimum. For campaigns with significant spend, weekly reporting gives vendor agents timely visibility into earned revenue.
@@ -145,8 +146,9 @@ Report upon campaign completion to close out the final period.
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `ACCOUNT_NOT_FOUND` | Account reference in a usage record not found or not accessible | Verify via `list_accounts`; re-run `sync_accounts` if needed |
-| `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for the record's `kind` |
-| `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the original `get_signals` response |
+| `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for your vendor type |
+| `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the vendor's discovery response |
+| `DUPLICATE_REQUEST` | Request with this `idempotency_key` was already accepted | Safe to ignore — original response is returned unchanged |
 
 ## Next Steps
 

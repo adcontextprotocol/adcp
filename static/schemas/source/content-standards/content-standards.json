@@ -51,6 +51,14 @@
         }
       }
     },
+    "pricing_options": {
+      "type": "array",
+      "description": "Pricing options for this content standards service. The buyer passes the selected pricing_option_id in report_usage for billing verification.",
+      "items": {
+        "$ref": "/schemas/core/pricing-option.json"
+      },
+      "minItems": 1
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

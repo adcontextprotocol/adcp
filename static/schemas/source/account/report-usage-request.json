@@ -2,9 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/report-usage-request.json",
   "title": "Report Usage Request",
-  "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts, operators, and campaigns in a single request.",
+  "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. Use a UUID or other unique identifier. Prevents duplicate billing on retries."
+    },
     "reporting_period": {
       "type": "object",
       "description": "The time range covered by this usage report. Applies to all records in the request.",
@@ -25,7 +29,7 @@
     },
     "usage": {
       "type": "array",
-      "description": "One or more usage records. Each record is self-contained: it carries its own account, operator_id, and buyer_campaign_ref, allowing a single request to span multiple accounts, operators, and campaigns.",
+      "description": "One or more usage records. Each record is self-contained: it carries its own account and buyer_campaign_ref, allowing a single request to span multiple accounts and campaigns.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -34,18 +38,9 @@
             "$ref": "/schemas/core/account-ref.json",
             "description": "Account for this usage record."
           },
-          "operator_id": {
-            "type": "string",
-            "description": "The operator on whose behalf this usage is reported. Identifies the billing party — the entity that owes the vendor for this consumption."
-          },
           "buyer_campaign_ref": {
             "type": "string",
             "description": "The buyer's campaign reference (e.g., a media_buy_id). Used to group records by campaign."
-          },
-          "kind": {
-            "type": "string",
-            "enum": ["signal", "content_standards", "creative"],
-            "description": "The type of vendor service consumed."
           },
           "vendor_cost": {
             "type": "number",
@@ -57,10 +52,14 @@
             "pattern": "^[A-Z]{3}$",
             "description": "ISO 4217 currency code."
           },
+          "pricing_option_id": {
+            "type": "string",
+            "description": "Pricing option identifier from the vendor's discovery response (e.g., get_signals, list_content_standards). The vendor uses this to verify the correct rate was applied."
+          },
           "impressions": {
             "type": "integer",
             "minimum": 0,
-            "description": "Impressions delivered using this vendor service. Required when kind is 'signal'."
+            "description": "Impressions delivered using this vendor service."
           },
           "media_spend": {
             "type": "number",
@@ -69,25 +68,14 @@
           },
           "signal_agent_segment_id": {
             "type": "string",
-            "description": "Signal identifier from get_signals. Required when kind is 'signal'."
-          },
-          "pricing_option_id": {
-            "type": "string",
-            "description": "Pricing option identifier from the original get_signals response. The vendor uses this to verify the correct rate was applied. Required when kind is 'signal'."
+            "description": "Signal identifier from get_signals. Required for signals agents."
           },
           "standards_id": {
             "type": "string",
-            "description": "Content standards configuration identifier. Required when kind is 'content_standards'."
+            "description": "Content standards configuration identifier. Required for governance agents."
           }
         },
-        "required": ["account", "operator_id", "kind", "vendor_cost", "currency"],
-        "if": {
-          "properties": { "kind": { "type": "string", "const": "signal" } },
-          "required": ["kind"]
-        },
-        "then": {
-          "required": ["signal_agent_segment_id", "pricing_option_id", "impressions"]
-        },
+        "required": ["account", "vendor_cost", "currency"],
         "additionalProperties": true
       }
     },
@@ -104,6 +92,7 @@
     {
       "description": "Signal usage for a single campaign",
       "data": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
           "end": "2025-03-31T23:59:59Z"
@@ -111,9 +100,7 @@
         "usage": [
           {
             "account": { "account_id": "acct_pinnacle_signals" },
-            "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_launch_001",
-            "kind": "signal",
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 4200000,
@@ -125,7 +112,7 @@
       }
     },
     {
-      "description": "Multi-account batch: two brands, two operators, mixed service types",
+      "description": "Multi-account batch across two campaigns",
       "data": {
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
@@ -134,9 +121,7 @@
         "usage": [
           {
             "account": { "account_id": "acct_pinnacle_signals" },
-            "operator_id": "pinnacle-media.com",
             "buyer_campaign_ref": "mb_spring_q1_001",
-            "kind": "signal",
             "signal_agent_segment_id": "luxury_auto_intenders",
             "pricing_option_id": "po_lux_auto_cpm",
             "impressions": 2100000,
@@ -144,11 +129,10 @@
             "currency": "USD"
           },
           {
-            "account": { "account_id": "acct_nova_signals" },
-            "operator_id": "nova-brands.com",
+            "account": { "account_id": "acct_nova" },
             "buyer_campaign_ref": "mb_summer_preview_002",
-            "kind": "content_standards",
-            "standards_id": "brand_safety_v2",
+            "signal_agent_segment_id": "eco_conscious_shoppers",
+            "pricing_option_id": "po_eco_cpm",
             "impressions": 800000,
             "vendor_cost": 400.00,
             "currency": "USD"
