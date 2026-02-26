@@ -81,13 +81,6 @@
         }
       },
       "required": ["kind", "metric"],
-      "if": {
-        "properties": { "metric": { "const": "reach" } },
-        "required": ["metric"]
-      },
-      "then": {
-        "required": ["reach_unit"]
-      },
       "additionalProperties": true
     },
     {
