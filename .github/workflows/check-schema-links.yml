@@ -29,7 +29,8 @@ jobs:
           echo "Current version: $CURRENT_VERSION"
           
           # Find all schema URLs in docs (excluding dist/docs which are versioned snapshots)
-          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^")\s]+\.json' docs/ 2>/dev/null | sort -u || true)
+          # Note: Use [^"') ] instead of [^")\s] for grep compatibility
+          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^"'"'"') ]+\.json' docs/ 2>/dev/null | sort -u || true)
           
           if [ -z "$SCHEMA_URLS" ]; then
             echo "No schema URLs found in docs/"
@@ -97,10 +98,17 @@ jobs:
           
           # Output results
           HAS_ERRORS="false"
+          TOTAL_URLS=$(echo "$SCHEMA_URLS" | wc -l | tr -d ' ')
+          
+          # Build commit info header
+          COMMIT_SHA="${GITHUB_SHA:0:7}"
+          COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
+          COMMIT_INFO="**Commit**: \`$COMMIT_SHA\` - $COMMIT_MSG"
+          
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
             echo "has_issues=true" >> $GITHUB_OUTPUT
             
-            COMMENT="## Schema Link Check Results\n\n"
+            COMMENT="## Schema Link Check Results\n\n$COMMIT_INFO\n\n"
             
             if [ -n "$ERRORS" ]; then
               HAS_ERRORS="true"
@@ -120,6 +128,12 @@ jobs:
           else
             echo "has_issues=false" >> $GITHUB_OUTPUT
             echo "All schema links are valid!"
+            
+            # Build success comment
+            SUCCESS_COMMENT="## Schema Link Check Results\n\n$COMMIT_INFO\n\n✅ **All schema links checked** - $TOTAL_URLS URLs verified, all good!"
+            echo "success_comment<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$SUCCESS_COMMENT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           fi
           
           echo "has_errors=$HAS_ERRORS" >> $GITHUB_OUTPUT
@@ -128,11 +142,12 @@ jobs:
         uses: actions/github-script@v7
         env:
           COMMENT_BODY: ${{ steps.check.outputs.comment }}
+          SUCCESS_COMMENT: ${{ steps.check.outputs.success_comment }}
           HAS_ISSUES: ${{ steps.check.outputs.has_issues }}
         with:
           script: |
             const hasIssues = process.env.HAS_ISSUES === 'true';
-            const comment = process.env.COMMENT_BODY;
+            const comment = hasIssues ? process.env.COMMENT_BODY : process.env.SUCCESS_COMMENT;
             
             // Find existing comment from this workflow
             const { data: comments } = await github.rest.issues.listComments({
@@ -146,32 +161,22 @@ jobs:
               c.body.includes('Schema Link Check Results')
             );
             
-            if (hasIssues) {
-              if (botComment) {
-                // Update existing comment
-                await github.rest.issues.updateComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: botComment.id,
-                  body: comment
-                });
-              } else {
-                // Create new comment
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: context.issue.number,
-                  body: comment
-                });
-              }
-            } else if (botComment) {
-              // All links are valid now - delete the old warning comment
-              await github.rest.issues.deleteComment({
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: botComment.id
+                comment_id: botComment.id,
+                body: comment
               });
-              console.log('Deleted stale schema link warning comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
             }
 
       - name: Fail on errors
