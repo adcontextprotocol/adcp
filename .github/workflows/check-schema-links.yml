@@ -124,9 +124,11 @@ jobs:
       - name: Comment on PR
         if: steps.check.outputs.has_issues == 'true'
         uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.check.outputs.comment }}
         with:
           script: |
-            const comment = `${{ steps.check.outputs.comment }}`;
+            const comment = process.env.COMMENT_BODY;
             
             // Find existing comment from this workflow
             const { data: comments } = await github.rest.issues.listComments({
