@@ -14,9 +14,13 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Check schema links
         id: check
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # Extract schema URLs from docs and validate them
           # Schema URLs look like: https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json
@@ -71,7 +75,8 @@ jobs:
             MAJOR_NUM=$(echo "$VERSION" | sed 's/v//')
             
             # Find latest release for this major version
-            LATEST_RELEASE=$(ls -d dist/schemas/${MAJOR_NUM}.* 2>/dev/null | sort -V | tail -1 | xargs basename 2>/dev/null || echo "")
+            LATEST_RELEASE_PATH=$(ls -d dist/schemas/${MAJOR_NUM}.* 2>/dev/null | sort -V | tail -1)
+            LATEST_RELEASE=$(basename "$LATEST_RELEASE_PATH" 2>/dev/null || echo "")
             if [ -n "$LATEST_RELEASE" ]; then
               RELEASE_PATH="dist/schemas/$LATEST_RELEASE/$SCHEMA_PATH"
               # Determine next release name
@@ -90,8 +95,27 @@ jobs:
             if [ -z "$RELEASE_PATH" ]; then
               WARNINGS="$WARNINGS\n- \`$url\`\n  - No releases found for version $VERSION yet"
             elif [ ! -f "$RELEASE_PATH" ]; then
-              # Schema exists in source but not in release - will be fixed by next release
-              WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in source but not yet released\n  - **Action**: This link will work after **$NEXT_RELEASE** is published\n  - Source: \`$SOURCE_PATH\` ✓\n  - Release: \`$RELEASE_PATH\` ✗ (not yet released)"
+              # Schema exists in source but not in the requested version's release
+              # Check if it exists in other versions and suggest using that instead
+              AVAILABLE_IN=""
+              for CHECK_VERSION in 1 2 3; do
+                if [ "$CHECK_VERSION" = "$MAJOR_NUM" ]; then
+                  continue
+                fi
+                CHECK_RELEASE_PATH=$(ls -d dist/schemas/${CHECK_VERSION}.* 2>/dev/null | sort -V | tail -1)
+                CHECK_RELEASE=$(basename "$CHECK_RELEASE_PATH" 2>/dev/null || echo "")
+                if [ -n "$CHECK_RELEASE" ] && [ -f "dist/schemas/$CHECK_RELEASE/$SCHEMA_PATH" ]; then
+                  AVAILABLE_IN="$AVAILABLE_IN v$CHECK_VERSION ($CHECK_RELEASE)"
+                fi
+              done
+              
+              if [ -n "$AVAILABLE_IN" ]; then
+                # Schema exists in another version - suggest using that instead
+                ERRORS="$ERRORS\n- \`$url\`\n  - Schema not in $VERSION but available in:$AVAILABLE_IN\n  - **Action**: Change URL to use the correct version (e.g., \`/schemas/v3/...\` instead of \`/schemas/v1/...\`)"
+              else
+                # Schema truly not released yet
+                WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in source but not yet released\n  - **Action**: This link will work after **$NEXT_RELEASE** is published\n  - Source: \`$SOURCE_PATH\` ✓\n  - Release: \`$RELEASE_PATH\` ✗ (not yet released)"
+              fi
             else
               echo "  ✓ Schema exists in both source and release"
             fi
@@ -102,10 +126,9 @@ jobs:
           TOTAL_URLS=$(echo "$SCHEMA_URLS" | wc -l | tr -d ' ')
           
           # Build commit info header - use PR head SHA, not merge commit
-          # GITHUB_SHA points to merge commit, we want the actual PR commit
-          COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          COMMIT_SHA="$PR_HEAD_SHA"
           COMMIT_SHA_SHORT="${COMMIT_SHA:0:7}"
-          COMMIT_MSG=$(git log -1 --format='%s' "$COMMIT_SHA" 2>/dev/null || echo "Unknown")
+          COMMIT_MSG=$(git log -1 --format='%s' 2>/dev/null || echo "Unknown")
           COMMIT_INFO="**Commit**: [\`$COMMIT_SHA_SHORT\`](https://github.com/${{ github.repository }}/commit/$COMMIT_SHA) - $COMMIT_MSG"
           
           if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
