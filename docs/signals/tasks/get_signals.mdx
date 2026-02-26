@@ -55,7 +55,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 |-----------|------|----------|-------------|
 | `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
 | `data_providers` | string[] | No | Filter by specific data providers |
-| `max_cpm` | number | No | Maximum CPM price filter |
+| `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
 ## Response Structure
@@ -120,13 +120,15 @@ The response structure is identical across protocols, with only the transport wr
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
     - **is_live**: Whether signal is currently active on this deployment
-    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this deployment has `requester=true` in the request.**
+    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present when `is_live=true` and the authenticated caller has access to this deployment.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
   - **pricing_options**: Array of pricing options (CPM, subscription, etc.)
     - **pricing_option_id**: Unique identifier for this pricing option
-    - **pricing_model**: Pricing model type (e.g., "cpm")
+    - **pricing_model**: Pricing model type (e.g., "cpm", "time")
     - **currency**: Currency code
-    - **fixed_price**: Price in the specified currency
+    - **fixed_price**: Price per unit (per 1,000 impressions for CPM, per time unit for time-based)
+
+Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and monthly subscription), choose based on your expected delivery volume and campaign structure.
 
 ### Activation Key Object
 
@@ -215,6 +217,56 @@ Because the authenticated caller matches the deployment target, the response inc
           "pricing_model": "cpm",
           "currency": "USD",
           "fixed_price": 3.50
+        }
+      ]
+    }
+  ]
+}
+```
+
+### MCP Response - Multiple Pricing Options
+
+Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage`:
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-response.json",
+  "message": "Found 1 segment matching your criteria. Two pricing options are available: CPM at $3.50 or a monthly subscription at $500.",
+  "context_id": "ctx-signals-456",
+  "signals": [
+    {
+      "signal_agent_segment_id": "eco_conscious_shoppers",
+      "name": "Eco-Conscious Shoppers",
+      "description": "Users with demonstrated interest in sustainable and eco-friendly products",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 18,
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "eco_seg_789"
+          }
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_eco_cpm",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 3.50
+        },
+        {
+          "pricing_option_id": "po_eco_monthly",
+          "pricing_model": "time",
+          "currency": "USD",
+          "fixed_price": 500.00,
+          "parameters": {
+            "time_unit": "month"
+          }
         }
       ]
     }
@@ -513,11 +565,11 @@ Discover all available deployments across platforms:
     - **scope** (string): "platform-wide" or "account-specific"
     - **decisioning_platform_segment_id** (string): Platform-specific ID to use
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
-  - **pricing_options** (array): Array of pricing options (CPM, subscription, etc.)
+  - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
-    - **pricing_model** (string): Pricing model type (e.g., "cpm")
-    - **currency** (string): Currency code
-    - **fixed_price** (number): Price in the specified currency
+    - **pricing_model** (string): Pricing model type (e.g., "cpm", "time")
+    - **currency** (string): ISO 4217 currency code
+    - **fixed_price** (number): Price per unit (per 1,000 impressions for CPM, per time unit for time-based)
 
 ## Error Codes
 
@@ -667,28 +719,27 @@ The `message` field should provide actionable insights:
 def generate_signals_message(signals, request):
     if not signals:
         return generate_no_signals_message(request.signal_spec)
-    
-    # Analyze deployment readiness
-    ready_count = sum(1 for s in signals if all_platforms_live(s, request.deliver_to))
+
     best_signal = find_best_signal(signals)
-    
+
     if len(signals) == 1:
         signal = signals[0]
-        deployment_status = get_deployment_summary(signal, request.deliver_to)
-        price_commentary = f"The CPM is ${signal.pricing_options[0].fixed_price}, which {'is well within' if signal.pricing_options[0].fixed_price <= request.filters.max_cpm else 'exceeds'} your budget."
+        deployment_status = get_deployment_summary(signal, request.deliver_to.deployments)
+        pricing = signal.pricing_options[0] if signal.pricing_options else None
+        price_commentary = f"Priced at {pricing.pricing_model.upper()} {pricing.fixed_price} {pricing.currency}." if pricing else ""
         return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
     else:
         return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
 
-def get_deployment_summary(signal, deliver_to):
-    live_platforms = [d.platform for d in signal.deployments if d.is_live]
-    needs_activation = [d for d in signal.deployments if not d.is_live and d.platform in deliver_to.platforms]
-    
-    if len(live_platforms) == len(deliver_to.platforms):
-        return "It's already live on all requested platforms, ready to use immediately."
-    elif live_platforms:
-        activation_time = max(d.estimated_activation_duration_minutes for d in needs_activation)
-        return f"It's live on {', '.join(live_platforms)}. Activation on {needs_activation[0].platform} would take about {activation_time} minutes."
+def get_deployment_summary(signal, requested_deployments):
+    live = [d for d in signal.deployments if d.is_live]
+    pending = [d for d in signal.deployments if not d.is_live]
+
+    if not pending:
+        return "Already live on all requested deployments, ready to use immediately."
+    elif live:
+        activation_time = max((d.estimated_activation_duration_minutes or 0) for d in pending)
+        return f"Live on {len(live)} deployment(s). Activation on {len(pending)} more would take about {activation_time} minutes."
     else:
-        return "It requires activation on all platforms, which typically takes 1-2 hours."
+        return "Requires activation on all deployments, which typically takes 1-2 hours."
 ```

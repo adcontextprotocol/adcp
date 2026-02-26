@@ -28,7 +28,7 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
-| `pricing_option_id` | string | Signals: Yes | Pricing option from the vendor's discovery response. The vendor uses this to verify the correct rate was applied. |
+| `pricing_option_id` | string | Signals: Yes | Pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. The vendor uses this to verify the correct rate was applied. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign reference (e.g., a `media_buy_id`). Used to group records by campaign. |
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
