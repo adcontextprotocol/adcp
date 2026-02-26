@@ -1,0 +1,159 @@
+name: Check Schema Links in Docs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**/*.mdx'
+      - 'docs/**/*.md'
+
+jobs:
+  check-schema-links:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check schema links
+        id: check
+        run: |
+          # Extract schema URLs from docs and validate them
+          # Schema URLs look like: https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json
+          
+          ERRORS=""
+          WARNINGS=""
+          
+          # Get current version from package.json
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Find all schema URLs in docs (excluding dist/docs which are versioned snapshots)
+          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^")\s]+\.json' docs/ 2>/dev/null | sort -u || true)
+          
+          if [ -z "$SCHEMA_URLS" ]; then
+            echo "No schema URLs found in docs/"
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Found schema URLs:"
+          echo "$SCHEMA_URLS"
+          echo ""
+          
+          # Check each URL
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            
+            # Extract version and path from URL
+            # e.g., https://adcontextprotocol.org/schemas/v3/media-buy/sync-audiences-request.json
+            VERSION_PATH=$(echo "$url" | sed 's|https://adcontextprotocol.org/schemas/||')
+            VERSION=$(echo "$VERSION_PATH" | cut -d/ -f1)
+            SCHEMA_PATH=$(echo "$VERSION_PATH" | cut -d/ -f2-)
+            
+            # Extract major version number (e.g., v3 -> 3)
+            MAJOR_NUM=$(echo "$VERSION" | sed 's/v//')
+            
+            echo "Checking: $url"
+            echo "  Version: $VERSION (major: $MAJOR_NUM), Path: $SCHEMA_PATH"
+            
+            # Check if schema exists in source
+            SOURCE_PATH="static/schemas/source/$SCHEMA_PATH"
+            if [ ! -f "$SOURCE_PATH" ]; then
+              ERRORS="$ERRORS\n- \`$url\`\n  - Schema not found in source: \`$SOURCE_PATH\`"
+              continue
+            fi
+            
+            # Check if schema exists in the versioned release
+            # vN -> latest N.x.x release in dist/schemas/
+            # Extract major version number (e.g., v3 -> 3)
+            MAJOR_NUM=$(echo "$VERSION" | sed 's/v//')
+            
+            # Find latest release for this major version
+            LATEST_RELEASE=$(ls -d dist/schemas/${MAJOR_NUM}.* 2>/dev/null | sort -V | tail -1 | xargs basename 2>/dev/null || echo "")
+            if [ -n "$LATEST_RELEASE" ]; then
+              RELEASE_PATH="dist/schemas/$LATEST_RELEASE/$SCHEMA_PATH"
+              # Determine next release name
+              if echo "$LATEST_RELEASE" | grep -q "beta"; then
+                BETA_NUM=$(echo "$LATEST_RELEASE" | grep -oE 'beta\.[0-9]+' | cut -d. -f2)
+                NEXT_BETA=$((BETA_NUM + 1))
+                NEXT_RELEASE="${MAJOR_NUM}.0.0-beta.${NEXT_BETA} (or later)"
+              else
+                NEXT_RELEASE="next ${MAJOR_NUM}.x release"
+              fi
+            else
+              RELEASE_PATH=""
+              NEXT_RELEASE="first ${MAJOR_NUM}.x release"
+            fi
+            
+            if [ -z "$RELEASE_PATH" ]; then
+              WARNINGS="$WARNINGS\n- \`$url\`\n  - No releases found for version $VERSION yet"
+            elif [ ! -f "$RELEASE_PATH" ]; then
+              # Schema exists in source but not in release - will be fixed by next release
+              WARNINGS="$WARNINGS\n- \`$url\`\n  - Schema exists in source but not yet released\n  - **Action**: This link will work after **$NEXT_RELEASE** is published\n  - Source: \`$SOURCE_PATH\` ✓\n  - Release: \`$RELEASE_PATH\` ✗ (not yet released)"
+            else
+              echo "  ✓ Schema exists in both source and release"
+            fi
+          done <<< "$SCHEMA_URLS"
+          
+          # Output results
+          if [ -n "$ERRORS" ] || [ -n "$WARNINGS" ]; then
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            
+            COMMENT="## Schema Link Check Results\n\n"
+            
+            if [ -n "$ERRORS" ]; then
+              COMMENT="$COMMENT### ❌ Errors (schema not found)\n\nThese schemas do not exist and the links will be broken:\n$ERRORS\n\n"
+            fi
+            
+            if [ -n "$WARNINGS" ]; then
+              COMMENT="$COMMENT### ⚠️ Warnings (schema not yet released)\n\nThese schemas exist in source but haven't been released yet. The links will be broken until the next version is published:\n$WARNINGS\n\n"
+              COMMENT="$COMMENT---\n\n**To fix**: Either:\n1. Wait for the next release and merge this PR after the release is published\n2. Use \`latest\` instead of a version alias if you need the link to work immediately (note: \`latest\` is the development version and may change)\n3. Coordinate with maintainers to cut a new release before merging"
+            fi
+            
+            # Escape for GitHub Actions
+            COMMENT=$(echo -e "$COMMENT" | sed 's/"/\\"/g')
+            echo "comment<<EOF" >> $GITHUB_OUTPUT
+            echo -e "$COMMENT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+            echo "All schema links are valid!"
+          fi
+
+      - name: Comment on PR
+        if: steps.check.outputs.has_issues == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = `${{ steps.check.outputs.comment }}`;
+            
+            // Find existing comment from this workflow
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('## Schema Link Check Results')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
