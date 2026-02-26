@@ -5,6 +5,10 @@
   "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request.",
   "type": "object",
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. Use a UUID or other unique identifier. Prevents duplicate billing on retries."
+    },
     "reporting_period": {
       "type": "object",
       "description": "The time range covered by this usage report. Applies to all records in the request.",
@@ -88,6 +92,7 @@
     {
       "description": "Signal usage for a single campaign",
       "data": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
         "reporting_period": {
           "start": "2025-03-01T00:00:00Z",
           "end": "2025-03-31T23:59:59Z"
