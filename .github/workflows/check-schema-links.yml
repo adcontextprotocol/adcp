@@ -29,8 +29,9 @@ jobs:
           echo "Current version: $CURRENT_VERSION"
           
           # Find all schema URLs in docs (excluding dist/docs which are versioned snapshots)
-          # Note: Use [^"') ] instead of [^")\s] for grep compatibility
-          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^"'"'"') ]+\.json' docs/ 2>/dev/null | sort -u || true)
+          # Note: Use [^"')`] instead of [^")\s] for grep compatibility
+          # The backtick is needed to handle markdown links like [`url`](url)
+          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^"'"'"')\` ]+\.json' docs/ 2>/dev/null | sort -u || true)
           
           if [ -z "$SCHEMA_URLS" ]; then
             echo "No schema URLs found in docs/"
