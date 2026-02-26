@@ -868,8 +868,20 @@
               <textarea id="edit-description" class="edit-form-input" rows="3" placeholder="Brief description of the brand"></textarea>
             </div>
             <div class="edit-form-field">
-              <label class="edit-form-label" for="edit-tone">Tone</label>
+              <label class="edit-form-label" for="edit-tagline">Tagline</label>
+              <input type="text" id="edit-tagline" class="edit-form-input" placeholder="e.g. Just Do It">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-tone">Tone of voice</label>
               <input type="text" id="edit-tone" class="edit-form-input" placeholder="e.g. professional, friendly, bold">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-font-primary">Primary font</label>
+              <input type="text" id="edit-font-primary" class="edit-form-input" placeholder="e.g. Helvetica Neue">
+            </div>
+            <div class="edit-form-field">
+              <label class="edit-form-label" for="edit-font-secondary">Secondary font</label>
+              <input type="text" id="edit-font-secondary" class="edit-form-input" placeholder="e.g. Georgia">
             </div>
             <div class="edit-form-field">
               <label class="edit-form-label" for="edit-house-domain">House domain</label>
@@ -1057,7 +1069,10 @@
         document.getElementById('edit-brand-name').value = currentEditStatus?.brand_name || '';
         document.getElementById('edit-description').value = manifest.description || '';
         document.getElementById('edit-industry').value = manifest.industry || '';
-        document.getElementById('edit-tone').value = manifest.tone || '';
+        document.getElementById('edit-tagline').value = manifest.tagline || '';
+        document.getElementById('edit-tone').value = typeof manifest.tone === 'string' ? manifest.tone : (manifest.tone?.voice || '');
+        document.getElementById('edit-font-primary').value = manifest.fonts?.primary || '';
+        document.getElementById('edit-font-secondary').value = manifest.fonts?.secondary || '';
         document.getElementById('edit-house-domain').value = currentEditStatus?.house_domain || '';
         document.getElementById('edit-keller-type').value = currentEditStatus?.keller_type || '';
 
@@ -1128,7 +1143,16 @@
             ...(currentEditStatus?.brand_manifest || {}),
             description: document.getElementById('edit-description').value.trim() || undefined,
             industry: document.getElementById('edit-industry').value.trim() || undefined,
-            tone: document.getElementById('edit-tone').value.trim() || undefined,
+            tagline: document.getElementById('edit-tagline').value.trim() || undefined,
+            tone: (() => {
+              const toneValue = document.getElementById('edit-tone').value.trim();
+              if (!toneValue) return undefined;
+              const existingTone = currentEditStatus?.brand_manifest?.tone;
+              if (typeof existingTone === 'object' && existingTone !== null) {
+                return { ...existingTone, voice: toneValue };
+              }
+              return toneValue;
+            })(),
           }
         };
 
@@ -1136,6 +1160,14 @@
         if (Object.keys(colors).length > 0) {
           body.brand_manifest.colors = colors;
         }
+
+        // Always write fonts to allow clearing empty fields; undefined gets removed by cleanup below
+        const fontPrimary = document.getElementById('edit-font-primary').value.trim();
+        const fontSecondary = document.getElementById('edit-font-secondary').value.trim();
+        body.brand_manifest.fonts = (fontPrimary || fontSecondary) ? {
+          ...(fontPrimary ? { primary: fontPrimary } : {}),
+          ...(fontSecondary ? { secondary: fontSecondary } : {}),
+        } : undefined;
 
         // Clean undefined values from manifest
         Object.keys(body.brand_manifest).forEach(k => {
