@@ -32,6 +32,6 @@
     "engagements": "Estimated engagements (social reactions, comments, shares, story opens, overlay taps, etc.)",
     "follows": "Estimated new followers, page likes, or channel subscribes",
     "saves": "Estimated saves, bookmarks, playlist adds, or pins",
-    "profile_visits": "Estimated visits to the brand's page or profile"
+    "profile_visits": "Estimated visits to the brand's in-platform page or profile"
   }
 }

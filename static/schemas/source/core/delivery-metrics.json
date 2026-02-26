@@ -264,7 +264,7 @@
     },
     "profile_visits": {
       "type": "number",
-      "description": "Visits to the brand's page, artist page, or channel attributed to this delivery.",
+      "description": "Visits to the brand's in-platform page (profile, artist page, channel, or storefront) attributed to this delivery. Does not include external website clicks.",
       "minimum": 0
     },
     "engagement_rate": {
