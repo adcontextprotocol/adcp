@@ -63,6 +63,10 @@
       "type": "boolean",
       "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
     },
+    "supports_keyword_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports keyword-level metric breakdowns in delivery reporting (by_keyword within by_package)"
+    },
     "date_range_support": {
       "type": "string",
       "enum": ["date_range", "lifetime_only"],

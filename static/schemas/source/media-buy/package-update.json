@@ -48,7 +48,50 @@
       "minItems": 1
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json"
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Targeting overlay to apply to this package. Uses replacement semantics — the full overlay replaces the previous one. Omit to leave targeting unchanged. Note: keyword_targets within the overlay also uses replacement semantics, requiring the full keyword list on every update. For negative keywords specifically, prefer negative_keywords_add and negative_keywords_remove, which append/remove without requiring the full list."
+    },
+    "negative_keywords_add": {
+      "type": "array",
+      "description": "Negative keywords to add to this package. Appends to the existing negative keyword list — does not replace it. If a keyword+match_type pair already exists, sellers SHOULD treat it as a no-op for that entry. Use targeting_overlay.negative_keywords in create_media_buy to set the initial list.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type for exclusion"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords_remove": {
+      "type": "array",
+      "description": "Negative keywords to remove from this package. Removes matching keyword+match_type pairs from the existing list. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "The keyword to stop excluding"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type to remove"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     },
     "creative_assignments": {
       "type": "array",

@@ -304,6 +304,41 @@
                           }
                         ]
                       }
+                    },
+                    "by_keyword": {
+                      "type": "array",
+                      "description": "Metrics broken down by keyword within this package. Available for search and retail media packages when the seller supports keyword-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "keyword": {
+                                "type": "string",
+                                "description": "The keyword that triggered delivery"
+                              },
+                              "match_type": {
+                                "type": "string",
+                                "enum": ["broad", "phrase", "exact"],
+                                "description": "Match type used for this keyword"
+                              },
+                              "matched_query": {
+                                "type": "string",
+                                "description": "The actual search query that matched this keyword. Where provided, this is an aggregate search term from the platform's search terms report, not a user-level identifier. Buyers must not use matched_query values to re-identify individual users. Subject to platform data use restrictions. Not available from all platforms."
+                              }
+                            },
+                            "required": [
+                              "keyword",
+                              "match_type",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
                     }
                   },
                   "required": [

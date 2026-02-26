@@ -306,6 +306,8 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Language for audience preference | | ✅ "Spanish-speaking audiences" |
 | First-party CRM audience (retargeting, suppression) | ✅ `audience_include` / `audience_exclude` | |
 | Third-party audience segment (interest targeting) | | ✅ "Auto intenders" in brief, or use signals protocol |
+| Search/retail media keyword targeting | ✅ `keyword_targets` / `negative_keywords` | |
+| Broad thematic intent ("people searching for shoes") | | ✅ "Reach in-market shoe shoppers" |
 
 **Why briefs work better for preferences:**
 - Natural language captures intent more clearly
@@ -438,6 +440,44 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
 - **Use cases**: Localized creative, language-specific campaigns
 
+### keyword_targets
+- **Description**: Target specific keywords for search and retail media platforms. Restricts delivery to queries matching the specified keywords.
+- **Format**: Array of objects with `keyword`, `match_type` (`broad`, `phrase`, or `exact`), and optional `bid_price`
+- **Match types**:
+  - `broad` — matches related and synonym queries
+  - `phrase` — matches queries containing the keyword phrase in order
+  - `exact` — matches the keyword query only
+- **Per-keyword bid**: The optional `bid_price` overrides the package-level `bid_price` for that keyword. If omitted, the package `bid_price` applies.
+- **Use cases**: Search campaigns, retail media sponsored products, keyword-based intent targeting
+- **Note**: Seller must declare `execution.targeting.keyword_targets: true` in `get_adcp_capabilities`. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities.
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "keyword_targets": [
+    { "keyword": "running shoes", "match_type": "broad", "bid_price": 0.45 },
+    { "keyword": "trail running shoes womens", "match_type": "phrase", "bid_price": 0.85 },
+    { "keyword": "nike pegasus 41", "match_type": "exact", "bid_price": 1.20 }
+  ]
+}
+```
+
+### negative_keywords
+- **Description**: Exclude specific keywords from delivery. Queries matching these keywords will not trigger the ad.
+- **Format**: Array of objects with `keyword` and `match_type` (`broad`, `phrase`, or `exact`)
+- **Use cases**: Prevent wasteful spend on irrelevant queries, exclude competitor brand terms
+- **Note**: Seller must declare support in `get_adcp_capabilities`. Use `negative_keywords_add` and `negative_keywords_remove` in `update_media_buy` to add/remove negatives incrementally after launch.
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "negative_keywords": [
+    { "keyword": "free", "match_type": "broad" },
+    { "keyword": "used running shoes", "match_type": "phrase" }
+  ]
+}
+```
+
 ### store_catchments
 - **Description**: Target users within store catchment areas from a synced store catalog
 - **Format**: Array of objects, each referencing a store-type catalog synced via `sync_catalogs`
@@ -507,6 +547,29 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 - Contextual targeting (page-level or moment-level decisions)
 - High-cardinality targeting (thousands of values)
 - Targeting that changes during campaign flight
+
+## Managing keywords after launch
+
+Keyword targeting in `targeting_overlay` uses replacement semantics when sent via `update_media_buy` — the full `keyword_targets` list replaces the previous one. For negative keywords, use the incremental operations `negative_keywords_add` and `negative_keywords_remove` instead, which append to or remove from the existing list without requiring a full replacement:
+
+```json
+{
+  "packages": [
+    {
+      "package_id": "pkg_sponsored_search_001",
+      "negative_keywords_add": [
+        { "keyword": "diy", "match_type": "broad" },
+        { "keyword": "how to make running shoes", "match_type": "phrase" }
+      ],
+      "negative_keywords_remove": [
+        { "keyword": "free", "match_type": "broad" }
+      ]
+    }
+  ]
+}
+```
+
+Incremental operations are the right tool for negative keyword management because negative lists grow continuously as agents learn from `by_keyword` search term data in delivery reports.
 
 ## Implementation Requirements
 

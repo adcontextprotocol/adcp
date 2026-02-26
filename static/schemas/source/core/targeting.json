@@ -251,6 +251,53 @@
         "pattern": "^[a-z]{2}$"
       },
       "minItems": 1
+    },
+    "keyword_targets": {
+      "type": "array",
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type: broad matches related queries, phrase matches queries containing the keyword phrase, exact matches the query exactly"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. If omitted, the package bid_price applies."
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords": {
+      "type": "array",
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type for exclusion"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true
