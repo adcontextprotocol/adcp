@@ -84,7 +84,7 @@ Catalog types fall into two categories: **structural** types that describe the d
 | `offering` | [Offering](https://adcontextprotocol.org/schemas/v3/core/offering.json) | AdCP Offering objects — campaigns, vacancies, events, services |
 | `product` | *(freeform)* | Ecommerce product entries (Google Merchant Center, Shopify, etc.) |
 | `inventory` | *(freeform)* | Stock and availability per product per location |
-| `store` | [StoreItem](https://adcontextprotocol.org/schemas/v3/core/store-item.json) | Physical locations with addresses and catchment areas |
+| `store` | [StoreItem](https://adcontextprotocol.org/schemas/latest/core/store-item.json) | Physical locations with addresses and catchment areas |
 | `promotion` | *(freeform)* | Sales, deals, and promotional pricing |
 
 ### Vertical types
@@ -93,14 +93,14 @@ Each vertical type has a defined AdCP item schema, so formats can declare `catal
 
 | Type | Item Schema | Maps To |
 |------|-------------|---------|
-| `hotel` | [HotelItem](https://adcontextprotocol.org/schemas/v3/core/hotel-item.json) | Google Hotel Center, Meta hotel catalogs |
-| `flight` | [FlightItem](https://adcontextprotocol.org/schemas/v3/core/flight-item.json) | Google DynamicFlightsAsset, Meta flight catalogs |
-| `job` | [JobItem](https://adcontextprotocol.org/schemas/v3/core/job-item.json) | LinkedIn Jobs XML, Google DynamicJobsAsset, schema.org JobPosting |
-| `vehicle` | [VehicleItem](https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json) | Meta Automotive Inventory, Microsoft Auto Inventory feeds |
-| `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
-| `education` | [EducationItem](https://adcontextprotocol.org/schemas/v3/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
-| `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/v3/core/destination-item.json) | Meta destination catalogs, Google travel ads |
-| `app` | [AppItem](https://adcontextprotocol.org/schemas/v3/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
+| `hotel` | [HotelItem](https://adcontextprotocol.org/schemas/latest/core/hotel-item.json) | Google Hotel Center, Meta hotel catalogs |
+| `flight` | [FlightItem](https://adcontextprotocol.org/schemas/latest/core/flight-item.json) | Google DynamicFlightsAsset, Meta flight catalogs |
+| `job` | [JobItem](https://adcontextprotocol.org/schemas/latest/core/job-item.json) | LinkedIn Jobs XML, Google DynamicJobsAsset, schema.org JobPosting |
+| `vehicle` | [VehicleItem](https://adcontextprotocol.org/schemas/latest/core/vehicle-item.json) | Meta Automotive Inventory, Microsoft Auto Inventory feeds |
+| `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/latest/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
+| `education` | [EducationItem](https://adcontextprotocol.org/schemas/latest/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
+| `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/latest/core/destination-item.json) | Meta destination catalogs, Google travel ads |
+| `app` | [AppItem](https://adcontextprotocol.org/schemas/latest/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
 
 ## Typed catalog assets
 
@@ -146,7 +146,7 @@ Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-
 
 ## The Catalog object
 
-**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/v3/core/catalog.json)
+**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/latest/core/catalog.json)
 
 ```typescript
 interface Catalog {
@@ -619,7 +619,7 @@ interface Offering {
 
 ### OfferingAssetGroup
 
-**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/v3/core/offering-asset-group.json)
+**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/latest/core/offering-asset-group.json)
 
 A typed pool of creative assets within an offering. Uses the same `asset_group_id` vocabulary as format-level asset definitions, enabling formats to declare per-group constraints on what each offering must provide.
 
@@ -639,7 +639,7 @@ interface OfferingAssetGroup {
 
 ### OfferingAssetConstraint
 
-**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/v3/core/requirements/offering-asset-constraint.json)
+**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/latest/core/requirements/offering-asset-constraint.json)
 
 Declared by a format to specify what asset groups each offering must provide. Used within `catalog_requirements` to constrain what offerings in a catalog must provide.
 
@@ -714,7 +714,7 @@ Call `list_creative_formats` and check `catalog_requirements` to see what catalo
 
 ## Stores
 
-**Schema URL**: [`/schemas/core/store-item.json`](https://adcontextprotocol.org/schemas/v3/core/store-item.json)
+**Schema URL**: [`/schemas/core/store-item.json`](https://adcontextprotocol.org/schemas/latest/core/store-item.json)
 
 A StoreItem represents a physical location within a `store`-type catalog. Each store carries coordinates, an optional address, and one or more catchment areas that define the geographic reach around that location.
 
@@ -754,7 +754,7 @@ interface StoreItem {
 
 ### Catchment areas
 
-**Schema URL**: [`/schemas/core/catchment.json`](https://adcontextprotocol.org/schemas/v3/core/catchment.json)
+**Schema URL**: [`/schemas/core/catchment.json`](https://adcontextprotocol.org/schemas/latest/core/catchment.json)
 
 A catchment defines the geographic area a store serves. Three methods are supported — provide exactly one per catchment:
 
