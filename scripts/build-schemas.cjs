@@ -20,7 +20,7 @@
  * - /schemas/{version}/  - Released versions (only created with --release)
  * - /schemas/v{major}/   - Points to latest release of that major version
  * - /schemas/v{major}.{minor}/ - Points to latest release of that minor version
- * - /schemas/v1/         - Backward compatibility (always points to latest/)
+ * - /schemas/v1/         - Points to 1.0.0 (frozen release for schemas not in v2/v3)
  *
  * Extension handling:
  * - Extensions are auto-discovered from static/schemas/source/extensions/
@@ -711,7 +711,7 @@ async function main() {
     for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
       console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
     }
-    console.log(`   /schemas/v1/              - Backward compatibility → latest`);
+    console.log(`   /schemas/v1/              - Major alias → 1.0.0 (frozen)`);
 
   } else {
     // DEVELOPMENT MODE: Only rebuild latest/
@@ -764,7 +764,7 @@ async function main() {
       for (const [minor, patchVersion] of Object.entries(latestPerMinor)) {
         console.log(`   /schemas/v${minor}/            - Minor alias → ${patchVersion}`);
       }
-      console.log(`   /schemas/v1/              - Backward compatibility → latest`);
+      console.log(`   /schemas/v1/              - Major alias → 1.0.0 (frozen)`);
     } else {
       console.log('');
       console.log('⚠️  No released versions found. Run with --release to create one:');

@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/core/hotel-item.json",
+  "title": "Hotel Item",
+  "description": "A hotel or lodging property within a hotel-type catalog. Carries the property data that platforms use for hotel ads, dynamic remarketing, and travel campaign creatives. Maps to Google Hotel Center feeds, Meta hotel catalogs, and similar platform-native formats.",
+  "type": "object",
+  "properties": {
+    "hotel_id": {
+      "type": "string",
+      "description": "Unique identifier for this property. Used to match remarketing events and inventory feeds to the correct hotel."
+    },
+    "name": {
+      "type": "string",
+      "description": "Property name (e.g., 'Grand Hotel Amsterdam', 'Seaside Resort & Spa')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Property description highlighting features and location."
+    },
+    "location": {
+      "type": "object",
+      "description": "Geographic coordinates of the property.",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS 84)."
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS 84)."
+        }
+      },
+      "required": ["lat", "lng"],
+      "additionalProperties": false
+    },
+    "address": {
+      "type": "object",
+      "description": "Structured address for display and geocoding.",
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street address."
+        },
+        "city": {
+          "type": "string",
+          "description": "City name."
+        },
+        "region": {
+          "type": "string",
+          "description": "State, province, or region."
+        },
+        "postal_code": {
+          "type": "string",
+          "description": "Postal or ZIP code."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code."
+        }
+      },
+      "additionalProperties": false
+    },
+    "star_rating": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Official star rating (1–5)."
+    },
+    "price": {
+      "$ref": "/schemas/1.0.0/core/price.json",
+      "description": "Nightly rate or starting price. Use period 'night' for nightly rates."
+    },
+    "image_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Primary property image URL."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Property landing page or booking URL."
+    },
+    "phone": {
+      "type": "string",
+      "description": "Property phone number in E.164 format."
+    },
+    "amenities": {
+      "type": "array",
+      "description": "Property amenities (e.g., 'pool', 'wifi', 'spa', 'parking', 'restaurant').",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "check_in_time": {
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "description": "Standard check-in time in HH:MM format (e.g., '15:00')."
+    },
+    "check_out_time": {
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "description": "Standard check-out time in HH:MM format (e.g., '11:00')."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for filtering and targeting (e.g., 'boutique', 'family', 'business', 'luxury').",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date",
+      "description": "Date from which this item is available or this rate applies (ISO 8601, e.g., '2025-03-01'). Used for seasonal availability windows in feed imports."
+    },
+    "valid_to": {
+      "type": "string",
+      "format": "date",
+      "description": "Date until which this item is available or this rate applies (ISO 8601, e.g., '2025-09-30'). Used for seasonal availability windows in feed imports."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this hotel. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (16:9 hero images), 'images_vertical' (9:16 for Snap, Stories), 'images_square' (1:1), 'logo'. Enables formats to declare typed image requirements that map unambiguously to the right asset regardless of platform.",
+      "items": {
+        "$ref": "/schemas/1.0.0/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/1.0.0/core/ext.json"
+    }
+  },
+  "required": ["hotel_id", "name", "location"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Luxury city hotel",
+      "data": {
+        "hotel_id": "grand-amsterdam",
+        "name": "Grand Hotel Amsterdam",
+        "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
+        "location": { "lat": 52.3676, "lng": 4.9041 },
+        "address": {
+          "street": "Herengracht 100",
+          "city": "Amsterdam",
+          "region": "NL-NH",
+          "postal_code": "1015 BS",
+          "country": "NL"
+        },
+        "star_rating": 5,
+        "price": { "amount": 289, "currency": "EUR", "period": "night" },
+        "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
+        "url": "https://acmehotels.com/amsterdam/grand",
+        "amenities": ["spa", "pool", "restaurant", "wifi", "parking"],
+        "check_in_time": "15:00",
+        "check_out_time": "11:00",
+        "tags": ["luxury", "city-center", "business"]
+      }
+    },
+    {
+      "description": "Budget seaside property",
+      "data": {
+        "hotel_id": "beach-hostel-bcn",
+        "name": "Barcelona Beach Hostel",
+        "location": { "lat": 41.3784, "lng": 2.1925 },
+        "star_rating": 2,
+        "price": { "amount": 45, "currency": "EUR", "period": "night" },
+        "url": "https://acmehostels.com/barcelona/beach",
+        "tags": ["budget", "beach"]
+      }
+    }
+  ]
+}

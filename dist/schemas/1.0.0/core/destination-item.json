@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/core/destination-item.json",
+  "title": "Destination Item",
+  "description": "A travel destination within a destination-type catalog. Carries the location, imagery, and pricing data that platforms use for destination ads and travel remarketing. Maps to Meta destination catalogs, Google travel ads, and similar formats.",
+  "type": "object",
+  "properties": {
+    "destination_id": {
+      "type": "string",
+      "description": "Unique identifier for this destination."
+    },
+    "name": {
+      "type": "string",
+      "description": "Destination name (e.g., 'Barcelona', 'Bali', 'Swiss Alps')."
+    },
+    "description": {
+      "type": "string",
+      "description": "Destination description highlighting attractions and appeal."
+    },
+    "city": {
+      "type": "string",
+      "description": "City name, if applicable."
+    },
+    "region": {
+      "type": "string",
+      "description": "State, province, or region name."
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code."
+    },
+    "location": {
+      "type": "object",
+      "description": "Geographic coordinates of the destination.",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS 84)."
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS 84)."
+        }
+      },
+      "required": ["lat", "lng"],
+      "additionalProperties": false
+    },
+    "destination_type": {
+      "type": "string",
+      "enum": ["beach", "mountain", "urban", "cultural", "adventure", "wellness", "cruise"],
+      "description": "Destination category."
+    },
+    "price": {
+      "$ref": "/schemas/1.0.0/core/price.json",
+      "description": "Starting price for a trip to this destination."
+    },
+    "image_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Destination hero image URL."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Destination landing page or booking URL."
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Destination rating (1–5)."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for filtering (e.g., 'family', 'romantic', 'solo', 'winter-sun').",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this destination. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (destination hero), 'images_vertical' (9:16 for Snap, Stories), 'images_square' (1:1). Enables formats to declare typed image requirements that map unambiguously to the right asset regardless of platform.",
+      "items": {
+        "$ref": "/schemas/1.0.0/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/1.0.0/core/ext.json"
+    }
+  },
+  "required": ["destination_id", "name"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "European city break",
+      "data": {
+        "destination_id": "barcelona",
+        "name": "Barcelona",
+        "description": "Mediterranean city blending Gaudí architecture, beaches, and world-class dining.",
+        "city": "Barcelona",
+        "region": "Catalonia",
+        "country": "ES",
+        "location": { "lat": 41.3874, "lng": 2.1686 },
+        "destination_type": "urban",
+        "price": { "amount": 399, "currency": "EUR" },
+        "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
+        "url": "https://acmetravel.com/destinations/barcelona",
+        "rating": 4.7,
+        "tags": ["city-break", "beach", "culture"]
+      }
+    },
+    {
+      "description": "Adventure destination",
+      "data": {
+        "destination_id": "swiss-alps-interlaken",
+        "name": "Swiss Alps — Interlaken",
+        "description": "Gateway to the Jungfrau region with paragliding, hiking, and glacier views.",
+        "country": "CH",
+        "location": { "lat": 46.6863, "lng": 7.8632 },
+        "destination_type": "adventure",
+        "price": { "amount": 799, "currency": "CHF" },
+        "url": "https://acmetravel.com/destinations/interlaken",
+        "tags": ["adventure", "mountains", "winter-sports"]
+      }
+    }
+  ]
+}

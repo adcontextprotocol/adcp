@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/media-buy/sync-catalogs-async-response-input-required.json",
+  "title": "Sync Catalogs - Input Required",
+  "description": "Payload when sync_catalogs task is paused waiting for buyer clarification or approval.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "APPROVAL_REQUIRED",
+        "FEED_VALIDATION",
+        "ITEM_REVIEW",
+        "FEED_ACCESS"
+      ],
+      "description": "Reason code indicating why buyer input is needed. APPROVAL_REQUIRED: platform requires explicit approval before activating the catalog. FEED_VALIDATION: feed URL returned unexpected format or schema errors. ITEM_REVIEW: platform flagged items for manual review. FEED_ACCESS: platform cannot access the feed URL (authentication, CORS, etc.)."
+    },
+    "context": {
+      "$ref": "/schemas/1.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/1.0.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

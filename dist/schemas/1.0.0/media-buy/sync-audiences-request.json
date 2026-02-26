@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/media-buy/sync-audiences-request.json",
+  "title": "Sync Audiences Request",
+  "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/1.0.0/core/account-ref.json",
+      "description": "Account to manage audiences for."
+    },
+    "audiences": {
+      "type": "array",
+      "description": "Audiences to sync (create or update). When omitted, the call is discovery-only and returns all existing audiences on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "audience_id": {
+            "type": "string",
+            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this audience"
+          },
+          "add": {
+            "type": "array",
+            "description": "Members to add to this audience. Hashed before sending — normalize emails to lowercase+trim, phones to E.164.",
+            "items": {
+              "$ref": "/schemas/1.0.0/core/audience-member.json"
+            },
+            "minItems": 1
+          },
+          "remove": {
+            "type": "array",
+            "description": "Members to remove from this audience. If the same identifier appears in both add and remove in a single request, remove takes precedence.",
+            "items": {
+              "$ref": "/schemas/1.0.0/core/audience-member.json"
+            },
+            "minItems": 1
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
+          },
+          "consent_basis": {
+            "type": "string",
+            "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"],
+            "description": "GDPR lawful basis for processing this audience list. Informational — not validated by the protocol, but required by some sellers operating in regulated markets (e.g. EU). When omitted, the buyer asserts they have a lawful basis appropriate to their jurisdiction."
+          }
+        },
+        "required": ["audience_id"],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, buyer-managed audiences on the account not included in this sync will be removed. Does not affect seller-managed audiences. Do not combine with an omitted audiences array or all buyer-managed audiences will be deleted."
+    },
+    "context": {
+      "$ref": "/schemas/1.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/1.0.0/core/ext.json"
+    }
+  },
+  "required": ["account"],
+  "if": {
+    "properties": { "delete_missing": { "const": true } },
+    "required": ["delete_missing"]
+  },
+  "then": {
+    "required": ["audiences"],
+    "errorMessage": "audiences is required when delete_missing is true — omitting it would delete all buyer-managed audiences on the account"
+  },
+  "additionalProperties": true
+}

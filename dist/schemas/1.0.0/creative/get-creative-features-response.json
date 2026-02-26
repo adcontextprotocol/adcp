@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/creative/get-creative-features-response.json",
+  "title": "Get Creative Features Response",
+  "description": "Response payload for get_creative_features task. Returns feature values for the evaluated creative.",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response",
+      "properties": {
+        "results": {
+          "type": "array",
+          "description": "Feature values for the evaluated creative",
+          "items": {
+            "$ref": "/schemas/1.0.0/creative/creative-feature-result.json"
+          }
+        },
+        "detail_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the vendor's full assessment report. The vendor controls what information is disclosed and access control."
+        },
+        "errors": {
+          "not": {},
+          "description": "Field must not be present in success response"
+        },
+        "context": {
+          "$ref": "/schemas/1.0.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/1.0.0/core/ext.json"
+        }
+      },
+      "required": ["results"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/1.0.0/core/error.json" }
+        },
+        "results": {
+          "not": {},
+          "description": "Field must not be present in error response"
+        },
+        "context": {
+          "$ref": "/schemas/1.0.0/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/1.0.0/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

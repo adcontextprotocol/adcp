@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/index.json",
+  "title": "AdCP Schema Registry",
+  "description": "Schema registry for AdCP 1.0.0. This version contains schemas that were added after the v2.x and v3.x release lines.",
+  "adcp_version": "1.0.0",
+  "lastUpdated": "2026-02-26",
+  "baseUrl": "/schemas/1.0.0",
+  "versioning": {
+    "note": "AdCP 1.0.0 is a frozen release containing schemas not available in v2.x or v3.x. Use /schemas/v1/ to access these schemas."
+  },
+  "schemas": {
+    "account": [
+      {
+        "path": "account/get-account-financials-request.json",
+        "$ref": "/schemas/1.0.0/account/get-account-financials-request.json"
+      },
+      {
+        "path": "account/get-account-financials-response.json",
+        "$ref": "/schemas/1.0.0/account/get-account-financials-response.json"
+      },
+      {
+        "path": "account/report-usage-request.json",
+        "$ref": "/schemas/1.0.0/account/report-usage-request.json"
+      },
+      {
+        "path": "account/report-usage-response.json",
+        "$ref": "/schemas/1.0.0/account/report-usage-response.json"
+      }
+    ],
+    "core": [
+      {
+        "path": "core/account-ref.json",
+        "$ref": "/schemas/1.0.0/core/account-ref.json"
+      },
+      {
+        "path": "core/app-item.json",
+        "$ref": "/schemas/1.0.0/core/app-item.json"
+      },
+      {
+        "path": "core/audience-member.json",
+        "$ref": "/schemas/1.0.0/core/audience-member.json"
+      },
+      {
+        "path": "core/catalog-field-mapping.json",
+        "$ref": "/schemas/1.0.0/core/catalog-field-mapping.json"
+      },
+      {
+        "path": "core/catalog.json",
+        "$ref": "/schemas/1.0.0/core/catalog.json"
+      },
+      {
+        "path": "core/catchment.json",
+        "$ref": "/schemas/1.0.0/core/catchment.json"
+      },
+      {
+        "path": "core/creative-brief-ref.json",
+        "$ref": "/schemas/1.0.0/core/creative-brief-ref.json"
+      },
+      {
+        "path": "core/creative-brief.json",
+        "$ref": "/schemas/1.0.0/core/creative-brief.json"
+      },
+      {
+        "path": "core/destination-item.json",
+        "$ref": "/schemas/1.0.0/core/destination-item.json"
+      },
+      {
+        "path": "core/education-item.json",
+        "$ref": "/schemas/1.0.0/core/education-item.json"
+      },
+      {
+        "path": "core/flight-item.json",
+        "$ref": "/schemas/1.0.0/core/flight-item.json"
+      },
+      {
+        "path": "core/hotel-item.json",
+        "$ref": "/schemas/1.0.0/core/hotel-item.json"
+      },
+      {
+        "path": "core/job-item.json",
+        "$ref": "/schemas/1.0.0/core/job-item.json"
+      },
+      {
+        "path": "core/offering-asset-group.json",
+        "$ref": "/schemas/1.0.0/core/offering-asset-group.json"
+      },
+      {
+        "path": "core/overlay.json",
+        "$ref": "/schemas/1.0.0/core/overlay.json"
+      },
+      {
+        "path": "core/price.json",
+        "$ref": "/schemas/1.0.0/core/price.json"
+      },
+      {
+        "path": "core/real-estate-item.json",
+        "$ref": "/schemas/1.0.0/core/real-estate-item.json"
+      },
+      {
+        "path": "core/reference-asset.json",
+        "$ref": "/schemas/1.0.0/core/reference-asset.json"
+      },
+      {
+        "path": "core/requirements/catalog-field-binding.json",
+        "$ref": "/schemas/1.0.0/core/requirements/catalog-field-binding.json"
+      },
+      {
+        "path": "core/requirements/catalog-requirements.json",
+        "$ref": "/schemas/1.0.0/core/requirements/catalog-requirements.json"
+      },
+      {
+        "path": "core/requirements/offering-asset-constraint.json",
+        "$ref": "/schemas/1.0.0/core/requirements/offering-asset-constraint.json"
+      },
+      {
+        "path": "core/signal-pricing-option.json",
+        "$ref": "/schemas/1.0.0/core/signal-pricing-option.json"
+      },
+      {
+        "path": "core/signal-pricing.json",
+        "$ref": "/schemas/1.0.0/core/signal-pricing.json"
+      },
+      {
+        "path": "core/store-item.json",
+        "$ref": "/schemas/1.0.0/core/store-item.json"
+      },
+      {
+        "path": "core/vehicle-item.json",
+        "$ref": "/schemas/1.0.0/core/vehicle-item.json"
+      }
+    ],
+    "creative": [
+      {
+        "path": "creative/creative-feature-result.json",
+        "$ref": "/schemas/1.0.0/creative/creative-feature-result.json"
+      },
+      {
+        "path": "creative/get-creative-features-request.json",
+        "$ref": "/schemas/1.0.0/creative/get-creative-features-request.json"
+      },
+      {
+        "path": "creative/get-creative-features-response.json",
+        "$ref": "/schemas/1.0.0/creative/get-creative-features-response.json"
+      }
+    ],
+    "enums": [
+      {
+        "path": "enums/catalog-action.json",
+        "$ref": "/schemas/1.0.0/enums/catalog-action.json"
+      },
+      {
+        "path": "enums/catalog-item-status.json",
+        "$ref": "/schemas/1.0.0/enums/catalog-item-status.json"
+      },
+      {
+        "path": "enums/catalog-type.json",
+        "$ref": "/schemas/1.0.0/enums/catalog-type.json"
+      },
+      {
+        "path": "enums/content-id-type.json",
+        "$ref": "/schemas/1.0.0/enums/content-id-type.json"
+      },
+      {
+        "path": "enums/creative-approval-status.json",
+        "$ref": "/schemas/1.0.0/enums/creative-approval-status.json"
+      },
+      {
+        "path": "enums/distance-unit.json",
+        "$ref": "/schemas/1.0.0/enums/distance-unit.json"
+      },
+      {
+        "path": "enums/transport-mode.json",
+        "$ref": "/schemas/1.0.0/enums/transport-mode.json"
+      }
+    ],
+    "media-buy": [
+      {
+        "path": "media-buy/get-media-buys-request.json",
+        "$ref": "/schemas/1.0.0/media-buy/get-media-buys-request.json"
+      },
+      {
+        "path": "media-buy/get-media-buys-response.json",
+        "$ref": "/schemas/1.0.0/media-buy/get-media-buys-response.json"
+      },
+      {
+        "path": "media-buy/sync-audiences-request.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-audiences-request.json"
+      },
+      {
+        "path": "media-buy/sync-audiences-response.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-audiences-response.json"
+      },
+      {
+        "path": "media-buy/sync-catalogs-async-response-input-required.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-catalogs-async-response-input-required.json"
+      },
+      {
+        "path": "media-buy/sync-catalogs-async-response-submitted.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-catalogs-async-response-submitted.json"
+      },
+      {
+        "path": "media-buy/sync-catalogs-async-response-working.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-catalogs-async-response-working.json"
+      },
+      {
+        "path": "media-buy/sync-catalogs-request.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-catalogs-request.json"
+      },
+      {
+        "path": "media-buy/sync-catalogs-response.json",
+        "$ref": "/schemas/1.0.0/media-buy/sync-catalogs-response.json"
+      }
+    ]
+  }
+}

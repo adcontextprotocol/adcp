@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/media-buy/sync-catalogs-async-response-submitted.json",
+  "title": "Sync Catalogs - Submitted",
+  "description": "Payload acknowledging sync_catalogs task is queued for processing.",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "/schemas/1.0.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/1.0.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

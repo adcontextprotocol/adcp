@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/1.0.0/core/requirements/catalog-field-binding.json",
+  "title": "Catalog Field Binding",
+  "description": "Maps a format template slot to a catalog item field or typed asset pool. The 'kind' field identifies the binding variant. All bindings are optional — agents can still infer mappings without them.",
+  "definitions": {
+    "ScalarBinding": {
+      "type": "object",
+      "description": "Maps an individual format asset to a catalog item field via dot-notation path.",
+      "properties": {
+        "kind": { "type": "string", "const": "scalar" },
+        "asset_id": {
+          "type": "string",
+          "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
+        },
+        "catalog_field": {
+          "type": "string",
+          "description": "Dot-notation path to the field on the catalog item (e.g., 'name', 'price.amount', 'location.city')."
+        },
+        "ext": {
+          "$ref": "/schemas/1.0.0/core/ext.json"
+        }
+      },
+      "required": ["kind", "asset_id", "catalog_field"],
+      "additionalProperties": true
+    },
+    "AssetPoolBinding": {
+      "type": "object",
+      "description": "Maps an individual format asset to a typed asset pool on the catalog item (e.g., images_landscape, images_vertical, logo). The format slot receives the first item in the pool.",
+      "properties": {
+        "kind": { "type": "string", "const": "asset_pool" },
+        "asset_id": {
+          "type": "string",
+          "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
+        },
+        "asset_group_id": {
+          "type": "string",
+          "description": "The asset_group_id on the catalog item's assets array to pull from (e.g., 'images_landscape', 'images_vertical', 'logo')."
+        },
+        "ext": {
+          "$ref": "/schemas/1.0.0/core/ext.json"
+        }
+      },
+      "required": ["kind", "asset_id", "asset_group_id"],
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/ScalarBinding" },
+    { "$ref": "#/definitions/AssetPoolBinding" },
+    {
+      "type": "object",
+      "description": "A format repeatable_group where each repetition corresponds to one catalog item. Iterates the group over catalog items in catalog item order.",
+      "properties": {
+        "kind": { "type": "string", "const": "catalog_group" },
+        "format_group_id": {
+          "type": "string",
+          "description": "The asset_group_id of a repeatable_group in the format's assets array."
+        },
+        "catalog_item": {
+          "type": "boolean",
+          "const": true,
+          "description": "Each repetition of the format's repeatable_group maps to one item from the catalog."
+        },
+        "per_item_bindings": {
+          "type": "array",
+          "description": "Scalar and asset pool bindings that apply within each repetition of the group. Nested catalog_group bindings are not permitted.",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/ScalarBinding" },
+              { "$ref": "#/definitions/AssetPoolBinding" }
+            ]
+          },
+          "minItems": 1
+        },
+        "ext": {
+          "$ref": "/schemas/1.0.0/core/ext.json"
+        }
+      },
+      "required": ["kind", "format_group_id", "catalog_item"],
+      "additionalProperties": true
+    }
+  ],
+  "examples": [
+    {
+      "description": "Scalar binding — hotel name to headline slot",
+      "data": {
+        "kind": "scalar",
+        "asset_id": "headline",
+        "catalog_field": "name"
+      }
+    },
+    {
+      "description": "Scalar binding — nested field (nightly rate)",
+      "data": {
+        "kind": "scalar",
+        "asset_id": "price_badge",
+        "catalog_field": "price.amount"
+      }
+    },
+    {
+      "description": "Asset pool binding — hero image from landscape pool",
+      "data": {
+        "kind": "asset_pool",
+        "asset_id": "hero_image",
+        "asset_group_id": "images_landscape"
+      }
+    },
+    {
+      "description": "Asset pool binding — Snap vertical background from vertical pool",
+      "data": {
+        "kind": "asset_pool",
+        "asset_id": "snap_background",
+        "asset_group_id": "images_vertical"
+      }
+    },
+    {
+      "description": "Catalog group binding — carousel where each slide is one hotel",
+      "data": {
+        "kind": "catalog_group",
+        "format_group_id": "slide",
+        "catalog_item": true,
+        "per_item_bindings": [
+          { "kind": "scalar",     "asset_id": "title", "catalog_field": "name" },
+          { "kind": "scalar",     "asset_id": "price", "catalog_field": "price.amount" },
+          { "kind": "asset_pool", "asset_id": "image", "asset_group_id": "images_landscape" }
+        ]
+      }
+    }
+  ]
+}
