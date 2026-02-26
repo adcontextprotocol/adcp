@@ -65,7 +65,7 @@ To discover all sources on an account (including seller-managed), call `sync_eve
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
   "account": { "account_id": "acct_12345" }
 }
 ```
@@ -117,7 +117,7 @@ User identifiers enable the seller to attribute conversions to ad impressions. P
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/user-match.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/user-match.json",
   "hashed_email": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   "uids": [
     { "type": "uid2", "value": "AbC123XyZ..." }
@@ -149,7 +149,7 @@ Event-specific data for attribution and reporting. For purchase events, always i
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/event-custom-data.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-custom-data.json",
   "value": 149.99,
   "currency": "USD",
   "order_id": "order_98765",
