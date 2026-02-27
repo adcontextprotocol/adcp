@@ -20,11 +20,8 @@
       "description": "Entity granularity for impression counting. Required when max_impressions is set."
     },
     "window": {
-      "description": "Time window for the max_impressions cap. Either a duration object (e.g. {\"value\": 7, \"unit\": \"days\"}) or the string \"campaign\" for the full campaign flight. Required when max_impressions is set.",
-      "oneOf": [
-        { "$ref": "/schemas/core/duration.json" },
-        { "type": "string", "const": "campaign" }
-      ]
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Time window for the max_impressions cap (e.g. {\"value\": 7, \"unit\": \"days\"} or {\"value\": 1, \"unit\": \"campaign\"} for the full flight). Required when max_impressions is set."
     }
   },
   "anyOf": [

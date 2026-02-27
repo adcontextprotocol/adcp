@@ -33,11 +33,8 @@
               "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
             },
             "window": {
-              "description": "Time window over which frequency is measured. Either a duration object (e.g. {\"value\": 7, \"unit\": \"days\"}) or the string \"campaign\" for the full campaign flight. Weekly windows ({\"value\": 7, \"unit\": \"days\"}) are typical for brand campaigns; daily windows ({\"value\": 1, \"unit\": \"days\"}) suit high-cadence direct response.",
-              "oneOf": [
-                { "$ref": "/schemas/core/duration.json" },
-                { "type": "string", "const": "campaign" }
-              ]
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Time window over which frequency is measured (e.g. {\"value\": 7, \"unit\": \"days\"} or {\"value\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
             }
           },
           "required": ["window"],
