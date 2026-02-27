@@ -98,6 +98,17 @@ Optional media-buy features. **If declared true, seller MUST honor requests usin
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `content_standards` | Full support for content standards configuration |
 
+#### creative_generation
+
+Seller-generated creative capabilities. When present, the seller can generate creatives from the buyer's catalog and brand assets and include sample previews on products in `get_products` responses. Buyers do not need to use `sync_creatives` for these campaigns.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `catalog_types` | string[] | **Required.** Catalog types that can drive creative generation (e.g., `["product", "job"]`) |
+| `sample_count` | integer | Typical number of sample previews per product |
+
+See [Seller-generated creatives](/docs/media-buy/task-reference/get_products#seller-generated-creatives) for the full workflow.
+
 #### execution
 
 Technical execution capabilities:

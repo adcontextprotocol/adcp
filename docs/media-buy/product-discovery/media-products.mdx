@@ -32,6 +32,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
 - `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
 - `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
+- `sample_creatives` (list[CreativePreview], optional): Representative creative previews the seller generated for this product. Only present when the seller declares `creative_generation` in capabilities, the buyer provides a catalog, and the product's `catalog_types` overlap. See [Seller-generated creatives](#seller-generated-creatives).
+- `total_creatives_count` (integer, optional): Total creatives the seller would generate for the full catalog on this product at execution time. Gives buyers a sense of scale beyond the `sample_creatives`.
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
 
 ### Metric optimization
@@ -693,6 +695,45 @@ Publishers include proposals when:
 - Multiple products work better together than individually
 
 Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+
+### Seller-generated creatives
+
+Some sellers generate creatives from the buyer's catalog and brand assets rather than requiring the buyer to provide creatives via `sync_creatives`. This is common for catalog-driven campaigns — dynamic job ads, sponsored product cards, dynamic travel ads.
+
+When a seller supports creative generation (declared via `media_buy.creative_generation` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)), products returned from `get_products` may include `sample_creatives` — representative previews showing how ads would render using the buyer's catalog and brand.
+
+Key characteristics:
+- **Product-scoped**: Each product shows its own previews matching its `format_ids`
+- **Addressable**: Each preview has a `generated_creative_ref` that buyers can reference in refinement feedback
+- **Sampled**: Previews are a small representative set (3-5). `total_creatives_count` indicates how many would be generated for the full catalog
+- **Refinable**: Use `buying_mode: "refine"` with `product_ids` and reference specific `generated_creative_ref` values in `requested_changes` to iterate on creative direction
+
+```json
+{
+  "product_id": "sponsored_job_listing",
+  "name": "Sponsored job listing",
+  "format_ids": [{ "agent_url": "https://seller.example.com", "id": "job_card_standard" }],
+  "catalog_types": ["job"],
+  "sample_creatives": [
+    {
+      "generated_creative_ref": "gen_sr_eng_sf",
+      "format_id": { "agent_url": "https://seller.example.com", "id": "job_card_standard" },
+      "renders": [{
+        "render_id": "r1",
+        "output_format": "url",
+        "preview_url": "https://seller.example.com/previews/abc123",
+        "role": "primary",
+        "dimensions": { "width": 600, "height": 300 }
+      }],
+      "catalog_item_ref": "job_sr_eng_sf",
+      "description": "Senior Engineer role card with salary range and remote badge"
+    }
+  ],
+  "total_creatives_count": 23
+}
+```
+
+Buyers do not need to call `sync_creatives` or use a creative agent for these campaigns. The seller handles creative production at execution time when the buyer commits via `create_media_buy`. See [`get_products` seller-generated creatives](/docs/media-buy/task-reference/get_products#seller-generated-creatives) for the full workflow.
 
 ### Delivery Forecasts
 
