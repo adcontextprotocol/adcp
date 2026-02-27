@@ -729,9 +729,11 @@ See [Property Targeting](/docs/media-buy/product-discovery/media-products#proper
 
 ## Refinement
 
-After initial discovery, use `buying_mode: "refine"` to iterate on known products or proposals. The seller skips discovery and returns updated forecasts, pricing, and package configurations reflecting your new parameters. Pass `product_ids`, `proposal_id`, or both.
+After initial discovery, use `buying_mode: "refine"` to iterate on known products or proposals. The seller skips discovery and returns updated forecasts, pricing, and package configurations reflecting your new parameters. Pass `product_ids`, `proposal_id`, or both. If the referenced products or proposal can't be found, the seller returns `PRODUCT_NOT_FOUND` or `PROPOSAL_EXPIRED` — see [Error handling](#error-handling).
 
 ### Refine products
+
+The `brief` in refine mode describes what changed — the seller does not need the original brief. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
 
 ```json test=false
 {
@@ -776,7 +778,7 @@ The seller returns the same products with up-to-date availability, forecasts, an
 
 ### Combining product_ids and proposal_id
 
-When both `product_ids` and `proposal_id` are provided, `product_ids` narrows or expands the proposal's product set. The seller returns an updated proposal reflecting only the specified products with revised allocations and forecasts.
+When both `product_ids` and `proposal_id` are provided, `product_ids` narrow or expand the proposal's product set. The seller returns an updated proposal reflecting only the specified products with revised allocations and forecasts.
 
 ### Notes
 

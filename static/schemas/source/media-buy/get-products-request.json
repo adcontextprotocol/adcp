@@ -24,7 +24,7 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "Proposal ID from a previous get_products response. The seller returns an updated version of this proposal with revised forecasts, allocations, and pricing reflecting the current brief and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'. When both are provided, product_ids narrows or expands the proposal's product set."
+      "description": "Proposal ID from a previous get_products response. The seller returns an updated version of this proposal with revised forecasts, allocations, and pricing reflecting the current brief and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'. When both are provided, product_ids narrow or expand the proposal's product set."
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
