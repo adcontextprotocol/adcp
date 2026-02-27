@@ -318,12 +318,16 @@
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "Identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. 'platform_customer_id' means the seller accepts the buyer's CRM/loyalty ID as a matchable identifier for their identity graph — only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). This is distinct from AudienceMember.external_id, which is a buyer-side deduplication key always required on every member.",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
                 "type": "string",
-                "enum": ["hashed_email", "hashed_phone", "platform_customer_id"]
+                "enum": ["hashed_email", "hashed_phone"]
               },
               "minItems": 1
+            },
+            "supports_platform_customer_id": {
+              "type": "boolean",
+              "description": "Whether the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). When true, buyers can include platform_customer_id values in AudienceMember.identifiers for matching against the seller's identity graph. Reporting on matched platform_customer_ids typically requires a clean room or the seller's own reporting surface."
             },
             "supported_uid_types": {
               "type": "array",

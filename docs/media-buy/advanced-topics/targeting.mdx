@@ -248,12 +248,12 @@ Use for **localization requirements**:
 ### Frequency Capping
 Two frequency controls can be used independently or together:
 
-**Cooldown between exposures** — `suppress_minutes` prevents back-to-back delivery:
+**Cooldown between exposures** — `suppress` prevents back-to-back delivery:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "frequency_cap": {
-    "suppress_minutes": 60
+    "suppress": { "interval": 60, "unit": "minutes" }
   }
 }
 ```
@@ -461,10 +461,10 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 ### frequency_cap
 - **Description**: Limit ad exposure frequency per entity. Two optional controls can be used independently or together.
-- **Cooldown control**: `suppress_minutes` — minimum minutes between consecutive exposures to the same entity
+- **Cooldown control**: `suppress` — minimum duration between consecutive exposures to the same entity
 - **Impression cap**: `max_impressions` + `per` + `window` — total impression ceiling per entity per time window. All three fields are required together.
 - **Use cases**: User experience management, ad fatigue prevention, complementing reach optimization goals with a hard ceiling
-- **Examples**: `{"suppress_minutes": 60}`, `{"max_impressions": 5, "per": "households", "window": {"interval": 7, "unit": "days"}}`
+- **Examples**: `{"suppress": {"interval": 60, "unit": "minutes"}}`, `{"max_impressions": 5, "per": "households", "window": {"interval": 7, "unit": "days"}}`
 
 ### age_restriction
 - **Description**: Require minimum age for compliance

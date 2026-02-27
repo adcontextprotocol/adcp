@@ -12,7 +12,7 @@
     },
     "unit": {
       "type": "string",
-      "enum": ["hours", "days", "campaign"],
+      "enum": ["minutes", "hours", "days", "campaign"],
       "description": "Time unit. 'campaign' spans the full campaign flight."
     }
   },
