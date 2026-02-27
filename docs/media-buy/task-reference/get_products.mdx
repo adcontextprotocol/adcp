@@ -123,17 +123,15 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes* | `"brief"` or `"wholesale"`. When `"brief"`, `brief` is required. When `"wholesale"`, publisher returns raw inventory for buyer-directed targeting, `brief` must not be provided, and proposals are omitted. Not required when `product_ids` is provided. |
-| `brief` | string | No | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"`. When combined with `product_ids`, provides context for forecast refinement (e.g., "Update forecast for $100k budget targeting California"). |
-| `product_ids` | string[] | No* | Specific product IDs from a previous `get_products` response. Skips discovery and returns only these products with updated forecasts. Combine with `brief` and/or `filters` to specify different budget, dates, or targeting for forecast generation. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products — requires `product_ids`. |
+| `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"`. When `buying_mode` is `"refine"`, provides context for what changed. |
+| `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. Required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations reflecting the current brief and filters. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
-
-*Either `buying_mode` or `product_ids` must be provided. When `product_ids` is present, `buying_mode` is not required.
 
 ### Filters Object
 
@@ -721,23 +719,24 @@ This allows publishers to offer run-of-network products that can't be cherry-pic
 
 See [Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/docs/governance/property/specification) for more on property lists.
 
-## Forecast Refinement
+## Refinement
 
-After initial discovery, use `product_ids` to refresh forecasts for known products with different parameters. This skips the discovery step and goes straight to forecast generation.
+After initial discovery, use `buying_mode: "refine"` with `product_ids` to iterate on known products. The seller skips discovery and returns the same products with updated forecasts, pricing, and package configurations reflecting your new parameters.
 
 ```json test=false
 {
+  "buying_mode": "refine",
   "product_ids": ["prod_premium_video", "prod_display_run_of_site"],
-  "brief": "Update forecast for $100k budget, April 1-30, targeting California and New York",
+  "brief": "Increase budget to $200k, narrow to California and New York only",
   "filters": {
     "start_date": "2026-04-01",
     "end_date": "2026-04-30",
-    "budget_range": { "min": 100000, "max": 100000, "currency": "USD" }
+    "budget_range": { "min": 200000, "max": 200000, "currency": "USD" }
   }
 }
 ```
 
-The response uses the same product format as discovery — each product includes an updated `forecast` with delivery points, method, and currency.
+The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.
 
 ## Error Handling
 

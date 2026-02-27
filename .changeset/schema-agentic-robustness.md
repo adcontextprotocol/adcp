@@ -37,8 +37,8 @@ Address schema gaps that block autonomous agent operation, plus consistency fixe
 **Content standards response (#1234)**
 - `UpdateContentStandardsResponse`: replace flat object with `UpdateContentStandardsSuccess | UpdateContentStandardsError` discriminated union (`success: true/false`) consistent with all other write operations
 
-**Product forecast refinement (#1235)**
-- `GetProductsRequest`: add `product_ids` array for refreshing forecasts on known products without full discovery; `buying_mode` not required when `product_ids` is present; `brief` and `filters` provide context for forecast generation
+**Product refinement (#1235)**
+- `GetProductsRequest`: add `buying_mode: "refine"` and `product_ids` array for iterating on known products — updated forecasts, pricing, and package configurations without re-discovery
 
 **Creative assignments (#1237)**
 - `SyncCreativesRequest.assignments`: replace ambiguous `{ creative_id: package_id[] }` map with typed array `{ creative_id, package_id, weight?, placement_ids? }[]`

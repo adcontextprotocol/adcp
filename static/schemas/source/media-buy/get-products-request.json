@@ -2,21 +2,21 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering available advertising products. Use buying_mode for initial discovery, or product_ids to refresh forecasts for known products.",
+  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products.",
   "type": "object",
   "properties": {
     "buying_mode": {
       "type": "string",
-      "enum": ["brief", "wholesale"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided. When buying_mode is 'wholesale', publishers return only products that support buyer-directed targeting and omit proposals."
+      "enum": ["brief", "wholesale", "refine"],
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on known products from a previous get_products response — requires product_ids. The seller returns the same products with updated forecasts, pricing, and package details reflecting the new brief and/or filters."
     },
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'. When combined with product_ids, provides context for forecast refinement (e.g., 'Update forecast for $100k budget targeting California')."
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'. When buying_mode is 'refine', provides context for what changed (e.g., 'Increase budget to $200k and narrow to California only')."
     },
     "product_ids": {
       "type": "array",
-      "description": "Specific product IDs to retrieve, from a previous get_products response. Skips discovery and returns only these products with updated forecasts. Combine with brief and/or filters to provide context for forecast generation (e.g., different budget, dates, or targeting).",
+      "description": "Product IDs from a previous get_products response. Required when buying_mode is 'refine'. The seller skips discovery and returns only these products with updated forecasts, pricing, and package configurations reflecting the current brief and filters.",
       "items": {
         "type": "string"
       },
@@ -55,7 +55,8 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "anyOf": [
+  "required": ["buying_mode"],
+  "oneOf": [
     {
       "properties": {
         "buying_mode": {
@@ -79,7 +80,13 @@
       ]
     },
     {
+      "properties": {
+        "buying_mode": {
+          "const": "refine"
+        }
+      },
       "required": [
+        "buying_mode",
         "product_ids"
       ]
     }

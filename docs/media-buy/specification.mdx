@@ -99,10 +99,10 @@ The Media Buy Protocol defines twelve tasks. See task reference pages for comple
 Discover advertising inventory using natural language briefs or explicit wholesale intent.
 
 **Requirements:**
-- Orchestrators MUST set `buying_mode` to either `"brief"` or `"wholesale"` for initial discovery
-- Orchestrators MAY provide `product_ids` instead of `buying_mode` to refresh forecasts for known products
-- Orchestrators SHOULD include a `brief` describing campaign objectives for curated discovery
+- Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
+- Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`
+- Orchestrators MUST include `product_ids` when `buying_mode` is `"refine"` to iterate on known products with updated forecasts, pricing, and package configurations
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
