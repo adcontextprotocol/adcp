@@ -74,7 +74,7 @@ uvx adcp \
 
 ### Using Structured Filters
 
-You can also use structured filters instead of (or in addition to) a brief:
+You can also use structured filters instead of (or in addition to) a brief. In `brief` mode, filters act as hard constraints on top of the publisher's curation — the brief describes intent, filters enforce requirements:
 
 <CodeGroup>
 
@@ -780,8 +780,8 @@ When both `product_ids` and `proposal_id` are provided, `product_ids` narrows or
 
 ### Notes
 
-- **`product_ids` and `proposal_id` are only meaningful in `refine` mode.** In `brief` or `wholesale` mode, these fields are ignored — the seller runs fresh discovery.
-- **Proposals are ephemeral.** Each proposal includes an `expires_at` timestamp. After expiration, the seller may return `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal.
+- **`product_ids` and `proposal_id` are only valid in `refine` mode.** Requests that include these fields in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
+- **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal. Proposals without `expires_at` remain valid until the seller invalidates them.
 - **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context.
 
 The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.

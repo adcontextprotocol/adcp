@@ -8,7 +8,7 @@
     "buying_mode": {
       "type": "string",
       "enum": ["brief", "wholesale", "refine"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on known products or proposals from a previous get_products response — requires at least one of product_ids or proposal_id. The seller returns updated forecasts, pricing, and package details reflecting the new brief and/or filters."
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on known products or proposals from a previous get_products response — requires at least one of product_ids or proposal_id. The seller returns updated forecasts, pricing, and product configurations reflecting the new brief and/or filters."
     },
     "brief": {
       "type": "string",
@@ -65,7 +65,9 @@
       "properties": {
         "buying_mode": {
           "const": "brief"
-        }
+        },
+        "product_ids": false,
+        "proposal_id": false
       },
       "required": [
         "buying_mode",
@@ -77,7 +79,9 @@
         "buying_mode": {
           "const": "wholesale"
         },
-        "brief": false
+        "brief": false,
+        "product_ids": false,
+        "proposal_id": false
       },
       "required": [
         "buying_mode"
