@@ -125,6 +125,7 @@ Technical execution capabilities:
 | `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
@@ -494,7 +495,9 @@ const buy = await client.createMediaBuy({
           "gb_outward": true,
           "gb_full": false,
           "ca_fsa": true
-        }
+        },
+        "device_platform": true,
+        "device_type": true
       }
     },
     "conversion_tracking": {

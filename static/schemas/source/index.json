@@ -42,6 +42,10 @@
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"
         },
+        "geo-breakdown-support": {
+          "$ref": "/schemas/core/geo-breakdown-support.json",
+          "description": "Geographic breakdown capability declaration for reporting"
+        },
         "format": {
           "$ref": "/schemas/core/format.json",
           "description": "Represents a creative format with its requirements"
@@ -568,6 +572,10 @@
           "$ref": "/schemas/enums/sort-direction.json",
           "description": "Sort direction for list queries (asc, desc)"
         },
+        "sort-metric": {
+          "$ref": "/schemas/enums/sort-metric.json",
+          "description": "Numeric delivery metrics available for sorting breakdown rows"
+        },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
           "description": "Type of task history entry (request, response)"
@@ -612,6 +620,10 @@
           "$ref": "/schemas/enums/device-platform.json",
           "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
         },
+        "device-type": {
+          "$ref": "/schemas/enums/device-type.json",
+          "description": "Device form factor categories for targeting and reporting (desktop, mobile, tablet, ctv, dooh, unknown)"
+        },
         "signal-value-type": {
           "$ref": "/schemas/enums/signal-value-type.json",
           "description": "Signal value types for targeting (binary, categorical, numeric)"
@@ -639,6 +651,10 @@
         "attribution-model": {
           "$ref": "/schemas/enums/attribution-model.json",
           "description": "Attribution model used for conversion measurement"
+        },
+        "audience-source": {
+          "$ref": "/schemas/enums/audience-source.json",
+          "description": "Origin of an audience segment in delivery reporting (synced, platform, third_party, lookalike, retargeting, unknown)"
         },
         "wcag-level": {
           "$ref": "/schemas/enums/wcag-level.json",

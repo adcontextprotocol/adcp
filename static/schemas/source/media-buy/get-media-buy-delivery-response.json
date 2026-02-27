@@ -335,6 +335,177 @@
                           }
                         ]
                       }
+                    },
+                    "by_geo": {
+                      "type": "array",
+                      "description": "Delivery by geographic area within this package. Available when the buyer requests geo breakdown via reporting_dimensions and the seller supports it. Each dimension's rows are independent slices that should sum to the package total.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "geo_level": {
+                                "$ref": "/schemas/enums/geo-level.json",
+                                "description": "Geographic level of this entry (country, region, metro, postal_area)"
+                              },
+                              "system": {
+                                "type": "string",
+                                "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
+                              },
+                              "geo_code": {
+                                "type": "string",
+                                "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+                              },
+                              "geo_name": {
+                                "type": "string",
+                                "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
+                              }
+                            },
+                            "required": [
+                              "geo_level",
+                              "geo_code",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_geo_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_geo is present (false means the list is complete)."
+                    },
+                    "by_device_type": {
+                      "type": "array",
+                      "description": "Delivery by device form factor within this package. Available when the buyer requests device_type breakdown via reporting_dimensions and the seller supports it.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "device_type": {
+                                "$ref": "/schemas/enums/device-type.json",
+                                "description": "Device form factor (desktop, mobile, tablet, ctv, dooh, unknown)"
+                              }
+                            },
+                            "required": [
+                              "device_type",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_device_type_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_device_type was truncated. Sellers MUST return this flag whenever by_device_type is present (false means the list is complete)."
+                    },
+                    "by_device_platform": {
+                      "type": "array",
+                      "description": "Delivery by operating system within this package. Available when the buyer requests device_platform breakdown via reporting_dimensions and the seller supports it. Useful for CTV campaigns where tvOS vs Roku OS vs Fire OS matters.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "device_platform": {
+                                "$ref": "/schemas/enums/device-platform.json",
+                                "description": "Operating system platform"
+                              }
+                            },
+                            "required": [
+                              "device_platform",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_device_platform_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_device_platform was truncated. Sellers MUST return this flag whenever by_device_platform is present (false means the list is complete)."
+                    },
+                    "by_audience": {
+                      "type": "array",
+                      "description": "Delivery by audience segment within this package. Available when the buyer requests audience breakdown via reporting_dimensions and the seller supports it. Only 'synced' audiences are directly targetable via the targeting overlay; other sources are informational.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "audience_id": {
+                                "type": "string",
+                                "description": "Audience segment identifier. For 'synced' source, matches audience_id from sync_audiences. For other sources, seller-defined."
+                              },
+                              "audience_source": {
+                                "$ref": "/schemas/enums/audience-source.json",
+                                "description": "Origin of the audience segment (synced, platform, third_party, lookalike, retargeting, unknown)"
+                              },
+                              "audience_name": {
+                                "type": "string",
+                                "description": "Human-readable audience segment name"
+                              }
+                            },
+                            "required": [
+                              "audience_id",
+                              "audience_source",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_audience_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
+                    },
+                    "by_placement": {
+                      "type": "array",
+                      "description": "Delivery by placement within this package. Available when the buyer requests placement breakdown via reporting_dimensions and the seller supports it. Placement IDs reference the product's placements array.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "placement_id": {
+                                "type": "string",
+                                "description": "Placement identifier from the product's placements array"
+                              },
+                              "placement_name": {
+                                "type": "string",
+                                "description": "Human-readable placement name"
+                              }
+                            },
+                            "required": [
+                              "placement_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_placement_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
                     }
                   },
                   "required": [

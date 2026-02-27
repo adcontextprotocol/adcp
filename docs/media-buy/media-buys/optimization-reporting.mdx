@@ -415,13 +415,21 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
     "spend": 5625.00,
     "clicks": 250
   },
-  "by_geography": [
+  "by_package": [
     {
-      "city": "New York",
-      "state": "NY",
-      "country": "US",
-      "impressions": 45000,
-      "spend": 2025.00
+      "package_id": "pkg_001",
+      "impressions": 125000,
+      "spend": 5625.00,
+      "by_geo": [
+        {
+          "geo_level": "region",
+          "geo_code": "US-NY",
+          "geo_name": "New York",
+          "impressions": 45000,
+          "spend": 2025.00
+        }
+      ],
+      "by_geo_truncated": false
     }
   ]
 }
@@ -823,9 +831,21 @@ Publishers can leverage performance indices to:
 - Aggregate performance patterns may be used to improve overall platform performance
 - Individual campaign details remain confidential to the buyer-publisher relationship
 
-### Dimensional Performance (Future)
+### Dimension breakdowns
 
-Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
+Delivery data can be broken down across multiple dimensions within each package. Buyers request specific breakdowns via the `reporting_dimensions` parameter on `get_media_buy_delivery`. Each breakdown appears as a `by_*` array within `by_package` items, following the same composition pattern as `by_creative`.
+
+| Dimension | Breakdown field | Key fields | Capability flag |
+|-----------|----------------|------------|-----------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `geo_name` | `supports_geo_breakdown` (object — declares available levels/systems) |
+| Device type | `by_device_type` | `device_type` | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform` | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `audience_name` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `placement_name` | `supports_placement_breakdown` |
+
+Each breakdown entry inherits all fields from `delivery-metrics` (impressions, spend, clicks, conversions, etc.) plus its dimension-specific identifier fields. Every entry requires at minimum its identifier(s), `impressions`, and `spend`.
+
+Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional rows exist beyond the requested `limit`.
 
 ## Targeting Consistency
 Reporting aligns with AdCP's [Targeting](/docs/media-buy/advanced-topics/targeting) approach, enabling:

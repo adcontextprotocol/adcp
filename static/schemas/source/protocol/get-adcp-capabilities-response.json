@@ -234,6 +234,10 @@
                   "type": "boolean",
                   "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
                 },
+                "device_type": {
+                  "type": "boolean",
+                  "description": "Whether seller supports device type targeting (form factor: desktop, mobile, tablet, ctv, dooh, unknown). When true, seller supports both device_type (include) and device_type_exclude (exclude) in targeting overlays."
+                },
                 "language": {
                   "type": "boolean",
                   "description": "Whether seller supports language targeting (ISO 639-1 codes)"
