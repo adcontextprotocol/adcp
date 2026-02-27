@@ -88,7 +88,7 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 
 ## Tasks
 
-The Media Buy Protocol defines thirteen tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -101,8 +101,9 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 **Requirements:**
 - Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
 - Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
-- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`
+- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
 - Orchestrators MUST include at least one of `product_ids` or `proposal_id` when `buying_mode` is `"refine"` to iterate on known products or proposals
+- Orchestrators MAY include `requested_changes` when `buying_mode` is `"refine"` to describe what to adjust
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match

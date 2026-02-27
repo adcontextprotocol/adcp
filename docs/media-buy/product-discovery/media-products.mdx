@@ -637,7 +637,7 @@ The `tags` field enables grouping allocations by dimension:
 
 ### Iterating on Proposals
 
-Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. The seller returns an updated proposal with revised allocations, forecasts, and pricing reflecting the new brief and filters:
+Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. Use `requested_changes` to describe what to adjust — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
 
 ```
 // Initial discovery
@@ -652,7 +652,7 @@ get_products({
 get_products({
   buying_mode: "refine",
   proposal_id: "swiss_balanced_v1",
-  brief: "focus more on German speakers - try 60/40 instead of 40/60"
+  requested_changes: "focus more on German speakers - try 60/40 instead of 40/60"
 })
 
 // Seller returns an updated proposal with revised allocations

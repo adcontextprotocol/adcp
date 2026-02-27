@@ -125,8 +125,9 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products or proposals — requires at least one of `product_ids` or `proposal_id`. |
-| `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"`. When `buying_mode` is `"refine"`, provides context for what changed. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products or proposals — requires at least one of `product_ids` or `proposal_id`. Use `requested_changes` to describe what to adjust. |
+| `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
+| `requested_changes` | string | No | Natural language description of what to change when refining products or proposals (e.g., `"Increase budget to $200k and narrow to California only"`). Only valid when `buying_mode` is `"refine"`. The seller does not need the original brief — describe only the delta. |
 | `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations. |
 | `proposal_id` | string | Conditional | Proposal ID from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns an updated proposal with revised forecasts, allocations, and pricing. When combined with `product_ids`, narrows or expands the proposal's product set. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
@@ -733,13 +734,13 @@ After initial discovery, use `buying_mode: "refine"` to iterate on known product
 
 ### Refine products
 
-The `brief` in refine mode describes what changed — the seller does not need the original brief. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
+Use `requested_changes` to describe what to adjust — the seller does not need the original brief. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
 
 ```json test=false
 {
   "buying_mode": "refine",
   "product_ids": ["prod_premium_video", "prod_display_run_of_site"],
-  "brief": "Increase budget to $200k, narrow to California and New York only",
+  "requested_changes": "Increase budget to $200k, narrow to California and New York only",
   "filters": {
     "start_date": "2026-04-01",
     "end_date": "2026-04-30",
@@ -754,7 +755,7 @@ The `brief` in refine mode describes what changed — the seller does not need t
 {
   "buying_mode": "refine",
   "proposal_id": "prop_awareness_q2",
-  "brief": "Shift more budget toward video, extend through May",
+  "requested_changes": "Shift more budget toward video, extend through May",
   "filters": {
     "start_date": "2026-04-01",
     "end_date": "2026-05-31",
@@ -782,11 +783,11 @@ When both `product_ids` and `proposal_id` are provided, `product_ids` narrow or 
 
 ### Notes
 
-- **`product_ids` and `proposal_id` are only valid in `refine` mode.** Requests that include these fields in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
+- **`product_ids`, `proposal_id`, and `requested_changes` are only valid in `refine` mode.** Requests that include these fields in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal. Proposals without `expires_at` remain valid until the seller invalidates them.
-- **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context.
+- **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context. Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 
-The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.
+The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends based on `requested_changes` and filters. Call refine as many times as needed before committing to a `create_media_buy`.
 
 ## Error Handling
 
