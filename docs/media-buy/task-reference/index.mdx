@@ -142,11 +142,11 @@ Long-running tasks provide:
 2. **Find Inventory**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
 3. **Refine Products**: Re-call [`get_products`](/docs/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
 4. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
-4. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
-5. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
-6. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
-7. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
-8. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+5. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
+6. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
+7. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
+8. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
+9. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 
 For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
 

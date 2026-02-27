@@ -626,25 +626,28 @@ The `tags` field enables grouping allocations by dimension:
 
 ### Iterating on Proposals
 
-Proposals can be refined through session continuity. Within the same session (`context_id` in MCP, `contextId` in A2A), subsequent `get_products` calls carry conversation history, so the publisher can interpret follow-up briefs in context:
+Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. The seller returns an updated proposal with revised allocations, forecasts, and pricing reflecting the new brief and filters:
 
 ```
-// Initial request
+// Initial discovery
 get_products({
+  buying_mode: "brief",
   brief: "Swiss campaign, $50k, 50% desktop/20% mobile/30% in-app, 40% German/60% French"
 })
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Follow-up within the same session
+// Refine the proposal
 get_products({
+  buying_mode: "refine",
+  proposal_id: "swiss_balanced_v1",
   brief: "focus more on German speakers - try 60/40 instead of 40/60"
 })
 
-// Publisher remembers the conversation and returns an updated proposal
+// Seller returns an updated proposal with revised allocations
 ```
 
-See [Context & Sessions](/docs/building/integration/context-sessions) for how session continuity works across protocols.
+See [`get_products` refinement](/docs/media-buy/task-reference/get_products#refinement) for the full workflow and examples.
 
 ### Executing a Proposal
 

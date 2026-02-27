@@ -82,6 +82,7 @@ You can also use structured filters instead of (or in addition to) a brief:
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -103,6 +104,7 @@ from adcp.testing import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -128,6 +130,7 @@ asyncio.run(discover_with_filters())
 | `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations. |
 | `proposal_id` | string | Conditional | Proposal ID from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns an updated proposal with revised forecasts, allocations, and pricing. When combined with `product_ids`, narrows or expands the proposal's product set. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
+| `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
@@ -504,6 +507,7 @@ import { testAgent } from '@adcp/client/testing';
 
 // Find products that only accept IAB standard formats
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -524,6 +528,7 @@ from adcp.testing import test_agent
 async def discover_standard_formats():
     # Find products that only accept IAB standard formats
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -549,6 +554,7 @@ import { testAgent } from '@adcp/client/testing';
 
 // Discover retail media products for specific catalog items
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -578,6 +584,7 @@ from adcp.testing import test_agent
 async def discover_commerce_products():
     # Discover retail media products for specific catalog items
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -602,7 +609,7 @@ asyncio.run(discover_commerce_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  '{"buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -754,6 +761,29 @@ After initial discovery, use `buying_mode: "refine"` to iterate on known product
 }
 ```
 
+### Refresh forecasts
+
+To refresh forecasts and pricing without changing anything, pass only `product_ids`:
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "product_ids": ["prod_premium_video", "prod_display_run_of_site"]
+}
+```
+
+The seller returns the same products with up-to-date availability, forecasts, and pricing.
+
+### Combining product_ids and proposal_id
+
+When both `product_ids` and `proposal_id` are provided, `product_ids` narrows or expands the proposal's product set. The seller returns an updated proposal reflecting only the specified products with revised allocations and forecasts.
+
+### Notes
+
+- **`product_ids` and `proposal_id` are only meaningful in `refine` mode.** In `brief` or `wholesale` mode, these fields are ignored — the seller runs fresh discovery.
+- **Proposals are ephemeral.** Each proposal includes an `expires_at` timestamp. After expiration, the seller may return `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal.
+- **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context.
+
 The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.
 
 ## Error Handling
@@ -762,6 +792,8 @@ The response uses the same format as discovery. Each product reflects the update
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
+| `PRODUCT_NOT_FOUND` | One or more `product_ids` are unknown or no longer available | Remove invalid IDs and retry |
+| `PROPOSAL_EXPIRED` | The referenced `proposal_id` has passed its `expires_at` timestamp | Re-discover products with a new `brief` or `wholesale` request |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 
 ### Authentication Comparison
