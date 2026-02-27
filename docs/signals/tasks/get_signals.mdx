@@ -123,7 +123,7 @@ The response structure is identical across protocols, with only the transport wr
     - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
     - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
     - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
-    - `model: "flat_fee"` — `amount` (fixed charge per reporting period), `currency` (ISO 4217)
+    - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
 
 Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
@@ -226,7 +226,7 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
 ```json
 {
   "$schema": "/schemas/signals/get-signals-response.json",
-  "message": "Found 1 segment matching your criteria. Two pricing options are available: CPM at $3.50 or 15% of media spend.",
+  "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
   "context_id": "ctx-signals-456",
   "signals": [
     {
@@ -259,6 +259,13 @@ Some signals offer multiple pricing models. The buyer selects one and passes its
           "model": "percent_of_media",
           "percent": 15,
           "max_cpm": 1.50,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_eco_flat",
+          "model": "flat_fee",
+          "amount": 5000,
+          "period": "monthly",
           "currency": "USD"
         }
       ]
@@ -719,7 +726,7 @@ def generate_signals_message(signals, request):
                 cap = f", capped at ${p.max_cpm:.2f} CPM" if getattr(p, "max_cpm", None) else ""
                 price_commentary = f"Priced at {p.percent}% of media spend{cap}."
             elif p.model == "flat_fee":
-                price_commentary = f"Flat fee of {p.amount} {p.currency} per reporting period."
+                price_commentary = f"Flat fee of {p.amount} {p.currency} per {p.period}."
             else:
                 price_commentary = ""
         else:

@@ -251,12 +251,36 @@
                   "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
                 },
                 "keyword_targets": {
-                  "type": "boolean",
-                  "description": "Whether seller supports keyword targeting via targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy"
+                  "type": "object",
+                  "description": "Keyword targeting capabilities. Presence indicates support for targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for keyword targets. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
                 },
                 "negative_keywords": {
-                  "type": "boolean",
-                  "description": "Whether seller supports negative keyword targeting via targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy"
+                  "type": "object",
+                  "description": "Negative keyword capabilities. Presence indicates support for targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for negative keywords. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
                 },
                 "geo_proximity": {
                   "type": "object",
@@ -294,10 +318,10 @@
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "Identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "description": "Identifier types accepted for audience matching. Buyers should only send identifiers the seller supports. 'platform_customer_id' means the seller accepts the buyer's CRM/loyalty ID as a matchable identifier for their identity graph — only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). This is distinct from AudienceMember.external_id, which is a buyer-side deduplication key always required on every member.",
               "items": {
                 "type": "string",
-                "enum": ["hashed_email", "hashed_phone", "external_id"]
+                "enum": ["hashed_email", "hashed_phone", "platform_customer_id"]
               },
               "minItems": 1
             },

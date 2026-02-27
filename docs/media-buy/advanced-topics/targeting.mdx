@@ -511,7 +511,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
   - `exact` — matches the keyword query only
 - **Per-keyword bid**: The optional `bid_price` overrides the package-level `bid_price` for that keyword. Inherits the `max_bid` interpretation from the pricing option: when `max_bid` is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package `bid_price` applies.
 - **Use cases**: Search campaigns, retail media sponsored products, keyword-based intent targeting
-- **Note**: Seller must declare `execution.targeting.keyword_targets: true` in `get_adcp_capabilities`. Use `keyword_targets_add` and `keyword_targets_remove` in `update_media_buy` to add or update keywords incrementally after launch. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
+- **Note**: Seller must declare `execution.targeting.keyword_targets` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Only use match types the seller declares — sellers must reject unsupported match types. Use `keyword_targets_add` and `keyword_targets_remove` in `update_media_buy` to add or update keywords incrementally after launch. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
 
 ```json
 {
@@ -528,7 +528,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Description**: Exclude specific keywords from delivery. Queries matching these keywords will not trigger the ad.
 - **Format**: Array of objects with `keyword` and `match_type` (`broad`, `phrase`, or `exact`)
 - **Use cases**: Prevent wasteful spend on irrelevant queries, exclude competitor brand terms
-- **Note**: Seller must declare support in `get_adcp_capabilities`. Use `negative_keywords_add` and `negative_keywords_remove` in `update_media_buy` to add/remove negatives incrementally after launch.
+- **Note**: Seller must declare `execution.targeting.negative_keywords` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Use `negative_keywords_add` and `negative_keywords_remove` in `update_media_buy` to add/remove negatives incrementally after launch.
 
 ```json
 {

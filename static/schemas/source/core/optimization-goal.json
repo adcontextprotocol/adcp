@@ -34,7 +34,8 @@
             },
             "window": {
               "type": "string",
-              "description": "Time window over which frequency is measured (e.g., '1d', '7d', '30d', 'campaign'). 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
+              "pattern": "^([1-9][0-9]*[hd]|campaign)$",
+              "description": "Time window over which frequency is measured. Format: integer + unit ('h' for hours, 'd' for days), e.g. '1h', '6h', '1d', '7d', '30d'. The special value 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
             }
           },
           "required": ["window"],
