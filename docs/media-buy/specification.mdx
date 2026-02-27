@@ -102,7 +102,7 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
 - Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`
-- Orchestrators MUST include `product_ids` when `buying_mode` is `"refine"` to iterate on known products with updated forecasts, pricing, and package configurations
+- Orchestrators MUST include at least one of `product_ids` or `proposal_id` when `buying_mode` is `"refine"` to iterate on known products or proposals
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match

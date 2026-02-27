@@ -123,9 +123,10 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products — requires `product_ids`. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products or proposals — requires at least one of `product_ids` or `proposal_id`. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"`. When `buying_mode` is `"refine"`, provides context for what changed. |
-| `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. Required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations reflecting the current brief and filters. |
+| `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations. |
+| `proposal_id` | string | Conditional | Proposal ID from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns an updated proposal with revised forecasts, allocations, and pricing. When combined with `product_ids`, narrows or expands the proposal's product set. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
@@ -721,7 +722,9 @@ See [Property Targeting](/docs/media-buy/product-discovery/media-products#proper
 
 ## Refinement
 
-After initial discovery, use `buying_mode: "refine"` with `product_ids` to iterate on known products. The seller skips discovery and returns the same products with updated forecasts, pricing, and package configurations reflecting your new parameters.
+After initial discovery, use `buying_mode: "refine"` to iterate on known products or proposals. The seller skips discovery and returns updated forecasts, pricing, and package configurations reflecting your new parameters. Pass `product_ids`, `proposal_id`, or both.
+
+### Refine products
 
 ```json test=false
 {
@@ -736,7 +739,22 @@ After initial discovery, use `buying_mode: "refine"` with `product_ids` to itera
 }
 ```
 
-The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.
+### Refine a proposal
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "proposal_id": "prop_awareness_q2",
+  "brief": "Shift more budget toward video, extend through May",
+  "filters": {
+    "start_date": "2026-04-01",
+    "end_date": "2026-05-31",
+    "budget_range": { "min": 300000, "max": 300000, "currency": "USD" }
+  }
+}
+```
+
+The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends for the new scope. Call refine as many times as needed before committing to a `create_media_buy`.
 
 ## Error Handling
 
