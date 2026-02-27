@@ -11,8 +11,38 @@
         "kind": { "type": "string", "const": "metric" },
         "metric": {
           "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits"],
-          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks')."
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
+          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks')."
+        },
+        "reach_unit": {
+          "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
+          "description": "Unit for reach measurement. Required when metric is 'reach'. Must be a value declared in the product's metric_optimization.supported_reach_units."
+        },
+        "target_frequency": {
+          "type": "object",
+          "description": "Target frequency band for reach optimization. Only applicable when metric is 'reach'. Frames frequency as an optimization signal: the seller should treat impressions toward entities already within the [min, max] band as lower-value, and impressions toward unreached entities as higher-value. This shifts budget toward fresh reach rather than re-reaching known users. When omitted, the seller maximizes unique reach without a frequency constraint. A hard cap can still be layered via targeting_overlay.frequency_cap if a ceiling is needed.",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum frequency for an entity to be considered meaningfully reached within the window. Impressions that would bring an entity below this threshold are treated as high-value (growing reach). When omitted, the seller uses their platform default (typically 1)."
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
+            },
+            "window": {
+              "type": "string",
+              "description": "Time window over which frequency is measured (e.g., '1d', '7d', '30d', 'campaign'). 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
+            }
+          },
+          "required": ["window"],
+          "anyOf": [
+            { "required": ["min"] },
+            { "required": ["max"] }
+          ],
+          "additionalProperties": true
         },
         "view_duration_seconds": {
           "type": "number",
