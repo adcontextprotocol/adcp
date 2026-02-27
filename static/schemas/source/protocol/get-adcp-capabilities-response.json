@@ -240,7 +240,7 @@
                 },
                 "keyword_targets": {
                   "type": "boolean",
-                  "description": "Whether seller supports keyword targeting via targeting_overlay.keyword_targets"
+                  "description": "Whether seller supports keyword targeting via targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy"
                 },
                 "negative_keywords": {
                   "type": "boolean",

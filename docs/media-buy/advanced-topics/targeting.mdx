@@ -450,7 +450,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
   - `exact` — matches the keyword query only
 - **Per-keyword bid**: The optional `bid_price` overrides the package-level `bid_price` for that keyword. Inherits the `max_bid` interpretation from the pricing option: when `max_bid` is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package `bid_price` applies.
 - **Use cases**: Search campaigns, retail media sponsored products, keyword-based intent targeting
-- **Note**: Seller must declare `execution.targeting.keyword_targets: true` in `get_adcp_capabilities`. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
+- **Note**: Seller must declare `execution.targeting.keyword_targets: true` in `get_adcp_capabilities`. Use `keyword_targets_add` and `keyword_targets_remove` in `update_media_buy` to add or update keywords incrementally after launch. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
 
 ```json
 {
@@ -458,7 +458,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
   "keyword_targets": [
     { "keyword": "running shoes", "match_type": "broad", "bid_price": 0.45 },
     { "keyword": "trail running shoes womens", "match_type": "phrase", "bid_price": 0.85 },
-    { "keyword": "nike pegasus 41", "match_type": "exact", "bid_price": 1.20 }
+    { "keyword": "acme cloudrunner 5", "match_type": "exact", "bid_price": 1.20 }
   ]
 }
 ```

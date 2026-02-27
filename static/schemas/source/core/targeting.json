@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance), age verification (alcohol, gambling), device platform (app compatibility), and language (localization).",
+  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -260,6 +260,7 @@
         "properties": {
           "keyword": {
             "type": "string",
+            "minLength": 1,
             "description": "The keyword to target"
           },
           "match_type": {
@@ -275,7 +276,8 @@
         },
         "required": ["keyword", "match_type"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     },
     "negative_keywords": {
       "type": "array",
@@ -285,6 +287,7 @@
         "properties": {
           "keyword": {
             "type": "string",
+            "minLength": 1,
             "description": "The keyword to exclude"
           },
           "match_type": {
@@ -295,7 +298,8 @@
         },
         "required": ["keyword", "match_type"],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
     }
   },
   "additionalProperties": true
