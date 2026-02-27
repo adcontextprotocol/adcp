@@ -48,9 +48,12 @@
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
-    "catalog": {
-      "$ref": "/schemas/core/catalog.json",
-      "description": "Catalog this package promotes. Makes the package catalog-driven: one budget envelope, platform optimizes across items. Reference a synced catalog by catalog_id with optional selectors to narrow scope."
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
     },
     "optimization_goals": {
       "type": "array",

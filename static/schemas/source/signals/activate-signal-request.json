@@ -15,9 +15,9 @@
       "type": "string",
       "description": "The universal identifier for the signal to activate"
     },
-    "deployments": {
+    "destinations": {
       "type": "array",
-      "description": "Target deployment(s) for activation. If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
+      "description": "Target destination(s) for activation. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
       "items": {
         "$ref": "/schemas/core/destination.json"
       },
@@ -27,9 +27,9 @@
       "type": "string",
       "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time; pass this same value in report_usage for billing verification."
     },
-    "account_id": {
-      "type": "string",
-      "description": "The caller's account with the signals agent. Associates this activation with a commercial relationship established via sync_accounts."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account for this activation. Associates with a commercial relationship established via sync_accounts."
     },
     "buyer_campaign_ref": {
       "type": "string",
@@ -44,7 +44,7 @@
   },
   "required": [
     "signal_agent_segment_id",
-    "deployments"
+    "destinations"
   ],
   "additionalProperties": true
 }

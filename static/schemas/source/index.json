@@ -86,6 +86,14 @@
           "$ref": "/schemas/core/pagination-response.json",
           "description": "Standard cursor-based pagination metadata for list response schemas"
         },
+        "date-range": {
+          "$ref": "/schemas/core/date-range.json",
+          "description": "Date range with inclusive start and end calendar dates"
+        },
+        "datetime-range": {
+          "$ref": "/schemas/core/datetime-range.json",
+          "description": "Datetime range with inclusive start and end timestamps"
+        },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
           "description": "Sub-asset for multi-asset creative formats"
@@ -687,6 +695,10 @@
         "error-code": {
           "$ref": "/schemas/enums/error-code.json",
           "description": "Standard error code vocabulary for agent recovery classification"
+        },
+        "consent-basis": {
+          "$ref": "/schemas/enums/consent-basis.json",
+          "description": "GDPR Article 6(1) lawful basis for processing personal data"
         }
       }
     },

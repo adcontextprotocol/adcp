@@ -2,31 +2,28 @@
 "adcontextprotocol": major
 ---
 
-Address 17 schema gaps that block autonomous agent operation.
+Address schema gaps that block autonomous agent operation, plus consistency fixes.
 
 **Error handling (#1223)**
 - `Error`: add `recovery` field (`transient | correctable | terminal`) so agents can classify failures without escalating every error to humans
 - New `enums/error-code.json`: standard vocabulary (`RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `PRODUCT_UNAVAILABLE`, `PROPOSAL_EXPIRED`, `BUDGET_TOO_LOW`, `CREATIVE_REJECTED`, `UNSUPPORTED_FEATURE`, `AUDIENCE_TOO_SMALL`, `ACCOUNT_NOT_FOUND`, `ACCOUNT_PAYMENT_REQUIRED`, `ACCOUNT_SUSPENDED`)
 
 **Idempotency (#1224)**
-- `CreateMediaBuyRequest`, `UpdateMediaBuyRequest`, `SyncCreativesRequest`: add `idempotency_key` for safe retries after timeouts
-- `CreateMediaBuyRequest.buyer_ref`: document deduplication semantics
+- `UpdateMediaBuyRequest`, `SyncCreativesRequest`: add `idempotency_key` for safe retries after timeouts
+- `CreateMediaBuyRequest.buyer_ref`: document deduplication semantics (buyer_ref is the idempotency key for create)
 
 **Media buy lifecycle (#1225)**
 - `MediaBuyStatus`: add `rejected` enum value for post-creation seller declines
 - `MediaBuy`: add `rejection_reason` field present when `status === rejected`
 
 **Protocol version (#1226)**
-- `GetAdCPCapabilitiesResponse.adcp.major_versions`: document that buyers MUST send `x-adcp-version` HTTP header on all requests
+- `GetAdCPCapabilitiesResponse.adcp.major_versions`: document version negotiation via capabilities handshake; HTTP header is optional
 
 **Async polling (#1227)**
 - `GetAdCPCapabilitiesResponse.media_buy`: add `polling` object (`supported`, `recommended_interval_seconds`, `max_wait_seconds`) for agents without persistent webhook endpoints
 
-**Capabilities completeness (#1228)**
-- `GetAdCPCapabilitiesResponse.media_buy`: add `async_tasks` list, `supports_proposals` flag, and `limits` object (`max_packages_per_buy`, `min_budget`, `min_flight_days`, `max_creatives_per_sync`)
-
 **Package response (#1229)**
-- `Package`: add `catalog` and `format_ids` fields echoed from the create request so agents can verify what the seller stored
+- `Package`: add `catalogs` (array) and `format_ids` fields echoed from the create request so agents can verify what the seller stored
 
 **Signal deactivation (#1231)**
 - `ActivateSignalRequest`: add `action: activate | deactivate` field with `activate` default; deactivation removes segments from downstream platforms to support GDPR/CCPA compliance
@@ -43,9 +40,6 @@ Address 17 schema gaps that block autonomous agent operation.
 **Forecast task (#1235)**
 - New `get_forecast` task with `GetForecastRequest` and `GetForecastResponse` schemas; accepts `product_id`, `budget`, `start_date`, `end_date`, optional `targeting_overlay` and `optimization_goal`; returns a `DeliveryForecast` without requiring a full `get_products` call
 
-**Performance feedback (#1236)**
-- `ProvidePerformanceFeedbackRequest`: add `metric_value`, `metric_unit`, `measurement_provider`, `measurement_methodology`, `feedback_type` (`optimization_signal | correction | dispute`); deprecate `performance_index` in favor of `metric_value + metric_type`
-
 **Creative assignments (#1237)**
 - `SyncCreativesRequest.assignments`: replace ambiguous `{ creative_id: package_id[] }` map with typed array `{ creative_id, package_id, weight?, placement_ids? }[]`
 
@@ -55,3 +49,27 @@ Address 17 schema gaps that block autonomous agent operation.
 
 **Creative delivery pagination (#1239)**
 - `GetCreativeDeliveryRequest.pagination`: replace ad-hoc `limit/offset` with standard `PaginationRequest` cursor-based pagination
+
+**Signals account consistency (#1242)**
+- `GetSignalsRequest`, `ActivateSignalRequest`: replace `account_id: string` with `account: $ref account-ref.json` for consistency with all other endpoints
+
+**Signals field naming (#1244)**
+- `ActivateSignalRequest`: rename `deployments` to `destinations` for consistency with `GetSignalsRequest`
+
+**Creative features billing (#1245)**
+- `GetCreativeFeaturesRequest`: add optional `account` field for governance agents that charge per evaluation
+
+**Consent basis enum (#1246)**
+- New `enums/consent-basis.json`: extract inline GDPR consent basis enum to shared schema
+
+**Date range extraction (#1247)**
+- New `core/date-range.json` and `core/datetime-range.json`: extract duplicated inline period objects from financials, usage, and feedback schemas
+
+**Creative features clarity (#1248)**
+- `GetCreativeFeaturesRequest`/`Response`: clarify description to make evaluation semantics explicit
+
+**Remove non-standard keyword (#1250)**
+- `SyncAudiencesRequest`: remove ajv-specific `errorMessage` keyword that violates JSON Schema draft-07
+
+**Package catalogs**
+- `Package`, `PackageRequest`: change `catalog` (single) to `catalogs` (array) to support multi-catalog packages (e.g., product + store catalogs)

@@ -10,21 +10,8 @@
       "description": "Account to query financials for. Must be an operator-billed account."
     },
     "period": {
-      "type": "object",
-      "description": "Date range for the spend summary. Defaults to the current billing cycle if omitted.",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date",
-          "description": "Period start (ISO 8601 date)"
-        },
-        "end": {
-          "type": "string",
-          "format": "date",
-          "description": "Period end (ISO 8601 date)"
-        }
-      },
-      "required": ["start", "end"]
+      "$ref": "/schemas/core/date-range.json",
+      "description": "Date range for the spend summary. Defaults to the current billing cycle if omitted."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

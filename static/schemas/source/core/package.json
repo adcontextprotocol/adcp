@@ -39,9 +39,12 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
-    "catalog": {
-      "$ref": "/schemas/core/catalog.json",
-      "description": "Catalog this package promotes. Echoed from the create_media_buy request."
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
     },
     "format_ids": {
       "type": "array",

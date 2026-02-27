@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/consent-basis.json",
+  "title": "Consent Basis",
+  "description": "Common GDPR lawful bases relevant to advertising. Covers the Article 6(1) bases used in programmatic advertising contexts.",
+  "type": "string",
+  "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"]
+}

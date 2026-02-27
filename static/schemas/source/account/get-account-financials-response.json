@@ -20,21 +20,8 @@
           "description": "ISO 4217 currency code for all monetary amounts in this response"
         },
         "period": {
-          "type": "object",
-          "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries.",
-          "properties": {
-            "start": {
-              "type": "string",
-              "format": "date",
-              "description": "Period start (ISO 8601 date)"
-            },
-            "end": {
-              "type": "string",
-              "format": "date",
-              "description": "Period end (ISO 8601 date)"
-            }
-          },
-          "required": ["start", "end"]
+          "$ref": "/schemas/core/date-range.json",
+          "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries."
         },
         "spend": {
           "type": "object",
@@ -124,13 +111,8 @@
                 "description": "Seller-assigned invoice identifier"
               },
               "period": {
-                "type": "object",
-                "description": "Billing period covered by this invoice",
-                "properties": {
-                  "start": { "type": "string", "format": "date" },
-                  "end": { "type": "string", "format": "date" }
-                },
-                "required": ["start", "end"]
+                "$ref": "/schemas/core/date-range.json",
+                "description": "Billing period covered by this invoice"
               },
               "amount": {
                 "type": "number",
