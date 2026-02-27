@@ -102,6 +102,7 @@
     {
       "description": "Full sync with hosted video creative",
       "data": {
+        "account": { "account_id": "acct_acmecorp" },
         "creatives": [
           {
             "creative_id": "hero_video_30s",
@@ -133,6 +134,7 @@
     {
       "description": "Generative creative with approval",
       "data": {
+        "account": { "account_id": "acct_acmecorp" },
         "creatives": [
           {
             "creative_id": "holiday_hero",
@@ -161,6 +163,7 @@
     {
       "description": "Scoped update using creative_ids filter",
       "data": {
+        "account": { "account_id": "acct_acmecorp" },
         "creative_ids": [
           "hero_video_30s",
           "banner_300x250"

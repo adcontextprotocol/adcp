@@ -792,7 +792,7 @@ The response uses the same format as discovery. Each product reflects the update
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
-| `PRODUCT_NOT_FOUND` | One or more `product_ids` are unknown or no longer available | Remove invalid IDs and retry |
+| `PRODUCT_NOT_FOUND` | One or more `product_ids` are unknown or were never valid | Remove invalid IDs and retry, or re-discover with `get_products` |
 | `PROPOSAL_EXPIRED` | The referenced `proposal_id` has passed its `expires_at` timestamp | Re-discover products with a new `brief` or `wholesale` request |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 

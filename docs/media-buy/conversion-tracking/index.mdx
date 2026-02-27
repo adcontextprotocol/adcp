@@ -391,6 +391,7 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `follows` | count/impression | — | New followers, page likes, artist/podcast/channel subscribes |
 | `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
 | `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
+| `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
 
 ### Target kinds
 
@@ -422,6 +423,8 @@ All target kinds across both goal types:
 | Max follows | Maximize new followers/subscribers | `kind: "metric"`, `metric: "follows"`, no target |
 | Max saves | Maximize saves/bookmarks/playlist adds | `kind: "metric"`, `metric: "saves"`, no target |
 | Max profile visits | Drive traffic to brand page/profile | `kind: "metric"`, `metric: "profile_visits"`, no target |
+| Max unique reach | Maximize unique audience within budget | `kind: "metric"`, `metric: "reach"` + `reach_unit: "households"`, no target |
+| Reach with frequency | Reach at 1-3x/week frequency band | `kind: "metric"`, `metric: "reach"` + `reach_unit` + `target_frequency: { min: 1, max: 3, window: "7d" }` |
 
 ### Multiple goals and priority
 
@@ -455,7 +458,22 @@ The pricing model (CPC, CPM, CPA, etc.) determines what the buyer pays. The opti
 
 ### Reach and frequency
 
-Reach-based optimization (e.g., "maximize unique reach" or "target 70% reach of P18-49") is not expressed through `optimization_goals`. Instead, use [CPP pricing](/docs/media-buy/advanced-topics/pricing-models#cpp-cost-per-point) for GRP-based buys, `frequency_cap` on the package for frequency constraints, and delivery forecasts to plan reach before buying. Reach and frequency metrics are available in delivery reporting via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
+Reach-based optimization uses `metric: "reach"` with two additional fields:
+
+- **`reach_unit`** (required): The unit of measurement — must be a value declared in the product's `metric_optimization.supported_reach_units` (e.g., `households`, `individuals`).
+- **`target_frequency`** (optional): Frequency band that guides optimization. The seller treats impressions toward unreached entities as higher-value and impressions toward already-saturated entities as lower-value. Includes `min`, `max`, and `window` (e.g., `"7d"`, `"campaign"`). When omitted, the seller maximizes unique reach.
+
+```json
+{
+  "kind": "metric",
+  "metric": "reach",
+  "reach_unit": "households",
+  "target_frequency": { "min": 1, "max": 3, "window": "7d" },
+  "priority": 1
+}
+```
+
+For GRP-based buys, use [CPP pricing](/docs/media-buy/advanced-topics/pricing-models#cpp-cost-per-point). For hard frequency limits independent of optimization, use `frequency_cap` on the package. Reach and frequency metrics are available in delivery reporting via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 ### Prerequisites
 
