@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/latest/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering available advertising products",
+  "description": "Request parameters for discovering available advertising products. Use buying_mode for initial discovery, or product_ids to refresh forecasts for known products.",
   "type": "object",
   "properties": {
     "buying_mode": {
@@ -12,7 +12,15 @@
     },
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'."
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'. When combined with product_ids, provides context for forecast refinement (e.g., 'Update forecast for $100k budget targeting California')."
+    },
+    "product_ids": {
+      "type": "array",
+      "description": "Specific product IDs to retrieve, from a previous get_products response. Skips discovery and returns only these products with updated forecasts. Combine with brief and/or filters to provide context for forecast generation (e.g., different budget, dates, or targeting).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
     },
     "brand": {
       "$ref": "/schemas/latest/core/brand-ref.json",
@@ -47,8 +55,7 @@
       "$ref": "/schemas/latest/core/ext.json"
     }
   },
-  "required": ["buying_mode"],
-  "oneOf": [
+  "anyOf": [
     {
       "properties": {
         "buying_mode": {
@@ -69,6 +76,11 @@
       },
       "required": [
         "buying_mode"
+      ]
+    },
+    {
+      "required": [
+        "product_ids"
       ]
     }
   ],

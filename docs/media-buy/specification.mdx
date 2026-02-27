@@ -88,7 +88,7 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 
 ## Tasks
 
-The Media Buy Protocol defines thirteen tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines twelve tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -99,27 +99,13 @@ The Media Buy Protocol defines thirteen tasks. See task reference pages for comp
 Discover advertising inventory using natural language briefs or explicit wholesale intent.
 
 **Requirements:**
-- Orchestrators MUST set `buying_mode` to either `"brief"` or `"wholesale"`
+- Orchestrators MUST set `buying_mode` to either `"brief"` or `"wholesale"` for initial discovery
+- Orchestrators MAY provide `product_ids` instead of `buying_mode` to refresh forecasts for known products
 - Orchestrators SHOULD include a `brief` describing campaign objectives for curated discovery
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
-
-### get_forecast
-
-**Schema**: [`media-buy/get-forecast-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-request.json) / [`media-buy/get-forecast-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-response.json)
-
-**Reference**: [`get_forecast` task](/docs/media-buy/task-reference/get_forecast)
-
-Return a delivery forecast for a specific product configuration without a full `get_products` call.
-
-**Requirements:**
-- Orchestrators MUST include `product_id`, `budget`, `start_date`, and `end_date`
-- Orchestrators MAY include `targeting_overlay` to narrow the forecast
-- Orchestrators MAY include `optimization_goal` for goal-specific forecasts
-- Sales agents MUST return a `forecast` object with delivery points, method, and currency
-- Sales agents SHOULD include `valid_until` to indicate forecast freshness
 
 ### list_creative_formats
 
@@ -383,8 +369,6 @@ Sales agents MAY require human approval for any operation. When approval is requ
 |--------|-------------|
 | [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) | get_products request |
 | [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json) | get_products response |
-| [`media-buy/get-forecast-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-request.json) | get_forecast request |
-| [`media-buy/get-forecast-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-response.json) | get_forecast response |
 | [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) | create_media_buy request |
 | [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json) | create_media_buy response |
 | [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) | update_media_buy request |
