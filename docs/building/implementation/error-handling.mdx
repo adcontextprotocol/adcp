@@ -192,7 +192,7 @@ function isRetryable(error) {
   }
 
   // Fall back to error code matching
-  return ['RATE_LIMIT_EXCEEDED', 'TIMEOUT', 'SERVICE_UNAVAILABLE'].includes(error.error_code);
+  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE'].includes(error.error_code);
 }
 ```
 

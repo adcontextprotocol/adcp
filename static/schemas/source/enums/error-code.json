@@ -15,6 +15,8 @@
     "UNSUPPORTED_FEATURE",
     "AUDIENCE_TOO_SMALL",
     "ACCOUNT_NOT_FOUND",
+    "ACCOUNT_SETUP_REQUIRED",
+    "ACCOUNT_AMBIGUOUS",
     "ACCOUNT_PAYMENT_REQUIRED",
     "ACCOUNT_SUSPENDED"
   ],
@@ -29,6 +31,8 @@
     "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",
     "AUDIENCE_TOO_SMALL": "Audience segment is below the minimum required size for targeting. Recovery: correctable (broaden targeting or upload more audience members).",
     "ACCOUNT_NOT_FOUND": "The account reference could not be resolved. Recovery: terminal (verify account via list_accounts or contact seller).",
+    "ACCOUNT_SETUP_REQUIRED": "Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).",
+    "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
     "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
     "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension)."
   }
