@@ -7,7 +7,7 @@
   "properties": {
     "countries_all": {
       "type": "array",
-      "description": "Property must have feature data for ALL listed countries (ISO codes). Required.",
+      "description": "Property must have feature data for ALL listed countries (ISO codes). When omitted, no country restriction is applied.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}$"
@@ -16,7 +16,7 @@
     },
     "channels_any": {
       "type": "array",
-      "description": "Property must support ANY of the listed channels. Required.",
+      "description": "Property must support ANY of the listed channels. When omitted, no channel restriction is applied.",
       "items": {
         "$ref": "/schemas/enums/channels.json"
       },
@@ -47,6 +47,5 @@
       "minItems": 1
     }
   },
-  "required": ["countries_all", "channels_any"],
   "additionalProperties": false
 }

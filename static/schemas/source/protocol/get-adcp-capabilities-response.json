@@ -11,7 +11,7 @@
       "properties": {
         "major_versions": {
           "type": "array",
-          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes.",
+          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. Buyers MUST send the x-adcp-version HTTP header (e.g., x-adcp-version: 3) on all requests to declare which version they are using. Sellers supporting multiple major versions use this header to dispatch the correct semantics.",
           "items": {
             "type": "integer",
             "minimum": 1
@@ -474,6 +474,77 @@
           "required": [
             "publisher_domains"
           ]
+        },
+        "polling": {
+          "type": "object",
+          "description": "Polling support for agents without persistent webhook infrastructure. When present, agents can poll for async task status instead of requiring a push_notification_config endpoint.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "description": "Whether this seller supports status polling for async tasks. When true, agents can omit push_notification_config and instead poll using the task_id from async responses."
+            },
+            "recommended_interval_seconds": {
+              "type": "integer",
+              "description": "Recommended polling interval in seconds. Agents should not poll more frequently than this to avoid rate limiting.",
+              "minimum": 1
+            },
+            "max_wait_seconds": {
+              "type": "integer",
+              "description": "Maximum time in seconds an async task may remain in a non-terminal state before the seller considers it timed out.",
+              "minimum": 1
+            }
+          },
+          "required": ["supported"],
+          "additionalProperties": false
+        },
+        "async_tasks": {
+          "type": "array",
+          "description": "Task names that may return async responses (submitted/working/input-required) instead of immediate results. Agents should always prepare for async behavior on these tasks.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "create_media_buy",
+              "update_media_buy",
+              "sync_creatives",
+              "sync_audiences",
+              "sync_catalogs",
+              "get_products",
+              "get_forecast"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "supports_proposals": {
+          "type": "boolean",
+          "description": "Whether this seller's get_products supports proposal mode. When true, get_products may return a proposal_id that can be passed to create_media_buy instead of constructing packages manually.",
+          "default": false
+        },
+        "limits": {
+          "type": "object",
+          "description": "Operational limits for this seller. Agents should check these before constructing requests to avoid correctable errors.",
+          "properties": {
+            "max_packages_per_buy": {
+              "type": "integer",
+              "description": "Maximum number of packages allowed per create_media_buy request",
+              "minimum": 1
+            },
+            "min_budget": {
+              "type": "number",
+              "description": "Minimum total budget accepted for a media buy, in the seller's default currency",
+              "minimum": 0
+            },
+            "min_flight_days": {
+              "type": "integer",
+              "description": "Minimum campaign duration in days (end_time - start_time)",
+              "minimum": 1
+            },
+            "max_creatives_per_sync": {
+              "type": "integer",
+              "description": "Maximum number of creatives allowed per sync_creatives request",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
         }
       }
     },

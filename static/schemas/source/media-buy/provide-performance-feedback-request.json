@@ -38,7 +38,7 @@
     },
     "performance_index": {
       "type": "number",
-      "description": "Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected)",
+      "description": "Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected). Deprecated: use metric_value with metric_type instead for precise measurement data.",
       "minimum": 0
     },
     "package_id": {
@@ -61,6 +61,28 @@
       "description": "Source of the performance data",
       "default": "buyer_attribution"
     },
+    "metric_value": {
+      "type": "number",
+      "description": "The measured value for the metric_type. For example, 3.2 for a 3.2x ROAS, or 0.72 for 72% viewability. Use alongside metric_type and metric_unit for precise measurement data."
+    },
+    "metric_unit": {
+      "type": "string",
+      "description": "Unit for metric_value (e.g., 'ratio', 'percent', 'count', 'usd'). Enables correct interpretation of the value."
+    },
+    "measurement_provider": {
+      "type": "string",
+      "description": "Name of the third-party measurement provider (e.g., 'Nielsen', 'Kantar', 'DoubleVerify', 'IAS'). Identifies the source of truth for the measurement."
+    },
+    "measurement_methodology": {
+      "type": "string",
+      "description": "Measurement methodology or standard used (e.g., 'MRC viewability', 'MTA last-touch', 'MMM', 'geo-incrementality'). Enables sellers to contextualize and act on feedback accurately."
+    },
+    "feedback_type": {
+      "type": "string",
+      "enum": ["optimization_signal", "correction", "dispute"],
+      "default": "optimization_signal",
+      "description": "Type of feedback being provided. optimization_signal: routine performance data for seller optimization. correction: buyer believes seller reporting is inaccurate and provides authoritative measurement. dispute: formal challenge to reported metrics for billing reconciliation."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -81,6 +103,22 @@
         "buyer_ref",
         "measurement_period",
         "performance_index"
+      ]
+    },
+    {
+      "required": [
+        "media_buy_id",
+        "measurement_period",
+        "metric_value",
+        "metric_type"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref",
+        "measurement_period",
+        "metric_value",
+        "metric_type"
       ]
     }
   ],

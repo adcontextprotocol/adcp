@@ -7,7 +7,13 @@
   "properties": {
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for this media buy"
+      "description": "Buyer's reference identifier for this media buy. Also serves as an idempotency key: sellers SHOULD deduplicate requests with the same buyer_ref and account, returning the existing media buy rather than creating a duplicate."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries. If a request fails without a response (timeout, network error), resending with the same idempotency_key guarantees at-most-once execution. Keys must be unique per buyer account. Recommended: UUID v4. Expires after 24 hours.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "buyer_campaign_ref": {
       "type": "string",

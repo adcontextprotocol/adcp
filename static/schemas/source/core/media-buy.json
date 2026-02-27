@@ -24,6 +24,10 @@
     "status": {
       "$ref": "/schemas/enums/media-buy-status.json"
     },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
+    },
     "total_budget": {
       "type": "number",
       "description": "Total budget amount",

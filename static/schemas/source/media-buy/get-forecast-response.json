@@ -1,21 +1,25 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/content-standards/update-content-standards-response.json",
-  "title": "Update Content Standards Response",
-  "description": "Response from updating a content standards configuration",
+  "$id": "/schemas/media-buy/get-forecast-response.json",
+  "title": "Get Forecast Response",
+  "description": "Response payload for the get_forecast task",
   "oneOf": [
     {
-      "title": "UpdateContentStandardsSuccess",
+      "title": "GetForecastSuccess",
       "type": "object",
       "properties": {
         "success": {
           "type": "boolean",
           "const": true,
-          "description": "Indicates the update was applied successfully"
+          "description": "Indicates the forecast was generated successfully"
         },
-        "standards_id": {
+        "product_id": {
           "type": "string",
-          "description": "ID of the updated standards configuration"
+          "description": "Product ID this forecast is for. Echoed from request."
+        },
+        "forecast": {
+          "$ref": "/schemas/core/delivery-forecast.json",
+          "description": "Delivery forecast for the requested parameters."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -24,27 +28,23 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["success", "standards_id"],
+      "required": ["success", "product_id", "forecast"],
       "additionalProperties": true
     },
     {
-      "title": "UpdateContentStandardsError",
+      "title": "GetForecastError",
       "type": "object",
       "properties": {
         "success": {
           "type": "boolean",
           "const": false,
-          "description": "Indicates the update failed"
+          "description": "Indicates the forecast request failed"
         },
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" },
-          "description": "Errors that occurred during the update",
-          "minItems": 1
-        },
-        "conflicting_standards_id": {
-          "type": "string",
-          "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
+          "minItems": 1,
+          "description": "Errors that prevented forecast generation."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

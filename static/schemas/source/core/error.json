@@ -30,6 +30,11 @@
       "type": "object",
       "description": "Additional task-specific error details",
       "additionalProperties": true
+    },
+    "recovery": {
+      "type": "string",
+      "enum": ["transient", "correctable", "terminal"],
+      "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found)."
     }
   },
   "required": [

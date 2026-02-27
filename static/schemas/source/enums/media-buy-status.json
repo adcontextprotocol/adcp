@@ -8,12 +8,14 @@
     "pending_activation",
     "active",
     "paused",
-    "completed"
+    "completed",
+    "rejected"
   ],
   "enumDescriptions": {
     "pending_activation": "Media buy created but not yet activated",
     "active": "Media buy is currently running",
     "paused": "Media buy is temporarily paused",
-    "completed": "Media buy has finished running"
+    "completed": "Media buy has finished running",
+    "rejected": "Media buy was declined by the seller after creation"
   }
 }

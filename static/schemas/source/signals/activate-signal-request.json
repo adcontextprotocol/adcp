@@ -2,9 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/signals/activate-signal-request.json",
   "title": "Activate Signal Request",
-  "description": "Request parameters for activating a signal on a specific deployment target",
+  "description": "Request parameters for activating or deactivating a signal on deployment targets",
   "type": "object",
   "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["activate", "deactivate"],
+      "default": "activate",
+      "description": "Whether to activate or deactivate the signal. Deactivating removes the segment from downstream platforms, required when campaigns end to comply with data governance policies (GDPR, CCPA). Defaults to 'activate' when omitted."
+    },
     "signal_agent_segment_id": {
       "type": "string",
       "description": "The universal identifier for the signal to activate"

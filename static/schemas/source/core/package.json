@@ -39,6 +39,17 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json",
+      "description": "Catalog this package promotes. Echoed from the create_media_buy request."
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },

@@ -109,9 +109,13 @@
                 "type": "boolean",
                 "description": "Whether this preview request succeeded"
               },
+              "creative_id": {
+                "type": "string",
+                "description": "ID of the creative this result corresponds to. Enables correlation when processing batch results."
+              },
               "response": {
                 "type": "object",
-                "description": "Preview response for successful requests",
+                "description": "Preview data for successful requests",
                 "properties": {
                   "previews": {
                     "type": "array",
@@ -164,7 +168,8 @@
                   },
                   "expires_at": {
                     "type": "string",
-                    "format": "date-time"
+                    "format": "date-time",
+                    "description": "When the preview URLs expire"
                   }
                 },
                 "required": [
@@ -172,32 +177,18 @@
                   "expires_at"
                 ]
               },
-              "error": {
-                "type": "object",
-                "description": "Error information for failed requests",
-                "properties": {
-                  "code": {
-                    "type": "string",
-                    "description": "Error code (e.g., 'invalid_manifest', 'unsupported_format', 'missing_assets')"
-                  },
-                  "message": {
-                    "type": "string",
-                    "description": "Human-readable error message"
-                  },
-                  "details": {
-                    "type": "object",
-                    "description": "Additional error context",
-                    "additionalProperties": true
-                  }
+              "errors": {
+                "type": "array",
+                "description": "Errors for failed requests",
+                "items": {
+                  "$ref": "/schemas/core/error.json"
                 },
-                "required": [
-                  "code",
-                  "message"
-                ]
+                "minItems": 1
               }
             },
             "required": [
-              "success"
+              "success",
+              "creative_id"
             ],
             "oneOf": [
               {
@@ -205,7 +196,8 @@
                 "properties": {
                   "success": {
                     "type": "boolean",
-                    "const": true
+                    "const": true,
+                    "description": "Indicates this preview request succeeded"
                   }
                 },
                 "required": [
@@ -217,11 +209,12 @@
                 "properties": {
                   "success": {
                     "type": "boolean",
-                    "const": false
+                    "const": false,
+                    "description": "Indicates this preview request failed"
                   }
                 },
                 "required": [
-                  "error"
+                  "errors"
                 ]
               }
             ]

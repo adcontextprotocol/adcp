@@ -28,18 +28,44 @@
       "maxItems": 100
     },
     "assignments": {
-      "type": "object",
-      "description": "Optional bulk assignment of creatives to packages",
-      "patternProperties": {
-        "^[a-zA-Z0-9_-]+$": {
-          "type": "array",
-          "description": "Array of package IDs to assign this creative to",
-          "items": {
-            "type": "string"
+      "type": "array",
+      "description": "Optional bulk assignment of creatives to packages. Each entry maps one creative to one package with optional weight and placement targeting.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "ID of the creative to assign"
+          },
+          "package_id": {
+            "type": "string",
+            "description": "ID of the package to assign the creative to"
+          },
+          "weight": {
+            "type": "number",
+            "description": "Relative delivery weight (0–100). When multiple creatives are assigned to the same package, weights determine the distribution of impressions.",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "placement_ids": {
+            "type": "array",
+            "description": "Restrict this creative to specific placements within the package. When omitted, the creative is eligible for all placements.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
           }
-        }
+        },
+        "required": ["creative_id", "package_id"],
+        "additionalProperties": false
       },
-      "additionalProperties": true
+      "minItems": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution.",
+      "minLength": 8,
+      "maxLength": 255
     },
     "delete_missing": {
       "type": "boolean",
@@ -98,12 +124,10 @@
             ]
           }
         ],
-        "assignments": {
-          "hero_video_30s": [
-            "pkg_ctv_001",
-            "pkg_ctv_002"
-          ]
-        }
+        "assignments": [
+          { "creative_id": "hero_video_30s", "package_id": "pkg_ctv_001" },
+          { "creative_id": "hero_video_30s", "package_id": "pkg_ctv_002" }
+        ]
       }
     },
     {
