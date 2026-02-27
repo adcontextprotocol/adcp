@@ -179,18 +179,6 @@ Inventory portfolio information:
 | `description` | string | Markdown portfolio description |
 | `advertising_policies` | string | Content policies and restrictions |
 
-#### reporting
-
-Reporting dimension capabilities. Declares which dimensional breakdowns the seller supports in `get_media_buy_delivery` responses when buyers include `reporting_dimensions` in the request.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `supports_geo_breakdown` | object | Geographic breakdown support. Contains boolean fields for `country`, `region`, and nested objects for `metro` and `postal_area` with system-specific booleans (mirrors targeting geo structure). |
-| `supports_device_type_breakdown` | boolean | Device type breakdown (`by_device_type` in `by_package`) |
-| `supports_device_platform_breakdown` | boolean | Device platform breakdown (`by_device_platform` in `by_package`) |
-| `supports_audience_breakdown` | boolean | Audience segment breakdown (`by_audience` in `by_package`) |
-| `supports_placement_breakdown` | boolean | Placement breakdown (`by_placement` in `by_package`) |
-
 ### signals
 
 Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
@@ -525,17 +513,6 @@ const buy = await client.createMediaBuy({
       "primary_channels": ["display", "olv"],
       "primary_countries": ["US", "CA"]
     },
-    "reporting": {
-      "supports_geo_breakdown": {
-        "country": true,
-        "region": true,
-        "metro": { "nielsen_dma": true }
-      },
-      "supports_device_type_breakdown": true,
-      "supports_device_platform_breakdown": false,
-      "supports_audience_breakdown": false,
-      "supports_placement_breakdown": false
-    }
   },
   "extensions_supported": ["scope3"],
   "last_updated": "2025-01-23T10:00:00Z"

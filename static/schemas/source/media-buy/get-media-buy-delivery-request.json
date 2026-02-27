@@ -52,7 +52,7 @@
     },
     "reporting_dimensions": {
       "type": "object",
-      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package. Omit entirely for no dimensional breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response.",
+      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response.",
       "properties": {
         "geo": {
           "type": "object",
@@ -63,17 +63,21 @@
               "description": "Geographic granularity level for the breakdown"
             },
             "system": {
-              "type": "string",
+              "oneOf": [
+                { "$ref": "/schemas/enums/metro-system.json" },
+                { "$ref": "/schemas/enums/postal-system.json" }
+              ],
               "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Required when geo_level is 'metro' or 'postal_area'."
             },
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Maximum number of geo entries to return. When truncated, by_geo_truncated is true in the response."
+              "default": 25,
+              "description": "Maximum number of geo entries to return. Defaults to 25. When truncated, by_geo_truncated is true in the response."
             },
             "sort_by": {
-              "type": "string",
-              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if the requested metric is unavailable.",
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
           },
@@ -90,8 +94,8 @@
               "description": "Maximum number of entries to return"
             },
             "sort_by": {
-              "type": "string",
-              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
           },
@@ -107,8 +111,8 @@
               "description": "Maximum number of entries to return"
             },
             "sort_by": {
-              "type": "string",
-              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
           },
@@ -121,11 +125,12 @@
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Maximum number of entries to return"
+              "default": 25,
+              "description": "Maximum number of entries to return. Defaults to 25."
             },
             "sort_by": {
-              "type": "string",
-              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
           },
@@ -138,11 +143,12 @@
             "limit": {
               "type": "integer",
               "minimum": 1,
-              "description": "Maximum number of entries to return"
+              "default": 25,
+              "description": "Maximum number of entries to return. Defaults to 25."
             },
             "sort_by": {
-              "type": "string",
-              "description": "Any numeric field name from delivery-metrics (e.g., 'impressions', 'spend', 'clicks', 'roas', 'conversions'). Falls back to 'spend' if unavailable.",
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
           },

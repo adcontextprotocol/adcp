@@ -415,13 +415,21 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
     "spend": 5625.00,
     "clicks": 250
   },
-  "by_geo": [
+  "by_package": [
     {
-      "geo_level": "region",
-      "geo_code": "US-NY",
-      "geo_name": "New York",
-      "impressions": 45000,
-      "spend": 2025.00
+      "package_id": "pkg_001",
+      "impressions": 125000,
+      "spend": 5625.00,
+      "by_geo": [
+        {
+          "geo_level": "region",
+          "geo_code": "US-NY",
+          "geo_name": "New York",
+          "impressions": 45000,
+          "spend": 2025.00
+        }
+      ],
+      "by_geo_truncated": false
     }
   ]
 }

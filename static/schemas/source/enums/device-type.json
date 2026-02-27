@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/device-type.json",
   "title": "Device Type",
-  "description": "Device form factor categories for targeting and reporting. Complements device-platform (operating system) with hardware classification. Aligns with DEVICE_TYPE universal macro values.",
+  "description": "Device form factor categories for targeting and reporting. Complements device-platform (operating system) with hardware classification. OpenRTB mapping: 1 (Mobile/Tablet General) → mobile, 2 (PC) → desktop, 4 (Phone) → mobile, 5 (Tablet) → tablet, 6 (Connected Device) → ctv, 7 (Set Top Box) → ctv. DOOH inventory uses dooh.",
   "type": "string",
   "enum": [
     "desktop",

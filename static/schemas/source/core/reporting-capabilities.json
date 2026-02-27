@@ -68,30 +68,8 @@
       "description": "Whether this product supports keyword-level metric breakdowns in delivery reporting (by_keyword within by_package)"
     },
     "supports_geo_breakdown": {
-      "type": "object",
-      "description": "Geographic breakdown support for this product. Declares which geo levels and systems are available for by_geo reporting within by_package.",
-      "properties": {
-        "country": {
-          "type": "boolean",
-          "description": "Supports country-level geo breakdown (ISO 3166-1 alpha-2)"
-        },
-        "region": {
-          "type": "boolean",
-          "description": "Supports region/state-level geo breakdown (ISO 3166-2)"
-        },
-        "metro": {
-          "type": "object",
-          "description": "Metro area breakdown support. Keys are metro-system enum values; true means supported.",
-          "propertyNames": { "$ref": "/schemas/enums/metro-system.json" },
-          "additionalProperties": { "type": "boolean" }
-        },
-        "postal_area": {
-          "type": "object",
-          "description": "Postal area breakdown support. Keys are postal-system enum values; true means supported.",
-          "propertyNames": { "$ref": "/schemas/enums/postal-system.json" },
-          "additionalProperties": { "type": "boolean" }
-        }
-      }
+      "$ref": "/schemas/core/geo-breakdown-support.json",
+      "description": "Geographic breakdown support for this product. Declares which geo levels and systems are available for by_geo reporting within by_package."
     },
     "supports_device_type_breakdown": {
       "type": "boolean",

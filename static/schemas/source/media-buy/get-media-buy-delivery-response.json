@@ -376,7 +376,7 @@
                     },
                     "by_geo_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers SHOULD return this flag whenever by_geo is present (false means the list is complete)."
+                      "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_geo is present (false means the list is complete)."
                     },
                     "by_device_type": {
                       "type": "array",
@@ -405,7 +405,7 @@
                     },
                     "by_device_type_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_device_type was truncated. Sellers SHOULD return this flag whenever by_device_type is present (false means the list is complete)."
+                      "description": "Whether by_device_type was truncated. Sellers MUST return this flag whenever by_device_type is present (false means the list is complete)."
                     },
                     "by_device_platform": {
                       "type": "array",
@@ -434,7 +434,7 @@
                     },
                     "by_device_platform_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_device_platform was truncated. Sellers SHOULD return this flag whenever by_device_platform is present (false means the list is complete)."
+                      "description": "Whether by_device_platform was truncated. Sellers MUST return this flag whenever by_device_platform is present (false means the list is complete)."
                     },
                     "by_audience": {
                       "type": "array",
@@ -453,7 +453,7 @@
                               },
                               "audience_source": {
                                 "$ref": "/schemas/enums/audience-source.json",
-                                "description": "Origin of the audience segment (synced, platform, third_party, lookalike, retargeting)"
+                                "description": "Origin of the audience segment (synced, platform, third_party, lookalike, retargeting, unknown)"
                               },
                               "audience_name": {
                                 "type": "string",
@@ -472,7 +472,7 @@
                     },
                     "by_audience_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_audience was truncated. Sellers SHOULD return this flag whenever by_audience is present (false means the list is complete)."
+                      "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
                     },
                     "by_placement": {
                       "type": "array",
@@ -505,7 +505,7 @@
                     },
                     "by_placement_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_placement was truncated. Sellers SHOULD return this flag whenever by_placement is present (false means the list is complete)."
+                      "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
                     }
                   },
                   "required": [
