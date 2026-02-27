@@ -257,6 +257,32 @@
                 "negative_keywords": {
                   "type": "boolean",
                   "description": "Whether seller supports negative keyword targeting via targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy"
+                },
+                "geo_proximity": {
+                  "type": "object",
+                  "description": "Proximity targeting capabilities from arbitrary coordinates via targeting_overlay.geo_proximity.",
+                  "properties": {
+                    "radius": {
+                      "type": "boolean",
+                      "description": "Whether seller supports simple radius targeting (distance circle from a point)"
+                    },
+                    "travel_time": {
+                      "type": "boolean",
+                      "description": "Whether seller supports travel time isochrone targeting (requires a routing engine)"
+                    },
+                    "geometry": {
+                      "type": "boolean",
+                      "description": "Whether seller supports pre-computed GeoJSON geometry (buyer provides the polygon)"
+                    },
+                    "transport_modes": {
+                      "type": "array",
+                      "description": "Transport modes supported for travel_time isochrones. Only relevant when travel_time is true.",
+                      "items": {
+                        "$ref": "/schemas/enums/transport-mode.json"
+                      },
+                      "minItems": 1
+                    }
+                  }
                 }
               }
             }
