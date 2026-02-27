@@ -351,6 +351,8 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Third-party audience segment (interest targeting) | | ✅ "Auto intenders" in brief, or use signals protocol |
 | Search/retail media keyword targeting | ✅ `keyword_targets` / `negative_keywords` | |
 | Broad thematic intent ("people searching for shoes") | | ✅ "Reach in-market shoe shoppers" |
+| Proximity to specific coordinates (within 2hr drive of a city) | ✅ `geo_proximity` | |
+| Nearby audience ("people near coffee shops") | | ✅ "Reach people near coffee shops" |
 
 **Why briefs work better for preferences:**
 - Natural language captures intent more clearly
@@ -560,6 +562,119 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 ```
 
 When `store_ids` is omitted, all stores in the catalog are targeted. When `catchment_ids` is omitted, all catchment zones are targeted. The seller must declare support for store catchment targeting in `get_adcp_capabilities`.
+
+### geo_proximity
+- **Description**: Target users within travel time, distance, or a custom boundary around arbitrary geographic points
+- **Format**: Array of objects, each with exactly one method: `travel_time` + `transport_mode`, `radius`, or `geometry`
+- **Required fields**: `lat` + `lng` (for travel_time and radius methods), or `geometry` (for pre-computed boundaries)
+- **Optional fields**: `label` (human-readable name for the entry)
+- **Use cases**: Tourism campaigns (within 2hr drive of a city), event targeting (near a venue), airport catchment areas
+- **Semantics**: Multiple entries use OR — a user within range of any listed point is eligible. Intersects with other geo targeting fields (e.g., combining with `geo_countries` restricts proximity to those countries)
+
+Travel time (isochrone) example:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "lat": 51.2277,
+        "lng": 6.7735,
+        "label": "Düsseldorf",
+        "travel_time": { "value": 2, "unit": "hr" },
+        "transport_mode": "driving"
+      }
+    ]
+  }
+}
+```
+
+Radius-based example:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "lat": 51.4700,
+        "lng": -0.4543,
+        "label": "Heathrow Airport",
+        "radius": { "value": 30, "unit": "km" }
+      }
+    ]
+  }
+}
+```
+
+Pre-computed geometry example (buyer provides the polygon):
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "label": "2hr drive from Düsseldorf",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[[5.87, 50.35], [8.23, 50.35], [8.23, 52.10], [5.87, 52.10], [5.87, 50.35]]]
+        }
+      }
+    ]
+  }
+}
+```
+
+For travel time entries, the platform resolves the isochrone to a geographic boundary based on actual transportation networks. Transport modes: `driving`, `walking`, `cycling`, `public_transport`. The `geometry` method allows buyers who have already computed isochrones (via TravelTime, Mapbox, etc.) to pass the polygon directly — this also enables sellers without routing engines to participate.
+
+For campaigns targeting 10+ locations, consider using `store_catchments` with a location catalog instead, which supports ongoing management and per-location reporting. `geo_proximity` does not have an exclusion variant — this is by design, as excluding "everyone near a point" is rarely a meaningful targeting constraint.
+
+Sellers SHOULD enforce minimum area thresholds consistent with their privacy policies and applicable regulations. The seller must declare `geo_proximity` support in `get_adcp_capabilities`, specifying which methods (`radius`, `travel_time`, `geometry`) and transport modes are supported.
+
+Validated examples:
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "lat": 51.2277,
+      "lng": 6.7735,
+      "label": "Düsseldorf",
+      "travel_time": { "value": 2, "unit": "hr" },
+      "transport_mode": "driving"
+    }
+  ]
+}
+```
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "lat": 51.4700,
+      "lng": -0.4543,
+      "label": "Heathrow Airport",
+      "radius": { "value": 30, "unit": "km" }
+    }
+  ]
+}
+```
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "label": "2hr drive from Düsseldorf",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[5.87, 50.35], [8.23, 50.35], [8.23, 52.10], [5.87, 52.10], [5.87, 50.35]]]
+      }
+    }
+  ]
+}
+```
 
 ## Benefits for Different Stakeholders
 

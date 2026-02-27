@@ -126,8 +126,18 @@ Technical execution capabilities:
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
+| `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+
+**geo_proximity** specifies which proximity targeting methods are supported:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `radius` | boolean | Simple radius targeting (distance circle from a point) |
+| `travel_time` | boolean | Travel time isochrone targeting (requires a routing engine) |
+| `geometry` | boolean | Pre-computed GeoJSON geometry (buyer provides the polygon) |
+| `transport_modes` | string[] | Transport modes supported for isochrones: `driving`, `walking`, `cycling`, `public_transport` |
 
 **geo_metros** specifies which metro classification systems are supported:
 

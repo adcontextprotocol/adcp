@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
+  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance, proximity targeting), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -255,6 +255,121 @@
           }
         },
         "required": ["catalog_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "geo_proximity": {
+      "type": "array",
+      "description": "Target users within travel time, distance, or a custom boundary around arbitrary geographic points. Multiple entries use OR semantics — a user within range of any listed point is eligible. For campaigns targeting 10+ locations, consider using store_catchments with a location catalog instead. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Latitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Longitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Primary trade area')."
+          },
+          "travel_time": {
+            "type": "object",
+            "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Travel time limit."
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["min", "hr"],
+                "description": "Time unit."
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "transport_mode": {
+            "$ref": "/schemas/enums/transport-mode.json",
+            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+          },
+          "radius": {
+            "type": "object",
+            "description": "Simple radius from the point. The platform draws a circle of this distance around the coordinates.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Radius distance."
+              },
+              "unit": {
+                "$ref": "/schemas/enums/distance-unit.json",
+                "description": "Distance unit."
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "geometry": {
+            "type": "object",
+            "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom boundaries. When geometry is provided, lat/lng are not required.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Polygon", "MultiPolygon"],
+                "description": "GeoJSON geometry type."
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
+              }
+            },
+            "required": ["type", "coordinates"],
+            "additionalProperties": false
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "not": {
+              "anyOf": [
+                { "required": ["radius"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["lat", "lng", "radius"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["geometry"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["radius"] }
+              ]
+            }
+          }
+        ],
         "additionalProperties": true
       },
       "minItems": 1
