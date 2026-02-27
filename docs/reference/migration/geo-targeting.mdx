@@ -31,7 +31,7 @@ Fields that didn't change: `geo_countries`, `geo_countries_exclude`, `geo_region
 **v3** — codes grouped by system:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_metros": [
     { "system": "nielsen_dma", "values": ["501", "602"] }
   ]
@@ -42,7 +42,7 @@ Each entry specifies a system and the codes within that system. Multiple systems
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_metros": [
     { "system": "nielsen_dma", "values": ["501", "602"] },
     { "system": "uk_itl2", "values": ["UKC1", "UKD3"] }
@@ -76,7 +76,7 @@ Supported systems are defined in the `metro-system.json` enum: `nielsen_dma`, `u
 **v3** — renamed to `geo_postal_areas`, codes grouped by system:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_postal_areas": [
     { "system": "us_zip", "values": ["10001", "90210"] }
   ]
@@ -107,7 +107,7 @@ v3 adds `_exclude` variants for metro and postal targeting:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_countries": ["US"],
   "geo_metros_exclude": [
     { "system": "nielsen_dma", "values": ["501"] }
@@ -123,7 +123,7 @@ Before sending geo targeting, buyers should verify the seller supports the reque
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": {
     "major_versions": [3]
   },
@@ -153,7 +153,7 @@ A v3 targeting overlay combining geo restrictions:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/targeting.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_countries": ["US", "CA"],
   "geo_regions": ["US-NY", "US-CA"],
   "geo_metros": [

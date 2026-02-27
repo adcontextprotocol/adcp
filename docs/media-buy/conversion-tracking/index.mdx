@@ -65,7 +65,7 @@ To discover all sources on an account (including seller-managed), call `sync_eve
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/media-buy/sync-event-sources-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
   "account": { "account_id": "acct_12345" }
 }
 ```
@@ -78,7 +78,7 @@ Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/event.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event.json",
   "event_id": "evt_purchase_12345",
   "event_type": "purchase",
   "event_time": "2026-01-15T14:30:00Z",
@@ -117,7 +117,7 @@ User identifiers enable the seller to attribute conversions to ad impressions. P
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/user-match.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/user-match.json",
   "hashed_email": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   "uids": [
     { "type": "uid2", "value": "AbC123XyZ..." }
@@ -149,7 +149,7 @@ Event-specific data for attribution and reporting. For purchase events, always i
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/core/event-custom-data.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-custom-data.json",
   "value": 149.99,
   "currency": "USD",
   "order_id": "order_98765",
@@ -230,7 +230,7 @@ Where the conversion event originated:
 
 Optimization goals tell the seller what to optimize delivery toward. Set them on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization). A package accepts an array of goals — each with an optional `priority` (1 = highest). Products declare `max_optimization_goals` when they limit how many goals a package can carry (most social platforms accept only 1).
 
-**Schema**: [`/schemas/v2/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v2/core/optimization-goal.json)
+**Schema**: [`/schemas/v2/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json)
 
 There are two kinds of goals, discriminated by `kind`:
 
