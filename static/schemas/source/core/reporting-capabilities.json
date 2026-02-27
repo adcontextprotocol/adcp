@@ -81,25 +81,13 @@
         },
         "metro": {
           "type": "object",
-          "description": "Metro area breakdown support by classification system",
-          "properties": {
-            "nielsen_dma": { "type": "boolean" },
-            "uk_itl1": { "type": "boolean" },
-            "uk_itl2": { "type": "boolean" },
-            "eurostat_nuts2": { "type": "boolean" }
-          }
+          "description": "Metro area breakdown support. Keys are values from metro-system.json (e.g., 'nielsen_dma', 'uk_itl2'). True means the system is supported.",
+          "additionalProperties": { "type": "boolean" }
         },
         "postal_area": {
           "type": "object",
-          "description": "Postal area breakdown support by postal system",
-          "properties": {
-            "us_zip": { "type": "boolean" },
-            "gb_outward": { "type": "boolean" },
-            "ca_fsa": { "type": "boolean" },
-            "de_plz": { "type": "boolean" },
-            "fr_code_postal": { "type": "boolean" },
-            "au_postcode": { "type": "boolean" }
-          }
+          "description": "Postal area breakdown support. Keys are values from postal-system.json (e.g., 'us_zip', 'gb_outward'). True means the system is supported.",
+          "additionalProperties": { "type": "boolean" }
         }
       }
     },

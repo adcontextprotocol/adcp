@@ -439,55 +439,13 @@
                 },
                 "metro": {
                   "type": "object",
-                  "description": "Metro area breakdown support by classification system",
-                  "properties": {
-                    "nielsen_dma": {
-                      "type": "boolean",
-                      "description": "Supports Nielsen DMA code breakdown (US market)"
-                    },
-                    "uk_itl1": {
-                      "type": "boolean",
-                      "description": "Supports UK ITL Level 1 breakdown"
-                    },
-                    "uk_itl2": {
-                      "type": "boolean",
-                      "description": "Supports UK ITL Level 2 breakdown"
-                    },
-                    "eurostat_nuts2": {
-                      "type": "boolean",
-                      "description": "Supports Eurostat NUTS Level 2 breakdown (EU)"
-                    }
-                  }
+                  "description": "Metro area breakdown support. Keys are values from metro-system.json (e.g., 'nielsen_dma', 'uk_itl2'). True means the system is supported.",
+                  "additionalProperties": { "type": "boolean" }
                 },
                 "postal_area": {
                   "type": "object",
-                  "description": "Postal area breakdown support by postal system",
-                  "properties": {
-                    "us_zip": {
-                      "type": "boolean",
-                      "description": "Supports US ZIP code breakdown"
-                    },
-                    "gb_outward": {
-                      "type": "boolean",
-                      "description": "Supports UK outward code breakdown"
-                    },
-                    "ca_fsa": {
-                      "type": "boolean",
-                      "description": "Supports Canadian FSA breakdown"
-                    },
-                    "de_plz": {
-                      "type": "boolean",
-                      "description": "Supports German PLZ breakdown"
-                    },
-                    "fr_code_postal": {
-                      "type": "boolean",
-                      "description": "Supports French code postal breakdown"
-                    },
-                    "au_postcode": {
-                      "type": "boolean",
-                      "description": "Supports Australian postcode breakdown"
-                    }
-                  }
+                  "description": "Postal area breakdown support. Keys are values from postal-system.json (e.g., 'us_zip', 'gb_outward'). True means the system is supported.",
+                  "additionalProperties": { "type": "boolean" }
                 }
               }
             },
