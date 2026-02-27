@@ -38,6 +38,10 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
         },
+        "duration": {
+          "$ref": "/schemas/core/duration.json",
+          "description": "A time duration with value and unit (hours or days)"
+        },
         "frequency-cap": {
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"

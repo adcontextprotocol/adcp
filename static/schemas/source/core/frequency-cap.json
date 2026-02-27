@@ -2,17 +2,21 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/frequency-cap.json",
   "title": "Frequency Cap",
-  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress_minutes enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window. At least one of suppress_minutes or max_impressions must be set.",
+  "description": "Frequency capping settings for package-level application. Two types of frequency control can be used independently or together: suppress enforces a cooldown between consecutive exposures; max_impressions + per + window caps total exposures per entity in a time window. At least one of suppress, suppress_minutes, or max_impressions must be set.",
   "type": "object",
   "properties": {
+    "suppress": {
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Cooldown period between consecutive exposures to the same entity. Prevents back-to-back ad delivery (e.g. {\"interval\": 60, \"unit\": \"minutes\"} for a 1-hour cooldown). Preferred over suppress_minutes."
+    },
     "suppress_minutes": {
       "type": "number",
-      "description": "Cooldown period in minutes between consecutive exposures to the same entity. Prevents back-to-back ad delivery (e.g., 60 = at least 1 hour between impressions).",
+      "description": "Deprecated — use suppress instead. Cooldown period in minutes between consecutive exposures to the same entity (e.g. 60 for a 1-hour cooldown).",
       "minimum": 0
     },
     "max_impressions": {
       "type": "integer",
-      "description": "Maximum number of impressions per entity per window. For duration windows (e.g., '1d', '7d'), implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
+      "description": "Maximum number of impressions per entity per window. For duration windows, implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
       "minimum": 1
     },
     "per": {
@@ -20,11 +24,12 @@
       "description": "Entity granularity for impression counting. Required when max_impressions is set."
     },
     "window": {
-      "type": "string",
-      "description": "Time window for the max_impressions cap. Duration string (e.g., '1h', '6h', '1d', '7d', '30d', 'campaign'). 'campaign' applies the cap across the full campaign flight. Required when max_impressions is set."
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Time window for the max_impressions cap (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Required when max_impressions is set."
     }
   },
   "anyOf": [
+    { "required": ["suppress"] },
     { "required": ["suppress_minutes"] },
     { "required": ["max_impressions"] }
   ],

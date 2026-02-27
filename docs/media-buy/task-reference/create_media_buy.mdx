@@ -255,7 +255,7 @@ const result = await testAgent.createMediaBuy({
       geo_countries: ['US'],
       geo_regions: ['US-CA', 'US-NY'],
       frequency_cap: {
-        suppress_minutes: 60
+        suppress: { interval: 60, unit: 'minutes' }
       }
     }
   }],
@@ -306,7 +306,7 @@ async def create_targeted_campaign():
                 'geo_countries': ['US'],
                 'geo_regions': ['US-CA', 'US-NY'],
                 'frequency_cap': {
-                    'suppress_minutes': 60
+                    'suppress': {'interval': 60, 'unit': 'minutes'}
                 }
             }
         }],

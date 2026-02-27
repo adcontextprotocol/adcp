@@ -160,7 +160,7 @@ const exampleData = {
   },
   
   frequencyCap: {
-    "suppress_minutes": 1440
+    "suppress": { "interval": 1, "unit": "days" }
   },
   
   format: {

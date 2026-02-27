@@ -125,7 +125,14 @@ Technical execution capabilities:
 | `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
+| `device_platform` | boolean | Device platform targeting (Sec-CH-UA-Platform values) |
 | `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
+| `language` | boolean | Language targeting (ISO 639-1 codes) |
+| `audience_include` | boolean | Audience inclusion targeting (requires `features.audience_targeting`) |
+| `audience_exclude` | boolean | Audience exclusion targeting (requires `features.audience_targeting`) |
+| `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
+| `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
@@ -507,7 +514,16 @@ const buy = await client.createMediaBuy({
           "ca_fsa": true
         },
         "device_platform": true,
-        "device_type": true
+        "device_type": true,
+        "language": true,
+        "audience_include": true,
+        "audience_exclude": true,
+        "keyword_targets": {
+          "supported_match_types": ["broad", "phrase", "exact"]
+        },
+        "negative_keywords": {
+          "supported_match_types": ["broad", "exact"]
+        }
       }
     },
     "conversion_tracking": {
@@ -515,7 +531,7 @@ const buy = await client.createMediaBuy({
       "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
       "supported_action_sources": ["website", "app"],
       "attribution_windows": [
-        { "click_through": ["7d", "28d"], "view_through": ["1d", "7d"] }
+        { "post_click": [{ "interval": 7, "unit": "days" }, { "interval": 28, "unit": "days" }], "post_view": [{ "interval": 1, "unit": "days" }, { "interval": 7, "unit": "days" }] }
       ]
     },
     "portfolio": {

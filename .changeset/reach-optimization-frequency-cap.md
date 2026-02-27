@@ -17,4 +17,4 @@ Add reach as a metric optimization goal and expand frequency cap capabilities.
 - `max_impressions` — maximum impressions per entity per window (integer, minimum 1).
 - `per` — entity to count against, using the same values as `reach-unit` enum (individuals, households, devices, accounts, cookies, custom). Aligns with `reach_unit` on reach optimization goals so hard caps and optimization signals stay in sync.
 - `window` — time window for the cap (e.g., `'1d'`, `'7d'`, `'30d'`, `'campaign'`). Required when `max_impressions` is set.
-- `suppress_minutes` is now optional (no longer required). The two controls (cooldown vs. impression cap) serve different purposes and can be used independently or together.
+- `suppress` (formerly `suppress_minutes`) — cooldown between consecutive exposures, now a duration object (e.g. `{"interval": 60, "unit": "minutes"}`). Optional — the two controls (cooldown vs. impression cap) serve different purposes and can be used independently or together.

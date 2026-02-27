@@ -33,8 +33,8 @@
               "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
             },
             "window": {
-              "type": "string",
-              "description": "Time window over which frequency is measured (e.g., '1d', '7d', '30d', 'campaign'). 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Time window over which frequency is measured (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
             }
           },
           "required": ["window"],
@@ -160,16 +160,16 @@
           "type": "object",
           "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
           "properties": {
-            "click_through": {
-              "type": "string",
-              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            "post_click": {
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Post-click attribution window. Conversions within this duration after a click are attributed to the ad (e.g. {\"interval\": 7, \"unit\": \"days\"})."
             },
-            "view_through": {
-              "type": "string",
-              "description": "View-through attribution window (e.g. '1d', '7d')"
+            "post_view": {
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Post-view attribution window. Conversions within this duration after an ad impression (without click) are attributed to the ad (e.g. {\"interval\": 1, \"unit\": \"days\"})."
             }
           },
-          "required": ["click_through"],
+          "required": ["post_click"],
           "additionalProperties": true
         },
         "priority": {
