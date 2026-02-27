@@ -20,7 +20,7 @@ Address schema gaps that block autonomous agent operation, plus consistency fixe
 - `GetAdCPCapabilitiesResponse.adcp.major_versions`: document version negotiation via capabilities handshake; HTTP header is optional
 
 **Async polling (#1227)**
-- `GetAdCPCapabilitiesResponse.media_buy`: add `polling` object (`supported`, `recommended_interval_seconds`, `max_wait_seconds`) for agents without persistent webhook endpoints
+- `GetAdCPCapabilitiesResponse.adcp`: add `polling` object (`supported`, `recommended_interval_seconds`, `max_wait_seconds`) for agents without persistent webhook endpoints
 
 **Package response (#1229)**
 - `Package`: add `catalogs` (array) and `format_ids` fields echoed from the create request so agents can verify what the seller stored

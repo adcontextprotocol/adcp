@@ -17,6 +17,28 @@
             "minimum": 1
           },
           "minItems": 1
+        },
+        "polling": {
+          "type": "object",
+          "description": "Polling support for agents without persistent webhook infrastructure. When present, agents can poll for async task status instead of requiring a push_notification_config endpoint. Applies to all async tasks across all domain protocols.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "description": "Whether this seller supports status polling for async tasks. When true, agents can omit push_notification_config and instead poll using the task_id from async responses."
+            },
+            "recommended_interval_seconds": {
+              "type": "integer",
+              "description": "Recommended polling interval in seconds. Agents should not poll more frequently than this to avoid rate limiting.",
+              "minimum": 1
+            },
+            "max_wait_seconds": {
+              "type": "integer",
+              "description": "Maximum time in seconds an async task may remain in a non-terminal state before the seller considers it timed out.",
+              "minimum": 1
+            }
+          },
+          "required": ["supported"],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -474,28 +496,6 @@
           "required": [
             "publisher_domains"
           ]
-        },
-        "polling": {
-          "type": "object",
-          "description": "Polling support for agents without persistent webhook infrastructure. When present, agents can poll for async task status instead of requiring a push_notification_config endpoint.",
-          "properties": {
-            "supported": {
-              "type": "boolean",
-              "description": "Whether this seller supports status polling for async tasks. When true, agents can omit push_notification_config and instead poll using the task_id from async responses."
-            },
-            "recommended_interval_seconds": {
-              "type": "integer",
-              "description": "Recommended polling interval in seconds. Agents should not poll more frequently than this to avoid rate limiting.",
-              "minimum": 1
-            },
-            "max_wait_seconds": {
-              "type": "integer",
-              "description": "Maximum time in seconds an async task may remain in a non-terminal state before the seller considers it timed out.",
-              "minimum": 1
-            }
-          },
-          "required": ["supported"],
-          "additionalProperties": false
         }
       }
     },
