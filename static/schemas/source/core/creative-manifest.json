@@ -61,6 +61,10 @@
       },
       "additionalProperties": true
     },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

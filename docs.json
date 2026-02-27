@@ -159,7 +159,8 @@
                 "group": "Creative Governance",
                 "pages": [
                   "docs/governance/creative/index",
-                  "docs/governance/creative/get_creative_features"
+                  "docs/governance/creative/get_creative_features",
+                  "docs/governance/creative/provenance-verification"
                 ]
               }
             ]
@@ -316,6 +317,7 @@
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
               "docs/creative/accessibility",
+              "docs/creative/provenance",
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -663,7 +665,8 @@
                 "group": "Creative Governance",
                 "pages": [
                   "docs/governance/creative/index",
-                  "docs/governance/creative/get_creative_features"
+                  "docs/governance/creative/get_creative_features",
+                  "docs/governance/creative/provenance-verification"
                 ]
               }
             ]
@@ -820,6 +823,7 @@
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
               "docs/creative/accessibility",
+              "docs/creative/provenance",
               {
                 "group": "Channel Guides",
                 "pages": [

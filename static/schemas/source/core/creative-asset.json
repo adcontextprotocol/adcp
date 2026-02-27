@@ -118,6 +118,10 @@
         "type": "string"
       },
       "minItems": 1
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this creative. Serves as the default provenance for all manifests and assets within this creative. A manifest or asset with its own provenance replaces this object entirely (no field-level merging)."
     }
   },
   "required": [
