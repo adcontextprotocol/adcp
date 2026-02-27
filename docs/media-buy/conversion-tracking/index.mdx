@@ -265,7 +265,7 @@ Optimize for advertiser-tracked conversion events. The `event_sources` array def
     { "event_source_id": "web_pixel", "event_type": "refund", "value_field": "refund_amount", "value_factor": -1 }
   ],
   "target": { "kind": "per_ad_spend", "value": 4.0 },
-  "attribution_window": { "click_through": "28d", "view_through": "1d" },
+  "attribution_window": { "click_through_days": 28, "view_through_days": 1 },
   "priority": 1
 }
 ```
@@ -478,10 +478,10 @@ Attribution windows control how far back the seller looks to credit an ad impres
 
 | Window | Meaning |
 |--------|---------|
-| `click_through: "7d"` | Conversions within 7 days of a click |
-| `click_through: "28d"` | Conversions within 28 days of a click |
-| `view_through: "1d"` | Conversions within 1 day of viewing an ad |
-| `view_through: "7d"` | Conversions within 7 days of viewing an ad |
+| `click_through_days: 7` | Conversions within 7 days of a click |
+| `click_through_days: 28` | Conversions within 28 days of a click |
+| `view_through_days: 1` | Conversions within 1 day of viewing an ad |
+| `view_through_days: 7` | Conversions within 7 days of viewing an ad |
 
 Values must match an option in the seller's `conversion_tracking.attribution_windows` capability. When omitted, the seller applies their default window.
 

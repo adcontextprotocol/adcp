@@ -531,7 +531,7 @@ const buy = await client.createMediaBuy({
       "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
       "supported_action_sources": ["website", "app"],
       "attribution_windows": [
-        { "click_through": ["7d", "28d"], "view_through": ["1d", "7d"] }
+        { "click_through_days": [7, 28], "view_through_days": [1, 7] }
       ]
     },
     "portfolio": {

@@ -12,7 +12,7 @@
     },
     "max_impressions": {
       "type": "integer",
-      "description": "Maximum number of impressions per entity per window. For duration windows (e.g., '1d', '7d'), implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
+      "description": "Maximum number of impressions per entity per window. For duration windows, implementations typically use a rolling window; 'campaign' applies a fixed cap across the full flight.",
       "minimum": 1
     },
     "per": {
@@ -20,9 +20,11 @@
       "description": "Entity granularity for impression counting. Required when max_impressions is set."
     },
     "window": {
-      "type": "string",
-      "pattern": "^([1-9][0-9]*[hd]|campaign)$",
-      "description": "Time window for the max_impressions cap. Format: integer + unit ('h' for hours, 'd' for days), e.g. '1h', '6h', '1d', '7d', '30d'. The special value 'campaign' applies the cap across the full campaign flight. Required when max_impressions is set."
+      "description": "Time window for the max_impressions cap. Either a duration object (e.g. {\"value\": 7, \"unit\": \"days\"}) or the string \"campaign\" for the full campaign flight. Required when max_impressions is set.",
+      "oneOf": [
+        { "$ref": "/schemas/core/duration.json" },
+        { "type": "string", "const": "campaign" }
+      ]
     }
   },
   "anyOf": [

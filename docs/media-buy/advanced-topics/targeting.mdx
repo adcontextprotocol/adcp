@@ -265,7 +265,7 @@ Two frequency controls can be used independently or together:
   "frequency_cap": {
     "max_impressions": 5,
     "per": "households",
-    "window": "7d"
+    "window": { "value": 7, "unit": "days" }
   }
 }
 ```
@@ -464,7 +464,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Cooldown control**: `suppress_minutes` — minimum minutes between consecutive exposures to the same entity
 - **Impression cap**: `max_impressions` + `per` + `window` — total impression ceiling per entity per time window. All three fields are required together.
 - **Use cases**: User experience management, ad fatigue prevention, complementing reach optimization goals with a hard ceiling
-- **Examples**: `{"suppress_minutes": 60}`, `{"max_impressions": 5, "per": "households", "window": "7d"}`
+- **Examples**: `{"suppress_minutes": 60}`, `{"max_impressions": 5, "per": "households", "window": {"value": 7, "unit": "days"}}`
 
 ### age_restriction
 - **Description**: Require minimum age for compliance

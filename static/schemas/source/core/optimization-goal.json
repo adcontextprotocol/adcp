@@ -33,9 +33,11 @@
               "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
             },
             "window": {
-              "type": "string",
-              "pattern": "^([1-9][0-9]*[hd]|campaign)$",
-              "description": "Time window over which frequency is measured. Format: integer + unit ('h' for hours, 'd' for days), e.g. '1h', '6h', '1d', '7d', '30d'. The special value 'campaign' applies the target across the full campaign flight — appropriate for short-burst or awareness campaigns. Weekly windows ('7d') are typical for brand campaigns; daily windows ('1d') suit high-cadence direct response."
+              "description": "Time window over which frequency is measured. Either a duration object (e.g. {\"value\": 7, \"unit\": \"days\"}) or the string \"campaign\" for the full campaign flight. Weekly windows ({\"value\": 7, \"unit\": \"days\"}) are typical for brand campaigns; daily windows ({\"value\": 1, \"unit\": \"days\"}) suit high-cadence direct response.",
+              "oneOf": [
+                { "$ref": "/schemas/core/duration.json" },
+                { "type": "string", "const": "campaign" }
+              ]
             }
           },
           "required": ["window"],
@@ -161,16 +163,18 @@
           "type": "object",
           "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
           "properties": {
-            "click_through": {
-              "type": "string",
-              "description": "Click-through attribution window (e.g. '7d', '28d', '30d')"
+            "click_through_days": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Click-through attribution window in days. Conversions within this many days after a click are attributed to the ad (e.g. 7, 28, 30)."
             },
-            "view_through": {
-              "type": "string",
-              "description": "View-through attribution window (e.g. '1d', '7d')"
+            "view_through_days": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "View-through attribution window in days. Conversions within this many days after an ad impression (without click) are attributed to the ad (e.g. 1, 7)."
             }
           },
-          "required": ["click_through"],
+          "required": ["click_through_days"],
           "additionalProperties": true
         },
         "priority": {
