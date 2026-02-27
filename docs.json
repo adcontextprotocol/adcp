@@ -237,6 +237,7 @@
                 "pages": [
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
+                  "docs/media-buy/task-reference/get_forecast",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
@@ -740,6 +741,7 @@
                 "pages": [
                   "docs/media-buy/task-reference/index",
                   "docs/media-buy/task-reference/get_products",
+                  "docs/media-buy/task-reference/get_forecast",
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",

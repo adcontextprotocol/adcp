@@ -13,6 +13,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
 | [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory using natural language briefs | ~60s | Discovery |
+| [`get_forecast`](/docs/media-buy/task-reference/get_forecast) | Forecast delivery for a specific product configuration | ~60s | Discovery |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
 | [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
@@ -38,9 +39,10 @@ AdCP tasks fall into four response time categories:
 - [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) - Event source configuration
 - [`log_event`](/docs/media-buy/task-reference/log_event) - Event ingestion
 
-### 🟡 Processing (~60 seconds)  
+### 🟡 Processing (~60 seconds)
 **AI/LLM inference with backend systems**
 - [`get_products`](/docs/media-buy/task-reference/get_products) - Natural language product discovery
+- [`get_forecast`](/docs/media-buy/task-reference/get_forecast) - Delivery forecast computation
 - [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Performance data aggregation
 
 ### 🟠 Asynchronous (Minutes to Days)
@@ -110,7 +112,7 @@ Schemas are accessible at runtime via the documentation server for validation an
 
 ### Task Naming Conventions
 Task names use snake_case and follow verb-first semantics consistently across Media Buy:
-- `get_*`: Retrieve current state or scoped datasets (for example `get_products`, `get_media_buys`, `get_media_buy_delivery`)
+- `get_*`: Retrieve current state or scoped datasets (for example `get_products`, `get_forecast`, `get_media_buys`, `get_media_buy_delivery`)
 - `list_*`: Enumerate collections with optional filtering (for example `list_creative_formats`, `list_creatives`)
 - `create_*`: Create new resources (`create_media_buy`)
 - `update_*`: Apply partial updates to existing resources (`update_media_buy`)
@@ -140,7 +142,8 @@ Long-running tasks provide:
 
 1. **Discover Capabilities**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to understand what the agent supports
 2. **Find Inventory**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
-3. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
+3. **Refine Forecasts**: Use [`get_forecast`](/docs/media-buy/task-reference/get_forecast) to iterate on budgets, dates, and targeting
+4. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
 4. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
 5. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
 6. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products

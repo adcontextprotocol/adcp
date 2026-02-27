@@ -163,8 +163,8 @@ Filters are applied when the list is resolved (via `get_property_list`):
 
 | Filter | Type | Description |
 |--------|------|-------------|
-| `countries_all` | string[] | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - property must have feature data for ALL (required) |
-| `channels_any` | string[] | Advertising channels - property must support ANY (required) |
+| `countries_all` | string[] | ISO 3166-1 alpha-2 country codes (case-insensitive, uppercase recommended) - property must have feature data for ALL. Optional — omit for global lists. |
+| `channels_any` | string[] | Advertising channels - property must support ANY. Optional — omit for all-channel lists. |
 | `property_types` | string[] | Property types (website, mobile_app, ctv_app, etc.) |
 | `feature_requirements` | FeatureRequirement[] | Requirements based on agent-provided features |
 | `exclude_identifiers` | Identifier[] | Identifiers to always exclude |

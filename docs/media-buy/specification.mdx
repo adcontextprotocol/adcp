@@ -82,12 +82,13 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 - **Synchronous responses**: Sales agents MAY return completed results immediately
 - **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
 - **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
+- **Rejection**: Sales agents MAY decline a media buy after creation, indicated by `status: "rejected"`. Orchestrators MUST treat `rejected` as a terminal state.
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
 
 ## Tasks
 
-The Media Buy Protocol defines twelve tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines thirteen tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -104,6 +105,21 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+
+### get_forecast
+
+**Schema**: [`media-buy/get-forecast-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-request.json) / [`media-buy/get-forecast-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-response.json)
+
+**Reference**: [`get_forecast` task](/docs/media-buy/task-reference/get_forecast)
+
+Return a delivery forecast for a specific product configuration without a full `get_products` call.
+
+**Requirements:**
+- Orchestrators MUST include `product_id`, `budget`, `start_date`, and `end_date`
+- Orchestrators MAY include `targeting_overlay` to narrow the forecast
+- Orchestrators MAY include `optimization_goal` for goal-specific forecasts
+- Sales agents MUST return a `forecast` object with delivery points, method, and currency
+- Sales agents SHOULD include `valid_until` to indicate forecast freshness
 
 ### list_creative_formats
 
@@ -315,7 +331,7 @@ All Media Buy Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 A conformant Media Buy Protocol sales agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
-2. Implement all eight tasks per their schemas
+2. Implement all tasks per their schemas
 3. Return required fields as defined in response schemas
 4. Use specified error codes
 5. Handle asynchronous operations appropriately
@@ -351,6 +367,8 @@ Sales agents SHOULD support idempotent operations using `buyer_ref`:
 - If a `buyer_ref` has been seen before, sales agents SHOULD return the existing resource
 - This enables safe retries without duplicate creation
 
+For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY include an `idempotency_key` (8-255 characters) for safe retries. If a request fails without a response, resending with the same `idempotency_key` guarantees at-most-once execution.
+
 ### Human-in-the-Loop
 
 Sales agents MAY require human approval for any operation. When approval is required:
@@ -365,6 +383,8 @@ Sales agents MAY require human approval for any operation. When approval is requ
 |--------|-------------|
 | [`media-buy/get-products-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-request.json) | get_products request |
 | [`media-buy/get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json) | get_products response |
+| [`media-buy/get-forecast-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-request.json) | get_forecast request |
+| [`media-buy/get-forecast-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-forecast-response.json) | get_forecast response |
 | [`media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-request.json) | create_media_buy request |
 | [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/create-media-buy-response.json) | create_media_buy response |
 | [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-request.json) | update_media_buy request |
