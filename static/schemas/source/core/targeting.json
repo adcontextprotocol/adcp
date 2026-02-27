@@ -254,7 +254,7 @@
     },
     "keyword_targets": {
       "type": "array",
-      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Seller must declare support in get_adcp_capabilities.",
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
       "items": {
         "type": "object",
         "properties": {
@@ -270,17 +270,16 @@
           "bid_price": {
             "type": "number",
             "minimum": 0,
-            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. If omitted, the package bid_price applies."
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
           }
         },
         "required": ["keyword", "match_type"],
         "additionalProperties": false
-      },
-      "minItems": 1
+      }
     },
     "negative_keywords": {
       "type": "array",
-      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Seller must declare support in get_adcp_capabilities.",
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
       "items": {
         "type": "object",
         "properties": {
@@ -296,8 +295,7 @@
         },
         "required": ["keyword", "match_type"],
         "additionalProperties": false
-      },
-      "minItems": 1
+      }
     }
   },
   "additionalProperties": true
