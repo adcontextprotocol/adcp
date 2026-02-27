@@ -175,9 +175,9 @@ Configure automated delivery reporting for this media buy:
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
 | `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
-| `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. |
+| `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
-| `negative_keywords_add` | NegativeKeyword[] | Negative keywords to append to this package. |
+| `negative_keywords_add` | NegativeKeyword[] | Negative keywords to append to this package. On create, these are set as `negative_keywords` inside `targeting_overlay`. |
 | `negative_keywords_remove` | NegativeKeyword[] | Negative keywords to remove from this package. |
 | `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
