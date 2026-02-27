@@ -304,6 +304,37 @@
                           }
                         ]
                       }
+                    },
+                    "by_keyword": {
+                      "type": "array",
+                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "keyword": {
+                                "type": "string",
+                                "description": "The targeted keyword"
+                              },
+                              "match_type": {
+                                "type": "string",
+                                "enum": ["broad", "phrase", "exact"],
+                                "description": "Match type for this keyword"
+                              }
+                            },
+                            "required": [
+                              "keyword",
+                              "match_type",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
                     }
                   },
                   "required": [

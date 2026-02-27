@@ -245,6 +245,14 @@
                 "audience_exclude": {
                   "type": "boolean",
                   "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
+                },
+                "keyword_targets": {
+                  "type": "boolean",
+                  "description": "Whether seller supports keyword targeting via targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy"
+                },
+                "negative_keywords": {
+                  "type": "boolean",
+                  "description": "Whether seller supports negative keyword targeting via targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy"
                 }
               }
             }
