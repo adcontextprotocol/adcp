@@ -34,7 +34,7 @@
             },
             "window": {
               "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-              "description": "Time window over which frequency is measured (e.g. {\"value\": 7, \"unit\": \"days\"} or {\"value\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
+              "description": "Time window over which frequency is measured (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
             }
           },
           "required": ["window"],
@@ -160,18 +160,16 @@
           "type": "object",
           "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
           "properties": {
-            "click_through_days": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Click-through attribution window in days. Conversions within this many days after a click are attributed to the ad (e.g. 7, 28, 30)."
+            "post_click": {
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Post-click attribution window. Conversions within this duration after a click are attributed to the ad (e.g. {\"interval\": 7, \"unit\": \"days\"})."
             },
-            "view_through_days": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "View-through attribution window in days. Conversions within this many days after an ad impression (without click) are attributed to the ad (e.g. 1, 7)."
+            "post_view": {
+              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+              "description": "Post-view attribution window. Conversions within this duration after an ad impression (without click) are attributed to the ad (e.g. {\"interval\": 1, \"unit\": \"days\"})."
             }
           },
-          "required": ["click_through_days"],
+          "required": ["post_click"],
           "additionalProperties": true
         },
         "priority": {

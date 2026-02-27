@@ -402,27 +402,25 @@
                     "$ref": "/schemas/enums/event-type.json",
                     "description": "Event type this window applies to, or omit for default window"
                   },
-                  "click_through_days": {
+                  "post_click": {
                     "type": "array",
-                    "description": "Available click-through attribution windows in days (e.g. [7], [7, 14, 30])",
+                    "description": "Available post-click attribution windows (e.g. [{\"interval\": 7, \"unit\": \"days\"}])",
                     "items": {
-                      "type": "integer",
-                      "minimum": 1
+                      "$ref": "/schemas/core/duration.json"
                     },
                     "minItems": 1
                   },
-                  "view_through_days": {
+                  "post_view": {
                     "type": "array",
-                    "description": "Available view-through attribution windows in days (e.g. [1], [1, 7, 14])",
+                    "description": "Available post-view attribution windows (e.g. [{\"interval\": 1, \"unit\": \"days\"}])",
                     "items": {
-                      "type": "integer",
-                      "minimum": 1
+                      "$ref": "/schemas/core/duration.json"
                     },
                     "minItems": 1
                   }
                 },
                 "required": [
-                  "click_through_days"
+                  "post_click"
                 ],
                 "additionalProperties": true
               }

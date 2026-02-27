@@ -21,7 +21,7 @@
     },
     "window": {
       "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-      "description": "Time window for the max_impressions cap (e.g. {\"value\": 7, \"unit\": \"days\"} or {\"value\": 1, \"unit\": \"campaign\"} for the full flight). Required when max_impressions is set."
+      "description": "Time window for the max_impressions cap (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Required when max_impressions is set."
     }
   },
   "anyOf": [

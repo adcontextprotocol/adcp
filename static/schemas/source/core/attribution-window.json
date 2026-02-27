@@ -5,15 +5,13 @@
   "description": "Describes the attribution methodology and lookback windows used for conversion measurement. Enables cross-platform comparison by making attribution methodology transparent.",
   "type": "object",
   "properties": {
-    "click_through_days": {
-      "type": "integer",
-      "description": "Click-through attribution window in days. Conversions occurring within this many days after a click are attributed to the ad.",
-      "minimum": 0
+    "post_click": {
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Post-click attribution window. Conversions occurring within this duration after a click are attributed to the ad."
     },
-    "view_through_days": {
-      "type": "integer",
-      "description": "View-through attribution window in days. Conversions occurring within this many days after an ad impression (without click) are attributed to the ad.",
-      "minimum": 0
+    "post_view": {
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Post-view attribution window. Conversions occurring within this duration after an ad impression (without click) are attributed to the ad."
     },
     "model": {
       "$ref": "/schemas/enums/attribution-model.json",

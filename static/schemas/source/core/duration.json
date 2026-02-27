@@ -2,10 +2,10 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/duration.json",
   "title": "Duration",
-  "description": "A time duration expressed as a value and unit. Used for frequency cap windows, reach optimization windows, and other time-based settings. When unit is 'campaign', value must be 1 — the window spans the full campaign flight.",
+  "description": "A time duration expressed as an interval and unit. Used for frequency cap windows, attribution windows, reach optimization windows, and other time-based settings. When unit is 'campaign', interval must be 1 — the window spans the full campaign flight.",
   "type": "object",
   "properties": {
-    "value": {
+    "interval": {
       "type": "integer",
       "minimum": 1,
       "description": "Number of time units. Must be 1 when unit is 'campaign'."
@@ -16,6 +16,6 @@
       "description": "Time unit. 'campaign' spans the full campaign flight."
     }
   },
-  "required": ["value", "unit"],
+  "required": ["interval", "unit"],
   "additionalProperties": false
 }
