@@ -15,11 +15,13 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
+- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
-- `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
+- `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
+- `delivery_measurement` (object, required): Measurement provider and methodology for delivery metrics. See [Delivery Measurement](#delivery-measurement-required).
 - `measurement` (Measurement, optional): Included measurement capabilities. Common for retail media products.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
@@ -305,6 +307,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "connected_tv_prime",
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
+  "publisher_properties": [
+    { "publisher_domain": "streaming.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -356,6 +361,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "custom_abc123",
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
+  "publisher_properties": [
+    { "publisher_domain": "gaming.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -404,6 +412,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "albertsons_pet_category_offsite",
   "name": "Pet Category Shoppers - Offsite Display & Video",
   "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
+  "publisher_properties": [
+    { "publisher_domain": "groceryretail.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",

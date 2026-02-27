@@ -88,7 +88,7 @@ Orchestrators MUST handle all response types and MUST NOT assume synchronous com
 
 ## Tasks
 
-The Media Buy Protocol defines twelve tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines thirteen tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -271,6 +271,21 @@ Send conversion or marketing events for attribution and optimization.
 - Sales agents MUST deduplicate events by `event_id` + `event_type` + `event_source_id`
 - Sales agents SHOULD report `partial_failures` for individually failed events
 - Sales agents SHOULD return `match_quality` score when user matching is attempted
+
+### sync_audiences
+
+**Schema**: [`media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-request.json) / [`media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-response.json)
+
+**Reference**: [`sync_audiences` task](/docs/media-buy/task-reference/sync_audiences)
+
+Manage first-party CRM audiences on a seller account. Upload hashed customer lists, check matching status, and reference the resulting audiences in targeting overlays.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- Orchestrators MUST include at least one audience with hashed member data
+- Sales agents MUST return per-audience outcomes with matching status
+- Sales agents SHOULD support `push_notification_config` for async matching completion
+- Sales agents MUST accept SHA-256 hashed identifiers for privacy compliance
 
 ## Error Handling
 
