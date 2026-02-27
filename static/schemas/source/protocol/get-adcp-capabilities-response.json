@@ -439,12 +439,14 @@
                 },
                 "metro": {
                   "type": "object",
-                  "description": "Metro area breakdown support. Keys are values from metro-system.json (e.g., 'nielsen_dma', 'uk_itl2'). True means the system is supported.",
+                  "description": "Metro area breakdown support. Keys are metro-system enum values; true means supported.",
+                  "propertyNames": { "$ref": "/schemas/enums/metro-system.json" },
                   "additionalProperties": { "type": "boolean" }
                 },
                 "postal_area": {
                   "type": "object",
-                  "description": "Postal area breakdown support. Keys are values from postal-system.json (e.g., 'us_zip', 'gb_outward'). True means the system is supported.",
+                  "description": "Postal area breakdown support. Keys are postal-system enum values; true means supported.",
+                  "propertyNames": { "$ref": "/schemas/enums/postal-system.json" },
                   "additionalProperties": { "type": "boolean" }
                 }
               }
