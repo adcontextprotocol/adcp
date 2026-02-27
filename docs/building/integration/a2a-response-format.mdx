@@ -459,7 +459,7 @@ Task executed but couldn't complete fully. Use `errors` array in DataPart with `
           "errors": [{
             "code": "NO_DATA_IN_REGION",
             "message": "No signal data available for Australia",
-            "field": "deliver_to.countries[1]",
+            "field": "countries[1]",
             "details": {
               "requested_country": "AU",
               "available_countries": ["US", "CA", "GB"]
@@ -690,7 +690,7 @@ A2A's `taskId` enables retry detection. Agents SHOULD:
           "errors": [{
             "code": "NO_DATA_IN_REGION",
             "message": "No signal data available for requested region: Australia",
-            "field": "deliver_to.countries[1]",
+            "field": "countries[1]",
             "details": {
               "requested_country": "AU",
               "available_countries": ["US", "CA", "GB"]

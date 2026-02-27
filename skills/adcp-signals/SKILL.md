@@ -35,16 +35,14 @@ Discover signals based on natural language description, with deployment status a
 ```json
 {
   "signal_spec": "High-income households interested in luxury goods",
-  "deliver_to": {
-    "deployments": [
-      {
-        "type": "platform",
-        "platform": "the-trade-desk",
-        "account": "agency-123"
-      }
-    ],
-    "countries": ["US"]
-  },
+  "destinations": [
+    {
+      "type": "platform",
+      "platform": "the-trade-desk",
+      "account": "agency-123"
+    }
+  ],
+  "countries": ["US"],
   "filters": {
     "max_cpm": 5.0,
     "catalog_types": ["marketplace"]
@@ -54,10 +52,9 @@ Discover signals based on natural language description, with deployment status a
 ```
 
 **Key fields:**
-- `signal_spec` (string, required): Natural language description of desired signals
-- `deliver_to` (object, required): Where signals will be used
-  - `deployments` (array): Target platforms/agents with `type`, `platform`/`agent_url`, and optional `account`
-  - `countries` (array): ISO country codes where signals will be used
+- `signal_spec` (string, conditional): Natural language description of desired signals. Required unless `signal_ids` is provided.
+- `destinations` (array, optional): Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. Each item: `type`, `platform`/`agent_url`, optional `account`.
+- `countries` (array, optional): ISO 3166-1 alpha-2 country codes where signals will be used
 - `filters` (object, optional): Filter by `catalog_types`, `data_providers`, `max_cpm`, `min_coverage_percentage`
 - `max_results` (number, optional): Limit number of results
 

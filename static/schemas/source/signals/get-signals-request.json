@@ -25,33 +25,22 @@
       },
       "minItems": 1
     },
-    "deliver_to": {
-      "type": "object",
-      "description": "Deployment targets where signals need to be activated",
-      "properties": {
-        "deployments": {
-          "type": "array",
-          "description": "List of deployment targets (DSPs, sales agents, etc.). If the authenticated caller matches one of these deployment targets, activation keys will be included in the response.",
-          "items": {
-            "$ref": "/schemas/core/destination.json"
-          },
-          "minItems": 1
-        },
-        "countries": {
-          "type": "array",
-          "description": "Countries where signals will be used (ISO codes)",
-          "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
-          },
-          "minItems": 1
-        }
+    "destinations": {
+      "type": "array",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/core/destination.json"
       },
-      "required": [
-        "deployments",
-        "countries"
-      ],
-      "additionalProperties": true
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, no geographic filter is applied.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
     },
     "filters": {
       "$ref": "/schemas/core/signal-filters.json"
@@ -71,9 +60,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "deliver_to"
-  ],
   "anyOf": [
     {
       "required": [
