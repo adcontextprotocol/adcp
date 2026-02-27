@@ -88,15 +88,19 @@ Return a delivery forecast for a specific product configuration without requirin
 }
 ```
 
+## Scope
+
+`get_forecast` operates on a single product because each forecast requires product-specific parameters (budget, targeting overlay, optimization goal, pricing option). To compare products, call `get_forecast` in parallel for each candidate — agents can issue concurrent requests efficiently.
+
+For initial multi-product discovery with inline forecasts, use [`get_products`](/docs/media-buy/task-reference/get_products) which returns forecasts alongside each product. `get_forecast` is for the iteration loop that follows: re-forecasting a known product at different budgets, dates, or targeting configurations without repeating the discovery step.
+
+> **Note**: Portfolio-level forecasting (cross-product audience overlap, cross-package frequency management) is not in scope for this task. Each forecast is independent.
+
 ## Workflow
 
-`get_forecast` fits into the campaign planning loop:
-
-1. **Discover products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
-2. **Iterate on forecasts**: Use `get_forecast` to test different budgets, dates, and targeting overlays
+1. **Discover products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory (includes initial forecasts)
+2. **Iterate on forecasts**: Use `get_forecast` to test different budgets, dates, and targeting overlays for specific products
 3. **Create the buy**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) once satisfied with the forecast
-
-This is more efficient than calling `get_products` repeatedly since `get_forecast` skips discovery and goes straight to forecast computation for a known product.
 
 ## Error Handling
 
