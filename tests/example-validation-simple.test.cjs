@@ -102,8 +102,8 @@ async function runTests() {
         "attribution": "deterministic_purchase", 
         "reporting": "weekly_dashboard"
       },
-      schema: '/schemas/core/measurement.json',
-      description: 'Measurement example'
+      schema: '/schemas/core/outcome-measurement.json',
+      description: 'Outcome Measurement example'
     },
     {
       data: {

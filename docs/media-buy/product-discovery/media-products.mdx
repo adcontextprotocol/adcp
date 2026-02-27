@@ -22,7 +22,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
 - `delivery_measurement` (object, required): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). See [Delivery Measurement](#delivery-measurement-required).
-- `measurement` (Measurement, optional): Business outcome measurement included with the product — incremental sales lift, brand lift studies, etc. Common for retail media products.
+- `outcome_measurement` (OutcomeMeasurement, optional): Business outcome measurement included with the product — incremental sales lift, brand lift studies, etc. Common for retail media products.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
@@ -146,9 +146,9 @@ Common provider examples:
 - `"Comscore vCE for video completion tracking"`
 - `"Self-reported impressions from proprietary ad server"`
 
-### Measurement Object
+### Outcome Measurement Object
 
-For products that include measurement (common in retail media):
+For products that include outcome measurement (common in retail media):
 ```json
 {
   "type": "incremental_sales_lift",
@@ -443,7 +443,7 @@ A server can offer a general catalog, but it can also return:
     "provider": "Self-reported impressions from proprietary ad server",
     "notes": "Impressions counted per IAB guidelines. Viewability measured via IAS."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
     "window": "30_days",

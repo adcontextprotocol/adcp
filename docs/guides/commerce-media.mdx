@@ -7,7 +7,7 @@ keywords: [commerce media, retail media, retail media network, sponsored product
 
 Commerce media — advertising within retail and marketplace environments — lets brands reach shoppers at the point of purchase. AdCP's `retail_media` channel handles the full spectrum: sponsored product listings, on-site display, off-site audience extension, premium placements, and in-store digital.
 
-What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
+What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `outcome_measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
 
 ## Concept Mapping
 
@@ -21,7 +21,7 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 | On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
 | Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
 | ROAS target / max conversions | `optimization_goals` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
-| Closed-loop measurement | `measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| Closed-loop measurement | `outcome_measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
@@ -66,7 +66,7 @@ The simplest commerce media product. The retailer renders the creative from the 
     "provider": "Platform Attribution",
     "notes": "Deterministic purchase attribution via transaction data. 14-day lookback."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
     "window": "14_days",
@@ -127,7 +127,7 @@ Display and video ads on retailer properties, targeted using retailer first-part
     "provider": "Retailer ad server with IAS viewability",
     "notes": "Impressions per IAB guidelines. MRC-accredited viewability."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
     "window": "30_days",
@@ -174,7 +174,7 @@ The retailer uses first-party purchase data to target audiences on third-party i
     "provider": "Self-reported impressions from proprietary ad server",
     "notes": "Impressions counted per IAB guidelines. Viewability via IAS."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
     "window": "30_days",
@@ -480,10 +480,10 @@ Commerce media's defining advantage is deterministic purchase attribution. Retai
 
 Products signal closed-loop capability through two fields:
 
-**`measurement`** describes the attribution methodology:
+**`outcome_measurement`** describes the attribution methodology:
 ```json
 {
-  "measurement": {
+  "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
     "window": "14_days",

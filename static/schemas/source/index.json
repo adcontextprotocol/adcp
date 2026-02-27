@@ -58,9 +58,9 @@
           "$ref": "/schemas/core/overlay.json",
           "description": "A publisher-controlled element that renders on top of buyer creative content within an ad placement"
         },
-        "measurement": {
-          "$ref": "/schemas/core/measurement.json",
-          "description": "Measurement capabilities included with a product"
+        "outcome-measurement": {
+          "$ref": "/schemas/core/outcome-measurement.json",
+          "description": "Business outcome measurement capabilities included with a product"
         },
         "delivery-metrics": {
           "$ref": "/schemas/core/delivery-metrics.json",
