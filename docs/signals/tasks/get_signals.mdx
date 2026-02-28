@@ -584,6 +584,41 @@ Discover all available deployments across platforms:
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
 
+## Iterative refinement
+
+`get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_ids` determines the operation:
+
+| Fields provided | Behavior |
+|----------------|----------|
+| `signal_spec` only | Discovery — find signals matching the description |
+| `signal_ids` only | Exact lookup — return specific signals by ID |
+| `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
+
+To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-request.json",
+  "signal_spec": "Same audience but with broader coverage, ideally above 20%",
+  "signal_ids": [
+    {
+      "source": "catalog",
+      "data_provider_domain": "experian.com",
+      "id": "luxury_auto_intenders"
+    }
+  ],
+  "destinations": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com"
+    }
+  ],
+  "countries": ["US"]
+}
+```
+
+The signal agent uses the provided IDs as a starting point and the spec as adjustment guidance, returning signals that reflect both the original selection and the requested changes (e.g., broader segments from the same provider, or comparable segments from alternative providers with higher coverage).
+
 ### Response - Multiple Signals Found
 
 ```json

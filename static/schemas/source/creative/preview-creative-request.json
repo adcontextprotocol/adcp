@@ -19,7 +19,7 @@
         },
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
-          "description": "Complete creative manifest with all required assets for the format"
+          "description": "Complete creative manifest with all required assets for the format."
         },
         "inputs": {
           "type": "array",
@@ -93,7 +93,7 @@
               },
               "creative_manifest": {
                 "$ref": "/schemas/core/creative-manifest.json",
-                "description": "Complete creative manifest with all required assets"
+                "description": "Complete creative manifest with all required assets."
               },
               "inputs": {
                 "type": "array",
@@ -134,9 +134,7 @@
                 "description": "Output format for this preview. 'url' returns preview_url, 'html' returns preview_html."
               }
             },
-            "required": [
-              "creative_manifest"
-            ],
+            "required": ["creative_manifest"],
             "additionalProperties": true
           },
           "minItems": 1,

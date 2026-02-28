@@ -26,6 +26,8 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Create Release Pull Request or Tag Release
         id: changesets
