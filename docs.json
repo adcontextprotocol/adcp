@@ -68,7 +68,8 @@
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
                   "docs/reference/migration/creatives",
-                  "docs/reference/migration/catalogs"
+                  "docs/reference/migration/catalogs",
+                  "docs/reference/migration/attribution"
                 ]
               }
             ]
@@ -574,7 +575,8 @@
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
                   "docs/reference/migration/creatives",
-                  "docs/reference/migration/catalogs"
+                  "docs/reference/migration/catalogs",
+                  "docs/reference/migration/attribution"
                 ]
               }
             ]
