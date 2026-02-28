@@ -102,11 +102,26 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
 - Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
+- Orchestrators MUST NOT include `feedback` when `buying_mode` is `"brief"` or `"wholesale"`
 - Orchestrators MUST include at least one of `product_ids` or `proposal_id` when `buying_mode` is `"refine"` to iterate on known products or proposals
-- Orchestrators MAY include `requested_changes` when `buying_mode` is `"refine"` to describe what to adjust
+- Orchestrators MAY include `feedback` when `buying_mode` is `"refine"` to provide structured per-item and overall adjustment instructions
+- Orchestrators SHOULD ensure product IDs in `feedback.products` are present in `product_ids` or in the referenced proposal's allocations
+- Orchestrators SHOULD ensure proposal IDs in `feedback.proposals` match the top-level `proposal_id`
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+
+**Refinement requirements:**
+
+Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `product_ids`, `proposal_id`, `feedback`, and `filters` on each request fully specify the refinement intent. This enables stateless implementations and safe retries.
+
+- Sales agents MUST omit products marked with `feedback.products[].omit: true` from the response
+- Sales agents MUST omit proposals marked with `feedback.proposals[].omit: true` from the response
+- Sales agents MUST return all products from `product_ids` that are not omitted via `feedback`, with updated forecasts and pricing
+- Sales agents SHOULD apply adjustment instructions from `feedback.products[].notes` and `feedback.proposals[].notes` to the referenced items
+- Sales agents SHOULD consider `feedback.overall` when composing the response — this MAY result in additional products beyond those in `product_ids`
+- Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not provide a `proposal_id`
+- Sales agents MUST NOT remove products from `product_ids` that are not explicitly omitted via `feedback` — the orchestrator's selection is authoritative
 
 ### list_creative_formats
 

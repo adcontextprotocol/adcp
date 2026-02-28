@@ -639,7 +639,7 @@ The `tags` field enables grouping allocations by dimension:
 
 ### Iterating on Proposals
 
-Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. Use `requested_changes` to describe what to adjust — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
+Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. Use `feedback` to provide structured per-item adjustment instructions — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
 
 ```
 // Initial discovery
@@ -650,11 +650,15 @@ get_products({
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Refine the proposal
+// Refine the proposal with structured feedback
 get_products({
   buying_mode: "refine",
   proposal_id: "swiss_balanced_v1",
-  requested_changes: "focus more on German speakers - try 60/40 instead of 40/60"
+  feedback: {
+    proposals: [
+      { proposal_id: "swiss_balanced_v1", notes: "focus more on German speakers - try 60/40 instead of 40/60" }
+    ]
+  }
 })
 
 // Seller returns an updated proposal with revised allocations
@@ -694,7 +698,9 @@ Publishers include proposals when:
 - The publisher can provide strategic guidance based on campaign goals
 - Multiple products work better together than individually
 
-Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+Publishers typically omit proposals in `wholesale` mode (the buyer is directing targeting and allocation themselves) or when the brief doesn't suggest a multi-product strategy.
+
+Proposals are optional — publishers may return only products if allocation guidance isn't applicable. In `refine` mode, sellers MAY return proposals alongside refined products even when the buyer only provided `product_ids`. Proposals are a seller suggestion — allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
 
 ### Seller-generated creatives
 

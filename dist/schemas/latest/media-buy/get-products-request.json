@@ -2,25 +2,81 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/latest/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products with requested_changes.",
+  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products with structured feedback.",
   "type": "object",
   "properties": {
     "buying_mode": {
       "type": "string",
       "enum": ["brief", "wholesale", "refine"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on known products or proposals from a previous get_products response — requires at least one of product_ids or proposal_id. Use requested_changes to describe what to adjust. The seller returns updated forecasts, pricing, and product configurations reflecting the changes and/or filters."
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on known products or proposals from a previous get_products response — requires at least one of product_ids or proposal_id. Use feedback to provide structured per-item and overall adjustment instructions. The seller returns updated forecasts, pricing, and product configurations reflecting the feedback and/or filters."
     },
     "brief": {
       "type": "string",
       "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
     },
-    "requested_changes": {
-      "type": "string",
-      "description": "Natural language description of what to change when refining products or proposals (e.g., 'Increase budget to $200k and narrow to California only', 'Shift more budget toward video'). Only valid when buying_mode is 'refine'. The seller does not need the original brief — describe only the delta."
+    "feedback": {
+      "type": "object",
+      "description": "Structured refinement feedback. Separates overall selection feedback from per-item adjustment instructions. Only valid when buying_mode is 'refine'. Only include items you want to omit or adjust — unlisted items are returned as-is with updated forecasts.",
+      "minProperties": 1,
+      "properties": {
+        "overall": {
+          "type": "string",
+          "description": "Feedback about the overall product/proposal selection (e.g., 'good selection but I want more video options'). Guides the seller to adjust the set composition."
+        },
+        "products": {
+          "type": "array",
+          "description": "Per-product feedback. Reference product IDs from the previous get_products response.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "product_id": {
+                "type": "string",
+                "description": "Product ID from the previous get_products response"
+              },
+              "omit": {
+                "type": "boolean",
+                "description": "Remove this product from the response. When true, notes is ignored.",
+                "default": false
+              },
+              "notes": {
+                "type": "string",
+                "description": "Adjustment instructions for this product (e.g., 'increase budget allocation', 'add 16:9 format')"
+              }
+            },
+            "required": ["product_id"],
+            "additionalProperties": false
+          }
+        },
+        "proposals": {
+          "type": "array",
+          "description": "Per-proposal feedback. Reference proposal IDs from the previous get_products response.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "proposal_id": {
+                "type": "string",
+                "description": "Proposal ID from the previous get_products response"
+              },
+              "omit": {
+                "type": "boolean",
+                "description": "Remove this proposal from the response. When true, notes is ignored.",
+                "default": false
+              },
+              "notes": {
+                "type": "string",
+                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%')"
+              }
+            },
+            "required": ["proposal_id"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "product_ids": {
       "type": "array",
-      "description": "Product IDs from a previous get_products response. The seller skips discovery and returns only these products with updated forecasts, pricing, and package configurations reflecting requested_changes and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'.",
+      "description": "Product IDs from a previous get_products response. The seller skips discovery and returns only these products with updated forecasts, pricing, and package configurations reflecting feedback and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'.",
       "items": {
         "type": "string"
       },
@@ -28,7 +84,7 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "Proposal ID from a previous get_products response. The seller returns an updated version of this proposal with revised forecasts, allocations, and pricing reflecting requested_changes and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'. When both are provided, product_ids narrow or expand the proposal's product set."
+      "description": "Proposal ID from a previous get_products response. The seller returns an updated version of this proposal with revised forecasts, allocations, and pricing reflecting feedback and filters. At least one of product_ids or proposal_id is required when buying_mode is 'refine'. When both are provided, product_ids narrow or expand the proposal's product set."
     },
     "brand": {
       "$ref": "/schemas/latest/core/brand-ref.json",
@@ -72,7 +128,7 @@
         },
         "product_ids": false,
         "proposal_id": false,
-        "requested_changes": false
+        "feedback": false
       },
       "required": [
         "buying_mode",
@@ -87,7 +143,7 @@
         "brief": false,
         "product_ids": false,
         "proposal_id": false,
-        "requested_changes": false
+        "feedback": false
       },
       "required": [
         "buying_mode"
