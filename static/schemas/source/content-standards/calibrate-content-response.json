@@ -46,6 +46,12 @@
             },
             "required": ["feature_id", "status"]
           }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["verdict"]
@@ -57,6 +63,12 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["errors"]
