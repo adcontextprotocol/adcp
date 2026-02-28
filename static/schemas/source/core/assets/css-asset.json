@@ -12,6 +12,10 @@
     "media": {
       "type": "string",
       "description": "CSS media query context (e.g., 'screen', 'print')"
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
     }
   },
   "required": [

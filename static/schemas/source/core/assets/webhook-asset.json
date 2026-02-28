@@ -66,6 +66,10 @@
       "required": [
         "method"
       ]
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
     }
   },
   "required": [

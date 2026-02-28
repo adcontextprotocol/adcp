@@ -48,6 +48,10 @@
           "format": "uri",
           "description": "URL to audio description track for visually impaired users",
           "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
         }
       },
       "required": [
@@ -99,6 +103,10 @@
           "format": "uri",
           "description": "URL to audio description track for visually impaired users",
           "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
         }
       },
       "required": [

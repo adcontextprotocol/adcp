@@ -21,10 +21,6 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."
     },
-    "creative_brief": {
-      "$ref": "/schemas/core/creative-brief-ref.json",
-      "description": "Campaign-level creative brief with objective, audience, messaging, and reference assets. Can be an inline brief object or a URL to a hosted brief. Supplements the natural language message with structured creative direction."
-    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

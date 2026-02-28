@@ -35,6 +35,10 @@
           "description": "Whether the creative has been tested with screen readers"
         }
       }
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
     }
   },
   "required": [

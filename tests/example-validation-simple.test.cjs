@@ -295,6 +295,91 @@ async function runTests() {
     'log_event response (error)'
   );
 
+  // Creative manifest with brief asset and compliance
+  await validateExample(
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250_generative"
+      },
+      "assets": {
+        "brief": {
+          "name": "Holiday Sale 2025",
+          "objective": "conversion",
+          "compliance": {
+            "required_disclosures": [
+              { "text": "Terms and conditions apply.", "position": "footer" }
+            ]
+          }
+        }
+      }
+    },
+    '/schemas/core/creative-manifest.json',
+    'Creative manifest with brief asset and compliance'
+  );
+
+  // Creative manifest with catalog asset
+  await validateExample(
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_carousel_product"
+      },
+      "assets": {
+        "product_catalog": {
+          "type": "product",
+          "catalog_id": "winter-products",
+          "tags": ["beverage"]
+        },
+        "banner_image": {
+          "url": "https://cdn.example.com/banner.jpg",
+          "width": 300,
+          "height": 250
+        }
+      }
+    },
+    '/schemas/core/creative-manifest.json',
+    'Creative manifest with catalog asset and selectors'
+  );
+
+  // Creative brief examples
+  await validateExample(
+    {
+      "name": "Summer Campaign 2026"
+    },
+    '/schemas/core/creative-brief.json',
+    'Creative brief (minimal)'
+  );
+
+  await validateExample(
+    {
+      "name": "Retirement Advisory Q1 2026",
+      "objective": "consideration",
+      "audience": "Pre-retirees aged 50-65",
+      "compliance": {
+        "required_disclosures": [
+          {
+            "text": "Past performance is not indicative of future results.",
+            "position": "footer",
+            "jurisdictions": ["US", "US-NJ"],
+            "regulation": "SEC Rule 156"
+          },
+          {
+            "text": "Capital at risk.",
+            "position": "prominent",
+            "jurisdictions": ["GB", "CA-QC"]
+          }
+        ],
+        "prohibited_claims": [
+          "guaranteed returns",
+          "risk-free"
+        ]
+      }
+    },
+    '/schemas/core/creative-brief.json',
+    'Creative brief with compliance fields'
+  );
+
   // Print results
   log('\n===========================================');
   log(`Tests completed: ${totalTests}`);

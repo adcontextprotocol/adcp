@@ -19,6 +19,11 @@
       "minimum": 1,
       "description": "Minimum number of items the catalog must contain for this format to render properly (e.g., a carousel might require at least 3 products)"
     },
+    "max_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of items the format can render. Items beyond this limit are ignored. Useful for fixed-slot layouts (e.g., a 3-product card) or feed-size constraints."
+    },
     "required_fields": {
       "type": "array",
       "description": "Fields that must be present and non-empty on every item in the catalog. Field names are catalog-type-specific (e.g., 'title', 'price', 'image_url' for product catalogs; 'store_id', 'quantity' for inventory feeds).",

@@ -1,6 +1,6 @@
 ---
 title: "Migrating catalogs"
-description: Step-by-step guide to migrating from promoted_offerings to first-class catalogs, including the new sync_catalogs task and catalog_requirements on formats
+description: Step-by-step guide to migrating from promoted_offerings to first-class catalogs, including the new sync_catalogs task and catalog asset types on formats
 ---
 
 # Migrating catalogs
@@ -11,11 +11,11 @@ AdCP v3 removes the `promoted_offerings` creative asset type and the `promoted_o
 
 | v2 field | v3 field | Change type |
 |----------|----------|-------------|
-| `promoted_offerings` (creative asset type) | `catalogs` field on creative manifest | Replaced |
+| `promoted_offerings` (creative asset type) | `catalog` assets in creative manifest `assets` | Replaced |
 | `promoted_offering` (string on media-buy) | Removed | Removed |
-| `promoted_offering` (string on creative-manifest) | `catalogs` field | Replaced |
+| `promoted_offering` (string on creative-manifest) | `catalog` assets in `assets` | Replaced |
 | No catalog sync | `sync_catalogs` task | New |
-| No format catalog requirements | `catalog_requirements` on Format | New |
+| No format catalog requirements | `catalog` asset type on Format `assets` | New |
 | No catalog-event linking | `conversion_events` on Catalog | New |
 
 ---
@@ -26,7 +26,7 @@ AdCP v3 removes the `promoted_offerings` creative asset type and the `promoted_o
 
 In v2, catalog data was embedded inside `creative_manifest.assets` as a `promoted_offerings` object that bundled brand identity, inline offerings, and SI agent URL together.
 
-In v3, brand identity is a first-class parameter on tasks (`build_creative`, `sync_creatives`), and catalogs are a direct field on the manifest.
+In v3, brand identity is a first-class parameter on tasks (`build_creative`, `sync_creatives`), and catalogs are included as `catalog` asset types in the manifest's `assets`.
 
 ### Before (v2)
 
@@ -63,18 +63,19 @@ In v3, brand identity is a first-class parameter on tasks (`build_creative`, `sy
     "agent_url": "https://creatives.example.com",
     "id": "product_carousel"
   },
-  "catalogs": [{
-    "type": "product",
-    "catalog_id": "winter-products"
-  }],
-  "assets": {}
+  "assets": {
+    "product_catalog": {
+      "type": "product",
+      "catalog_id": "winter-products"
+    }
+  }
 }
 ```
 
 Key differences:
 
 - **Brand identity** comes from the `brand` parameter on the task, not embedded in creative assets
-- **Catalogs** is a direct field on the manifest, not nested inside `assets`
+- **Catalogs** are `catalog` asset types in the `assets` map, keyed by a role name (e.g., `product_catalog`)
 - **Catalog references synced data** by `catalog_id` instead of inlining items (though inline items are still supported for simple cases)
 
 ---
@@ -117,7 +118,7 @@ The `promoted_offering` string field is removed from media buy objects. What's b
 If you were using `promoted_offering` for reporting or display purposes, that context now comes from:
 - The `brief` field on `get_products` and `create_media_buy`
 - The `brand` parameter on tasks
-- The `catalogs` field on creative manifests
+- Catalog assets in creative manifest `assets`
 
 ---
 
@@ -135,10 +136,10 @@ Key features:
 ### Workflow
 
 ```
-list_creative_formats → check catalog_requirements → sync_catalogs → sync_creatives with catalog reference
+list_creative_formats → check catalog assets → sync_catalogs → sync_creatives with catalog assets
 ```
 
-1. Discover what catalogs a format needs via `catalog_requirements` on the format
+1. Discover what catalogs a format needs via `catalog` asset types in the format's `assets`
 2. Sync those catalogs using `sync_catalogs`
 3. Wait for approval if the seller requires review
 4. Submit creatives that reference the synced `catalog_id`
@@ -151,26 +152,33 @@ list_creative_formats → check catalog_requirements → sync_catalogs → sync_
 
 ## Format catalog requirements (new in v3)
 
-Formats declare what catalog types they need via the `catalog_requirements` array:
+Formats declare catalog needs as `catalog` asset types in their `assets` array:
 
 ```json
 {
-  "catalog_requirements": [
+  "assets": [
     {
-      "catalog_type": "product",
+      "item_type": "individual",
+      "asset_id": "product_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "min_items": 3,
-      "required_fields": ["name", "price", "image_url"]
+      "requirements": {
+        "catalog_type": "product",
+        "min_items": 3,
+        "required_fields": ["name", "price", "image_url"]
+      }
     }
   ]
 }
 ```
 
+Format declarations use `asset_type: "catalog"` with a `requirements` object containing:
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `catalog_type` | string | Required. The catalog type (e.g., `product`, `store`, `job`) |
-| `required` | boolean | Whether this catalog must be present (default: true) |
 | `min_items` | integer | Minimum items the catalog must contain |
+| `max_items` | integer | Maximum items the format can render |
 | `required_fields` | string[] | Fields that must be present on every item |
 | `feed_formats` | string[] | Accepted feed formats (e.g., `google_merchant_center`, `linkedin_jobs`) |
 
@@ -290,14 +298,14 @@ Packages now accept a `catalog` field for catalog-driven campaigns. One budget e
   <Step title="Remove promoted_offerings from creative assets">
     Remove `promoted_offerings` objects from `creative_manifest.assets`. Brand identity is now provided via the `brand` task parameter.
   </Step>
-  <Step title="Add catalogs field to creative manifests">
-    For creatives that render catalog items (product carousels, store locators, etc.), add the `catalogs` field to the creative manifest with at minimum `type` and `catalog_id`.
+  <Step title="Add catalog assets to creative manifests">
+    For creatives that render catalog items (product carousels, store locators, etc.), add catalog assets to the manifest's `assets` map. Each catalog asset is a catalog object with `type` and `catalog_id` (e.g., `{ "type": "product", "catalog_id": "winter-products" }`).
   </Step>
   <Step title="Remove promoted_offering from media buys">
     Remove the `promoted_offering` string from `create_media_buy` requests. Use the `brief` field to describe what's being promoted.
   </Step>
   <Step title="Discover catalog requirements">
-    Call `list_creative_formats` and check `catalog_requirements` on each format to understand what catalog types and fields are needed.
+    Call `list_creative_formats` and check for `catalog` asset types in each format's `assets` to understand what catalog types and fields are needed.
   </Step>
   <Step title="Sync catalogs before submitting creatives">
     Use the `sync_catalogs` task to push catalog data to sellers. Handle async approval if the seller requires review.

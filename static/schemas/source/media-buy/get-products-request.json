@@ -115,6 +115,40 @@
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list."
     },
+    "fields": {
+      "type": "array",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "product_id",
+          "name",
+          "description",
+          "publisher_properties",
+          "channels",
+          "format_ids",
+          "placements",
+          "delivery_type",
+          "pricing_options",
+          "forecast",
+          "outcome_measurement",
+          "delivery_measurement",
+          "reporting_capabilities",
+          "creative_policy",
+          "catalog_types",
+          "metric_optimization",
+          "conversion_tracking",
+          "data_provider_signals",
+          "max_optimization_goals",
+          "catalog_match",
+          "brief_relevance",
+          "expires_at",
+          "product_card",
+          "product_card_detailed"
+        ]
+      }
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },

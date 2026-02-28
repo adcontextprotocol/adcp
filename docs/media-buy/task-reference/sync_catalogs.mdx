@@ -26,7 +26,7 @@ sequenceDiagram
 
 This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/integration/account-state):
 
-1. `list_creative_formats` — check `catalog_requirements` to know what feeds to sync
+1. `list_creative_formats` — check `catalog` asset types in each format's `assets` array to know what feeds to sync
 2. **`sync_catalogs`** — push the required feeds to the account
 3. `sync_creatives` — submit creatives that reference synced catalogs by `catalog_id`
 4. `create_media_buy` — launch the campaign
@@ -238,7 +238,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ## Best practices
 
-1. **Check format requirements first** — Call `list_creative_formats` and check `catalog_requirements` before syncing. This tells you what catalog types to sync and what fields each item needs.
+1. **Check format requirements first** — Call `list_creative_formats` and check `catalog` asset types in each format's `assets` array before syncing. This tells you what catalog types to sync and what fields each item needs.
 
 2. **Use discovery mode** — Before syncing, call without `catalogs` to see what the seller already has. The seller may have brand data from other sources.
 
