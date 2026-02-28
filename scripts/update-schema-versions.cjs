@@ -27,7 +27,7 @@ let filesUpdated = 0;
  * Update version in schema registry
  */
 function updateSchemaRegistry() {
-  const registryPath = path.join(__dirname, '../static/schemas/v1/index.json');
+  const registryPath = path.join(__dirname, '../static/schemas/source/index.json');
 
   try {
     const content = fs.readFileSync(registryPath, 'utf8');
@@ -60,16 +60,15 @@ if (filesUpdated > 0) {
   console.log('\n📝 Staging schema version changes...');
   try {
     const { execSync } = require('child_process');
-    execSync('git add static/schemas/v1/index.json', { stdio: 'inherit' });
-    console.log('  ✓ Staged static/schemas/v1/index.json');
+    execSync('git add static/schemas/source/index.json', { stdio: 'inherit' });
+    console.log('  ✓ Staged static/schemas/source/index.json');
   } catch (error) {
     console.error('  ⚠️  Warning: Could not stage changes (may not be in a git repository)');
-    console.error('     Please manually commit: static/schemas/v1/index.json');
+    console.error('     Please manually commit: static/schemas/source/index.json');
   }
 }
 
 console.log(`\n✅ Version update complete!\n`);
 console.log(`The AdCP version is now ${version} and is maintained solely in:`);
-console.log(`  • static/schemas/v1/index.json (adcp_version field)`);
-console.log(`  • Schema path prefix (/schemas/v1/)`);
+console.log(`  • static/schemas/source/index.json (adcp_version field)`);
 console.log(`\nIndividual schemas and documentation do not contain version fields.\n`);

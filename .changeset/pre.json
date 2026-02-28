@@ -1,8 +1,8 @@
 {
   "mode": "pre",
-  "tag": "beta",
+  "tag": "rc",
   "initialVersions": {
-    "adcontextprotocol": "3.0.0-beta.0"
+    "adcontextprotocol": "3.0.0-beta.3"
   },
   "changesets": [
     "a2ui-mcp-apps-support",

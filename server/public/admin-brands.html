@@ -457,7 +457,7 @@
 
       <div class="form-group">
         <label>Brand JSON</label>
-        <textarea id="createBrandJson" placeholder='{"$schema": "https://adcontextprotocol.org/schemas/v1/brand.json", ...}'></textarea>
+        <textarea id="createBrandJson" placeholder='{"$schema": "https://adcontextprotocol.org/schemas/latest/brand.json", ...}'></textarea>
       </div>
 
       <div class="modal-actions">
@@ -723,7 +723,7 @@
       document.getElementById('createModal').style.display = 'block';
       document.getElementById('createDomain').value = '';
       document.getElementById('createBrandJson').value = JSON.stringify({
-        "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+        "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
         "version": "1.0",
         "house": {
           "domain": "",

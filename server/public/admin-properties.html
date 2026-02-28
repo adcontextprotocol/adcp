@@ -391,7 +391,7 @@
 
       <div class="form-group">
         <label>adagents.json Content</label>
-        <textarea id="createAdagentsJson" placeholder='{"$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json", ...}'></textarea>
+        <textarea id="createAdagentsJson" placeholder='{"$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json", ...}'></textarea>
       </div>
 
       <div class="modal-actions">
@@ -603,7 +603,7 @@
       document.getElementById('createModal').style.display = 'block';
       document.getElementById('createDomain').value = '';
       document.getElementById('createAdagentsJson').value = JSON.stringify({
-        "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+        "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
         "authorized_agents": [],
         "properties": [],
         "contact": {

@@ -1,0 +1,188 @@
+---
+title: "Migrating optimization goals"
+description: Step-by-step guide to migrating from singular optimization_goal to the multi-goal optimization_goals array
+testable: true
+---
+
+# Migrating optimization goals
+
+AdCP v3 rc.1 replaces the singular `optimization_goal` object with an `optimization_goals` array. Each goal is a discriminated union on `kind`, supporting multi-goal packages with priority ordering.
+
+## What changed
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `optimization_goal` (single object) | `optimization_goals` (array) | Array of discriminated union |
+| Implicit single goal | `priority` field | 1 = highest priority |
+| One goal type | Two kinds: `metric` and `event` | Discriminated on `kind` field |
+| No reach optimization | `reach` metric with `reach_unit` and `target_frequency` | Products declare `supported_reach_units` |
+
+## Goal kinds
+
+Every goal has a `kind` discriminator:
+
+- **`metric`** — Seller-native delivery metrics (clicks, views, reach, engagements, etc.)
+- **`event`** — Conversion tracking tied to event sources configured via `sync_event_sources`
+
+### Metric goals
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/optimization-goal.json",
+  "kind": "metric",
+  "metric": "clicks",
+  "target": {
+    "kind": "cost_per",
+    "value": 2.50
+  },
+  "priority": 1
+}
+```
+
+Supported metrics: `clicks`, `views`, `completed_views`, `viewed_seconds`, `attention_seconds`, `attention_score`, `engagements`, `follows`, `saves`, `profile_visits`, `reach`.
+
+Target types:
+- `cost_per` — Target cost per metric unit (e.g., $2.50 CPC)
+- `threshold_rate` — Target rate threshold (e.g., 0.02 for 2% CTR)
+
+### Event goals
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/optimization-goal.json",
+  "kind": "event",
+  "event_sources": [
+    {
+      "event_source_id": "es_web_pixel",
+      "event_type": "purchase",
+      "value_field": "order_total",
+      "value_factor": 1
+    }
+  ],
+  "target": {
+    "kind": "per_ad_spend",
+    "value": 4.0
+  },
+  "attribution_window": {
+    "post_click": { "interval": 7, "unit": "days" },
+    "post_view": { "interval": 1, "unit": "days" }
+  },
+  "priority": 2
+}
+```
+
+Event target types:
+- `cost_per` — Target cost per conversion (CPA)
+- `per_ad_spend` — Target return on ad spend (ROAS). Requires `value_field`.
+- `maximize_value` — Maximize total conversion value. Requires `value_field`.
+
+### Reach goals
+
+Reach is a metric goal with additional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/optimization-goal.json",
+  "kind": "metric",
+  "metric": "reach",
+  "reach_unit": "individuals",
+  "target_frequency": {
+    "min": 2,
+    "max": 5,
+    "window": { "interval": 7, "unit": "days" }
+  },
+  "priority": 1
+}
+```
+
+`reach_unit` values: `individuals`, `households`, `devices`, `accounts`, `cookies`, `custom`.
+
+`target_frequency` requires at least one of `min` or `max`, plus `window` as a Duration object (e.g., `{"interval": 7, "unit": "days"}` or `{"interval": 1, "unit": "campaign"}`).
+
+## Multi-goal packages
+
+Multiple goals are ordered by `priority` (1 = highest). The seller optimizes for higher-priority goals first, using lower-priority goals as tiebreakers.
+
+**beta.3:**
+```json
+{
+  "optimization_goal": {
+    "metric": "clicks",
+    "target_cpc": 2.50
+  }
+}
+```
+
+**rc.1:**
+```json
+{
+  "optimization_goals": [
+    {
+      "kind": "metric",
+      "metric": "clicks",
+      "target": { "kind": "cost_per", "value": 2.50 },
+      "priority": 1
+    },
+    {
+      "kind": "event",
+      "event_sources": [
+        { "event_source_id": "es_web_pixel", "event_type": "purchase" }
+      ],
+      "target": { "kind": "cost_per", "value": 25.00 },
+      "priority": 2
+    }
+  ]
+}
+```
+
+## Product capabilities
+
+Products declare optimization support via `metric_optimization`:
+
+```json test=false
+{
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "views", "completed_views", "reach"],
+    "supported_reach_units": ["individuals", "households"],
+    "supported_view_durations": [6, 15, 30],
+    "supported_targets": ["cost_per", "threshold_rate"]
+  },
+  "max_optimization_goals": 3
+}
+```
+
+- `supported_metrics` — Which metrics the product can optimize for
+- `supported_reach_units` — Required when `reach` is in supported_metrics
+- `supported_view_durations` — Seconds for `completed_views` metric
+- `supported_targets` — Target kinds available. When omitted, only target-less goals (maximize volume) are allowed
+- `max_optimization_goals` — Maximum number of goals per package
+
+## Migration steps
+
+<Steps>
+  <Step title="Rename the field">
+    Replace `optimization_goal` (singular) with `optimization_goals` (array) in all request construction code.
+  </Step>
+  <Step title="Add kind discriminator">
+    Wrap existing goals with `"kind": "metric"` or `"kind": "event"`. Metric goals use seller-native metrics; event goals reference event sources from `sync_event_sources`.
+  </Step>
+  <Step title="Restructure targets">
+    Replace flat target fields (e.g., `target_cpc`) with the discriminated `target` object: `{ "kind": "cost_per", "value": 2.50 }`.
+  </Step>
+  <Step title="Add priority">
+    Set `priority: 1` for single-goal packages. For multi-goal packages, assign ascending priority values (1 = highest).
+  </Step>
+  <Step title="Update response parsing">
+    When reading optimization goals from responses (e.g., `get_media_buy`), switch on `kind` to determine the goal type before accessing type-specific fields.
+  </Step>
+  <Step title="Check product capabilities">
+    Before submitting goals, check `metric_optimization.supported_metrics` and `max_optimization_goals` on the product. Sellers reject unsupported metrics and goals exceeding the limit.
+  </Step>
+  <Step title="Validate against schema">
+    Run requests against `optimization-goal.json` schema. The discriminated union enforces the correct fields per kind.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Signals](/docs/reference/migration/signals) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)

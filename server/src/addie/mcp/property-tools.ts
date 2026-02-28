@@ -271,7 +271,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
     const sourceType = (args.source_type as string) || 'community';
 
     const adagentsJson: Record<string, unknown> = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+      $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
       authorized_agents: authorizedAgents,
       properties: properties,
     };
@@ -326,7 +326,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       redirect_json: {
         note: 'Publisher can place this at /.well-known/adagents.json to redirect to hosted version',
         content: {
-          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
           authoritative_location: `https://adcontextprotocol.org/property/${saved.id}/adagents.json`,
         },
       },
