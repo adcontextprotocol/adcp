@@ -16,7 +16,7 @@
         },
         "generated_creative_ref": {
           "type": "string",
-          "description": "Ephemeral reference to this generated creative. Use in subsequent build_creative requests (refinement) or preview_creative requests without resending the full manifest."
+          "description": "Opaque, ephemeral reference to this generated creative. Pass back in subsequent build_creative (refinement) or preview_creative requests without resending the full manifest. Callers MUST NOT parse or construct ref values. Agents SHOULD support refs for at least 15 minutes."
         },
         "sandbox": {
           "type": "boolean",

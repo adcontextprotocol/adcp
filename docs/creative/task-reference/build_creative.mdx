@@ -597,6 +597,10 @@ When the response includes a `generated_creative_ref`, reference it directly ins
 
 The creative agent resolves `generated_creative_ref` to the output manifest and applies the refinement. This is useful when manifests are large (e.g., multi-asset generative formats) or when iterating across multiple rounds.
 
+#### Ref semantics
+
+`generated_creative_ref` values are opaque strings. Callers MUST NOT parse, construct, or make assumptions about the format — treat them as pass-through tokens. Creative agents SHOULD support refs for at least 15 minutes after issuance; callers that encounter `GENERATED_CREATIVE_REF_EXPIRED` should fall back to manifest passback.
+
 #### Precedence
 
 When both `generated_creative_ref` and `creative_manifest` are provided, `creative_manifest` takes precedence. The ref is ignored.
