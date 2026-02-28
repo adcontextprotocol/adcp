@@ -23,9 +23,9 @@
   "enumDescriptions": {
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
-    "PRODUCT_NOT_FOUND": "One or more product_ids are unknown or were never valid. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
+    "PRODUCT_NOT_FOUND": "One or more product IDs in refine.products are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
     "PRODUCT_UNAVAILABLE": "The requested product is sold out or no longer available. Recovery: correctable (choose a different product).",
-    "PROPOSAL_EXPIRED": "The proposal referenced by proposal_id has expired. Recovery: correctable (run get_products to get a fresh proposal).",
+    "PROPOSAL_EXPIRED": "A proposal ID in refine.proposals has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
     "BUDGET_TOO_LOW": "Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).",
     "CREATIVE_REJECTED": "Creative failed content policy review. Recovery: correctable (revise the creative per the seller's advertising_policies).",
     "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",

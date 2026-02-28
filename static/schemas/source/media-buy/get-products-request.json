@@ -26,6 +26,7 @@
         "products": {
           "type": "array",
           "description": "Per-product refinement instructions. Each entry references a product from a previous get_products response and declares an action.",
+          "minItems": 1,
           "items": {
             "type": "object",
             "properties": {
@@ -50,6 +51,7 @@
         "proposals": {
           "type": "array",
           "description": "Per-proposal refinement instructions. Reference proposal IDs from a previous get_products response.",
+          "minItems": 1,
           "items": {
             "type": "object",
             "properties": {
