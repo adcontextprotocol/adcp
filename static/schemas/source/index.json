@@ -325,6 +325,10 @@
         "account-ref": {
           "$ref": "/schemas/core/account-ref.json",
           "description": "Reference to an account by seller-assigned ID or natural key (brand, operator)"
+        },
+        "provenance": {
+          "$ref": "/schemas/core/provenance.json",
+          "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"
         }
       },
       "requirements": {
@@ -699,6 +703,10 @@
         "consent-basis": {
           "$ref": "/schemas/enums/consent-basis.json",
           "description": "GDPR Article 6(1) lawful basis for processing personal data"
+        },
+        "digital-source-type": {
+          "$ref": "/schemas/enums/digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in content creation (digital_capture, trained_algorithmic_media, composite_with_trained_algorithmic_media, etc.)"
         }
       }
     },

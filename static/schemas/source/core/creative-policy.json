@@ -16,6 +16,10 @@
     "templates_available": {
       "type": "boolean",
       "description": "Whether creative templates are provided"
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "Whether creatives must include provenance metadata. When true, the seller requires buyers to attach provenance declarations to creative submissions. The seller may independently verify claims via get_creative_features."
     }
   },
   "required": [

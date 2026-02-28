@@ -60,6 +60,10 @@
       "format": "uri",
       "description": "URL to text transcript of the audio content",
       "x-accessibility": true
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
     }
   },
   "required": [
