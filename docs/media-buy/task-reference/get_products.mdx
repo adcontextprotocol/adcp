@@ -914,13 +914,15 @@ Products in the response include `sample_creatives` with preview renders and a `
 
 ### Refining creative direction
 
-Use `buying_mode: "refine"` with `product_ids` and reference specific previews by `generated_creative_ref` in `requested_changes`:
+Use `buying_mode: "refine"` with `product_ids` and reference specific previews by `generated_creative_ref` in `feedback`:
 
 ```json test=false
 {
   "buying_mode": "refine",
   "product_ids": ["sponsored_job_listing"],
-  "requested_changes": "gen_sr_eng_sf is good. gen_staff_eng_la needs shorter headline and more prominent salary range. Use the dark logo variant on all creatives."
+  "feedback": {
+    "overall": "gen_sr_eng_sf is good. gen_staff_eng_la needs shorter headline and more prominent salary range. Use the dark logo variant on all creatives."
+  }
 }
 ```
 

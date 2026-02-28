@@ -712,7 +712,7 @@ Key characteristics:
 - **Product-scoped**: Each product shows its own previews matching its `format_ids`
 - **Addressable**: Each preview has a `generated_creative_ref` that buyers can reference in refinement feedback
 - **Sampled**: Previews are a small representative set (3-5). `total_creatives_count` indicates how many would be generated for the full catalog
-- **Refinable**: Use `buying_mode: "refine"` with `product_ids` and reference specific `generated_creative_ref` values in `requested_changes` to iterate on creative direction
+- **Refinable**: Use `buying_mode: "refine"` with `product_ids` and reference specific `generated_creative_ref` values in `feedback` to iterate on creative direction
 
 ```json
 {
