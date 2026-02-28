@@ -51,7 +51,7 @@ export async function recordPost(input: CreatePostInput): Promise<MoltbookPostRe
   const result = await query<MoltbookPostRecord>(
     `INSERT INTO moltbook_posts (moltbook_post_id, perspective_id, knowledge_id, title, content, submolt, url)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (moltbook_post_id) DO NOTHING
+     ON CONFLICT ON CONSTRAINT moltbook_posts_knowledge_id_unique DO NOTHING
      RETURNING *`,
     [
       input.moltbookPostId || null,
@@ -64,17 +64,6 @@ export async function recordPost(input: CreatePostInput): Promise<MoltbookPostRe
     ]
   );
   return result.rows[0] || null;
-}
-
-/**
- * Check if a knowledge item has already been posted to Moltbook
- */
-export async function hasPostedKnowledge(knowledgeId: number): Promise<boolean> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM moltbook_posts WHERE knowledge_id = $1`,
-    [knowledgeId]
-  );
-  return parseInt(result.rows[0].count) > 0;
 }
 
 /**
