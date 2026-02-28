@@ -21,6 +21,7 @@
       "properties": {
         "overall": {
           "type": "string",
+          "minLength": 1,
           "description": "Overall direction for the refinement (e.g., 'more video options', 'increase emphasis on premium inventory'). Guides the seller to adjust the set composition beyond specific product instructions."
         },
         "products": {
@@ -32,6 +33,7 @@
             "properties": {
               "product_id": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Product ID from a previous get_products response"
               },
               "action": {
@@ -41,6 +43,7 @@
               },
               "notes": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Adjustment instructions. For 'include': specific changes to request. For 'more_like_this': what 'similar' means. Ignored when action is 'omit'."
               }
             },
@@ -57,6 +60,7 @@
             "properties": {
               "proposal_id": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Proposal ID from a previous get_products response"
               },
               "omit": {
@@ -66,6 +70,7 @@
               },
               "notes": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%')"
               }
             },

@@ -852,8 +852,8 @@ Client implementations should validate refinement requests against the [request 
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
-| `PRODUCT_NOT_FOUND` | One or more product IDs in `refine.products` are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
-| `PROPOSAL_EXPIRED` | A proposal ID in `refine.proposals` has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
+| `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 
 ### Authentication Comparison

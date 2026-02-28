@@ -5,8 +5,11 @@
   "description": "Standard error code vocabulary for AdCP. Codes are machine-readable so agents can apply autonomous recovery strategies based on the recovery classification.",
   "type": "string",
   "enum": [
+    "INVALID_REQUEST",
+    "AUTH_REQUIRED",
     "RATE_LIMITED",
     "SERVICE_UNAVAILABLE",
+    "POLICY_VIOLATION",
     "PRODUCT_NOT_FOUND",
     "PRODUCT_UNAVAILABLE",
     "PROPOSAL_EXPIRED",
@@ -21,11 +24,14 @@
     "ACCOUNT_SUSPENDED"
   ],
   "enumDescriptions": {
+    "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
+    "AUTH_REQUIRED": "Authentication is required to access this resource. Recovery: correctable (provide credentials via auth header).",
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
-    "PRODUCT_NOT_FOUND": "One or more product IDs in refine.products are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
+    "POLICY_VIOLATION": "Request violates the seller's content or advertising policies. Recovery: correctable (review policy requirements in the error details).",
+    "PRODUCT_NOT_FOUND": "One or more referenced product IDs are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
     "PRODUCT_UNAVAILABLE": "The requested product is sold out or no longer available. Recovery: correctable (choose a different product).",
-    "PROPOSAL_EXPIRED": "A proposal ID in refine.proposals has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
+    "PROPOSAL_EXPIRED": "A referenced proposal ID has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
     "BUDGET_TOO_LOW": "Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).",
     "CREATIVE_REJECTED": "Creative failed content policy review. Recovery: correctable (revise the creative per the seller's advertising_policies).",
     "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",
