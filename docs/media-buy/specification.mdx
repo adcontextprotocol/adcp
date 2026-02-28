@@ -104,23 +104,25 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
 - Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
 - Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
-- Orchestrators MUST provide `product_id` and `action` for each entry in `refine.products`
+- Orchestrators MUST provide `scope`, `id`, and `action` for each product and proposal entry in `refine`
+- Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
 
 **Refinement requirements:**
 
-Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` object and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
+Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` array and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
 
 - Sales agents MUST omit products with `action: "omit"` from the response
 - Sales agents MUST omit proposals with `action: "omit"` from the response
 - Sales agents MUST return products with `action: "include"`, with updated pricing
-- Sales agents SHOULD apply adjustment instructions from `notes` on products with `action: "include"`
+- Sales agents SHOULD fulfill the `ask` on product entries with `action: "include"`
 - Sales agents SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product
-- Sales agents SHOULD consider `refine.overall` when composing the response — this MAY result in additional products beyond those in `refine.products`. Per-product actions take precedence over `overall` direction.
-- Sales agents SHOULD apply adjustment instructions from `refine.proposals[].notes`
-- Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include `refine.proposals`
+- Sales agents SHOULD consider request-level asks (`scope: "request"`) when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
+- Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
+- Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
+- Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### list_creative_formats
 

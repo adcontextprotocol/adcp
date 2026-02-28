@@ -1,6 +1,6 @@
 ---
 title: Refinement
-description: Iterate on discovered products and proposals using the refine object before committing to a media buy.
+description: Iterate on discovered products and proposals using change requests before committing to a media buy.
 ---
 
 Refinement turns product discovery into a conversation. After an initial `brief` or `wholesale` discovery, use `buying_mode: "refine"` to iterate on specific products and proposals — adjusting the selection, requesting changes, and exploring alternatives — before committing to a [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
@@ -15,7 +15,7 @@ discover → refine → refine → ... → buy
 
 1. **Discover** — Call `get_products` with `buying_mode: "brief"` or `"wholesale"` to find matching inventory. The seller returns products (and optionally proposals).
 
-2. **Refine** — Call `get_products` with `buying_mode: "refine"` and a `refine` object that declares what to do with each product: keep it, drop it, or find more like it. The seller returns updated products with revised pricing and configurations.
+2. **Refine** — Call `get_products` with `buying_mode: "refine"` and a `refine` array of change requests. Each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations.
 
 3. **Repeat** — Refine as many times as needed. Each call is self-contained and stateless.
 
@@ -25,62 +25,58 @@ discover → refine → refine → ... → buy
 Refinement is not required. Simple campaigns can go straight from discovery to purchase. But for campaigns involving multiple products, proposals with budget allocations, or iterative negotiation, refinement is where the value is.
 </Tip>
 
-## The refine object
+## The refine array
 
-The `refine` object is the single payload for all refinement intent. It consolidates product selection, adjustment instructions, and proposal references into one structure:
+The `refine` array is a list of change requests. Each entry declares a `scope` and what the buyer is asking for:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `overall` | string | Guide the seller to adjust the overall composition of the product set |
-| `products[]` | array | Per-product instructions with explicit actions |
-| `proposals[]` | array | Per-proposal adjustment instructions |
+| Scope | Purpose | Required fields |
+|-------|---------|-----------------|
+| `request` | Direction for the selection as a whole | `ask` |
+| `product` | Action on a specific product | `id`, `action` |
+| `proposal` | Action on a specific proposal | `id`, `action` |
 
-The `refine` object requires at least one field. The seller considers all fields together when composing the response.
+The `refine` array requires at least one entry. The seller considers all entries together when composing the response, and replies to each one via `refinement_applied`.
 
 ### Product actions
 
-Each product in `refine.products` declares an explicit action:
+Product-scoped entries declare an explicit action:
 
-| Action | Behavior | `notes` |
-|--------|----------|---------|
-| `include` | Return this product with updated pricing and data | Optional adjustment instructions (e.g., "add 16:9 format") |
+| Action | Behavior | `ask` |
+|--------|----------|-------|
+| `include` | Return this product with updated pricing and data | Optional — specific changes to request (e.g., "add 16:9 format") |
 | `omit` | Exclude this product from the response | Ignored |
-| `more_like_this` | Find additional products similar to this one. The original product is also returned. | Optional guidance on what "similar" means (e.g., "same audience but video format") |
+| `more_like_this` | Find additional products similar to this one. The original product is also returned. | Optional — what "similar" means (e.g., "same audience but video format") |
 
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include", "notes": "add 16:9 format option" },
-      { "product_id": "prod_display_ros", "action": "omit" },
-      { "product_id": "prod_native", "action": "more_like_this", "notes": "same audience but video format" }
-    ]
-  }
+  "refine": [
+    { "scope": "product", "id": "prod_video_premium", "action": "include", "ask": "add 16:9 format option" },
+    { "scope": "product", "id": "prod_display_ros", "action": "omit" },
+    { "scope": "product", "id": "prod_native", "action": "more_like_this", "ask": "same audience but video format" }
+  ]
 }
 ```
 
-### Overall direction
+### Request-level direction
 
-Use `overall` to describe what you want from the selection as a whole:
+Use `scope: "request"` to describe what you want from the selection as a whole:
 
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "overall": "good selection but I want more video options and less display",
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include" },
-      { "product_id": "prod_display_ros", "action": "include" },
-      { "product_id": "prod_native", "action": "include" }
-    ]
-  }
+  "refine": [
+    { "scope": "request", "ask": "good selection but I want more video options and less display" },
+    { "scope": "product", "id": "prod_video_premium", "action": "include" },
+    { "scope": "product", "id": "prod_display_ros", "action": "include" },
+    { "scope": "product", "id": "prod_native", "action": "include" }
+  ]
 }
 ```
 
-The seller may add, remove, or rebalance products based on this guidance. Products not in `refine.products` may appear in the response if the seller determines they fit the direction.
+The seller may add, remove, or rebalance products based on this direction. Products not referenced in the `refine` array may appear in the response if the seller determines they fit the direction.
 
-**Precedence**: Per-product actions take precedence over `overall` direction. If `overall` says "less display" but a specific product has `action: "include"`, that product is returned regardless.
+**Precedence**: Per-product actions take precedence over request-level direction. If the request-level ask says "less display" but a specific product has `action: "include"`, that product is returned regardless.
 
 ### Proposal refinement
 
@@ -89,48 +85,62 @@ Reference proposals by ID to request adjustments or remove them:
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include" },
-      { "product_id": "prod_display_ros", "action": "include" }
-    ],
-    "proposals": [
-      { "proposal_id": "prop_balanced_v1", "action": "include", "notes": "shift 20% from display to video" }
-    ]
-  }
+  "refine": [
+    { "scope": "product", "id": "prod_video_premium", "action": "include" },
+    { "scope": "product", "id": "prod_display_ros", "action": "include" },
+    { "scope": "proposal", "id": "prop_balanced_v1", "action": "include", "ask": "shift 20% from display to video" }
+  ]
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `proposal_id` | string | Proposal ID from a previous response |
-| `action` | string | `"include"`: return with updated allocations and pricing. `"omit"`: exclude from the response. |
-| `notes` | string | Adjustment instructions for this proposal. Ignored when `action` is `"omit"`. |
+### Combining scopes
 
-### Combining fields
-
-All three fields work together. A single refinement call can adjust the overall selection, act on specific products, and request changes to a proposal:
+All scopes work together. A single refinement call can set direction for the selection, act on specific products, and request changes to a proposal:
 
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "overall": "increase emphasis on video across the plan",
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include" },
-      { "product_id": "prod_display_ros", "action": "include" },
-      { "product_id": "prod_native", "action": "omit" },
-      { "product_id": "prod_audio_spot", "action": "include" }
-    ],
-    "proposals": [
-      { "proposal_id": "prop_awareness_q2", "action": "include", "notes": "reallocate native budget to video products" }
-    ]
-  },
+  "refine": [
+    { "scope": "request", "ask": "increase emphasis on video across the plan" },
+    { "scope": "product", "id": "prod_video_premium", "action": "include" },
+    { "scope": "product", "id": "prod_display_ros", "action": "include" },
+    { "scope": "product", "id": "prod_native", "action": "omit" },
+    { "scope": "product", "id": "prod_audio_spot", "action": "include" },
+    { "scope": "proposal", "id": "prop_awareness_q2", "action": "include", "ask": "reallocate native budget to video products" }
+  ],
   "filters": {
     "budget_range": { "min": 200000, "max": 200000, "currency": "USD" }
   }
 }
 ```
+
+## Seller response
+
+When a buyer sends a `refine` array, the seller responds with `refinement_applied` — an array matched by position to the buyer's change requests. Each entry reports whether the ask was fulfilled:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | No | Echoes the scope from the corresponding `refine` entry. Allows orchestrators to cross-validate alignment. |
+| `id` | string | No | Echoes the id from the corresponding `refine` entry (for product and proposal scopes). |
+| `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
+| `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
+
+```json
+{
+  "products": ["..."],
+  "proposals": ["..."],
+  "refinement_applied": [
+    { "scope": "request", "status": "applied", "notes": "Added 3 video products. No CTV inventory for those dates." },
+    { "scope": "product", "id": "prod_video_premium", "status": "applied" },
+    { "scope": "product", "id": "prod_display_ros", "status": "applied" },
+    { "scope": "product", "id": "prod_native", "status": "applied" },
+    { "scope": "product", "id": "prod_audio_spot", "status": "partial", "notes": "16:9 not available for this placement — returning 4:3 and 1:1" },
+    { "scope": "proposal", "id": "prop_awareness_q2", "status": "applied", "notes": "Shifted 22% to video (nearest allocation boundary)" }
+  ]
+}
+```
+
+The `refinement_applied` array MUST contain the same number of entries in the same order as the `refine` array. Entries SHOULD echo `scope` and `id` for cross-validation. The entire field is optional — sellers that don't track per-ask outcomes can omit it.
 
 ## Common refinement patterns
 
@@ -141,11 +151,9 @@ Use `more_like_this` to discover products similar to ones you like. The seller r
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "products": [
-      { "product_id": "prod_video_premium", "action": "more_like_this", "notes": "same premium audience but different formats" }
-    ]
-  }
+  "refine": [
+    { "scope": "product", "id": "prod_video_premium", "action": "more_like_this", "ask": "same premium audience but different formats" }
+  ]
 }
 ```
 
@@ -156,12 +164,10 @@ Filters on a refine request represent the complete target state, not a delta. Al
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include" },
-      { "product_id": "prod_display_ros", "action": "include" }
-    ]
-  },
+  "refine": [
+    { "scope": "product", "id": "prod_video_premium", "action": "include" },
+    { "scope": "product", "id": "prod_display_ros", "action": "include" }
+  ],
   "filters": {
     "start_date": "2026-04-01",
     "end_date": "2026-06-30",
@@ -172,38 +178,34 @@ Filters on a refine request represent the complete target state, not a delta. Al
 
 ### Narrow or expand a proposal
 
-The products in `refine.products` define which products the seller should consider for the proposal. Combined with `refine.proposals`, this narrows or expands the proposal's product set:
+The product entries define which products the seller should consider for the proposal. Combined with proposal entries, this narrows or expands the proposal's product set:
 
 ```json
 {
   "buying_mode": "refine",
-  "refine": {
-    "products": [
-      { "product_id": "prod_video_premium", "action": "include" },
-      { "product_id": "prod_display_ros", "action": "include" }
-    ],
-    "proposals": [
-      { "proposal_id": "prop_balanced_v1", "action": "include", "notes": "rebalance for just these two products" }
-    ]
-  }
+  "refine": [
+    { "scope": "product", "id": "prod_video_premium", "action": "include" },
+    { "scope": "product", "id": "prod_display_ros", "action": "include" },
+    { "scope": "proposal", "id": "prop_balanced_v1", "action": "include", "ask": "rebalance for just these two products" }
+  ]
 }
 ```
 
 ## Proposals in refine mode
 
-Sellers MAY return proposals alongside refined products, even when the buyer did not include `refine.proposals`. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
+Sellers MAY return proposals alongside refined products, even when the buyer did not include proposal entries. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
 
 Key points:
 
 - **Proposals are not guaranteed.** Sellers are not required to generate proposals in refine mode. Allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
-- **Signal interest via `refine.overall`.** Include a message like `"suggest how to combine these products"` to indicate you'd welcome a proposal.
+- **Signal interest via a request-level ask.** Include `{ "scope": "request", "ask": "suggest how to combine these products" }` to indicate you'd welcome a proposal.
 - **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, or simply ignore it and build packages manually via `create_media_buy`.
 
 Publishers typically omit proposals in `wholesale` mode, where the buyer is directing targeting and allocation themselves.
 
 ## Statelessness
 
-Each `get_products` request with `buying_mode: "refine"` is self-contained. The `refine` object and `filters` on each request fully specify the refinement intent. Sales agents MUST NOT depend on transport-level session state (e.g., remembering what was sent in a previous request).
+Each `get_products` request with `buying_mode: "refine"` is self-contained. The `refine` array and `filters` on each request fully specify the refinement intent. Sales agents MUST NOT depend on transport-level session state (e.g., remembering what was sent in a previous request).
 
 Sellers still maintain their own product and proposal registries — "stateless" means the *protocol exchange* carries no implicit state between calls.
 
@@ -216,8 +218,8 @@ This design enables:
 
 Orchestrators should validate refinement requests before sending:
 
-- **Non-empty refine** — The `refine` object requires at least one field (`overall`, `products`, or `proposals`). An empty `{}` is rejected by schema validation.
-- **Valid actions** — Each product entry requires `product_id` and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `proposal_id` and `action` (`include` or `omit`).
+- **Non-empty refine** — The `refine` array requires at least one entry. An empty `[]` is rejected by schema validation.
+- **Valid entries** — Each product entry requires `scope`, `id`, and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `scope`, `id`, and `action` (`include` or `omit`). Request-level entries require `scope` and `ask`.
 - **Filters are absolute** — Send the full filter set you want applied, not a delta from the previous request.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
@@ -228,7 +230,7 @@ Client implementations should validate refinement requests against the [request 
 |------------|------|------------|
 | `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
-| `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` object (`{}`), or missing required fields | Check `buying_mode` and required fields |
+| `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 
 ## Normative requirements
 
@@ -237,17 +239,19 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 **Orchestrators:**
 - MUST include `refine` when `buying_mode` is `"refine"`
 - MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
-- MUST provide `product_id` and `action` for each entry in `refine.products`
+- MUST provide `scope`, `id`, and `action` for each product and proposal entry
+- MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 
 **Sales agents:**
 - MUST omit products with `action: "omit"` from the response
 - MUST omit proposals with `action: "omit"` from the response
 - MUST return products with `action: "include"`, with updated pricing
-- SHOULD apply adjustment instructions from `notes` on products with `action: "include"`
+- SHOULD fulfill the `ask` on product entries with `action: "include"`
 - SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product
-- SHOULD consider `refine.overall` when composing the response — this MAY result in additional products beyond those in `refine.products`. Per-product actions take precedence over `overall` direction.
-- SHOULD apply adjustment instructions from `refine.proposals[].notes`
-- MAY return proposals even when the buyer did not include `refine.proposals`
+- SHOULD consider request-level asks when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
+- SHOULD fulfill the `ask` on proposal entries with `action: "include"`
+- SHOULD include `refinement_applied` in the response when the buyer provides `refine`, with one entry per change request matched by position
+- MAY return proposals even when the buyer did not include proposal entries
 
 ## See also
 

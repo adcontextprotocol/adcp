@@ -8,78 +8,89 @@
     "buying_mode": {
       "type": "string",
       "enum": ["brief", "wholesale", "refine"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine object."
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests."
     },
     "brief": {
       "type": "string",
       "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
     },
     "refine": {
-      "type": "object",
-      "description": "Refinement payload for iterating on products and proposals from a previous get_products response. Each product declares an explicit action: include (keep with optional adjustments), omit (exclude), or more_like_this (find similar). Only valid when buying_mode is 'refine'.",
-      "minProperties": 1,
-      "properties": {
-        "overall": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Overall direction for the refinement (e.g., 'more video options', 'increase emphasis on premium inventory'). Guides the seller to adjust the set composition beyond specific product instructions."
-        },
-        "products": {
-          "type": "array",
-          "description": "Per-product refinement instructions. Each entry references a product from a previous get_products response and declares an action.",
-          "minItems": 1,
-          "items": {
-            "type": "object",
+      "type": "array",
+      "description": "Array of change requests for iterating on products and proposals from a previous get_products response. Each entry declares a scope (request, product, or proposal) and what the buyer is asking for. Only valid when buying_mode is 'refine'. The seller responds to each entry via refinement_applied in the response, matched by position.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "oneOf": [
+          {
             "properties": {
-              "product_id": {
+              "scope": {
+                "type": "string",
+                "const": "request",
+                "description": "Change scoped to the overall request — direction for the selection as a whole."
+              },
+              "ask": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Product ID from a previous get_products response"
+                "description": "What the buyer is asking for at the request level (e.g., 'more video options and less display', 'suggest how to combine these products')."
+              }
+            },
+            "required": ["scope", "ask"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "product",
+                "description": "Change scoped to a specific product."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product ID from a previous get_products response."
               },
               "action": {
                 "type": "string",
                 "enum": ["include", "omit", "more_like_this"],
                 "description": "'include': return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned)."
               },
-              "notes": {
+              "ask": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Adjustment instructions. For 'include': specific changes to request. For 'more_like_this': what 'similar' means. Ignored when action is 'omit'."
+                "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
               }
             },
-            "required": ["product_id", "action"],
+            "required": ["scope", "id", "action"],
             "additionalProperties": false
-          }
-        },
-        "proposals": {
-          "type": "array",
-          "description": "Per-proposal refinement instructions. Reference proposal IDs from a previous get_products response.",
-          "minItems": 1,
-          "items": {
-            "type": "object",
+          },
+          {
             "properties": {
-              "proposal_id": {
+              "scope": {
+                "type": "string",
+                "const": "proposal",
+                "description": "Change scoped to a specific proposal."
+              },
+              "id": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Proposal ID from a previous get_products response"
+                "description": "Proposal ID from a previous get_products response."
               },
               "action": {
                 "type": "string",
                 "enum": ["include", "omit"],
                 "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
               },
-              "notes": {
+              "ask": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
               }
             },
-            "required": ["proposal_id", "action"],
+            "required": ["scope", "id", "action"],
             "additionalProperties": false
           }
-        }
-      },
-      "additionalProperties": false
+        ]
+      }
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
