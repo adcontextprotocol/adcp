@@ -43,6 +43,11 @@
                 "description": "Number of members submitted in this sync operation (delta, not cumulative). In discovery-only calls (no audiences array), this is 0.",
                 "minimum": 0
               },
+              "total_uploaded_count": {
+                "type": "integer",
+                "description": "Cumulative number of members uploaded across all syncs for this audience. Compare with matched_count to calculate match rate (matched_count / total_uploaded_count). Populated when the seller tracks cumulative upload counts.",
+                "minimum": 0
+              },
               "matched_count": {
                 "type": "integer",
                 "description": "Total members matched to platform users across all syncs (cumulative, not just this call). Populated when status is 'ready'.",

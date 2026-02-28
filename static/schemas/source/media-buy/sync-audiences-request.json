@@ -24,6 +24,24 @@
             "type": "string",
             "description": "Human-readable name for this audience"
           },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this audience's composition or purpose (e.g., 'High-value customers who purchased in the last 90 days')."
+          },
+          "audience_type": {
+            "type": "string",
+            "enum": ["crm", "suppression", "lookalike_seed"],
+            "description": "Intended use for this audience. 'crm': target these users. 'suppression': exclude these users from delivery. 'lookalike_seed': use as a seed for the seller's lookalike modeling. Sellers may handle audiences differently based on type (e.g., suppression lists bypass minimum size requirements on some platforms)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Buyer-defined tags for organizing and filtering audiences (e.g., 'holiday_2026', 'high_ltv'). Tags are stored by the seller and returned in discovery-only calls.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
           "add": {
             "type": "array",
             "description": "Members to add to this audience. Hashed before sending — normalize emails to lowercase+trim, phones to E.164.",

@@ -50,9 +50,33 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
       "description": "End date for reporting period (YYYY-MM-DD). When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
+    "include_package_daily_breakdown": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, include daily_breakdown arrays within each package in by_package. Useful for per-package pacing analysis and line-item monitoring. Omit or set false to reduce response size — package daily data can be large for multi-package buys over long flights."
+    },
+    "attribution_window": {
+      "type": "object",
+      "description": "Attribution window to apply for conversion metrics. When provided, the seller returns conversion data using the requested lookback windows instead of their platform default. The seller echoes the applied window in the response. Sellers that do not support configurable windows ignore this field and return their default. Check get_adcp_capabilities conversion_tracking.attribution_windows for available options.",
+      "properties": {
+        "post_click": {
+          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "description": "Post-click attribution window to apply."
+        },
+        "post_view": {
+          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "description": "Post-view attribution window to apply."
+        },
+        "model": {
+          "$ref": "/schemas/enums/attribution-model.json",
+          "description": "Attribution model to use. When omitted, the seller applies their default model."
+        }
+      },
+      "additionalProperties": true
+    },
     "reporting_dimensions": {
       "type": "object",
-      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response.",
+      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response. Note: keyword, catalog_item, and creative breakdowns are returned automatically when the seller supports them and are not controlled by this object.",
       "properties": {
         "geo": {
           "type": "object",

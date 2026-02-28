@@ -84,6 +84,51 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",
       "properties": {
+        "supported_pricing_models": {
+          "type": "array",
+          "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
+          "items": {
+            "$ref": "/schemas/enums/pricing-model.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reporting": {
+          "type": "object",
+          "description": "Seller-level reporting capabilities. Summarizes what reporting features are available across the seller's product portfolio. Individual products may vary — check product-level reporting_capabilities for specifics.",
+          "properties": {
+            "supports_date_range": {
+              "type": "boolean",
+              "description": "Whether any products support date range filtering (date_range_support: 'date_range'). When false, all products return lifetime-only data."
+            },
+            "supports_daily_breakdown": {
+              "type": "boolean",
+              "description": "Whether delivery reporting includes daily_breakdown at the media buy and/or package level."
+            },
+            "supports_webhooks": {
+              "type": "boolean",
+              "description": "Whether any products support webhook-based reporting notifications."
+            },
+            "available_dimensions": {
+              "type": "array",
+              "description": "Reporting dimensions available across the seller's portfolio. Individual products may support a subset. Dimensions geo, device_type, device_platform, audience, and placement are opt-in via reporting_dimensions on the delivery request. Dimensions creative, keyword, and catalog_item are included automatically when the seller supports them (not controlled by reporting_dimensions).",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "device_type",
+                  "device_platform",
+                  "audience",
+                  "placement",
+                  "creative",
+                  "keyword",
+                  "catalog_item"
+                ]
+              },
+              "uniqueItems": true
+            }
+          }
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },

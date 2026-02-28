@@ -12,7 +12,22 @@
     },
     "metrics": {
       "type": "object",
-      "description": "Forecasted metric values at this budget level. Keys are either forecastable-metric values for delivery/engagement (impressions, reach, spend, etc.) or event-type values for outcomes (purchase, lead, app_install, etc.). Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget.",
+      "description": "Forecasted metric values at this budget level. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
+      "properties": {
+        "audience_size": { "$ref": "/schemas/core/forecast-range.json" },
+        "reach": { "$ref": "/schemas/core/forecast-range.json" },
+        "frequency": { "$ref": "/schemas/core/forecast-range.json" },
+        "impressions": { "$ref": "/schemas/core/forecast-range.json" },
+        "clicks": { "$ref": "/schemas/core/forecast-range.json" },
+        "spend": { "$ref": "/schemas/core/forecast-range.json" },
+        "views": { "$ref": "/schemas/core/forecast-range.json" },
+        "completed_views": { "$ref": "/schemas/core/forecast-range.json" },
+        "grps": { "$ref": "/schemas/core/forecast-range.json" },
+        "engagements": { "$ref": "/schemas/core/forecast-range.json" },
+        "follows": { "$ref": "/schemas/core/forecast-range.json" },
+        "saves": { "$ref": "/schemas/core/forecast-range.json" },
+        "profile_visits": { "$ref": "/schemas/core/forecast-range.json" }
+      },
       "additionalProperties": {
         "$ref": "/schemas/core/forecast-range.json"
       }

@@ -40,6 +40,16 @@
             "description": "Total budget amount across all packages, denominated in media_buy.currency",
             "minimum": 0
           },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 flight start time for this media buy (earliest package start_time). Avoids requiring buyers to compute min(packages[].start_time)."
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 flight end time for this media buy (latest package end_time). Avoids requiring buyers to compute max(packages[].end_time)."
+          },
           "creative_deadline": {
             "type": "string",
             "format": "date-time",
