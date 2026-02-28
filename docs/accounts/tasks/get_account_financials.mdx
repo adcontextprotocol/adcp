@@ -81,13 +81,14 @@ asyncio.run(main())
 
 **Success response:**
 
-Returns financial data for the account. Only `account`, `currency`, and `period` are guaranteed — everything else depends on what the seller exposes.
+Returns financial data for the account. Only `account`, `currency`, `period`, and `timezone` are guaranteed — everything else depends on what the seller exposes.
 
 | Field | Description |
 |-------|-------------|
 | `account` | Account reference, echoed from the request. |
 | `currency` | ISO 4217 currency code for all monetary amounts. |
 | `period` | Actual period covered (`start`, `end`). May differ from requested period if adjusted to billing cycle boundaries. |
+| `timezone` | IANA timezone of the seller's billing day boundaries (e.g., `America/New_York`). All dates in the response are calendar dates in this timezone. |
 | `spend` | Spend summary: `total_spend` (amount in `currency`) and optional `media_buy_count`. |
 | `credit` | Present for credit-based accounts. Contains `credit_limit`, `available_credit`, and optional `utilization_percent` (0-100). |
 | `balance` | Present for prepay accounts. Contains `available` balance and optional `last_top_up` (`amount`, `date`). |

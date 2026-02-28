@@ -23,6 +23,10 @@
           "$ref": "/schemas/core/date-range.json",
           "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries."
         },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
+        },
         "spend": {
           "type": "object",
           "description": "Spend summary for the period",
@@ -145,7 +149,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["account", "currency", "period"],
+      "required": ["account", "currency", "period", "timezone"],
       "additionalProperties": true,
       "not": {
         "required": ["errors"]
@@ -177,7 +181,8 @@
         "anyOf": [
           { "required": ["account"] },
           { "required": ["currency"] },
-          { "required": ["period"] }
+          { "required": ["period"] },
+          { "required": ["timezone"] }
         ]
       }
     }
@@ -192,6 +197,7 @@
           "start": "2026-02-01",
           "end": "2026-02-28"
         },
+        "timezone": "America/New_York",
         "spend": {
           "total_spend": 45230.00,
           "media_buy_count": 3
@@ -227,6 +233,7 @@
           "start": "2026-02-01",
           "end": "2026-02-28"
         },
+        "timezone": "America/Los_Angeles",
         "spend": {
           "total_spend": 8200.00,
           "media_buy_count": 2
