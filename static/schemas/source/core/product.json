@@ -229,6 +229,20 @@
       },
       "required": ["submitted_count"]
     },
+    "sample_creatives": {
+      "type": "array",
+      "description": "Representative creative previews the seller generated for this product. Only present when the seller declares creative_generation in get_adcp_capabilities, the buyer provides a catalog on get_products, and the product's catalog_types overlap with the catalog. Typically 3-5 samples showing how ads would render. Each preview has a generated_creative_ref that buyers can reference in refinement feedback. The full set of creatives is generated at execution time when the buyer commits via create_media_buy.",
+      "items": {
+        "$ref": "/schemas/core/creative-preview.json"
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "total_creatives_count": {
+      "type": "integer",
+      "description": "Total number of creatives the seller would generate for the full catalog on this product at execution time. Gives buyers a sense of scale beyond the sample_creatives. For example, sample_creatives may contain 3 previews while this field indicates 100 creatives would be generated from the full job catalog.",
+      "minimum": 1
+    },
     "brief_relevance": {
       "type": "string",
       "description": "Explanation of why this product matches the brief (only included when brief is provided)"
