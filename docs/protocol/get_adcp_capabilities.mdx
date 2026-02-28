@@ -200,6 +200,14 @@ Inventory portfolio information:
 
 Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
 
+### creative
+
+Creative protocol capabilities. Only present if `creative` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+
 ### governance
 
 Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents provide property data like compliance scores, brand suitability ratings, quality metrics, and sustainability metrics.
