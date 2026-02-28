@@ -638,6 +638,59 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 }
 ```
 
+### Example 6: Commerce Media with Brief and Product Catalog
+
+Generate a sponsored product carousel with campaign context, compliance disclosures, and a synced product catalog:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Create a product carousel highlighting the top 4 sale items",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "sponsored_product_carousel"
+  },
+  "brand": {
+    "domain": "novabrands.com"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "sponsored_product_carousel"
+    },
+    "assets": {
+      "brief": {
+        "name": "Spring Sale 2026",
+        "objective": "conversion",
+        "audience": "Value-conscious shoppers aged 25-45",
+        "messaging": {
+          "headline": "Spring Sale — Up to 40% Off",
+          "cta": "Shop Now"
+        },
+        "compliance": {
+          "required_disclosures": [
+            {
+              "text": "Sponsored",
+              "position": "prominent"
+            },
+            {
+              "text": "Prices may vary by location. See store for details.",
+              "position": "footer"
+            }
+          ]
+        }
+      },
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "spring_sale_2026"
+      }
+    }
+  }
+}
+```
+
+The brief and product catalog travel together in the manifest's `assets` map. The format declares both a `brief` and `catalog` asset type — the buying agent discovers this via `list_creative_formats` and syncs the required catalog before submitting.
+
 ## Error Codes
 
 | Code | Description |

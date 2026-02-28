@@ -43,6 +43,7 @@ See [list_creative_formats (Sales Agent)](/docs/media-buy/task-reference/list_cr
 | `is_responsive` | boolean | No | Filter for responsive formats (adapt to container size) |
 | `name_search` | string | No | Search formats by name (case-insensitive partial match) |
 | `wcag_level` | string | No | Filter to formats meeting at least this WCAG level: `A`, `AA`, `AAA`. See [Accessibility](/docs/creative/accessibility). |
+| `disclosure_positions` | string[] | No | Filter to formats whose `supported_disclosure_positions` include all of these positions. Use to find formats compatible with a brief's compliance requirements. |
 | `output_format_ids` | FormatID[] | No | Filter to formats whose `output_format_ids` includes any of these. Returns formats that can produce these outputs — inspect their `input_format_ids` to see what inputs they accept. |
 | `input_format_ids` | FormatID[] | No | Filter to formats whose `input_format_ids` includes any of these. Returns formats that accept these creatives as input — inspect their `output_format_ids` to see what they can produce. |
 | `pagination` | object | No | Pagination: `max_results` (1-100, default 50) and `cursor` (opaque cursor from previous response) |
