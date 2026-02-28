@@ -361,13 +361,13 @@ async function runTests() {
           {
             "text": "Past performance is not indicative of future results.",
             "position": "footer",
-            "regions": ["US", "US-NJ"],
+            "jurisdictions": ["US", "US-NJ"],
             "regulation": "SEC Rule 156"
           },
           {
             "text": "Capital at risk.",
             "position": "prominent",
-            "regions": ["GB", "CA-QC"]
+            "jurisdictions": ["GB", "CA-QC"]
           }
         ],
         "prohibited_claims": [

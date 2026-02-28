@@ -77,9 +77,9 @@
                 "$ref": "/schemas/enums/disclosure-position.json",
                 "description": "Where the disclosure should appear within the creative. prominent: clearly visible in the main creative area; footer: at the bottom of visual creatives; audio: spoken in audio/video creatives; subtitle: displayed in the subtitle or closed-caption track; overlay: superimposed on video content; end_card: displayed on video end card; pre_roll: spoken or displayed before main content; companion: in companion ad unit alongside primary creative"
               },
-              "regions": {
+              "jurisdictions": {
                 "type": "array",
-                "description": "Regions where this disclosure is required. ISO 3166-1 alpha-2 country codes or ISO 3166-2 subdivision codes (e.g., 'US', 'GB', 'US-NJ', 'CA-QC'). If omitted, the disclosure applies to all regions in the campaign.",
+                "description": "Jurisdictions where this disclosure is required. ISO 3166-1 alpha-2 country codes or ISO 3166-2 subdivision codes (e.g., 'US', 'GB', 'US-NJ', 'CA-QC'). If omitted, the disclosure applies to all jurisdictions in the campaign.",
                 "items": {
                   "type": "string",
                   "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$"

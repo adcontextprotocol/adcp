@@ -519,19 +519,19 @@ Generate a financial services creative with regulatory disclosures and prohibite
             {
               "text": "Past performance is not indicative of future results.",
               "position": "footer",
-              "regions": ["US"],
+              "jurisdictions": ["US"],
               "regulation": "SEC Rule 156"
             },
             {
               "text": "Securities offered through Pinnacle Wealth Securities, LLC. Member FINRA/SIPC.",
               "position": "footer",
-              "regions": ["US"],
+              "jurisdictions": ["US"],
               "regulation": "FINRA Rule 2210"
             },
             {
               "text": "Capital at risk. The value of investments can go down as well as up.",
               "position": "prominent",
-              "regions": ["GB"],
+              "jurisdictions": ["GB"],
               "regulation": "FCA COBS 4.5"
             },
             {
@@ -551,7 +551,7 @@ Generate a financial services creative with regulatory disclosures and prohibite
 }
 ```
 
-Compliance requirements differ by region: the US requires SEC-mandated disclosures while the UK requires FCA-mandated risk warnings. The third disclosure (no `regions`) applies globally. The `prohibited_claims` array tells the creative agent which claims to avoid in generated copy.
+Compliance requirements differ by jurisdiction: the US requires SEC-mandated disclosures while the UK requires FCA-mandated risk warnings. The third disclosure (no `jurisdictions`) applies globally. The `prohibited_claims` array tells the creative agent which claims to avoid in generated copy.
 
 ## Key Concepts
 
