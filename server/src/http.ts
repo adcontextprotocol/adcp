@@ -695,8 +695,9 @@ export class HTTPServer {
       const urlPath = req.path;
 
       // Skip paths that have their own route handlers which manage auth and config injection
-      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard')) {
+      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
+      // /agents does content negotiation to serve HTML or JSON)
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
         return next();
       }
 
@@ -1683,11 +1684,13 @@ export class HTTPServer {
 
 
 
-    // Simple REST API endpoint - for web apps and quick integrations
+    // Agent registry - serves HTML for browsers, JSON for API clients
     this.app.get("/agents", async (req, res) => {
+      if (req.accepts('text/html', 'application/json') === 'text/html') {
+        return this.serveHtmlWithConfig(req, res, 'agents.html');
+      }
       const type = req.query.type as AgentType | undefined;
       const agents = await this.agentService.listAgents(type);
-
       res.json({
         agents,
         count: agents.length,

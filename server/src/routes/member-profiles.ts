@@ -32,7 +32,7 @@ const logger = createLogger("member-profile-routes");
  * Validate slug format and check against reserved keywords
  */
 function isValidSlug(slug: string): boolean {
-  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding'];
+  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding', 'agents', 'brands', 'publishers'];
   if (reserved.includes(slug.toLowerCase())) {
     return false;
   }
@@ -218,7 +218,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (!isValidSlug(slug)) {
         return res.status(400).json({
           error: 'Invalid slug',
-          message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding)',
+          message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding, agents, brands, publishers)',
         });
       }
 
