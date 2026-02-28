@@ -227,7 +227,7 @@ Version 3.0.0 is a **major release** that expands AdCP beyond media buying into 
 
 **🎯 Key Themes:**
 
-1. **Media Channel Taxonomy** - Complete overhaul from 5 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
+1. **Media Channel Taxonomy** - Complete overhaul from 9 format-oriented channels to 19 planning-oriented channels that reflect how buyers allocate budgets. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
 
 2. **Governance Protocol** - New protocol domain for property lists, content standards, and brand suitability evaluation with collaborative calibration workflows.
 
@@ -243,7 +243,7 @@ Version 3.0.0 is a **major release** that expands AdCP beyond media buying into 
 
 | Change | v2.x | v3.x |
 |--------|------|------|
-| Channels | 5 values | 19 planning-oriented values |
+| Channels | 9 values | 19 planning-oriented values |
 | Creative assignment | `creative_ids: [...]` | `creative_assignments: [{...}]` |
 | Metro targeting | `geo_metros: ["501"]` | `geo_metros: [{ system, code }]` |
 | Postal targeting | `geo_postal_codes` | `geo_postal_areas` with system |
@@ -265,9 +265,9 @@ Brand suitability and inventory curation:
 
 Conversational brand experiences:
 
-- **Session Management** - `si_check_availability`, `si_initiate_session`, `si_send_message`, `si_terminate_session`
+- **Session Management** - `si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`
 - **Capability Negotiation** - Brands declare modalities (voice, video, avatar), hosts respond with supported capabilities
-- **Commerce Handoff** - Seamless transition to ACP for transactions
+- **Commerce Handoff** - Seamless transition to AdCP for transactions
 
 See [Sponsored Intelligence Overview](/docs/sponsored-intelligence/overview) for complete documentation.
 
@@ -384,13 +384,13 @@ Many schemas now require explicit discriminator fields. Update your code to incl
 ```json
 // Before
 {
-  "publisher_domain": "cnn.com",
+  "publisher_domain": "dailyplanet.com",
   "property_ids": ["cnn_ctv_app"]
 }
 
 // After
 {
-  "publisher_domain": "cnn.com",
+  "publisher_domain": "dailyplanet.com",
   "selection_type": "by_id",
   "property_ids": ["cnn_ctv_app"]
 }
@@ -560,7 +560,7 @@ New version paths available:
 ```json
 {
   "properties": [{
-    "publisher_domain": "cnn.com",
+    "publisher_domain": "dailyplanet.com",
     "property_name": "CNN CTV App",
     "property_tags": ["ctv", "premium"]
   }]
@@ -572,14 +572,14 @@ New version paths available:
 {
   "publisher_properties": [
     {
-      "publisher_domain": "cnn.com",
+      "publisher_domain": "dailyplanet.com",
       "property_tags": ["ctv"]
     }
   ]
 }
 ```
 
-Buyers now fetch property definitions from `https://cnn.com/.well-known/adagents.json`.
+Buyers now fetch property definitions from `https://dailyplanet.com/.well-known/adagents.json`.
 
 #### Remove Media Buy Budget
 

@@ -24,7 +24,7 @@ AdCP v3 expands the protocol beyond media buying into brand identity, governance
 | **Optimization** | Single optimization goal | Multi-goal `optimization_goals` array with metric and event types |
 | **Delivery reporting** | Aggregate delivery only | Opt-in dimension breakdowns (geo, device, audience, placement, keyword) |
 | **Signal pricing** | Simple CPM | Structured pricing models (CPM, percent of media, flat fee) |
-| **Device targeting** | No form-factor targeting | `device_type` (desktop, mobile, tablet, ctv, dooh) distinct from `device_platform` (OS) |
+| **Device targeting** | No form-factor targeting | `device_type` (desktop, mobile, tablet, ctv, dooh, unknown) distinct from `device_platform` (OS) |
 | **Proximity targeting** | No point-based geo targeting | `geo_proximity` with travel time, radius, and GeoJSON methods |
 | **Refinement** | Free-text with `proposal_id` | Typed change-request array with seller acknowledgment |
 | **Error handling** | Unstructured errors | `recovery` field (transient, correctable, terminal) + 18 standard error codes |
