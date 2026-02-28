@@ -59,10 +59,6 @@
             "required": ["record_id", "verdict"]
           }
         },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -79,10 +75,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "summary": {
-          "not": {},
-          "description": "Field must not be present in error response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

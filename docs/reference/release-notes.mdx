@@ -49,6 +49,39 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 |--------|--------|--------|
 | Pagination | `limit`/`offset` | Cursor-based `pagination` object |
 | Brand manifest tone | `string \| object` | Object only with structured fields |
+| Signal delivery targeting | `deliver_to: { deployments: [...] }` | Top-level `destinations` array |
+
+#### Signal Delivery Targeting
+
+The `get_signals` request no longer accepts a `deliver_to` wrapper object. The fields have been promoted to the top level and `deployments` has been renamed to `destinations`.
+
+**Before:**
+```json
+{
+  "signal_spec": "High-income households",
+  "deliver_to": {
+    "deployments": [
+      { "type": "platform", "platform_id": "ttd" }
+    ],
+    "countries": ["US"]
+  }
+}
+```
+
+**After:**
+```json
+{
+  "signal_spec": "High-income households",
+  "destinations": [
+    { "type": "platform", "platform_id": "ttd" }
+  ],
+  "countries": ["US"]
+}
+```
+
+<Warning>
+Requests using the old `deliver_to` wrapper will be silently ignored by the server — targeting will not be applied. Update clients to use the top-level fields.
+</Warning>
 
 ### Other Changes
 

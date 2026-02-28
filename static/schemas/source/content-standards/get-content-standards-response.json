@@ -12,10 +12,6 @@
         { "$ref": "/schemas/content-standards/content-standards.json" }
       ],
       "properties": {
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         }
@@ -28,10 +24,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "standards_id": {
-          "not": {},
-          "description": "Field must not be present in error response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

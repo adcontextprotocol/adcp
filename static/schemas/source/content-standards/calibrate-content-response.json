@@ -46,10 +46,6 @@
             },
             "required": ["feature_id", "status"]
           }
-        },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
         }
       },
       "required": ["verdict"]
@@ -61,10 +57,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "verdict": {
-          "not": {},
-          "description": "Field must not be present in error response"
         }
       },
       "required": ["errors"]
