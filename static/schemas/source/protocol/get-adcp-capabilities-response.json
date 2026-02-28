@@ -496,28 +496,6 @@
           "required": [
             "publisher_domains"
           ]
-        },
-        "creative_generation": {
-          "type": "object",
-          "description": "Seller-generated creative capabilities. When present, the seller can generate creatives from the buyer's catalog and brand assets and include sample previews on products in get_products responses. Buyers do not need to use sync_creatives for these campaigns — creative production is handled by the seller at execution time.",
-          "properties": {
-            "catalog_types": {
-              "type": "array",
-              "description": "Union of catalog types across all products that support creative generation. Buyers can use this to skip sellers that do not support their catalog type before calling get_products.",
-              "items": {
-                "$ref": "/schemas/enums/catalog-type.json"
-              },
-              "uniqueItems": true,
-              "minItems": 1
-            },
-            "sample_count": {
-              "type": "integer",
-              "description": "Typical number of sample creative previews per product in get_products responses. Previews may span multiple formats. Buyers can expect approximately this many entries in each product's sample_creatives array.",
-              "minimum": 1
-            }
-          },
-          "required": ["catalog_types"],
-          "additionalProperties": true
         }
       }
     },

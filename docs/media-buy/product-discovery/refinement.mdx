@@ -188,22 +188,6 @@ When both `product_ids` and `proposal_id` are provided, `product_ids` narrows or
 }
 ```
 
-### Refine creative direction
-
-For sellers that generate creatives from buyer catalogs (declared via `creative_generation` in capabilities), products may include `sample_creatives` — representative previews with a `generated_creative_ref` identifier. Reference these in `feedback.overall` to iterate on creative direction:
-
-```json
-{
-  "buying_mode": "refine",
-  "product_ids": ["sponsored_job_listing"],
-  "feedback": {
-    "overall": "gen_sr_eng_sf is good. gen_staff_eng_la needs shorter headline and more prominent salary range. Use the dark logo variant on all creatives."
-  }
-}
-```
-
-The seller returns updated `sample_creatives` reflecting the feedback. See [Seller-generated creatives](/docs/media-buy/task-reference/get_products#seller-generated-creatives) for the full discovery-to-execution workflow.
-
 ## Proposals in refine mode
 
 Sellers MAY return proposals alongside refined products, even when the buyer only provided `product_ids` (without a `proposal_id`). For example, a buyer refining three products may receive those products back with updated forecasts *and* a proposal suggesting how to combine them.

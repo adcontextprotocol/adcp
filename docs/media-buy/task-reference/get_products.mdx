@@ -227,8 +227,6 @@ Returns an array of `products` and optionally `proposals`.
 | `delivery_measurement` | DeliveryMeasurement | How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
 | `brief_relevance` | string | Why this product matches the brief (when brief provided) |
-| `sample_creatives` | [CreativePreview](/docs/media-buy/product-discovery/media-products#seller-generated-creatives)[] | Sample creative previews the seller generated for this product. Each preview has a `generated_creative_ref` for refinement feedback. Only present when the seller supports `creative_generation`. |
-| `total_creatives_count` | integer | Total creatives the seller would generate for the full catalog on this product at execution time. Gives scale context beyond the samples. |
 
 ### Proposals Array (Optional)
 
@@ -848,101 +846,7 @@ Orchestrators building refinement workflows should validate requests before send
 - **Omit consistency**: Products omitted via `feedback.products[].omit: true` should still be included in `product_ids` — the seller needs to know which product to exclude. Alternatively, simply remove the product from `product_ids` for the same effect.
 - **Filters are absolute**: When refining, `filters` represent the complete target state, not a delta from the previous request. Always send the full filter set you want applied.
 
-The `@adcp/client` library validates responses against Zod schemas automatically. For request-side validation, use `GetProductsRequestSchema` from `@adcp/client` to catch structural errors before sending.
-
-## Seller-generated creatives
-
-Some sellers generate creatives from the buyer's catalog and brand assets — for example, dynamic job ads from a jobs catalog, or sponsored product cards from a product feed. When a seller supports this (declared via `media_buy.creative_generation` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)), products in the response may include `sample_creatives` — representative previews showing how ads would render.
-
-### Discovery with creative previews
-
-Include a `catalog` and `brand` in your brief request. The seller matches catalog items to products and generates sample creatives:
-
-```json test=false
-{
-  "buying_mode": "brief",
-  "brief": "Sponsored jobs campaign for software engineers in California. Corporate tone, emphasize salary and remote work options.",
-  "brand": { "domain": "acmecorp.com" },
-  "catalog": { "type": "job", "catalog_id": "eng-roles-q2" }
-}
-```
-
-Products in the response include `sample_creatives` with preview renders and a `total_creatives_count` indicating the full catalog scale:
-
-```json test=false
-{
-  "products": [
-    {
-      "product_id": "sponsored_job_listing",
-      "name": "Sponsored job listing",
-      "description": "Promoted job cards in search results and recommendations",
-      "format_ids": [{ "agent_url": "https://seller.example.com", "id": "job_card_standard" }],
-      "catalog_types": ["job"],
-      "sample_creatives": [
-        {
-          "generated_creative_ref": "gen_sr_eng_sf",
-          "format_id": { "agent_url": "https://seller.example.com", "id": "job_card_standard" },
-          "renders": [{
-            "render_id": "r1",
-            "output_format": "url",
-            "preview_url": "https://seller.example.com/previews/abc123",
-            "role": "primary",
-            "dimensions": { "width": 600, "height": 300 }
-          }],
-          "catalog_item_ref": "job_sr_eng_sf",
-          "description": "Senior Engineer role card with salary range and remote badge"
-        },
-        {
-          "generated_creative_ref": "gen_staff_eng_la",
-          "format_id": { "agent_url": "https://seller.example.com", "id": "job_card_standard" },
-          "renders": [{
-            "render_id": "r2",
-            "output_format": "url",
-            "preview_url": "https://seller.example.com/previews/def456",
-            "role": "primary",
-            "dimensions": { "width": 600, "height": 300 }
-          }],
-          "catalog_item_ref": "job_staff_eng_la",
-          "description": "Staff Engineer role card highlighting equity package"
-        }
-      ],
-      "total_creatives_count": 23
-    }
-  ]
-}
-```
-
-### Refining creative direction
-
-Use `buying_mode: "refine"` with `product_ids` and reference specific previews by `generated_creative_ref` in `feedback`:
-
-```json test=false
-{
-  "buying_mode": "refine",
-  "product_ids": ["sponsored_job_listing"],
-  "feedback": {
-    "overall": "gen_sr_eng_sf is good. gen_staff_eng_la needs shorter headline and more prominent salary range. Use the dark logo variant on all creatives."
-  }
-}
-```
-
-The seller returns updated `sample_creatives` reflecting the feedback. Refine as many times as needed before committing.
-
-### Executing
-
-When satisfied with the previews, commit via `create_media_buy`. The seller generates the full creative set at execution time:
-
-```json test=false
-{
-  "buyer_ref": "eng_jobs_q2",
-  "proposal_id": "prop_eng_jobs",
-  "total_budget": { "amount": 25000, "currency": "USD" },
-  "brand": { "domain": "acmecorp.com" },
-  "account": { "account_id": "acc_123" },
-  "start_time": "2026-04-01T00:00:00Z",
-  "end_time": "2026-04-30T23:59:59Z"
-}
-```
+Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
 
 ## Error Handling
 
