@@ -14,10 +14,6 @@
           "items": { "$ref": "/schemas/content-standards/content-standards.json" },
           "description": "Array of content standards configurations matching the filter criteria"
         },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
-        },
         "pagination": {
           "$ref": "/schemas/core/pagination-response.json"
         },
@@ -37,10 +33,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "standards": {
-          "not": {},
-          "description": "Field must not be present in error response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"
