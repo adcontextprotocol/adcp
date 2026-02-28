@@ -5,9 +5,9 @@
   "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both to refine previous results (signal_ids anchor the starting set, signal_spec guides adjustments).",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "The caller's account with this signals agent. When provided, the signals agent returns per-account pricing options if configured."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured."
     },
     "buyer_campaign_ref": {
       "type": "string",

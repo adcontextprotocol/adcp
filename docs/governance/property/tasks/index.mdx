@@ -79,7 +79,7 @@ Use `create_property_list` with filters and brand reference:
 }
 ```
 
-**Required filters**: At least one country in `countries_all` and one channel in `channels_any` must be provided.
+**Filters** (all optional): `countries_all` restricts to properties with data in ALL listed countries, `channels_any` restricts to properties supporting ANY listed channel. Omitting a filter means no restriction on that dimension.
 
 **Base properties**: An array of property sources to evaluate. Each entry is a discriminated union with `selection_type`:
 - **`publisher_tags`**: `{ "selection_type": "publisher_tags", "publisher_domain": "...", "tags": [...] }`

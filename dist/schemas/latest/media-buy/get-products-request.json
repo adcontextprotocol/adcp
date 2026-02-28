@@ -2,17 +2,84 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/latest/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering available advertising products",
+  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products and proposals.",
   "type": "object",
   "properties": {
     "buying_mode": {
       "type": "string",
-      "enum": ["brief", "wholesale"],
-      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided. When buying_mode is 'wholesale', publishers return only products that support buyer-directed targeting and omit proposals."
+      "enum": ["brief", "wholesale", "refine"],
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine object."
     },
     "brief": {
       "type": "string",
-      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale'."
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
+    },
+    "refine": {
+      "type": "object",
+      "description": "Refinement payload for iterating on products and proposals from a previous get_products response. Each product declares an explicit action: include (keep with optional adjustments), omit (exclude), or more_like_this (find similar). Only valid when buying_mode is 'refine'.",
+      "minProperties": 1,
+      "properties": {
+        "overall": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Overall direction for the refinement (e.g., 'more video options', 'increase emphasis on premium inventory'). Guides the seller to adjust the set composition beyond specific product instructions."
+        },
+        "products": {
+          "type": "array",
+          "description": "Per-product refinement instructions. Each entry references a product from a previous get_products response and declares an action.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "product_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product ID from a previous get_products response"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["include", "omit", "more_like_this"],
+                "description": "'include': return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned)."
+              },
+              "notes": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Adjustment instructions. For 'include': specific changes to request. For 'more_like_this': what 'similar' means. Ignored when action is 'omit'."
+              }
+            },
+            "required": ["product_id", "action"],
+            "additionalProperties": false
+          }
+        },
+        "proposals": {
+          "type": "array",
+          "description": "Per-proposal refinement instructions. Reference proposal IDs from a previous get_products response.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "proposal_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Proposal ID from a previous get_products response"
+              },
+              "action": {
+                "type": "string",
+                "enum": ["include", "omit"],
+                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
+              },
+              "notes": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+              }
+            },
+            "required": ["proposal_id", "action"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "brand": {
       "$ref": "/schemas/latest/core/brand-ref.json",
@@ -53,7 +120,8 @@
       "properties": {
         "buying_mode": {
           "const": "brief"
-        }
+        },
+        "refine": false
       },
       "required": [
         "buying_mode",
@@ -65,10 +133,23 @@
         "buying_mode": {
           "const": "wholesale"
         },
-        "brief": false
+        "brief": false,
+        "refine": false
       },
       "required": [
         "buying_mode"
+      ]
+    },
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "refine"
+        },
+        "brief": false
+      },
+      "required": [
+        "buying_mode",
+        "refine"
       ]
     }
   ],

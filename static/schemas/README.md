@@ -23,7 +23,7 @@ schemas/
 │   │   ├── targeting.json
 │   │   ├── frequency-cap.json
 │   │   ├── format.json
-│   │   ├── measurement.json
+│   │   ├── outcome-measurement.json
 │   │   ├── creative-policy.json
 │   │   ├── error.json
 │   │   └── response.json

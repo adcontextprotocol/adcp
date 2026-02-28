@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-features-response.json",
   "title": "Get Creative Features Response",
-  "description": "Response payload for get_creative_features task. Returns feature values for the evaluated creative.",
+  "description": "Response payload for the get_creative_features task. Returns scored feature values from the governance agent's evaluation of the submitted creative manifest.",
   "type": "object",
   "oneOf": [
     {

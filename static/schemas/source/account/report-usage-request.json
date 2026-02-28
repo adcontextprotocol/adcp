@@ -10,22 +10,8 @@
       "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. Use a UUID or other unique identifier. Prevents duplicate billing on retries."
     },
     "reporting_period": {
-      "type": "object",
-      "description": "The time range covered by this usage report. Applies to all records in the request.",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Start of the reporting period (inclusive), in UTC."
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time",
-          "description": "End of the reporting period (inclusive), in UTC."
-        }
-      },
-      "required": ["start", "end"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/datetime-range.json",
+      "description": "The time range covered by this usage report. Applies to all records in the request."
     },
     "usage": {
       "type": "array",

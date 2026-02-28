@@ -63,8 +63,8 @@
       "$ref": "/schemas/core/delivery-forecast.json",
       "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
-    "measurement": {
-      "$ref": "/schemas/core/measurement.json"
+    "outcome_measurement": {
+      "$ref": "/schemas/core/outcome-measurement.json"
     },
     "delivery_measurement": {
       "type": "object",

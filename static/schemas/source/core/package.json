@@ -39,6 +39,20 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },

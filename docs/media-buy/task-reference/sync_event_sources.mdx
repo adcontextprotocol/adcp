@@ -376,7 +376,7 @@ The response includes setup details for each event source. The `setup` object te
 | `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` from account setup |
 | `INVALID_EVENT_TYPE` | Unrecognized event type | Check seller's `supported_event_types` in `get_adcp_capabilities` |
 | `DUPLICATE_EVENT_SOURCE_ID` | Multiple sources with same ID in request | Use unique `event_source_id` values |
-| `RATE_LIMIT_EXCEEDED` | Too many sync requests | Wait and retry with exponential backoff |
+| `RATE_LIMITED` | Too many sync requests | Wait and retry with exponential backoff |
 
 ## Best Practices
 

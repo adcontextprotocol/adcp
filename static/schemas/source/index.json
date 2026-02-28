@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-02-01",
+  "lastUpdated": "2026-02-27",
   "baseUrl": "/schemas/v1",
   "schemas": {
     "core": {
@@ -58,9 +58,9 @@
           "$ref": "/schemas/core/overlay.json",
           "description": "A publisher-controlled element that renders on top of buyer creative content within an ad placement"
         },
-        "measurement": {
-          "$ref": "/schemas/core/measurement.json",
-          "description": "Measurement capabilities included with a product"
+        "outcome-measurement": {
+          "$ref": "/schemas/core/outcome-measurement.json",
+          "description": "Business outcome measurement capabilities included with a product"
         },
         "delivery-metrics": {
           "$ref": "/schemas/core/delivery-metrics.json",
@@ -85,6 +85,14 @@
         "pagination-response": {
           "$ref": "/schemas/core/pagination-response.json",
           "description": "Standard cursor-based pagination metadata for list response schemas"
+        },
+        "date-range": {
+          "$ref": "/schemas/core/date-range.json",
+          "description": "Date range with inclusive start and end calendar dates"
+        },
+        "datetime-range": {
+          "$ref": "/schemas/core/datetime-range.json",
+          "description": "Datetime range with inclusive start and end timestamps"
         },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
@@ -683,6 +691,14 @@
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",
           "description": "Units of distance measurement for radius-based catchment areas (km, mi, m)"
+        },
+        "error-code": {
+          "$ref": "/schemas/enums/error-code.json",
+          "description": "Standard error code vocabulary for agent recovery classification"
+        },
+        "consent-basis": {
+          "$ref": "/schemas/enums/consent-basis.json",
+          "description": "GDPR Article 6(1) lawful basis for processing personal data"
         }
       }
     },

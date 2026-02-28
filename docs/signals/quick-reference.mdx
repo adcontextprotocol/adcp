@@ -81,7 +81,7 @@ Activate a signal for use on a specific platform or agent.
 ```json
 {
   "signal_agent_segment_id": "luxury_auto_intenders",
-  "deployments": [
+  "destinations": [
     {
       "type": "platform",
       "platform": "the-trade-desk",
@@ -93,7 +93,8 @@ Activate a signal for use on a specific platform or agent.
 
 **Key fields:**
 - `signal_agent_segment_id` (string, required): From `get_signals` response
-- `deployments` (array, required): Target deployment(s) with `type`, `platform`/`agent_url`, and optional `account`
+- `action` (string, optional): `"activate"` (default) or `"deactivate"` for data governance compliance
+- `destinations` (array, required): Target destination(s) with `type`, `platform`/`agent_url`, and optional `account`
 
 **Response contains:**
 - `deployments`: Array with activation results per target

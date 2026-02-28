@@ -334,6 +334,7 @@
             "updated_date": "2024-01-15T14:20:00Z",
             "assets": {
               "vast": {
+                "delivery_type": "url",
                 "url": "https://vast.example.com/video/123",
                 "vast_version": "4.1"
               }

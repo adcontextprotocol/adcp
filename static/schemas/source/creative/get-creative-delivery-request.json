@@ -49,24 +49,8 @@
       "minimum": 1
     },
     "pagination": {
-      "type": "object",
-      "description": "Pagination parameters for the creatives array in the response. When omitted, the agent returns all matching creatives.",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 50,
-          "description": "Maximum number of creatives to return"
-        },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 0,
-          "description": "Number of creatives to skip"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Pagination parameters for the creatives array in the response. Uses cursor-based pagination consistent with other list operations."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

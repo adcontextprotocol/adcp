@@ -18,6 +18,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 |-----------|------|----------|-------------|
 | `signal_spec` | string | Conditional | Natural language description of the desired signals. Required unless `signal_ids` is provided. |
 | `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required unless `signal_spec` is provided. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. |
 | `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
 | `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |

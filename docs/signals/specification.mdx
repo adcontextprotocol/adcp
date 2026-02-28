@@ -94,7 +94,7 @@ Discover signals matching campaign criteria.
 Activate a signal for use on a decisioning platform.
 
 **Requirements:**
-- Orchestrators MUST include `signal_agent_segment_id` and `deployments`
+- Orchestrators MUST include `signal_agent_segment_id` and `destinations`
 - On success, signal agents MUST return a `deployments` array with `is_live` for each deployment
 - Signal agents MUST return `activation_key` when `is_live: true` AND caller has deployment access
 - On failure, signal agents MUST return an `errors` array (with no `deployments` array)

@@ -35,9 +35,13 @@
       "type": "boolean",
       "description": "Pause/resume specific package (true = paused, false = active)"
     },
-    "catalog": {
-      "$ref": "/schemas/core/catalog.json",
-      "description": "Update the catalog this package promotes. Replaces the current catalog reference."
+    "catalogs": {
+      "type": "array",
+      "description": "Replace the catalogs this package promotes. Uses replacement semantics — the provided array replaces the current list. Omit to leave catalogs unchanged.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      },
+      "minItems": 1
     },
     "optimization_goals": {
       "type": "array",

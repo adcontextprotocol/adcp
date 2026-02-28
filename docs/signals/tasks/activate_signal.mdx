@@ -20,7 +20,9 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `signal_agent_segment_id` | string | Yes | The universal identifier for the signal to activate |
-| `deployments` | Destination[] | Yes | Target deployment(s) for activation (see Destination Object below) |
+| `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
+| `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
 | `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent `report_usage` calls. |
 
 ### Destination Object
@@ -135,7 +137,7 @@ The AdCP payload is identical across protocols. Only the request/response wrappe
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
     "pricing_option_id": "po_cpm_usd",
-    "deployments": [{
+    "destinations": [{
       "type": "agent",
       "agent_url": "https://wonderstruck.salesagents.com"
     }]
@@ -171,7 +173,7 @@ Immediate response with activation key:
   "arguments": {
     "signal_agent_segment_id": "luxury_auto_intenders",
     "pricing_option_id": "po_cpm_usd",
-    "deployments": [{
+    "destinations": [{
       "type": "platform",
       "platform": "the-trade-desk",
       "account": "agency-123-ttd"
@@ -242,7 +244,7 @@ await a2a.send({
         parameters: {
           signal_agent_segment_id: "luxury_auto_intenders",
           pricing_option_id: "po_cpm_usd",
-          deployments: [{
+          destinations: [{
             type: "platform",
             platform: "the-trade-desk",
             account: "agency-123-ttd"
@@ -304,7 +306,7 @@ const response = await session.call('activate_signal',
   {
     signal_agent_segment_id: "luxury_auto_intenders",
     pricing_option_id: "po_cpm_usd",
-    deployments: [{
+    destinations: [{
       type: "platform",
       platform: "the-trade-desk",
       account: "agency-123-ttd"

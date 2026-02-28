@@ -20,21 +20,12 @@
           "description": "ISO 4217 currency code for all monetary amounts in this response"
         },
         "period": {
-          "type": "object",
-          "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries.",
-          "properties": {
-            "start": {
-              "type": "string",
-              "format": "date",
-              "description": "Period start (ISO 8601 date)"
-            },
-            "end": {
-              "type": "string",
-              "format": "date",
-              "description": "Period end (ISO 8601 date)"
-            }
-          },
-          "required": ["start", "end"]
+          "$ref": "/schemas/core/date-range.json",
+          "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
         },
         "spend": {
           "type": "object",
@@ -124,13 +115,8 @@
                 "description": "Seller-assigned invoice identifier"
               },
               "period": {
-                "type": "object",
-                "description": "Billing period covered by this invoice",
-                "properties": {
-                  "start": { "type": "string", "format": "date" },
-                  "end": { "type": "string", "format": "date" }
-                },
-                "required": ["start", "end"]
+                "$ref": "/schemas/core/date-range.json",
+                "description": "Billing period covered by this invoice"
               },
               "amount": {
                 "type": "number",
@@ -163,7 +149,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["account", "currency", "period"],
+      "required": ["account", "currency", "period", "timezone"],
       "additionalProperties": true,
       "not": {
         "required": ["errors"]
@@ -195,7 +181,8 @@
         "anyOf": [
           { "required": ["account"] },
           { "required": ["currency"] },
-          { "required": ["period"] }
+          { "required": ["period"] },
+          { "required": ["timezone"] }
         ]
       }
     }
@@ -210,6 +197,7 @@
           "start": "2026-02-01",
           "end": "2026-02-28"
         },
+        "timezone": "America/New_York",
         "spend": {
           "total_spend": 45230.00,
           "media_buy_count": 3
@@ -245,6 +233,7 @@
           "start": "2026-02-01",
           "end": "2026-02-28"
         },
+        "timezone": "America/Los_Angeles",
         "spend": {
           "total_spend": 8200.00,
           "media_buy_count": 2
@@ -265,7 +254,7 @@
       "data": {
         "errors": [
           {
-            "code": "BILLING_MODEL_NOT_SUPPORTED",
+            "code": "UNSUPPORTED_FEATURE",
             "message": "Financial data is not available for agent-billed accounts. The agent's own billing system is the source of truth."
           }
         ]

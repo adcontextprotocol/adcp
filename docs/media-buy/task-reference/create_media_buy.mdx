@@ -422,7 +422,7 @@ asyncio.run(create_optimized_campaign())
 
 A catalog-driven package allocates a single budget envelope to an entire catalog of items. Instead of creating separate packages per item, the platform optimizes delivery across all catalog items based on performance. This is the AdCP equivalent of catalog-based campaign types such as Google Performance Max or Meta Dynamic Product Ads.
 
-Include the `catalog` field in a package to make it catalog-driven. The referenced catalog must already be synced via [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
+Include the `catalogs` field in a package to make it catalog-driven. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). The referenced catalogs must already be synced via [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
 
 **Job campaign with synced job catalog:**
 
@@ -436,10 +436,10 @@ Include the `catalog` field in a package to make it catalog-driven. The referenc
     "pricing_option_id": "cpc_eur_auction",
     "budget": 5000,
     "bid_price": 2.50,
-    "catalog": {
+    "catalogs": [{
       "catalog_id": "chef-vacancies",
       "type": "job"
-    }
+    }]
   }],
   "start_time": "asap",
   "end_time": "2026-06-30T23:59:59Z"
@@ -458,11 +458,11 @@ Include the `catalog` field in a package to make it catalog-driven. The referenc
     "pricing_option_id": "cpc_usd_auction",
     "budget": 10000,
     "bid_price": 1.20,
-    "catalog": {
+    "catalogs": [{
       "catalog_id": "gmc-primary",
       "type": "product",
       "tags": ["summer"]
-    },
+    }],
     "targeting_overlay": {
       "store_catchments": [{
         "catalog_id": "retail-locations",

@@ -31,6 +31,29 @@
             "$ref": "/schemas/enums/signal-value-type.json",
             "description": "The data type of this signal's values (binary, categorical, numeric)"
           },
+          "categories": {
+            "type": "array",
+            "description": "Valid values for categorical signals. Present when value_type is 'categorical'. Buyers must use one of these values in SignalTargeting.values.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "range": {
+            "type": "object",
+            "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
+            "properties": {
+              "min": {
+                "type": "number",
+                "description": "Minimum value (inclusive)"
+              },
+              "max": {
+                "type": "number",
+                "description": "Maximum value (inclusive)"
+              }
+            },
+            "required": ["min", "max"],
+            "additionalProperties": false
+          },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
             "description": "Catalog type of signal (marketplace, custom, owned)"

@@ -49,6 +49,7 @@ Failed operations return status `failed` with error details at the top level:
   "message": "Unable to create media buy: Insufficient inventory available for your targeting criteria",
   "context_id": "ctx-123",
   "error_code": "insufficient_inventory",
+  "recovery": "correctable",
   "requested_impressions": 10000000,
   "available_impressions": 2500000,
   "suggestions": [
@@ -70,6 +71,7 @@ Failed operations return status `failed` with error details at the top level:
 | `field` | Field path for validation errors |
 | `retry_after` | Seconds to wait before retry (rate limits) |
 | `details` | Additional context-specific information |
+| `recovery` | Agent recovery classification: `transient` (retry after delay), `correctable` (fix the request and resend), `terminal` (requires human action) |
 
 ## Standard Error Codes
 
@@ -99,26 +101,39 @@ Failed operations return status `failed` with error details at the top level:
 
 ### Operation Errors
 
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `INSUFFICIENT_INVENTORY` | Not enough inventory for request | Expand targeting or reduce impressions |
-| `BUDGET_EXCEEDED` | Request exceeds budget limits | Reduce budget or request limit increase |
-| `INVALID_TARGETING` | Targeting criteria is invalid | Adjust targeting parameters |
-| `CREATIVE_REJECTED` | Creative failed policy validation | Review and fix creative content |
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `INSUFFICIENT_INVENTORY` | correctable | Not enough inventory for request | Expand targeting or reduce impressions |
+| `BUDGET_EXCEEDED` | correctable | Request exceeds budget limits | Reduce budget or request limit increase |
+| `BUDGET_TOO_LOW` | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
+| `INVALID_TARGETING` | correctable | Targeting criteria is invalid | Adjust targeting parameters |
+| `CREATIVE_REJECTED` | correctable | Creative failed policy validation | Revise creative per seller's `advertising_policies` |
+| `PRODUCT_UNAVAILABLE` | correctable | Product sold out or no longer available | Choose a different product |
+| `PROPOSAL_EXPIRED` | correctable | Referenced proposal has expired | Run `get_products` to get a fresh proposal |
+| `UNSUPPORTED_FEATURE` | correctable | Requested feature not supported | Check `get_adcp_capabilities` and remove unsupported fields |
+| `AUDIENCE_TOO_SMALL` | correctable | Audience below minimum size | Broaden targeting or upload more audience members |
+
+### Account Errors
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
+| `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
+| `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
 
 ### Rate Limiting Errors
 
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `RATE_LIMIT_EXCEEDED` | Too many requests | Wait for `retry_after` seconds |
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `RATE_LIMITED` | transient | Too many requests | Wait for `retry_after` seconds |
 
 ### System Errors
 
-| Code | Description | Resolution |
-|------|-------------|------------|
-| `INTERNAL_SERVER_ERROR` | Unexpected server error | Retry request, contact support if persistent |
-| `SERVICE_UNAVAILABLE` | External service temporarily down | Wait and retry |
-| `TIMEOUT` | Request exceeded processing time | Retry with smaller request or contact support |
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `INTERNAL_SERVER_ERROR` | transient | Unexpected server error | Retry request, contact support if persistent |
+| `SERVICE_UNAVAILABLE` | transient | External service temporarily down | Wait and retry |
+| `TIMEOUT` | transient | Request exceeded processing time | Retry with smaller request or contact support |
 
 ## Retry Logic
 
@@ -156,32 +171,28 @@ async function retryWithBackoff(fn, options = {}) {
 
 ### Error Categorization
 
-Group errors by whether they're retryable:
+Use the `recovery` field to determine how to handle errors:
+
+| Recovery | Meaning | Action |
+|----------|---------|--------|
+| `transient` | Temporary failure (rate limit, service unavailable, timeout) | Retry after `retry_after` or with exponential backoff |
+| `correctable` | Request can be fixed and resent (invalid field, budget too low, creative rejected) | Modify the request and retry |
+| `terminal` | Requires human action (account suspended, payment required) | Escalate to a human operator |
 
 ```javascript
-const RETRYABLE_ERRORS = [
-  'RATE_LIMIT_EXCEEDED',
-  'TIMEOUT',
-  'SERVICE_UNAVAILABLE',
-  'INTERNAL_SERVER_ERROR'
-];
-
-const PERMANENT_ERRORS = [
-  'INVALID_CREDENTIALS',
-  'INSUFFICIENT_PERMISSIONS',
-  'RESOURCE_NOT_FOUND',
-  'MISSING_REQUIRED_FIELD',
-  'INVALID_FIELD_VALUE'
-];
-
 function isRetryable(error) {
+  // Use recovery field when available
+  if (error.recovery) {
+    return error.recovery === 'transient';
+  }
+
   // Network errors are retryable
   if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
     return true;
   }
 
-  // Check error code
-  return RETRYABLE_ERRORS.includes(error.error_code);
+  // Fall back to error code matching
+  return ['RATE_LIMITED', 'SERVICE_UNAVAILABLE'].includes(error.error_code);
 }
 ```
 
@@ -189,7 +200,8 @@ function isRetryable(error) {
 
 ```javascript
 async function handleRateLimit(error, retryFn) {
-  if (error.error_code !== 'RATE_LIMIT_EXCEEDED') {
+  if (error.recovery !== 'transient' &&
+      error.error_code !== 'RATE_LIMITED') {
     throw error;
   }
 
@@ -207,30 +219,39 @@ async function handleRateLimit(error, retryFn) {
 
 ```javascript
 async function handleAdcpError(error) {
+  // Use recovery classification when available
+  switch (error.recovery) {
+    case 'transient':
+      // Retry after delay
+      const delay = error.retry_after
+        ? error.retry_after * 1000
+        : 5000;
+      await sleep(delay);
+      return retry();
+
+    case 'correctable':
+      // Show suggestions so the request can be fixed
+      return showSuggestions(error.suggestions);
+
+    case 'terminal':
+      // Requires human intervention
+      console.error('Terminal error:', error.message);
+      throw error;
+  }
+
+  // Fall back to error_code matching
   switch (error.error_code) {
     case 'INVALID_CREDENTIALS':
     case 'TOKEN_EXPIRED':
-      // Re-authenticate and retry
       await refreshCredentials();
       return retry();
 
-    case 'RATE_LIMIT_EXCEEDED':
-      // Wait and retry
-      await sleep(error.retry_after * 1000);
-      return retry();
-
-    case 'INSUFFICIENT_INVENTORY':
-      // Show suggestions to user
-      return showSuggestions(error.suggestions);
-
     case 'MISSING_REQUIRED_FIELD':
     case 'INVALID_FIELD_VALUE':
-      // Developer error - fix the request
       console.error('Validation error:', error);
       throw error;
 
     default:
-      // Log and show generic error
       console.error('AdCP error:', error);
       throw error;
   }
@@ -244,10 +265,11 @@ Convert technical errors to user-friendly messages:
 ```javascript
 const USER_MESSAGES = {
   'INSUFFICIENT_INVENTORY': 'There isn\'t enough inventory for your targeting. Try expanding your audience or dates.',
-  'RATE_LIMIT_EXCEEDED': 'Too many requests. Please wait a moment and try again.',
+  'RATE_LIMITED': 'Too many requests. Please wait a moment and try again.',
   'INSUFFICIENT_PERMISSIONS': 'Your account doesn\'t have permission for this. Contact your administrator.',
   'RESOURCE_NOT_FOUND': 'This item no longer exists or has been removed.',
-  'BUDGET_EXCEEDED': 'This exceeds your budget limit. Request a limit increase or reduce the budget.',
+  'BUDGET_TOO_LOW': 'This is below the seller\'s minimum budget. Increase your budget.',
+  'ACCOUNT_SUSPENDED': 'Your account has been suspended. Contact the seller to resolve.',
   'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.'
 };
 

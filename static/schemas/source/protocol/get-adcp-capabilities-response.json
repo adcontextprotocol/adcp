@@ -11,7 +11,7 @@
       "properties": {
         "major_versions": {
           "type": "array",
-          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes.",
+          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. When multiple versions are listed, the buyer declares its version during the capabilities handshake or via the adcp_version field on requests.",
           "items": {
             "type": "integer",
             "minimum": 1

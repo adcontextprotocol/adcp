@@ -45,8 +45,7 @@
             "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
           },
           "consent_basis": {
-            "type": "string",
-            "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"],
+            "$ref": "/schemas/enums/consent-basis.json",
             "description": "GDPR lawful basis for processing this audience list. Informational — not validated by the protocol, but required by some sellers operating in regulated markets (e.g. EU). When omitted, the buyer asserts they have a lawful basis appropriate to their jurisdiction."
           }
         },
@@ -72,8 +71,7 @@
     "required": ["delete_missing"]
   },
   "then": {
-    "required": ["audiences"],
-    "errorMessage": "audiences is required when delete_missing is true — omitting it would delete all buyer-managed audiences on the account"
+    "required": ["audiences"]
   },
   "additionalProperties": true
 }

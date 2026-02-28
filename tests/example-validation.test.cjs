@@ -168,7 +168,7 @@ const exampleData = {
     "name": "Standard Video - 30 seconds"
   },
   
-  measurement: {
+  outcome_measurement: {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
     "reporting": "weekly_dashboard"
@@ -387,11 +387,11 @@ test('Format example validates against schema', () => {
   );
 });
 
-test('Measurement example validates against schema', () => {
+test('Outcome Measurement example validates against schema', () => {
   return validateAgainstSchema(
-    exampleData.measurement, 
-    '/schemas/source/core/measurement.json', 
-    'Measurement example'
+    exampleData.outcome_measurement,
+    '/schemas/source/core/outcome-measurement.json',
+    'Outcome Measurement example'
   );
 });
 
