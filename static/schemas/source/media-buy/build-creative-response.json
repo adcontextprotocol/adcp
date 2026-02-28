@@ -14,6 +14,10 @@
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "The generated or transformed creative manifest"
         },
+        "generated_creative_ref": {
+          "type": "string",
+          "description": "Ephemeral reference to this generated creative. Use in subsequent build_creative requests (refinement) or preview_creative requests without resending the full manifest."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -64,6 +68,11 @@
           {
             "required": [
               "creative_manifest"
+            ]
+          },
+          {
+            "required": [
+              "generated_creative_ref"
             ]
           },
           {

@@ -17,9 +17,13 @@
           "$ref": "/schemas/core/format-id.json",
           "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
         },
+        "generated_creative_ref": {
+          "type": "string",
+          "description": "Ephemeral reference from a build_creative response. Alternative to providing creative_manifest — the creative agent resolves the ref to its stored manifest."
+        },
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
-          "description": "Complete creative manifest with all required assets for the format"
+          "description": "Complete creative manifest with all required assets for the format. Optional when generated_creative_ref is provided."
         },
         "inputs": {
           "type": "array",
@@ -67,8 +71,11 @@
         }
       },
       "required": [
-        "request_type",
-        "creative_manifest"
+        "request_type"
+      ],
+      "anyOf": [
+        { "required": ["creative_manifest"] },
+        { "required": ["generated_creative_ref"] }
       ],
       "additionalProperties": true
     },
@@ -91,9 +98,13 @@
                 "$ref": "/schemas/core/format-id.json",
                 "description": "Format identifier for rendering the preview. Optional — defaults to creative_manifest.format_id if omitted."
               },
+              "generated_creative_ref": {
+                "type": "string",
+                "description": "Ephemeral reference from a build_creative response. Alternative to providing creative_manifest."
+              },
               "creative_manifest": {
                 "$ref": "/schemas/core/creative-manifest.json",
-                "description": "Complete creative manifest with all required assets"
+                "description": "Complete creative manifest with all required assets. Optional when generated_creative_ref is provided."
               },
               "inputs": {
                 "type": "array",
@@ -134,8 +145,9 @@
                 "description": "Output format for this preview. 'url' returns preview_url, 'html' returns preview_html."
               }
             },
-            "required": [
-              "creative_manifest"
+            "anyOf": [
+              { "required": ["creative_manifest"] },
+              { "required": ["generated_creative_ref"] }
             ],
             "additionalProperties": true
           },

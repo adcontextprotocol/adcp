@@ -2,12 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform or generate a creative manifest. Takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format.",
+  "description": "Request to transform, generate, or refine a creative manifest. Takes a source manifest (which may be minimal for pure generation), a generated_creative_ref referencing a previous output, or both, and produces a target manifest in the specified format.",
   "type": "object",
   "properties": {
     "message": {
       "type": "string",
-      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative."
+      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."
+    },
+    "generated_creative_ref": {
+      "type": "string",
+      "description": "Reference to a previous build_creative output. When provided, the creative agent uses its stored manifest as the starting point, making creative_manifest optional. If both are provided, creative_manifest takes precedence. The message field provides refinement instructions."
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",

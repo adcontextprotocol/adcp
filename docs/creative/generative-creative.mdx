@@ -61,7 +61,9 @@ You'll receive a structured creative manifest:
 
 ### Step 3: Refine Your Creative
 
-Iterate on the generated creative by modifying the manifest and regenerating:
+Iterate by passing the previous output back with a new `message`. You can send the full manifest (stateless) or reference a `generated_creative_ref` from the previous response (stateful):
+
+**Stateless** — pass the manifest back:
 
 ```json
 {
@@ -80,6 +82,19 @@ Iterate on the generated creative by modifying the manifest and regenerating:
         "content": "20% Off All Drinks This Week!"
       }
     }
+  }
+}
+```
+
+**Stateful** — reference by `generated_creative_ref` (when the previous response included one):
+
+```json
+{
+  "message": "Make the headline more exciting and add urgency",
+  "generated_creative_ref": "gcr_coffee_001",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_native"
   }
 }
 ```
@@ -206,7 +221,7 @@ If you get a format error, the publisher may not support that format. Try:
 To improve creative output:
 1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
 2. Provide comprehensive brand identity with assets and guidelines
-3. Use the conversational refinement feature to iterate (via `context_id`)
+3. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest or `generated_creative_ref` with a new message
 
 ### Asset Management
 Assets are provided via [brand identity](/docs/brand-protocol/brand-json):
