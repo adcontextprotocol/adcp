@@ -507,6 +507,57 @@
                     "by_placement_truncated": {
                       "type": "boolean",
                       "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
+                    },
+                    "daily_breakdown": {
+                      "type": "array",
+                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "description": "Date (YYYY-MM-DD)"
+                          },
+                          "impressions": {
+                            "type": "number",
+                            "description": "Daily impressions for this package",
+                            "minimum": 0
+                          },
+                          "spend": {
+                            "type": "number",
+                            "description": "Daily spend for this package",
+                            "minimum": 0
+                          },
+                          "conversions": {
+                            "type": "number",
+                            "description": "Daily conversions for this package",
+                            "minimum": 0
+                          },
+                          "conversion_value": {
+                            "type": "number",
+                            "description": "Daily conversion value for this package",
+                            "minimum": 0
+                          },
+                          "roas": {
+                            "type": "number",
+                            "description": "Daily return on ad spend (conversion_value / spend)",
+                            "minimum": 0
+                          },
+                          "new_to_brand_rate": {
+                            "type": "number",
+                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": [
+                          "date",
+                          "impressions",
+                          "spend"
+                        ],
+                        "additionalProperties": true
+                      }
                     }
                   },
                   "required": [
