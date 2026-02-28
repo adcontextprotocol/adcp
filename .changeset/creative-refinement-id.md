@@ -2,4 +2,4 @@
 "adcontextprotocol": patch
 ---
 
-Document iterative refinement patterns for get_signals (signal_ids + signal_spec). Update signal schema descriptions to clarify refinement semantics.
+Remove generated_creative_ref from build_creative and preview_creative schemas. Creative refinement uses manifest passback and creative brief updates instead. Document iterative refinement patterns for build_creative and get_signals.
