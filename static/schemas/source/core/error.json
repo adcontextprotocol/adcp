@@ -7,7 +7,7 @@
   "properties": {
     "code": {
       "type": "string",
-      "description": "Error code for programmatic handling"
+      "description": "Error code for programmatic handling. Standard codes are defined in error-code.json and enable autonomous agent recovery. Sellers MAY use codes not in the standard vocabulary for platform-specific errors; agents MUST handle unknown codes gracefully by falling back to the recovery classification."
     },
     "message": {
       "type": "string",

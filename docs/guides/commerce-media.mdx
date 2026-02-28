@@ -69,7 +69,7 @@ The simplest commerce media product. The retailer renders the creative from the 
   "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
-    "window": "14_days",
+    "window": { "interval": 14, "unit": "days" },
     "reporting": "daily_api"
   },
   "conversion_tracking": {
@@ -130,7 +130,7 @@ Display and video ads on retailer properties, targeted using retailer first-part
   "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   },
   "creative_policy": {
@@ -177,7 +177,7 @@ The retailer uses first-party purchase data to target audiences on third-party i
   "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   }
 }
@@ -486,7 +486,7 @@ Products signal closed-loop capability through two fields:
   "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
-    "window": "14_days",
+    "window": { "interval": 14, "unit": "days" },
     "reporting": "daily_api"
   }
 }

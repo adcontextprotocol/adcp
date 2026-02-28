@@ -23,12 +23,8 @@
       ]
     },
     "window": {
-      "type": "string",
-      "description": "Attribution window",
-      "examples": [
-        "30_days",
-        "7_days"
-      ]
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Attribution window as a structured duration (e.g., {\"interval\": 30, \"unit\": \"days\"})."
     },
     "reporting": {
       "type": "string",

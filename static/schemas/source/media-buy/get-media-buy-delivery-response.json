@@ -147,7 +147,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_activation`, `active`, `paused`, `completed`, `rejected`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_activation.",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_activation`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_activation.",
             "enum": [
               "pending_activation",
               "pending",
@@ -155,6 +155,7 @@
               "paused",
               "completed",
               "rejected",
+              "canceled",
               "failed",
               "reporting_delayed"
             ]
