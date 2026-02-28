@@ -699,9 +699,9 @@
       "type": "object",
       "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
       "properties": {
-        "supports_brief": {
+        "supports_compliance": {
           "type": "boolean",
-          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
+          "description": "When true, this creative agent can process briefs with compliance requirements (required_disclosures, prohibited_claims) and will validate that disclosures can be satisfied by the target format."
         }
       },
       "additionalProperties": true

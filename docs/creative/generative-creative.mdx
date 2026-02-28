@@ -61,7 +61,7 @@ You'll receive a structured creative manifest:
 
 ### Step 3: Refine Your Creative
 
-Iterate by passing the previous output's `creative_manifest` back with a new `message`. Alternatively, update the `creative_brief` to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
+Iterate by passing the previous output's `creative_manifest` back with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
 
 ```json
 {
@@ -206,7 +206,7 @@ If you get a format error, the publisher may not support that format. Try:
 To improve creative output:
 1. Be more specific in your message: "Create a minimalist coffee ad with earth tones"
 2. Provide comprehensive brand identity with assets and guidelines
-3. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the creative brief
+3. Iterate using [refinement](/docs/creative/task-reference/build_creative#iterative-refinement) — pass back the manifest with a new message, or update the brief asset
 
 ### Asset Management
 Assets are provided via [brand identity](/docs/brand-protocol/brand-json):

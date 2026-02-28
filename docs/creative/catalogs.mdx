@@ -10,9 +10,9 @@ Catalogs are typed data feeds that provide the items publishers render in ads. A
 
 Catalogs are a foundational building block in AdCP:
 
-- **Formats declare** what catalog types they need via `catalog_requirements`
+- **Formats declare** what catalog types they need as `catalog` asset types in their `assets` array
 - **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
-- **Creatives reference** synced catalogs by `catalog_id` instead of embedding items inline
+- **Creatives reference** synced catalogs by `catalog_id` in the manifest's `assets` map instead of embedding items inline
 
 ## Where sync_catalogs fits
 
@@ -38,7 +38,7 @@ sequenceDiagram
     rect rgb(240, 248, 255)
         Note over B,S: 1. Discovery
         B->>S: list_creative_formats
-        S->>B: Formats with catalog_requirements
+        S->>B: Formats with catalog asset types
     end
 
     rect rgb(240, 255, 240)
@@ -49,7 +49,7 @@ sequenceDiagram
 
     rect rgb(245, 240, 255)
         Note over B,S: 3. Creative submission
-        B->>S: sync_creatives (catalog field references synced catalog_id)
+        B->>S: sync_creatives (catalog assets reference synced catalog_id)
         S->>B: Creative approval status
     end
 
@@ -71,7 +71,7 @@ Not every workflow requires `sync_catalogs`. Use it when:
 - **Multiple creatives share the same feed** — sync once, reference by `catalog_id` from many creatives
 - **The seller may already have the data** — use discovery mode to see what's already on the account
 
-For simple campaigns with a few items, inline catalogs on the creative's `catalogs` field work fine — no sync step needed.
+For simple campaigns with a few items, inline catalogs as assets in the creative's `assets` map work fine — no sync step needed.
 
 ## Catalog types
 
@@ -140,7 +140,7 @@ By providing assets grouped by role, each catalog item self-describes the images
 }
 ```
 
-The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in `catalog_requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`.
+The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`.
 
 Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-requirements)) to explicitly declare which template slot maps to which asset group.
 
@@ -238,12 +238,14 @@ Any catalog type can embed items directly via the `items` array. The item schema
 
 ```json
 {
-  "catalogs": [{
-    "type": "offering",
-    "items": [
-      {"offering_id": "summer-sale", "name": "Summer Sale", "landing_url": "https://acme.com/summer"}
-    ]
-  }]
+  "assets": {
+    "offering_catalog": {
+      "type": "offering",
+      "items": [
+        {"offering_id": "summer-sale", "name": "Summer Sale", "landing_url": "https://acme.com/summer"}
+      ]
+    }
+  }
 }
 ```
 
@@ -251,19 +253,21 @@ Vertical types use their industry-specific item schema:
 
 ```json
 {
-  "catalogs": [{
-    "type": "hotel",
-    "items": [
-      {
-        "hotel_id": "grand-amsterdam",
-        "name": "Grand Hotel Amsterdam",
-        "location": {"lat": 52.3676, "lng": 4.9041},
-        "star_rating": 5,
-        "price": {"amount": 289, "currency": "EUR", "period": "night"},
-        "amenities": ["spa", "pool", "restaurant", "wifi"]
-      }
-    ]
-  }]
+  "assets": {
+    "hotel_catalog": {
+      "type": "hotel",
+      "items": [
+        {
+          "hotel_id": "grand-amsterdam",
+          "name": "Grand Hotel Amsterdam",
+          "location": {"lat": 52.3676, "lng": 4.9041},
+          "star_rating": 5,
+          "price": {"amount": 289, "currency": "EUR", "period": "night"},
+          "amenities": ["spa", "pool", "restaurant", "wifi"]
+        }
+      ]
+    }
+  }
 }
 ```
 
@@ -273,13 +277,15 @@ For feeds managed outside AdCP, point to a URL and let the platform fetch:
 
 ```json
 {
-  "catalogs": [{
-    "catalog_id": "product-feed",
-    "type": "product",
-    "url": "https://feeds.acmecorp.com/products.xml",
-    "feed_format": "google_merchant_center",
-    "update_frequency": "daily"
-  }]
+  "assets": {
+    "product_catalog": {
+      "catalog_id": "product-feed",
+      "type": "product",
+      "url": "https://feeds.acmecorp.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
+    }
+  }
 }
 ```
 
@@ -289,11 +295,13 @@ For catalogs already on the account via `sync_catalogs`, reference by `catalog_i
 
 ```json
 {
-  "catalogs": [{
-    "catalog_id": "gmc-primary",
-    "type": "product",
-    "ids": ["SKU-123", "SKU-456"]
-  }]
+  "assets": {
+    "product_catalog": {
+      "catalog_id": "gmc-primary",
+      "type": "product",
+      "ids": ["SKU-123", "SKU-456"]
+    }
+  }
 }
 ```
 
@@ -440,7 +448,7 @@ Multiple mappings can assemble a nested object. The `price.amount` and `price.cu
 
 ## Format catalog requirements
 
-Formats that render product listings, store locators, or promotional content declare what catalog feeds they need via `catalog_requirements`. This tells buying agents which catalogs to sync before submitting creatives.
+Formats that render product listings, store locators, or promotional content declare what catalog feeds they need as `catalog` asset types in their `assets` array. Each catalog asset carries `requirements` with fields like `catalog_type`, `min_items`, and `required_fields`. This tells buying agents which catalogs to sync before submitting creatives.
 
 ```json
 {
@@ -449,67 +457,85 @@ Formats that render product listings, store locators, or promotional content dec
     "id": "product_carousel_with_inventory"
   },
   "name": "Product Carousel with Inventory",
-  "catalog_requirements": [
+  "assets": [
     {
-      "catalog_type": "product",
+      "item_type": "individual",
+      "asset_id": "product_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "min_items": 3,
-      "required_fields": ["title", "price", "image_url"]
+      "requirements": {
+        "catalog_type": "product",
+        "min_items": 3,
+        "required_fields": ["title", "price", "image_url"]
+      }
     },
     {
-      "catalog_type": "inventory",
+      "item_type": "individual",
+      "asset_id": "inventory_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "required_fields": ["store_id", "quantity", "in_stock"]
+      "requirements": {
+        "catalog_type": "inventory",
+        "required_fields": ["store_id", "quantity", "in_stock"]
+      }
     }
   ]
 }
 ```
 
-Buying agents check `catalog_requirements` after discovering formats, sync the required catalogs via `sync_catalogs`, then submit creatives that reference those catalogs.
+Buying agents check catalog asset types in the format's `assets` array after discovering formats, sync the required catalogs via `sync_catalogs`, then submit creatives that reference those catalogs.
 
 ### Field bindings
 
-Formats can declare `field_bindings` inside each `catalog_requirements` entry to explicitly map template slots to catalog item fields or asset pools. This makes the format self-describing — creative agents don't have to guess which catalog field maps to which template slot.
+Formats can declare `field_bindings` inside the catalog asset's `requirements` to explicitly map template slots to catalog item fields or asset pools. This makes the format self-describing — creative agents don't have to guess which catalog field maps to which template slot.
 
 ```json
 {
-  "catalog_requirements": [
+  "assets": [
     {
-      "catalog_type": "hotel",
+      "item_type": "individual",
+      "asset_id": "hotel_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "required_fields": ["name", "price.amount"],
-      "offering_asset_constraints": [
-        { "asset_group_id": "images_landscape", "asset_type": "image", "required": true, "min_count": 1 },
-        { "asset_group_id": "images_vertical",  "asset_type": "image", "required": true, "min_count": 1 }
-      ],
-      "field_bindings": [
-        { "kind": "scalar",     "asset_id": "headline",        "catalog_field": "name" },
-        { "kind": "scalar",     "asset_id": "price_badge",     "catalog_field": "price.amount" },
-        { "kind": "asset_pool", "asset_id": "hero_image",      "asset_group_id": "images_landscape" },
-        { "kind": "asset_pool", "asset_id": "snap_background", "asset_group_id": "images_vertical" },
-        { "kind": "asset_pool", "asset_id": "logo",            "asset_group_id": "logo" }
-      ]
+      "requirements": {
+        "catalog_type": "hotel",
+        "required_fields": ["name", "price.amount"],
+        "offering_asset_constraints": [
+          { "asset_group_id": "images_landscape", "asset_type": "image", "required": true, "min_count": 1 },
+          { "asset_group_id": "images_vertical",  "asset_type": "image", "required": true, "min_count": 1 }
+        ],
+        "field_bindings": [
+          { "kind": "scalar",     "asset_id": "headline",        "catalog_field": "name" },
+          { "kind": "scalar",     "asset_id": "price_badge",     "catalog_field": "price.amount" },
+          { "kind": "asset_pool", "asset_id": "hero_image",      "asset_group_id": "images_landscape" },
+          { "kind": "asset_pool", "asset_id": "snap_background", "asset_group_id": "images_vertical" },
+          { "kind": "asset_pool", "asset_id": "logo",            "asset_group_id": "logo" }
+        ]
+      }
     }
   ]
 }
 ```
 
-For repeatable groups (carousels where each slide is one catalog item), use `format_group_id` with `catalog_item: true`:
+For repeatable groups (carousels where each slide is one catalog item), use `format_group_id` with `catalog_item: true` inside the catalog asset's `requirements.field_bindings`:
 
 ```json
 {
-  "field_bindings": [
-    {
-      "kind": "catalog_group",
-      "format_group_id": "slide",
-      "catalog_item": true,
-      "per_item_bindings": [
-        { "kind": "scalar",     "asset_id": "title",  "catalog_field": "name" },
-        { "kind": "scalar",     "asset_id": "price",  "catalog_field": "price.amount" },
-        { "kind": "asset_pool", "asset_id": "image",  "asset_group_id": "images_landscape" }
-      ]
-    }
-  ]
+  "requirements": {
+    "catalog_type": "product",
+    "field_bindings": [
+      {
+        "kind": "catalog_group",
+        "format_group_id": "slide",
+        "catalog_item": true,
+        "per_item_bindings": [
+          { "kind": "scalar",     "asset_id": "title",  "catalog_field": "name" },
+          { "kind": "scalar",     "asset_id": "price",  "catalog_field": "price.amount" },
+          { "kind": "asset_pool", "asset_id": "image",  "asset_group_id": "images_landscape" }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -523,17 +549,17 @@ Field bindings are **optional** — creative agents can still infer mappings fro
 
 ## Catalogs in creatives
 
-Creatives reference catalogs via the `catalogs` field on the creative object. This is a data reference — it tells the creative what items to render (products for a carousel, locations for a store locator). It is not a campaign expansion directive; campaign structure and budget allocation are handled by `create_media_buy` packages.
+Creatives reference catalogs as entries in the manifest's `assets` map. Each catalog asset is keyed by the `asset_id` declared in the format (e.g., `product_catalog`). This is a data reference — it tells the creative what items to render (products for a carousel, locations for a store locator). It is not a campaign expansion directive; campaign structure and budget allocation are handled by `create_media_buy` packages.
 
-When a format declares `catalog_requirements`, the buying agent syncs the required catalogs to the account, then sets the `catalogs` field on the creative to reference the synced data.
+When a format declares catalog asset types, the buying agent syncs the required catalogs to the account, then populates the corresponding asset keys in the creative's `assets` map to reference the synced data.
 
 ### Workflow
 
-1. **Discover format requirements** — Call `list_creative_formats` and check `catalog_requirements` for what feeds to sync.
+1. **Discover format requirements** — Call `list_creative_formats` and check the format's `assets` array for `catalog` asset types and their `requirements`.
 
 2. **Sync catalogs** — Use `sync_catalogs` to push the required feeds to the account. Wait for approval.
 
-3. **Submit the creative** — Reference the synced catalog by `catalog_id` in the creative's `catalogs` array:
+3. **Submit the creative** — Reference the synced catalog by `catalog_id` in the corresponding asset key:
 
 ```json
 {
@@ -544,12 +570,12 @@ When a format declares `catalog_requirements`, the buying agent syncs the requir
         "agent_url": "https://creative.retailer.com/adcp",
         "id": "product_carousel_with_inventory"
       },
-      "catalogs": [{
-        "catalog_id": "product-feed",
-        "type": "product",
-        "tags": ["summer"]
-      }],
       "assets": {
+        "product_catalog": {
+          "catalog_id": "product-feed",
+          "type": "product",
+          "tags": ["summer"]
+        },
         "banner_image": {
           "url": "https://cdn.acmecorp.com/carousel-hero.jpg",
           "width": 1200,
@@ -641,7 +667,7 @@ interface OfferingAssetGroup {
 
 **Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/latest/core/requirements/offering-asset-constraint.json)
 
-Declared by a format to specify what asset groups each offering must provide. Used within `catalog_requirements` to constrain what offerings in a catalog must provide.
+Declared by a format to specify what asset groups each offering must provide. Used within a catalog asset's `requirements` to constrain what offerings in a catalog must provide.
 
 ```typescript
 interface OfferingAssetConstraint {
@@ -665,48 +691,53 @@ interface OfferingAssetConstraint {
 
 ### Format requirements for offerings
 
-Call `list_creative_formats` and check `catalog_requirements` to see what catalog types are needed and what each offering must provide:
+Call `list_creative_formats` and check the format's `assets` array for `catalog` asset types to see what catalog types are needed and what each offering must provide:
 
 ```json
 {
-  "catalog_requirements": [
+  "assets": [
     {
-      "catalog_type": "offering",
+      "item_type": "individual",
+      "asset_id": "offering_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "offering_asset_constraints": [
-        {
-          "asset_group_id": "headlines",
-          "asset_type": "text",
-          "required": true,
-          "min_count": 3,
-          "max_count": 15,
-          "asset_requirements": {"max_length": 30}
-        },
-        {
-          "asset_group_id": "descriptions",
-          "asset_type": "text",
-          "required": true,
-          "min_count": 2,
-          "max_count": 5,
-          "asset_requirements": {"max_length": 90}
-        },
-        {
-          "asset_group_id": "images_landscape",
-          "asset_type": "image",
-          "required": true,
-          "min_count": 1,
-          "max_count": 20,
-          "asset_requirements": {"aspect_ratio": "1.91:1", "min_width": 1200, "min_height": 628}
-        },
-        {
-          "asset_group_id": "images_square",
-          "asset_type": "image",
-          "required": true,
-          "min_count": 1,
-          "max_count": 20,
-          "asset_requirements": {"aspect_ratio": "1:1", "min_width": 600, "min_height": 600}
-        }
-      ]
+      "requirements": {
+        "catalog_type": "offering",
+        "offering_asset_constraints": [
+          {
+            "asset_group_id": "headlines",
+            "asset_type": "text",
+            "required": true,
+            "min_count": 3,
+            "max_count": 15,
+            "asset_requirements": {"max_length": 30}
+          },
+          {
+            "asset_group_id": "descriptions",
+            "asset_type": "text",
+            "required": true,
+            "min_count": 2,
+            "max_count": 5,
+            "asset_requirements": {"max_length": 90}
+          },
+          {
+            "asset_group_id": "images_landscape",
+            "asset_type": "image",
+            "required": true,
+            "min_count": 1,
+            "max_count": 20,
+            "asset_requirements": {"aspect_ratio": "1.91:1", "min_width": 1200, "min_height": 628}
+          },
+          {
+            "asset_group_id": "images_square",
+            "asset_type": "image",
+            "required": true,
+            "min_count": 1,
+            "max_count": 20,
+            "asset_requirements": {"aspect_ratio": "1:1", "min_width": 600, "min_height": 600}
+          }
+        ]
+      }
     }
   ]
 }
@@ -891,39 +922,41 @@ The buyer provides multiple offerings, each with their own creative asset pool. 
 ```json
 {
   "brand": { "domain": "acme.com" },
-  "catalogs": [{
-    "type": "offering",
-    "items": [
-      {
-        "offering_id": "summer-sale",
-        "name": "Summer Sale",
-        "landing_url": "https://acme.com/summer",
-        "assets": [
-          {"asset_group_id": "headlines", "asset_type": "text", "items": [
-            {"content": "Shop the Summer Sale"},
-            {"content": "50% Off Everything"}
-          ]},
-          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
-            {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
-          ]}
-        ]
-      },
-      {
-        "offering_id": "new-arrivals",
-        "name": "New Arrivals",
-        "landing_url": "https://acme.com/new",
-        "assets": [
-          {"asset_group_id": "headlines", "asset_type": "text", "items": [
-            {"content": "Just Arrived"},
-            {"content": "New This Week"}
-          ]},
-          {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
-            {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
-          ]}
-        ]
-      }
-    ]
-  }]
+  "assets": {
+    "offering_catalog": {
+      "type": "offering",
+      "items": [
+        {
+          "offering_id": "summer-sale",
+          "name": "Summer Sale",
+          "landing_url": "https://acme.com/summer",
+          "assets": [
+            {"asset_group_id": "headlines", "asset_type": "text", "items": [
+              {"content": "Shop the Summer Sale"},
+              {"content": "50% Off Everything"}
+            ]},
+            {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+              {"url": "https://cdn.acme.com/summer-hero.jpg", "width": 1200, "height": 628}
+            ]}
+          ]
+        },
+        {
+          "offering_id": "new-arrivals",
+          "name": "New Arrivals",
+          "landing_url": "https://acme.com/new",
+          "assets": [
+            {"asset_group_id": "headlines", "asset_type": "text", "items": [
+              {"content": "Just Arrived"},
+              {"content": "New This Week"}
+            ]},
+            {"asset_group_id": "images_landscape", "asset_type": "image", "items": [
+              {"url": "https://cdn.acme.com/new-arrivals.jpg", "width": 1200, "height": 628}
+            ]}
+          ]
+        }
+      ]
+    }
+  }
 }
 ```
 
@@ -934,11 +967,13 @@ For retail media, sync product and inventory feeds, then reference them in creat
 ```json
 {
   "brand": { "domain": "acmecorp.com" },
-  "catalogs": [{
-    "catalog_id": "product-feed",
-    "type": "product",
-    "tags": ["summer"]
-  }]
+  "assets": {
+    "product_catalog": {
+      "catalog_id": "product-feed",
+      "type": "product",
+      "tags": ["summer"]
+    }
+  }
 }
 ```
 
@@ -951,23 +986,25 @@ No pre-built creatives — just offerings available for SI conversations. The br
 ```json
 {
   "brand": { "domain": "saas-company.com" },
-  "catalogs": [{
-    "type": "offering",
-    "items": [
-      {
-        "offering_id": "enterprise-demo",
-        "name": "Enterprise Demo",
-        "description": "See our platform in action with a personalized demo",
-        "keywords": ["demo", "enterprise", "trial", "pricing"]
-      },
-      {
-        "offering_id": "free-trial",
-        "name": "14-Day Free Trial",
-        "checkout_url": "https://saas-company.com/signup",
-        "keywords": ["trial", "free", "signup"]
-      }
-    ]
-  }]
+  "assets": {
+    "offering_catalog": {
+      "type": "offering",
+      "items": [
+        {
+          "offering_id": "enterprise-demo",
+          "name": "Enterprise Demo",
+          "description": "See our platform in action with a personalized demo",
+          "keywords": ["demo", "enterprise", "trial", "pricing"]
+        },
+        {
+          "offering_id": "free-trial",
+          "name": "14-Day Free Trial",
+          "checkout_url": "https://saas-company.com/signup",
+          "keywords": ["trial", "free", "signup"]
+        }
+      ]
+    }
+  }
 }
 ```
 
@@ -978,26 +1015,28 @@ For brands with multiple physical locations — restaurants, retail chains, job 
 ```json
 {
   "brand": { "domain": "acme-restaurants.com" },
-  "catalogs": [{
-    "type": "offering",
-    "items": [
-      {
-        "offering_id": "vacancy-amsterdam-chef",
-        "name": "Head Chef — Amsterdam",
-        "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
-        "geo_targets": {
-          "countries": ["NL"],
-          "regions": ["NL-NH"]
-        },
-        "assets": [
-          {"asset_group_id": "headlines", "asset_type": "text", "items": [
-            {"content": "Head Chef Wanted in Amsterdam"},
-            {"content": "Join Our Amsterdam Kitchen Team"}
-          ]}
-        ]
-      }
-    ]
-  }]
+  "assets": {
+    "offering_catalog": {
+      "type": "offering",
+      "items": [
+        {
+          "offering_id": "vacancy-amsterdam-chef",
+          "name": "Head Chef — Amsterdam",
+          "landing_url": "https://careers.acme-restaurants.com/vacancies/41",
+          "geo_targets": {
+            "countries": ["NL"],
+            "regions": ["NL-NH"]
+          },
+          "assets": [
+            {"asset_group_id": "headlines", "asset_type": "text", "items": [
+              {"content": "Head Chef Wanted in Amsterdam"},
+              {"content": "Join Our Amsterdam Kitchen Team"}
+            ]}
+          ]
+        }
+      ]
+    }
+  }
 }
 ```
 
@@ -1065,7 +1104,7 @@ This creates a closed attribution loop: the same identifiers appear in impressio
 
 ### Match `asset_group_id` to the format's vocabulary
 
-Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in its `offering_asset_constraints`. Group IDs like `headlines`, `images`, or `videos` are format-defined vocabulary, not protocol constants — each format chooses its own IDs. The protocol provides the container and constraint mechanism; the format defines the vocabulary.
+Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in `offering_asset_constraints` within each catalog asset's `requirements`. Group IDs like `headlines`, `images`, or `videos` are format-defined vocabulary, not protocol constants — each format chooses its own IDs. The protocol provides the container and constraint mechanism; the format defines the vocabulary.
 
 ### Provide more assets than the minimum
 

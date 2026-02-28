@@ -116,7 +116,7 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 
 First-class catalog lifecycle with `sync_catalogs`. Twelve catalog types: structural (`offering`, `product`, `inventory`, `store`, `promotion`) and industry-vertical (`hotel`, `flight`, `job`, `vehicle`, `real_estate`, `education`, `destination`). Vertical types have canonical item schemas drawn from Google Ads, Meta, LinkedIn, and Microsoft feed specs.
 
-Formats declare what catalogs they need via `catalog_requirements`. Creatives reference synced catalogs by `catalog_id` instead of embedding items in assets. Catalogs declare `conversion_events` and `content_id_type` for attribution alignment.
+Formats declare what catalogs they need via `catalog` asset types in their `assets` array. Creatives reference synced catalogs by `catalog_id` in the manifest's assets map. Catalogs declare `conversion_events` and `content_id_type` for attribution alignment.
 
 <Card title="Catalogs" icon="arrow-right" href="/docs/creative/catalogs">
   Complete documentation including catalog types, sync workflow, format requirements, and conversion events.
@@ -285,16 +285,16 @@ Formats now use an `assets` array with `required` boolean instead of `assets_req
 
 ### Catalogs replace promoted_offerings
 
-The `promoted_offerings` creative asset type and `promoted_offering` string field are removed. Catalogs are now first-class protocol objects with their own sync lifecycle (`sync_catalogs`), format-level requirements (`catalog_requirements`), and conversion event alignment.
+The `promoted_offerings` creative asset type and `promoted_offering` string field are removed. Catalogs are now first-class protocol objects with their own sync lifecycle (`sync_catalogs`), format-level `catalog` asset type declarations, and conversion event alignment.
 
 | v2 field | v3 replacement |
 |----------|---------------|
-| `promoted_offerings` (creative asset) | `catalogs` field on creative manifest |
+| `promoted_offerings` (creative asset) | `catalog` asset type in manifest's `assets` map |
 | `promoted_offering` (string on media-buy) | Removed — use `brand` + `brief` |
-| `promoted_offering` (string on creative-manifest) | Removed — use `catalogs` field |
+| `promoted_offering` (string on creative-manifest) | Removed — use `catalog` asset in `assets` map |
 
 <Card title="Catalogs deep dive" icon="arrow-right" href="/docs/reference/migration/catalogs">
-  Before/after examples, sync_catalogs workflow, catalog_requirements discovery, and migration checklist.
+  Before/after examples, sync_catalogs workflow, catalog asset discovery, and migration checklist.
 </Card>
 
 ---
@@ -395,8 +395,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
     - [ ] Replace `preview_image` with `format_card` rendering
     - [ ] Resolve brand manifests via `brand.json` for on-brand creative generation
-    - [ ] Support `catalog` field on creative manifests (replaces [`promoted_offerings`](/docs/reference/migration/catalogs) asset)
-    - [ ] Declare `catalog_requirements` on formats that render catalog items
+    - [ ] Support `catalog` assets in creative manifests (replaces [`promoted_offerings`](/docs/reference/migration/catalogs) asset)
+    - [ ] Declare `catalog` asset types on formats that render catalog items
     - [ ] Update schema references from v2 to v3
   </Accordion>
 

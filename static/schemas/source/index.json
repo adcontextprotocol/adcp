@@ -122,10 +122,6 @@
           "$ref": "/schemas/core/creative-brief.json",
           "description": "Campaign-level creative context for AI-powered creative generation"
         },
-        "creative-brief-ref": {
-          "$ref": "/schemas/core/creative-brief-ref.json",
-          "description": "Creative brief reference (inline object or URL)"
-        },
         "reference-asset": {
           "$ref": "/schemas/core/reference-asset.json",
           "description": "A reference asset with semantic role for creative context"
@@ -451,6 +447,10 @@
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
           "description": "Types of content that can be used as creative assets (image, video, html, etc.)"
+        },
+        "disclosure-position": {
+          "$ref": "/schemas/enums/disclosure-position.json",
+          "description": "Where a required disclosure should appear within a creative"
         },
         "format-category": {
           "$ref": "/schemas/enums/format-category.json",
