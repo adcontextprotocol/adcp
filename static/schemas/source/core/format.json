@@ -535,7 +535,7 @@
     },
     "supported_disclosure_positions": {
       "type": "array",
-      "description": "Disclosure positions this format can render. Buyers use this to determine whether a format can satisfy their compliance requirements before submitting a creative. Values correspond to positions on creative-brief.json required_disclosures.",
+      "description": "Disclosure positions this format can render. Buyers use this to determine whether a format can satisfy their compliance requirements before submitting a creative. When omitted, the format makes no disclosure rendering guarantees — creative agents SHOULD treat this as incompatible with briefs that require specific disclosure positions. Values correspond to positions on creative-brief.json required_disclosures.",
       "items": {
         "$ref": "/schemas/enums/disclosure-position.json"
       },

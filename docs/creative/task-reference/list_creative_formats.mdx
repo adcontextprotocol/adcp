@@ -113,6 +113,7 @@ Catalog assets use `asset_type: "catalog"` with a `requirements` object containi
 |-------|------|-------------|
 | `catalog_type` | string | Required. The catalog type (e.g., `product`, `store`, `job`) |
 | `min_items` | integer | Minimum items the catalog must contain |
+| `max_items` | integer | Maximum items the format can render. Items beyond this limit are ignored |
 | `required_fields` | string[] | Fields that must be present on every item |
 | `feed_formats` | string[] | Accepted feed formats (e.g., `google_merchant_center`, `linkedin_jobs`) |
 

@@ -21,7 +21,8 @@
     "ACCOUNT_SETUP_REQUIRED",
     "ACCOUNT_AMBIGUOUS",
     "ACCOUNT_PAYMENT_REQUIRED",
-    "ACCOUNT_SUSPENDED"
+    "ACCOUNT_SUSPENDED",
+    "COMPLIANCE_UNSATISFIED"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -40,6 +41,7 @@
     "ACCOUNT_SETUP_REQUIRED": "Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).",
     "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
     "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
-    "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension)."
+    "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension).",
+    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format. Recovery: correctable (choose a format that supports the required disclosure positions, or remove the disclosure requirement)."
   }
 }

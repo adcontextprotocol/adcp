@@ -65,7 +65,7 @@
       "properties": {
         "required_disclosures": {
           "type": "array",
-          "description": "Disclosures that must appear in creatives for this campaign. Each disclosure specifies the text, where it should appear, and which regions require it.",
+          "description": "Disclosures that must appear in creatives for this campaign. Each disclosure specifies the text, where it should appear, and which jurisdictions require it.",
           "items": {
             "type": "object",
             "properties": {
