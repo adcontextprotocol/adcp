@@ -153,7 +153,7 @@ For products that include outcome measurement (common in retail media):
 {
   "type": "incremental_sales_lift",
   "attribution": "deterministic_purchase",
-  "window": "30_days",
+  "window": { "interval": 30, "unit": "days" },
   "reporting": "weekly_dashboard"
 }
 ```
@@ -446,7 +446,7 @@ A server can offer a general catalog, but it can also return:
   "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   },
   "creative_policy": {

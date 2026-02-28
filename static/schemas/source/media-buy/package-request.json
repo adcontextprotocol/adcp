@@ -50,7 +50,7 @@
     },
     "catalogs": {
       "type": "array",
-      "description": "Catalogs this package promotes. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
       "items": {
         "$ref": "/schemas/core/catalog.json"
       }

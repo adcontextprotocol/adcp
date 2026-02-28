@@ -73,3 +73,23 @@ Address schema gaps that block autonomous agent operation, plus consistency fixe
 
 **Package catalogs**
 - `Package`, `PackageRequest`: change `catalog` (single) to `catalogs` (array) to support multi-catalog packages (e.g., product + store catalogs)
+
+**Error code vocabulary expansion (#1269–1276)**
+- `ErrorCode`: add `BUDGET_EXHAUSTED` (account/campaign budget spent, distinct from `BUDGET_TOO_LOW`) and `CONFLICT` (concurrent modification)
+- `Error.code`: stays `type: string` (not wired to enum) so sellers can use platform-specific codes; description references error-code.json as the standard vocabulary
+
+**Frequency cap semantics (#1272)**
+- `FrequencyCap`: add normative AND semantics — when both `suppress` and `max_impressions` are set, an impression is delivered only if both constraints permit it
+
+**Catalog uniqueness (#1276)**
+- `Package`, `PackageRequest`: strengthen catalog type uniqueness from SHOULD to MUST; sellers MUST reject duplicates with `validation_error`
+
+**Creative weight semantics**
+- `CreativeAssignment`, `SyncCreativesRequest.assignments`: clarify weight is relative proportional (weight 2 = 2x weight 1), omitted = equal rotation, 0 = assigned but paused
+
+**Outcome measurement window (breaking)**
+- `OutcomeMeasurement.window`: change from `type: string` (e.g., `"30_days"`) to `$ref: duration.json` (structured `{interval, unit}`)
+
+**Media buy lifecycle**
+- `MediaBuyStatus`: add `canceled` (buyer-initiated termination, distinct from `completed` and `rejected`)
+- `GetMediaBuyDeliveryResponse`: add `canceled` to inline status enum
