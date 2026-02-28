@@ -21,16 +21,19 @@
       "properties": {
         "overall": {
           "type": "string",
+          "minLength": 1,
           "description": "Overall direction for the refinement (e.g., 'more video options', 'increase emphasis on premium inventory'). Guides the seller to adjust the set composition beyond specific product instructions."
         },
         "products": {
           "type": "array",
           "description": "Per-product refinement instructions. Each entry references a product from a previous get_products response and declares an action.",
+          "minItems": 1,
           "items": {
             "type": "object",
             "properties": {
               "product_id": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Product ID from a previous get_products response"
               },
               "action": {
@@ -40,6 +43,7 @@
               },
               "notes": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Adjustment instructions. For 'include': specific changes to request. For 'more_like_this': what 'similar' means. Ignored when action is 'omit'."
               }
             },
@@ -50,24 +54,27 @@
         "proposals": {
           "type": "array",
           "description": "Per-proposal refinement instructions. Reference proposal IDs from a previous get_products response.",
+          "minItems": 1,
           "items": {
             "type": "object",
             "properties": {
               "proposal_id": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Proposal ID from a previous get_products response"
               },
-              "omit": {
-                "type": "boolean",
-                "description": "Remove this proposal from the response. When true, notes is ignored.",
-                "default": false
+              "action": {
+                "type": "string",
+                "enum": ["include", "omit"],
+                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
               },
               "notes": {
                 "type": "string",
-                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%')"
+                "minLength": 1,
+                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
               }
             },
-            "required": ["proposal_id"],
+            "required": ["proposal_id", "action"],
             "additionalProperties": false
           }
         }

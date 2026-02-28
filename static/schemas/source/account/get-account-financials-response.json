@@ -254,7 +254,7 @@
       "data": {
         "errors": [
           {
-            "code": "BILLING_MODEL_NOT_SUPPORTED",
+            "code": "UNSUPPORTED_FEATURE",
             "message": "Financial data is not available for agent-billed accounts. The agent's own billing system is the source of truth."
           }
         ]
