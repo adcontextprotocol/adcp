@@ -637,7 +637,7 @@ The `tags` field enables grouping allocations by dimension:
 
 ### Iterating on Proposals
 
-Proposals can be refined using `buying_mode: "refine"` with a `proposal_id` from the initial discovery response. Use `feedback` to provide structured per-item adjustment instructions — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
+Proposals can be refined using `buying_mode: "refine"` with the `refine` object. Reference proposals by ID in `refine.proposals` — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
 
 ```
 // Initial discovery
@@ -648,11 +648,18 @@ get_products({
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Refine the proposal with structured feedback
+// Refine the proposal
 get_products({
   buying_mode: "refine",
-  proposal_id: "swiss_balanced_v1",
-  feedback: {
+  refine: {
+    products: [
+      { product_id: "ch_desktop_de", action: "include" },
+      { product_id: "ch_desktop_fr", action: "include" },
+      { product_id: "ch_mobile_de", action: "include" },
+      { product_id: "ch_mobile_fr", action: "include" },
+      { product_id: "ch_inapp_de", action: "include" },
+      { product_id: "ch_inapp_fr", action: "include" }
+    ],
     proposals: [
       { proposal_id: "swiss_balanced_v1", notes: "focus more on German speakers - try 60/40 instead of 40/60" }
     ]
@@ -698,7 +705,7 @@ Publishers include proposals when:
 
 Publishers typically omit proposals in `wholesale` mode (the buyer is directing targeting and allocation themselves) or when the brief doesn't suggest a multi-product strategy.
 
-Proposals are optional — publishers may return only products if allocation guidance isn't applicable. In `refine` mode, sellers MAY return proposals alongside refined products even when the buyer only provided `product_ids`. Proposals are a seller suggestion — allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
+Proposals are optional — publishers may return only products if allocation guidance isn't applicable. In `refine` mode, sellers MAY return proposals alongside refined products even when the buyer did not include `refine.proposals`. Proposals are a seller suggestion — allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
 
 ### Delivery Forecasts
 

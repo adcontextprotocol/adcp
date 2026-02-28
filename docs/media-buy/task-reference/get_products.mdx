@@ -125,11 +125,9 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on known products or proposals — requires at least one of `product_ids` or `proposal_id`. Use `feedback` to provide per-item and overall adjustment instructions. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` object. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
-| `feedback` | [Feedback](#feedback-object) | No | Structured refinement feedback with per-product and per-proposal adjustment instructions. Only valid when `buying_mode` is `"refine"`. See [Feedback Object](#feedback-object) below. |
-| `product_ids` | string[] | Conditional | Product IDs from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns these products with updated forecasts, pricing, and package configurations. |
-| `proposal_id` | string | Conditional | Proposal ID from a previous `get_products` response. At least one of `product_ids` or `proposal_id` is required when `buying_mode` is `"refine"`. The seller returns an updated proposal with revised forecasts, allocations, and pricing. When combined with `product_ids`, narrows or expands the proposal's product set. |
+| `refine` | [Refine](#refine-object) | Conditional | Refinement payload with per-product actions and per-proposal adjustment instructions. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine Object](#refine-object) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
@@ -164,33 +162,31 @@ asyncio.run(discover_with_filters())
 
 *At least one of `min` or `max` must be specified.
 
-### Feedback Object
+### Refine Object
 
-Structured refinement feedback for `refine` mode. All fields are optional — provide at least one. Use `overall` for set-level composition changes (e.g., "more video options"). Use per-item entries for targeted adjustments to specific products or proposals. The seller considers both.
-
-Only include items you want to omit or adjust — unlisted items are returned as-is with updated forecasts. Product IDs in `feedback.products` should reference products from `product_ids` or from the referenced proposal. Proposal IDs in `feedback.proposals` should reference the top-level `proposal_id`.
+The `refine` object consolidates all refinement intent into a single payload. At least one field is required. Each product declares an explicit action: `include` (keep with optional adjustments), `omit` (exclude), or `more_like_this` (find similar). The seller considers all fields together when composing the response.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `overall` | string | Feedback about the overall selection (e.g., `"good selection but I want more video options"`). Guides the seller to adjust the set composition. |
-| `products` | ProductFeedback[] | Per-product feedback (see below) |
-| `proposals` | ProposalFeedback[] | Per-proposal feedback (see below) |
+| `overall` | string | Direction for the overall selection (e.g., `"more video options"`, `"increase emphasis on premium inventory"`). Guides the seller to adjust the set composition beyond specific product instructions. |
+| `products` | RefineProduct[] | Per-product refinement instructions (see below) |
+| `proposals` | RefineProposal[] | Per-proposal refinement instructions (see below) |
 
-#### ProductFeedback
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `product_id` | string | Yes | Product ID from the previous `get_products` response |
-| `omit` | boolean | No | Remove this product from the response. Default: `false` |
-| `notes` | string | No | Adjustment instructions (e.g., `"increase budget allocation"`, `"add 16:9 format"`). Ignored when `omit` is `true`. |
-
-#### ProposalFeedback
+#### RefineProduct
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `proposal_id` | string | Yes | Proposal ID from the previous `get_products` response |
-| `omit` | boolean | No | Remove this proposal from the response. Default: `false` |
-| `notes` | string | No | Adjustment instructions (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `omit` is `true`. |
+| `product_id` | string | Yes | Product ID from a previous `get_products` response |
+| `action` | string | Yes | `"include"`: return this product with updated pricing and data. `"omit"`: exclude this product from the response. `"more_like_this"`: find additional products similar to this one (the original is also returned). |
+| `notes` | string | No | Adjustment instructions. For `"include"`: specific changes to request (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
+
+#### RefineProposal
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `proposal_id` | string | Yes | Proposal ID from a previous `get_products` response |
+| `omit` | boolean | No | Remove this proposal from the response. When `true`, `notes` is ignored. Default: `false` |
+| `notes` | string | No | Adjustment instructions (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`) |
 
 ### Catalog discovery
 
@@ -758,21 +754,21 @@ See [Property Targeting](/docs/media-buy/product-discovery/media-products#proper
 
 ## Refinement
 
-After initial discovery, use `buying_mode: "refine"` to iterate on known products or proposals. The seller skips discovery and returns updated forecasts, pricing, and package configurations reflecting your new parameters. Pass `product_ids`, `proposal_id`, or both. If the referenced products or proposal can't be found, the seller returns `PRODUCT_NOT_FOUND` or `PROPOSAL_EXPIRED` — see [Error handling](#error-handling).
+After initial discovery, use `buying_mode: "refine"` to iterate on specific products and proposals. The `refine` object declares what to do with each product: keep it, drop it, or find more like it. The seller returns updated products with revised pricing and configurations. See [Refinement](/docs/media-buy/product-discovery/refinement) for the full guide.
 
-### Refine products with feedback
+### Refine products
 
-Use `feedback` to provide structured per-item and overall adjustment instructions. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
+Each product in `refine.products` declares an explicit action. Use `overall` for set-level direction. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
 
 ```json test=false
 {
   "buying_mode": "refine",
-  "product_ids": ["prod_premium_video", "prod_display_run_of_site", "prod_native_feed"],
-  "feedback": {
-    "overall": "good selection but I want more video options",
+  "refine": {
+    "overall": "good selection but I want more video options and less display",
     "products": [
-      { "product_id": "prod_native_feed", "omit": true },
-      { "product_id": "prod_premium_video", "notes": "increase budget allocation to 60%" }
+      { "product_id": "prod_premium_video", "action": "include", "notes": "add 16:9 format option" },
+      { "product_id": "prod_display_run_of_site", "action": "omit" },
+      { "product_id": "prod_native_feed", "action": "more_like_this", "notes": "same audience but video format" }
     ]
   },
   "filters": {
@@ -785,11 +781,16 @@ Use `feedback` to provide structured per-item and overall adjustment instruction
 
 ### Refine a proposal
 
+Reference proposals by ID in `refine.proposals` to request adjustments:
+
 ```json test=false
 {
   "buying_mode": "refine",
-  "proposal_id": "prop_awareness_q2",
-  "feedback": {
+  "refine": {
+    "products": [
+      { "product_id": "prod_premium_video", "action": "include" },
+      { "product_id": "prod_display_run_of_site", "action": "include" }
+    ],
     "proposals": [
       { "proposal_id": "prop_awareness_q2", "notes": "shift more budget toward video, reduce display allocation" }
     ]
@@ -802,48 +803,45 @@ Use `feedback` to provide structured per-item and overall adjustment instruction
 }
 ```
 
-### Refresh forecasts
+### Find similar products
 
-To refresh forecasts and pricing without changing anything, pass only `product_ids`:
+Use `more_like_this` to discover products similar to ones you like. The seller returns the original product plus additional options:
 
 ```json test=false
 {
   "buying_mode": "refine",
-  "product_ids": ["prod_premium_video", "prod_display_run_of_site"]
+  "refine": {
+    "products": [
+      { "product_id": "prod_premium_video", "action": "more_like_this", "notes": "same premium audience but different formats" }
+    ]
+  }
 }
 ```
 
-The seller returns the same products with up-to-date availability, forecasts, and pricing.
-
-### Combining product_ids and proposal_id
-
-When both `product_ids` and `proposal_id` are provided, `product_ids` narrow or expand the proposal's product set. The seller returns an updated proposal reflecting only the specified products with revised allocations and forecasts.
-
 ### Proposals in refine mode
 
-Sellers MAY return proposals alongside refined products, even when the buyer only provided `product_ids` (without a `proposal_id`). For example, a buyer who refines three products may receive those products back with updated forecasts *and* a proposal suggesting how to combine them.
+Sellers MAY return proposals alongside refined products, even when the buyer did not include `refine.proposals`. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
 
 Key points:
 
 - **Proposals are not guaranteed.** Sellers are not required to generate proposals in refine mode. Allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
-- **Signal interest via `feedback.overall`.** Include a message like `"I like these products — suggest how to combine them"` to indicate you'd welcome a proposal.
-- **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call using its `proposal_id`, or simply ignore it and build packages manually via `create_media_buy`.
+- **Signal interest via `refine.overall`.** Include a message like `"suggest how to combine these products"` to indicate you'd welcome a proposal.
+- **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, or simply ignore it and build packages manually via `create_media_buy`.
 
 ### Notes
 
-- **`product_ids`, `proposal_id`, and `feedback` are only valid in `refine` mode.** Requests that include these fields in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
+- **`refine` is only valid in `refine` mode.** Requests that include this field in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal. Proposals without `expires_at` remain valid until the seller invalidates them.
 - **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context. Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 
-The response uses the same format as discovery. Each product reflects the updated parameters — adjusted delivery forecasts, revised pricing options, and any package or allocation changes the seller recommends based on `feedback` and filters. Call refine as many times as needed before committing to a `create_media_buy`.
+The response uses the same format as discovery. Each product reflects the updated parameters — revised pricing options and any configuration changes the seller recommends based on the `refine` object and filters. Call refine as many times as needed before committing to a `create_media_buy`.
 
 ### Client validation
 
 Orchestrators building refinement workflows should validate requests before sending:
 
-- **Feedback coherence**: Product IDs in `feedback.products` should be present in `product_ids` or in the referenced proposal's allocations. Proposal IDs in `feedback.proposals` should match the top-level `proposal_id`.
-- **Non-empty feedback**: The `feedback` object requires at least one field (`overall`, `products`, or `proposals`). An empty `{}` is rejected by schema validation.
-- **Omit consistency**: Products omitted via `feedback.products[].omit: true` should still be included in `product_ids` — the seller needs to know which product to exclude. Alternatively, simply remove the product from `product_ids` for the same effect.
+- **Non-empty refine**: The `refine` object requires at least one field (`overall`, `products`, or `proposals`). An empty `{}` is rejected by schema validation.
+- **Valid actions**: Each product entry requires `product_id` and `action`. Action must be `include`, `omit`, or `more_like_this`.
 - **Filters are absolute**: When refining, `filters` represent the complete target state, not a delta from the previous request. Always send the full filter set you want applied.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
@@ -854,8 +852,8 @@ Client implementations should validate refinement requests against the [request 
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
-| `PRODUCT_NOT_FOUND` | One or more `product_ids` are unknown or were never valid | Remove invalid IDs and retry, or re-discover with `get_products` |
-| `PROPOSAL_EXPIRED` | The referenced `proposal_id` has passed its `expires_at` timestamp | Re-discover products with a new `brief` or `wholesale` request |
+| `PRODUCT_NOT_FOUND` | One or more product IDs in `refine.products` are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PROPOSAL_EXPIRED` | A proposal ID in `refine.proposals` has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 
 ### Authentication Comparison
