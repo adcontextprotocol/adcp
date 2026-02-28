@@ -19,7 +19,7 @@
         },
         "version": {
           "type": "string",
-          "description": "Version identifier for the AI tool"
+          "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
         },
         "provider": {
           "type": "string",
