@@ -79,7 +79,7 @@ The registry complements the protocol: resolve entities via the REST API, then t
 
 ### Proposals and delivery forecasts
 
-Publishers can return **proposals** alongside products — structured media plans with percentage-based budget allocations that buyers can execute directly via `create_media_buy`. Proposals encode publisher expertise, replacing ad-hoc product lists with actionable buying strategies. They can be refined through session continuity — subsequent `get_products` calls within the same session carry conversation history.
+Publishers can return **proposals** alongside products — structured media plans with percentage-based budget allocations that buyers can execute directly via `create_media_buy`. Proposals encode publisher expertise, replacing ad-hoc product lists with actionable buying strategies. They can be refined via `buying_mode: "refine"` with a `refine` array of typed change requests — each call is self-contained and stateless.
 
 **Delivery forecasts** attach to proposals and allocations. Each forecast contains budget points with metric ranges (low/mid/high), showing how delivery scales with spend. Three forecast methods: **`estimate`** (rough approximation), **`modeled`** (predictive models), **`guaranteed`** (contractually committed). Forecasts can predict delivery metrics (impressions, reach, GRPs) and outcomes (purchases, leads, app installs). TV and radio forecasts use `demographic_system` and `demographic` for GRP-based planning.
 
