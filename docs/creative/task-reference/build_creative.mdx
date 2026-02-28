@@ -14,7 +14,6 @@ For information about format IDs and how to reference formats, see [Creative For
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes. |
-| `generated_creative_ref` | string | No | Reference to a previous `build_creative` output. When provided, the creative agent uses its stored manifest as the starting point, making `creative_manifest` optional. |
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
@@ -119,7 +118,6 @@ The response contains the transformed or generated creative manifest:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
-  "generated_creative_ref": "gcr_winter_001",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -155,8 +153,6 @@ The response contains the transformed or generated creative manifest:
   - **format_id**: The target format (matches `target_format_id` from request)
   - **catalogs**: Catalogs this creative renders (optional, for dynamic product ads)
   - **assets**: Map of asset IDs to actual asset content, matching the format's `assets` specification
-- **generated_creative_ref**: Ephemeral reference to this generated creative. Use in subsequent `build_creative` or `preview_creative` requests without resending the full manifest.
-
 ## Workflow Integration
 
 ### Typical Generation Workflow
@@ -238,7 +234,6 @@ Generate a creative from scratch using a generative format:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
-  "generated_creative_ref": "gcr_gen_12345",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -305,7 +300,6 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
-  "generated_creative_ref": "gcr_resize_67890",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -376,7 +370,6 @@ Adapt a creative for mobile with specific design changes:
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
-  "generated_creative_ref": "gcr_mobile_123",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -540,11 +533,9 @@ This separation allows you to:
 
 - **Generation**: `message` + minimal `creative_manifest` (empty or seed assets) + `target_format_id`
 - **Transformation**: full `creative_manifest` + `message` + `target_format_id`
-- **Refinement**: previous output as `creative_manifest` (or `generated_creative_ref`) + `message` with changes
+- **Refinement**: previous output as `creative_manifest` + `message` with changes
 
-#### Stateless refinement (manifest passback)
-
-Pass the previous response's `creative_manifest` back as input with a new `message`:
+To refine, pass the previous response's `creative_manifest` back as input with a new `message`. Alternatively, update the `creative_brief` to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
 
 ```json
 {
@@ -579,41 +570,9 @@ Pass the previous response's `creative_manifest` back as input with a new `messa
 }
 ```
 
-#### Stateful refinement (generated creative ref)
-
-When the response includes a `generated_creative_ref`, reference it directly instead of resending the full manifest:
-
-```json
-{
-  "$schema": "/schemas/media-buy/build-creative-request.json",
-  "message": "Make the headline bolder and increase the contrast on the CTA button",
-  "generated_creative_ref": "gcr_abc123",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  }
-}
-```
-
-The creative agent resolves `generated_creative_ref` to the output manifest and applies the refinement. This is useful when manifests are large (e.g., multi-asset generative formats) or when iterating across multiple rounds.
-
-#### Ref semantics
-
-`generated_creative_ref` values are opaque strings. Callers MUST NOT parse, construct, or make assumptions about the format — treat them as pass-through tokens. Creative agents SHOULD support refs for at least 15 minutes after issuance; callers that encounter `GENERATED_CREATIVE_REF_EXPIRED` should fall back to manifest passback.
-
-#### Precedence
-
-When both `generated_creative_ref` and `creative_manifest` are provided, `creative_manifest` takes precedence. The ref is ignored.
-
-#### Trafficking finalized creatives
-
-`generated_creative_ref` is an ephemeral handle for iterating during the build/preview cycle. When trafficking via `sync_creatives`, always pass the full `creative_manifest` from the response — refs are not accepted by `sync_creatives`.
-
 ## Error Codes
 
 | Code | Description |
 |------|-------------|
-| `GENERATED_CREATIVE_REF_NOT_FOUND` | The `generated_creative_ref` does not match any stored creative output |
-| `GENERATED_CREATIVE_REF_EXPIRED` | The `generated_creative_ref` has expired. Re-submit with the full `creative_manifest` instead |
 | `FORMAT_NOT_SUPPORTED` | The `target_format_id` is not supported by this creative agent |
 | `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
