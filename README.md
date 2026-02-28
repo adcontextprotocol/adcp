@@ -6,7 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/adcontextprotocol/adcp?style=social)](https://github.com/adcontextprotocol/adcp)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-green)](https://modelcontextprotocol.io)
 
-AdCP is an open standard that enables AI agents to discover inventory, buy media, build creatives, activate audiences, and manage accounts across advertising platforms. It defines domain-specific tasks and schemas that work over [MCP](https://modelcontextprotocol.io) and [A2A](https://google.github.io/A2A/) as transports.
+AdCP is an open standard that enables AI agents to discover inventory, buy media, build creatives, activate audiences, and manage accounts across advertising platforms. It defines domain-specific tasks and schemas that work over [MCP](https://modelcontextprotocol.io) and [A2A](https://a2a-protocol.org/) as transports.
 
 ## Documentation
 
