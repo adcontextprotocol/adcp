@@ -17,20 +17,12 @@
       "$ref": "/schemas/core/format-id.json",
       "description": "Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats."
     },
-    "catalogs": {
-      "type": "array",
-      "description": "Catalogs this creative renders. Each entry satisfies one of the format's catalog_requirements, matched by type. Each catalog can be inline (with items), a reference to a synced catalog (by catalog_id), or a URL to an external feed.",
-      "items": {
-        "$ref": "/schemas/core/catalog.json"
-      },
-      "minItems": 1
-    },
     "assets": {
       "type": "object",
-      "description": "Assets required by the format, keyed by asset_role",
+      "description": "Assets required by the format, keyed by asset_id",
       "patternProperties": {
-        "^[a-zA-Z0-9_-]+$": {
-          "oneOf": [
+        "^[a-z0-9_]+$": {
+          "anyOf": [
             {
               "$ref": "/schemas/core/assets/image-asset.json"
             },
@@ -41,25 +33,37 @@
               "$ref": "/schemas/core/assets/audio-asset.json"
             },
             {
+              "$ref": "/schemas/core/assets/vast-asset.json"
+            },
+            {
               "$ref": "/schemas/core/assets/text-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/url-asset.json"
             },
             {
               "$ref": "/schemas/core/assets/html-asset.json"
             },
             {
-              "$ref": "/schemas/core/assets/css-asset.json"
-            },
-            {
               "$ref": "/schemas/core/assets/javascript-asset.json"
             },
             {
-              "$ref": "/schemas/core/assets/vast-asset.json"
+              "$ref": "/schemas/core/assets/webhook-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/css-asset.json"
             },
             {
               "$ref": "/schemas/core/assets/daast-asset.json"
             },
             {
-              "$ref": "/schemas/core/assets/url-asset.json"
+              "$ref": "/schemas/core/assets/markdown-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/brief-asset.json"
+            },
+            {
+              "$ref": "/schemas/core/assets/catalog-asset.json"
             }
           ]
         }

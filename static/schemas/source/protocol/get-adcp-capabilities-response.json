@@ -698,12 +698,7 @@
     "creative": {
       "type": "object",
       "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
-      "properties": {
-        "supports_brief": {
-          "type": "boolean",
-          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
-        }
-      },
+      "properties": {},
       "additionalProperties": true
     },
     "extensions_supported": {

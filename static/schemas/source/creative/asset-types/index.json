@@ -65,6 +65,16 @@
       "description": "JavaScript code for dynamic creative logic",
       "schema": "/schemas/core/assets/javascript-asset.json",
       "typical_use": "Third-party tags, custom interaction logic, analytics"
+    },
+    "brief": {
+      "description": "Campaign-level creative context (creative brief)",
+      "schema": "/schemas/core/assets/brief-asset.json",
+      "typical_use": "Campaign briefs with objective, messaging, compliance requirements"
+    },
+    "catalog": {
+      "description": "Typed data feed (products, stores, jobs, etc.)",
+      "schema": "/schemas/core/assets/catalog-asset.json",
+      "typical_use": "Product catalogs, store locators, job feeds for dynamic creatives"
     }
   },
   "architecture": {

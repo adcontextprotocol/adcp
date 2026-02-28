@@ -58,6 +58,63 @@
       "items": {
         "$ref": "/schemas/core/reference-asset.json"
       }
+    },
+    "compliance": {
+      "type": "object",
+      "description": "Regulatory and legal compliance requirements for this campaign. Campaign-specific, regional, and product-based — distinct from brand-level disclaimers in brand.json.",
+      "properties": {
+        "required_disclosures": {
+          "type": "array",
+          "description": "Disclosures that must appear in creatives for this campaign. Each disclosure specifies the text, where it should appear, and which regions require it.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The disclosure text that must appear in the creative"
+              },
+              "position": {
+                "$ref": "/schemas/enums/disclosure-position.json",
+                "description": "Where the disclosure should appear within the creative. prominent: clearly visible in the main creative area; footer: at the bottom of visual creatives; audio: spoken in audio/video creatives; subtitle: displayed in the subtitle or closed-caption track; overlay: superimposed on video content; end_card: displayed on video end card; pre_roll: spoken or displayed before main content; companion: in companion ad unit alongside primary creative"
+              },
+              "regions": {
+                "type": "array",
+                "description": "Regions where this disclosure is required. ISO 3166-1 alpha-2 country codes or ISO 3166-2 subdivision codes (e.g., 'US', 'GB', 'US-NJ', 'CA-QC'). If omitted, the disclosure applies to all regions in the campaign.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$"
+                },
+                "minItems": 1
+              },
+              "regulation": {
+                "type": "string",
+                "description": "The regulation or legal authority requiring this disclosure (e.g., 'SEC Rule 156', 'FCA COBS 4.5', 'FDA 21 CFR 202')"
+              },
+              "min_duration_ms": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum display duration in milliseconds. For video/audio disclosures, how long the disclosure must be visible or audible. For static formats, how long the disclosure must remain on screen before any auto-advance."
+              },
+              "language": {
+                "type": "string",
+                "description": "Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA', 'es'). When omitted, the disclosure is assumed to match the creative's language."
+              }
+            },
+            "required": ["text"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "prohibited_claims": {
+          "type": "array",
+          "description": "Claims that must not appear in creatives for this campaign. Creative agents should ensure generated content avoids these claims.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": ["name"],

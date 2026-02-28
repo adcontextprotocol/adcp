@@ -19,7 +19,7 @@
         },
         "asset_role": {
           "type": "string",
-          "description": "Optional descriptive label for this asset's purpose (e.g., 'hero_image', 'logo', 'third_party_tracking'). Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+          "description": "Descriptive label for this asset's purpose (e.g., 'hero_image', 'logo', 'third_party_tracking'). For documentation and UI display only — manifests key assets by asset_id, not asset_role."
         },
         "required": {
           "type": "boolean",
@@ -42,7 +42,7 @@
         },
         "asset_role": {
           "type": "string",
-          "description": "Optional descriptive label for this asset's purpose. Not used for referencing assets in manifests—use asset_id instead. This field is for human-readable documentation and UI display only."
+          "description": "Descriptive label for this asset's purpose. For documentation and UI display only — manifests key assets by asset_id, not asset_role."
         },
         "required": {
           "type": "boolean",
@@ -307,6 +307,23 @@
             }
           },
           {
+            "description": "Brief asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "brief" }
+            }
+          },
+          {
+            "description": "Catalog asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "catalog" },
+              "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
+            }
+          },
+          {
             "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
             "type": "object",
             "properties": {
@@ -516,6 +533,15 @@
       },
       "required": ["wcag_level"]
     },
+    "supported_disclosure_positions": {
+      "type": "array",
+      "description": "Disclosure positions this format can render. Buyers use this to determine whether a format can satisfy their compliance requirements before submitting a creative. Values correspond to positions on creative-brief.json required_disclosures.",
+      "items": {
+        "$ref": "/schemas/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "format_card_detailed": {
       "type": "object",
       "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",
@@ -535,14 +561,6 @@
         "manifest"
       ],
       "additionalProperties": true
-    },
-    "catalog_requirements": {
-      "type": "array",
-      "description": "Catalog feeds this format requires for rendering. Formats that display product listings, store locators, inventory availability, or promotional pricing declare what catalog types must be synced to the account. Buyers ensure the required catalogs are synced via sync_catalogs before submitting creatives in this format.",
-      "items": {
-        "$ref": "/schemas/core/requirements/catalog-requirements.json"
-      },
-      "minItems": 1
     },
     "reported_metrics": {
       "type": "array",

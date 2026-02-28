@@ -143,11 +143,11 @@
               "agent_url": "https://publisher.com/.well-known/adcp/sales",
               "id": "premium_bespoke_display"
             },
-            "catalogs": [{
-              "type": "product",
-              "catalog_id": "winter-products"
-            }],
             "assets": {
+              "product_catalog": {
+                "type": "product",
+                "catalog_id": "winter-products"
+              },
               "generation_prompt": {
                 "content": "Create a warm, festive holiday campaign featuring winter products"
               }

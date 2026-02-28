@@ -20,7 +20,6 @@ For an overview of how formats, manifests, and creative agents work together, se
     agent_url: string;         // Creative agent URL
     id: string;                // Format identifier
   };
-  catalog?: Catalog;           // Catalog of items this creative promotes
   assets: {
     [asset_id: string]: {      // Keyed by asset_id from format's assets
       // Asset type is determined by format specification, not declared here
@@ -30,6 +29,7 @@ For an overview of how formats, manifests, and creative agents work together, se
       // Video: url, width, height, duration_ms, format, bitrate_kbps
       // Audio: url, duration_ms, format, bitrate_kbps
       // Text: content, language
+      // Markdown: content, flavor
       // URL: url, description
       // HTML: content or url, version
       // CSS: content, media
@@ -37,6 +37,8 @@ For an overview of how formats, manifests, and creative agents work together, se
       // VAST: url or content, vast_version, vpaid_enabled, duration_ms, tracking_events
       // DAAST: url or content, daast_version, duration_ms, tracking_events, companion_ads
       // Webhook: url, method, timeout_ms, response_type, security, supported_macros, required_macros
+      // Brief: name, objective, tone, audience, messaging, compliance
+      // Catalog: type, catalog_id, items, selectors
     }
   };
 }
@@ -371,11 +373,11 @@ Manifests are submitted to the creative library using `sync_creatives`, then ref
             "agent_url": "https://creative.adcontextprotocol.org",
             "id": "native_responsive"
           },
-          "catalogs": [{
-            "catalog_id": "salmon-products",
-            "type": "product"
-          }],
           "assets": {
+            "product_catalog": {
+              "catalog_id": "salmon-products",
+              "type": "product"
+            },
             "headline": {
               "content": "Fresh Pacific Salmon - 20% Off Today"
             },
@@ -431,7 +433,7 @@ See [Universal Macros](/docs/creative/universal-macros) for complete documentati
 
 ### Catalogs
 
-Manifests for catalog-driven formats (product carousels, dynamic product ads) reference their catalogs via the `catalogs` field on the creative object, not within the manifest's `assets`. See [Catalogs in Creatives](/docs/creative/catalogs#catalogs-in-creatives) for the workflow.
+Manifests for catalog-driven formats (product carousels, dynamic product ads) include their catalogs as assets within the `assets` map. See [Catalogs in Creatives](/docs/creative/catalogs#catalogs-in-creatives) for the workflow.
 
 ### Repeatable Asset Groups
 

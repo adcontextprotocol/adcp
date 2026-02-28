@@ -82,7 +82,7 @@ Buyers can recursively query creative_agents. **Track visited URLs to avoid infi
 
 ## Catalog requirements
 
-Formats can declare what catalog types they need via the `catalog_requirements` array. This tells buyers which catalogs to sync before submitting creatives for that format.
+Formats declare catalog needs as `catalog` asset types in their `assets` array. This tells buyers which catalogs to sync before submitting creatives for that format.
 
 ```json
 {
@@ -91,26 +91,32 @@ Formats can declare what catalog types they need via the `catalog_requirements` 
     "id": "product_carousel_4x"
   },
   "name": "Product Carousel (4 items)",
-  "catalog_requirements": [
+  "assets": [
     {
-      "catalog_type": "product",
+      "item_type": "individual",
+      "asset_id": "product_catalog",
+      "asset_type": "catalog",
       "required": true,
-      "min_items": 4,
-      "required_fields": ["name", "price", "image_url"]
+      "requirements": {
+        "catalog_type": "product",
+        "min_items": 4,
+        "required_fields": ["name", "price", "image_url"]
+      }
     }
   ]
 }
 ```
 
+Catalog assets use `asset_type: "catalog"` with a `requirements` object containing:
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `catalog_type` | string | Required. The catalog type (e.g., `product`, `store`, `job`) |
-| `required` | boolean | Whether this catalog must be present (default: true) |
 | `min_items` | integer | Minimum items the catalog must contain |
 | `required_fields` | string[] | Fields that must be present on every item |
 | `feed_formats` | string[] | Accepted feed formats (e.g., `google_merchant_center`, `linkedin_jobs`) |
 
-When `catalog_requirements` is present, buyers should sync the required catalogs via [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) before submitting creatives. See [Catalogs](/docs/creative/catalogs) for the full lifecycle.
+When catalog assets are present, buyers should sync the required catalogs via [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) before submitting creatives. See [Catalogs](/docs/creative/catalogs) for the full lifecycle.
 
 ## Common Scenarios
 
