@@ -73,7 +73,8 @@
                   "docs/reference/migration/optimization-goals",
                   "docs/reference/migration/brand-identity",
                   "docs/reference/migration/signals",
-                  "docs/reference/migration/audiences"
+                  "docs/reference/migration/audiences",
+                  "docs/reference/migration/attribution"
                 ]
               }
             ]
@@ -401,7 +402,8 @@
                   "docs/reference/migration/optimization-goals",
                   "docs/reference/migration/brand-identity",
                   "docs/reference/migration/signals",
-                  "docs/reference/migration/audiences"
+                  "docs/reference/migration/audiences",
+                  "docs/reference/migration/attribution"
                 ]
               }
             ]

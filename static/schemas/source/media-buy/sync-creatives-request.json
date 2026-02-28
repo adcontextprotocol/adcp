@@ -43,7 +43,7 @@
           },
           "weight": {
             "type": "number",
-            "description": "Relative delivery weight (0–100). When multiple creatives are assigned to the same package, weights determine the distribution of impressions.",
+            "description": "Relative delivery weight (0–100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
             "minimum": 0,
             "maximum": 100
           },

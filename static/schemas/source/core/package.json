@@ -11,7 +11,7 @@
     },
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for this package"
+      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
     },
     "product_id": {
       "type": "string",
@@ -41,7 +41,7 @@
     },
     "catalogs": {
       "type": "array",
-      "description": "Catalogs this package promotes. Each catalog should have a distinct type (e.g., one product catalog, one store catalog). Echoed from the create_media_buy request.",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Echoed from the create_media_buy request.",
       "items": {
         "$ref": "/schemas/core/catalog.json"
       }

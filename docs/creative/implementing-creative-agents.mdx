@@ -165,6 +165,24 @@ When validating manifests:
 }
 ```
 
+### Handling disclosure requirements
+
+When a creative brief includes `compliance.required_disclosures`, creative agents must ensure each disclosure appears in the generated creative. The workflow:
+
+1. **Check format support** — Compare each `required_disclosures[].position` against the format's `supported_disclosure_positions`. If a required position is not supported by the format, return a validation error rather than silently dropping it.
+
+2. **Render disclosures** — For positions your format supports:
+   - `footer`, `overlay`, `end_card`, `prominent`: Render the disclosure `text` into the creative at the specified position
+   - `audio`, `pre_roll`: Include disclosure as spoken audio. Respect `min_duration_ms` if specified.
+   - `subtitle`: Include as a text track within the video creative
+   - `companion`: Deliver in the companion ad unit alongside the primary creative
+
+3. **Respect jurisdiction scoping** — A disclosure with `jurisdictions: ["US"]` is legally required only in the US. Creative agents that produce a single creative per brief should include all jurisdictional disclosures. If your agent can produce jurisdiction-specific variants, filter disclosures by their `jurisdictions` field.
+
+4. **Preserve through regeneration** — When regenerating or resizing a creative, carry forward all disclosures from the `BriefAsset` attached to the manifest. A `BriefAsset` is a `brief`-typed asset in the format's `assets` array that carries the creative brief through the manifest, ensuring disclosures survive format adaptation.
+
+**Example:** A brief requires `"SEC Rule 156"` disclosure at `footer` position. Your format declares `supported_disclosure_positions: ["footer", "overlay"]`. The creative agent renders the disclosure text in the footer area of the generated image.
+
 ### Format Evolution
 
 When updating format definitions:

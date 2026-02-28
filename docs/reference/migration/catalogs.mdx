@@ -184,6 +184,47 @@ Format declarations use `asset_type: "catalog"` with a `requirements` object con
 
 This replaces the v2 pattern where formats implicitly required `promoted_offerings` in their assets — the requirement is now explicit and discoverable.
 
+### Creative agent migration
+
+Creative agents that read format definitions to determine catalog requirements need to change how they discover and fulfill catalog slots.
+
+**Before (v2)** — checking a dedicated `catalog_requirements` field:
+
+```javascript
+// v2: catalog requirements were a separate top-level array
+for (const req of format.catalog_requirements) {
+  const catalogType = req.catalog_type;
+  const minItems = req.min_items;
+}
+```
+
+**After (v3)** — iterating the `assets` array and filtering by `asset_type`:
+
+```javascript
+// v3: catalogs are assets like any other
+const catalogAssets = format.assets.filter(a => a.asset_type === "catalog");
+for (const slot of catalogAssets) {
+  const catalogType = slot.requirements.catalog_type;
+  const minItems = slot.requirements.min_items;
+  const slotId = slot.asset_id; // use as key in manifest.assets
+}
+```
+
+When building a manifest, catalog assets are keyed by their `asset_id` from the format definition:
+
+```json
+{
+  "assets": {
+    "product_catalog": {
+      "type": "product",
+      "catalog_id": "winter-products"
+    }
+  }
+}
+```
+
+The `asset_id` (e.g., `product_catalog`) from the format's `assets` array becomes the key in the manifest's `assets` object.
+
 ---
 
 ## Conversion event alignment (new in v3)
@@ -320,4 +361,4 @@ Packages now accept a `catalog` field for catalog-driven campaigns. One budget e
 
 ---
 
-**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)
+**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [Attribution](/docs/reference/migration/attribution) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)

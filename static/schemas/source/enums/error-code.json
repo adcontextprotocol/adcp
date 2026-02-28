@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/error-code.json",
   "title": "Error Code",
-  "description": "Standard error code vocabulary for AdCP. Codes are machine-readable so agents can apply autonomous recovery strategies based on the recovery classification.",
+  "description": "Standard error code vocabulary for AdCP. Codes are machine-readable so agents can apply autonomous recovery strategies based on the recovery classification. Sellers MAY return codes not listed here for platform-specific errors — the error.json code field accepts any string. Agents MUST handle unknown codes by falling back to the recovery classification.",
   "type": "string",
   "enum": [
     "INVALID_REQUEST",
@@ -22,7 +22,9 @@
     "ACCOUNT_AMBIGUOUS",
     "ACCOUNT_PAYMENT_REQUIRED",
     "ACCOUNT_SUSPENDED",
-    "COMPLIANCE_UNSATISFIED"
+    "COMPLIANCE_UNSATISFIED",
+    "BUDGET_EXHAUSTED",
+    "CONFLICT"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -42,6 +44,8 @@
     "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
     "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
     "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension).",
-    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format. Recovery: correctable (choose a format that supports the required disclosure positions, or remove the disclosure requirement)."
+    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format. Recovery: correctable (choose a format that supports the required disclosure positions, or remove the disclosure requirement).",
+    "BUDGET_EXHAUSTED": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission). Recovery: terminal (buyer must add funds or increase budget cap).",
+    "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state)."
   }
 }
