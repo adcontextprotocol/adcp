@@ -185,8 +185,8 @@ The `refine` object consolidates all refinement intent into a single payload. At
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `proposal_id` | string | Yes | Proposal ID from a previous `get_products` response |
-| `omit` | boolean | No | Remove this proposal from the response. When `true`, `notes` is ignored. Default: `false` |
-| `notes` | string | No | Adjustment instructions (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`) |
+| `action` | string | Yes | `"include"`: return this proposal with updated allocations and pricing. `"omit"`: exclude this proposal from the response. |
+| `notes` | string | No | Adjustment instructions (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `action` is `"omit"`. |
 
 ### Catalog discovery
 
@@ -792,7 +792,7 @@ Reference proposals by ID in `refine.proposals` to request adjustments:
       { "product_id": "prod_display_run_of_site", "action": "include" }
     ],
     "proposals": [
-      { "proposal_id": "prop_awareness_q2", "notes": "shift more budget toward video, reduce display allocation" }
+      { "proposal_id": "prop_awareness_q2", "action": "include", "notes": "shift more budget toward video, reduce display allocation" }
     ]
   },
   "filters": {
@@ -841,7 +841,7 @@ The response uses the same format as discovery. Each product reflects the update
 Orchestrators building refinement workflows should validate requests before sending:
 
 - **Non-empty refine**: The `refine` object requires at least one field (`overall`, `products`, or `proposals`). An empty `{}` is rejected by schema validation.
-- **Valid actions**: Each product entry requires `product_id` and `action`. Action must be `include`, `omit`, or `more_like_this`.
+- **Valid actions**: Each product entry requires `product_id` and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `proposal_id` and `action` (`include` or `omit`).
 - **Filters are absolute**: When refining, `filters` represent the complete target state, not a delta from the previous request. Always send the full filter set you want applied.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.

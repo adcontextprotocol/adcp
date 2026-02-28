@@ -114,7 +114,7 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` object and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
 
 - Sales agents MUST omit products with `action: "omit"` from the response
-- Sales agents MUST omit proposals marked with `refine.proposals[].omit: true` from the response
+- Sales agents MUST omit proposals with `action: "omit"` from the response
 - Sales agents MUST return products with `action: "include"`, with updated pricing
 - Sales agents SHOULD apply adjustment instructions from `notes` on products with `action: "include"`
 - Sales agents SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product

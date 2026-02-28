@@ -95,7 +95,7 @@ Reference proposals by ID to request adjustments or remove them:
       { "product_id": "prod_display_ros", "action": "include" }
     ],
     "proposals": [
-      { "proposal_id": "prop_balanced_v1", "notes": "shift 20% from display to video" }
+      { "proposal_id": "prop_balanced_v1", "action": "include", "notes": "shift 20% from display to video" }
     ]
   }
 }
@@ -104,8 +104,8 @@ Reference proposals by ID to request adjustments or remove them:
 | Field | Type | Description |
 |-------|------|-------------|
 | `proposal_id` | string | Proposal ID from a previous response |
-| `omit` | boolean | Remove this proposal from the response. When `true`, `notes` is ignored. |
-| `notes` | string | Adjustment instructions for this proposal |
+| `action` | string | `"include"`: return with updated allocations and pricing. `"omit"`: exclude from the response. |
+| `notes` | string | Adjustment instructions for this proposal. Ignored when `action` is `"omit"`. |
 
 ### Combining fields
 
@@ -123,7 +123,7 @@ All three fields work together. A single refinement call can adjust the overall 
       { "product_id": "prod_audio_spot", "action": "include" }
     ],
     "proposals": [
-      { "proposal_id": "prop_awareness_q2", "notes": "reallocate native budget to video products" }
+      { "proposal_id": "prop_awareness_q2", "action": "include", "notes": "reallocate native budget to video products" }
     ]
   },
   "filters": {
@@ -183,7 +183,7 @@ The products in `refine.products` define which products the seller should consid
       { "product_id": "prod_display_ros", "action": "include" }
     ],
     "proposals": [
-      { "proposal_id": "prop_balanced_v1", "notes": "rebalance for just these two products" }
+      { "proposal_id": "prop_balanced_v1", "action": "include", "notes": "rebalance for just these two products" }
     ]
   }
 }
@@ -217,7 +217,7 @@ This design enables:
 Orchestrators should validate refinement requests before sending:
 
 - **Non-empty refine** — The `refine` object requires at least one field (`overall`, `products`, or `proposals`). An empty `{}` is rejected by schema validation.
-- **Valid actions** — Each product entry requires `product_id` and `action`. Action must be `include`, `omit`, or `more_like_this`.
+- **Valid actions** — Each product entry requires `product_id` and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `proposal_id` and `action` (`include` or `omit`).
 - **Filters are absolute** — Send the full filter set you want applied, not a delta from the previous request.
 
 Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
@@ -241,7 +241,7 @@ The [Media Buy Specification](/docs/media-buy/specification#get_products) define
 
 **Sales agents:**
 - MUST omit products with `action: "omit"` from the response
-- MUST omit proposals marked with `refine.proposals[].omit: true` from the response
+- MUST omit proposals with `action: "omit"` from the response
 - MUST return products with `action: "include"`, with updated pricing
 - SHOULD apply adjustment instructions from `notes` on products with `action: "include"`
 - SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product

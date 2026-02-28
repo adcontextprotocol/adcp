@@ -63,18 +63,18 @@
                 "minLength": 1,
                 "description": "Proposal ID from a previous get_products response"
               },
-              "omit": {
-                "type": "boolean",
-                "description": "Remove this proposal from the response. When true, notes is ignored.",
-                "default": false
+              "action": {
+                "type": "string",
+                "enum": ["include", "omit"],
+                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
               },
               "notes": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%')"
+                "description": "Adjustment instructions for this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
               }
             },
-            "required": ["proposal_id"],
+            "required": ["proposal_id", "action"],
             "additionalProperties": false
           }
         }
