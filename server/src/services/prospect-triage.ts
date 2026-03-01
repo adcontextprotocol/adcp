@@ -458,7 +458,7 @@ export async function processUntriagedDomains(opts: { limit: number }): Promise<
   const domainsResult = await pool.query<{ domain: string }>(
     `SELECT DISTINCT split_part(slack_email, '@', 2) AS domain
      FROM slack_user_mappings
-     WHERE status = 'unmapped'
+     WHERE mapping_status = 'unmapped'
        AND slack_email IS NOT NULL
        AND slack_is_bot = false
        AND slack_is_deleted = false
