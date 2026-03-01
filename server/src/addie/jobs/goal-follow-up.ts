@@ -104,13 +104,19 @@ async function sendFollowUp(pending: PendingFollowUp): Promise<boolean> {
     return false;
   }
 
+  // Skip time-sensitive goals past their deadline
+  if (pending.goal_name === 'Founding Member Deadline' && new Date() >= new Date('2026-04-01')) {
+    return false;
+  }
+
   // Build the follow-up message
   let message = pending.follow_up_template;
   message = message.replace(/\{\{user_name\}\}/g, pending.user_display_name || 'there');
 
   // Build link URL if needed
   const baseUrl = process.env.APP_BASE_URL || 'https://agenticadvertising.org';
-  const linkUrl = `${baseUrl}/auth/login?slack_user_id=${encodeURIComponent(pending.slack_user_id)}`;
+  const basePath = pending.goal_category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `${baseUrl}${basePath}?slack_user_id=${encodeURIComponent(pending.slack_user_id)}`;
   message = message.replace(/\{\{link_url\}\}/g, linkUrl);
 
   // Get company name if we have workos_user_id

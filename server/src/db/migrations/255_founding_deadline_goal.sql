@@ -24,12 +24,12 @@ VALUES (
   0,              -- No engagement minimum
   '{}',           -- No required insights
   '{"membership_interest": "not_interested"}',  -- Skip users who already declined
-  E'Hi {{user_name}} \u2014 quick heads-up on something time-sensitive. AgenticAdvertising.org is closing founding member enrollment on March 31. Founding members lock in current pricing permanently, regardless of future increases.\n\nIf your team works in ad tech, media, or AI-powered advertising, this is the last window to join at the founding rate. Happy to answer any questions about what membership includes.\n\n{{link_url}}',
-  E'{{user_name}} \u2014 just a reminder that founding member enrollment closes March 31 ({{days_remaining}} days from now). After that, pricing increases for new members. Let me know if I can help your team get set up.\n\n{{link_url}}',
-  E'Founding members get locked-in pricing that never increases, access to working groups and industry councils, the community directory, and a voice in shaping open standards for AI-powered advertising.',
+  E'Hi {{user_name}} \u2014 AgenticAdvertising.org is building open standards for AI-powered advertising, and the people shaping those standards are founding members. Founding member enrollment closes March 31, after which membership pricing increases.\n\nIf your team works in ad tech, media, or AI-powered advertising, this is the last window to join at the founding rate and have a voice in where the industry goes.\n\n{{link_url}}',
+  E'{{user_name}} \u2014 one more thing I wanted to mention: founding members get access to working groups drafting standards like AdCP (the ad context protocol) and the AI transparency framework. Enrollment closes in {{days_remaining}} days. Let me know if I can help your team get set up.\n\n{{link_url}}',
+  E'Founding members get a seat at the table shaping open standards for AI-powered advertising \u2014 things like ad context protocols, transparency frameworks, and measurement guidelines. They also get locked-in pricing that never increases, access to working groups and industry councils, and the community directory.\n\n{{link_url}}',
   95,             -- Near-top priority
   2,              -- Two attempts: initial + one follow-up
-  10,             -- 10-day gap between attempts
+  7,              -- 7-day gap between attempts
   TRUE,           -- Enabled immediately
   'system'
 )
@@ -46,11 +46,11 @@ SELECT g.id, 'sentiment', 'positive', 'success',
   'membership_interest', 'interested', 90
 FROM outreach_goals g WHERE g.name = 'Founding Member Deadline';
 
--- Pricing question: clarify
+-- Membership question: clarify
 INSERT INTO goal_outcomes (goal_id, trigger_type, trigger_value, outcome_type, response_message, insight_to_record, insight_value, priority)
-SELECT g.id, 'intent', 'pricing_question', 'clarify',
+SELECT g.id, 'intent', 'membership_question', 'clarify',
   NULL,
-  'membership_interest', 'pricing_question', 85
+  'membership_interest', 'membership_question', 85
 FROM outreach_goals g WHERE g.name = 'Founding Member Deadline';
 
 -- Not now: defer 7 days
@@ -58,6 +58,13 @@ INSERT INTO goal_outcomes (goal_id, trigger_type, trigger_value, outcome_type, d
 SELECT g.id, 'intent', 'not_now', 'defer',
   7,
   'membership_interest', 'deferred', 80
+FROM outreach_goals g WHERE g.name = 'Founding Member Deadline';
+
+-- Wrong person: decline, record routing issue
+INSERT INTO goal_outcomes (goal_id, trigger_type, trigger_value, outcome_type, response_message, insight_to_record, insight_value, priority)
+SELECT g.id, 'intent', 'wrong_person', 'decline',
+  NULL,
+  'membership_interest', 'wrong_person', 78
 FROM outreach_goals g WHERE g.name = 'Founding Member Deadline';
 
 -- Negative response: decline, record not interested
