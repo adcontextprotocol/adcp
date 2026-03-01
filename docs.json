@@ -62,7 +62,7 @@
               "docs/protocol/architecture",
               "docs/quickstart",
               {
-                "group": "AdCP v3",
+                "group": "AdCP 3.0",
                 "pages": [
                   "docs/reference/whats-new-in-v3",
                   "docs/reference/migration/channels",
@@ -391,7 +391,7 @@
               "docs/protocol/architecture",
               "docs/quickstart",
               {
-                "group": "AdCP v3",
+                "group": "AdCP 3.0",
                 "pages": [
                   "docs/reference/whats-new-in-v3",
                   "docs/reference/migration/channels",
