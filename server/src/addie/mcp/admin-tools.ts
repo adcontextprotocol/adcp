@@ -1126,6 +1126,26 @@ Roles: member (default), admin (can manage team), owner (full control)`,
     },
   },
   {
+    name: 'list_users_by_engagement',
+    description: 'List WorkOS-registered users ranked by engagement score. Returns name, organization, lifecycle stage, and engagement/excitement scores. Does not include Slack-only contacts.',
+    usage_hints: 'Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. For org-level ranking use list_organizations_by_users instead.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: { type: 'number', description: 'Max results (default: 25)' },
+        lifecycle_stage: {
+          type: 'string',
+          enum: ['new', 'active', 'engaged', 'champion', 'at_risk', 'all'],
+          description: 'Filter by lifecycle stage (default: all)',
+        },
+        member_only: {
+          type: 'boolean',
+          description: 'Only include users from paying member organizations (default: false)',
+        },
+      },
+    },
+  },
+  {
     name: 'list_paying_members',
     description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB). Defaults to corporate members only.',
     usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, or membership revenue by tier.',
@@ -6658,6 +6678,82 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error listing members');
       return '❌ Failed to list members. Please try again.';
+    }
+  });
+
+  handlers.set('list_users_by_engagement', async (input) => {
+    try {
+      const pool = getPool();
+      const limit = Math.min(Math.max((input.limit as number) || 25, 1), 100);
+      const validStages = ['new', 'active', 'engaged', 'champion', 'at_risk'];
+      const rawStage = (input.lifecycle_stage as string) || 'all';
+      const lifecycleFilter = validStages.includes(rawStage) ? rawStage : 'all';
+      const memberOnly = (input.member_only as boolean) || false;
+
+      const result = await pool.query<{
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+        org_name: string | null;
+        engagement_score: number | null;
+        excitement_score: number | null;
+        lifecycle_stage: string | null;
+        goal_name: string | null;
+      }>(`
+        SELECT
+          u.first_name,
+          u.last_name,
+          u.email,
+          o.name AS org_name,
+          u.engagement_score,
+          u.excitement_score,
+          u.lifecycle_stage,
+          (SELECT uc.goal_name FROM unified_contacts_with_goals uc
+           WHERE uc.workos_user_id = u.workos_user_id LIMIT 1) AS goal_name
+        FROM users u
+        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
+        WHERE ($1 = 'all' OR u.lifecycle_stage = $1)
+          AND ($2::boolean = false OR o.subscription_status = 'active')
+        ORDER BY
+          (COALESCE(u.engagement_score, 0) + COALESCE(u.excitement_score, 0) * 0.5) DESC,
+          u.engagement_score DESC NULLS LAST
+        LIMIT $3
+      `, [lifecycleFilter, memberOnly, limit]);
+
+      const sorted = result.rows;
+
+      if (sorted.length === 0) {
+        return `No users found${lifecycleFilter !== 'all' ? ` with lifecycle stage: ${lifecycleFilter}` : ''}${memberOnly ? ' at paying member organizations' : ''}.`;
+      }
+
+      const lifecycleEmoji: Record<string, string> = {
+        champion: '🏆',
+        engaged: '⭐',
+        active: '✅',
+        new: '🆕',
+        at_risk: '⚠️',
+      };
+
+      let response = `## Most Engaged Community Members\n\n`;
+      if (lifecycleFilter !== 'all') response += `_Filtered to: ${lifecycleFilter}_\n\n`;
+      if (memberOnly) response += `_Paying members only_\n\n`;
+
+      response += `| Rank | Name | Organization | Engagement | Excitement | Stage | Next Goal |\n`;
+      response += `|------|------|--------------|------------|------------|-------|-----------|\n`;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const u = sorted[i];
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
+        const emoji = lifecycleEmoji[u.lifecycle_stage || ''] || '—';
+        const stage = u.lifecycle_stage ? `${emoji} ${u.lifecycle_stage}` : '—';
+        response += `| ${i + 1} | **${name}** | ${u.org_name} | ${u.engagement_score ?? '—'} | ${u.excitement_score ?? '—'} | ${stage} | ${u.goal_name ?? '—'} |\n`;
+      }
+
+      response += `\n_Ranked by engagement score + (excitement × 0.5). WorkOS-registered users only. Showing top ${sorted.length} individuals._\n`;
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing users by engagement');
+      return '❌ Failed to list users by engagement. Please try again.';
     }
   });
 
