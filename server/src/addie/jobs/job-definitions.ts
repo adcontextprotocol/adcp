@@ -107,10 +107,10 @@ export function registerAllJobs(): void {
   jobScheduler.register({
     name: 'proactive-outreach',
     description: 'Proactive outreach',
-    interval: { value: 30, unit: 'minutes' },
+    interval: { value: 20, unit: 'minutes' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: runOutreachScheduler,
-    options: { limit: 5 },
+    options: { limit: 8 },
   });
 
   // Account enrichment - enriches accounts via Lusha API

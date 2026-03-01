@@ -105,6 +105,8 @@ export function renderDigestEmail(
     `).join('')}
     ` : ''}
 
+    ${renderFoundingDeadlineBannerHtml()}
+
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
 
     <!-- Segment-specific CTA -->
@@ -203,6 +205,11 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
     }
   }
 
+  const deadlineBannerText = renderFoundingDeadlineBannerText();
+  if (deadlineBannerText) {
+    lines.push('---', '', deadlineBannerText, '');
+  }
+
   lines.push(`View in browser: ${BASE_URL}/digest/${editionDate}`);
 
   return lines.join('\n');
@@ -257,6 +264,13 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
       type: 'section',
       text: { type: 'mrkdwn', text: `*Community Pulse*\n${communityParts.join(' · ')}` },
     });
+  }
+
+  // Founding deadline banner
+  const deadlineBannerSlack = renderFoundingDeadlineBannerSlack();
+  if (deadlineBannerSlack) {
+    blocks.push({ type: 'divider' });
+    blocks.push(deadlineBannerSlack);
   }
 
   // Read more link
@@ -328,6 +342,65 @@ export function renderDigestWebPage(content: DigestContent, editionDate: string)
   </p>
 </body>
 </html>`;
+}
+
+// ─── Founding member deadline banner (expires April 1 2026) ─────────────
+
+const FOUNDING_DEADLINE = new Date('2026-04-01T00:00:00Z');
+
+function getFoundingDaysRemaining(): number | null {
+  const days = Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  return days > 0 ? days : null;
+}
+
+function renderFoundingDeadlineBannerHtml(): string {
+  const days = getFoundingDaysRemaining();
+  if (days === null) return '';
+
+  const headline = days <= 7
+    ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}`
+    : 'Founding member enrollment closes March 31';
+
+  return `
+    <div style="text-align: center; padding: 20px; background: #fef9e7; border: 1px solid #f0d060; border-radius: 8px; margin: 24px 0;">
+      <p style="font-size: 16px; color: #1a1a2e; margin: 0 0 8px 0; font-weight: 600;">
+        ${headline}
+      </p>
+      <p style="font-size: 14px; color: #555; margin: 0 0 12px 0;">
+        Lock in current pricing permanently. After March 31, membership rates increase.
+      </p>
+      <a href="${BASE_URL}/join" style="display: inline-block; padding: 10px 24px; background: #1a1a2e; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">
+        Join as a founding member
+      </a>
+    </div>`;
+}
+
+function renderFoundingDeadlineBannerSlack(): SlackBlock | null {
+  const days = getFoundingDaysRemaining();
+  if (days === null) return null;
+
+  const headline = days <= 7
+    ? `*Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}*`
+    : '*Founding member enrollment closes March 31*';
+
+  return {
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `${headline} \u2014 lock in current pricing permanently. <${BASE_URL}/join|Join as a founding member>`,
+    },
+  };
+}
+
+function renderFoundingDeadlineBannerText(): string | null {
+  const days = getFoundingDaysRemaining();
+  if (days === null) return null;
+
+  const headline = days <= 7
+    ? `Founding member enrollment closes in ${days} day${days === 1 ? '' : 's'}.`
+    : 'Founding member enrollment closes March 31.';
+
+  return `${headline} Lock in current pricing permanently: ${BASE_URL}/join`;
 }
 
 function formatDate(editionDate: string): string {

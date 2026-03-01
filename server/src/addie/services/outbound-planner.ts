@@ -307,7 +307,21 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3.5: Addie-owned prospects — prioritize invitation/membership goals
+    // PRIORITY 3.5: Founding member deadline (time-sensitive, expires April 1 2026)
+    if (new Date() < new Date('2026-04-01') && !ctx.user.is_member && !ctx.company?.is_personal_workspace) {
+      const deadlineGoal = goals.find(g => g.name === 'Founding Member Deadline');
+      if (deadlineGoal) {
+        return {
+          goal: deadlineGoal,
+          reason: 'Founding member deadline approaching March 31',
+          priority_score: 95,
+          alternative_goals: goals.filter(g => g.id !== deadlineGoal.id).slice(0, 3),
+          decision_method: 'rule_match',
+        };
+      }
+    }
+
+    // PRIORITY 3.6: Addie-owned prospects — prioritize invitation/membership goals
     // These are prospects Addie has triaged and claimed; she should nudge them toward membership
     if (ctx.company?.is_addie_prospect && !ctx.user.is_member) {
       const inviteGoal = goals.find(g => g.category === 'invitation');
@@ -594,6 +608,10 @@ Respond ONLY with valid JSON (no markdown code blocks):
     message = message.replace(/\{\{user_name\}\}/g, firstName);
     message = message.replace(/\{\{company_name\}\}/g, ctx.company?.name ?? 'your company');
     message = message.replace(/\{\{link_url\}\}/g, linkUrl ?? '');
+
+    // Dynamic countdown for time-sensitive goals (founding member deadline)
+    const daysRemaining = Math.max(0, Math.ceil((new Date('2026-04-01T00:00:00Z').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    message = message.replace(/\{\{days_remaining\}\}/g, String(daysRemaining));
 
     return message;
   }

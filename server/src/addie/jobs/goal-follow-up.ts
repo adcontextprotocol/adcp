@@ -127,6 +127,10 @@ async function sendFollowUp(pending: PendingFollowUp): Promise<boolean> {
     message = message.replace(/\{\{company_name\}\}/g, 'your company');
   }
 
+  // Dynamic countdown for time-sensitive goals (founding member deadline)
+  const daysRemaining = Math.max(0, Math.ceil((new Date('2026-04-01T00:00:00Z').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  message = message.replace(/\{\{days_remaining\}\}/g, String(daysRemaining));
+
   // Open DM channel and send
   const token = process.env.ADDIE_BOT_TOKEN;
   if (!token) {
