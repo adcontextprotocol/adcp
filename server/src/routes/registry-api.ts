@@ -30,6 +30,8 @@ import {
   PropertyIdentifierSchema,
   ErrorSchema,
   FindCompanyResultSchema,
+  BrandActivitySchema,
+  PropertyActivitySchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -238,6 +240,27 @@ registry.registerPath({
 
 registry.registerPath({
   method: "get",
+  path: "/api/brands/history",
+  operationId: "getBrandHistory",
+  summary: "Brand activity history",
+  description: "Returns the edit history for a brand in the registry, newest first. Only brands with community or enriched edits have history; brand.json-sourced brands are authoritative and do not generate revisions.",
+  tags: ["Brand Resolution"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "acmecorp.com" }),
+      limit: z.string().optional().openapi({ example: "20" }),
+      offset: z.string().optional().openapi({ example: "0" }),
+    }),
+  },
+  responses: {
+    200: { description: "Brand activity history", content: { "application/json": { schema: BrandActivitySchema } } },
+    400: { description: "domain parameter required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/brands/enrich",
   operationId: "enrichBrand",
   summary: "Enrich brand",
@@ -247,6 +270,27 @@ registry.registerPath({
   responses: {
     200: { description: "Enrichment data from Brandfetch", content: { "application/json": { schema: z.object({}).passthrough() } } },
     503: { description: "Brandfetch not configured", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/properties/history",
+  operationId: "getPropertyHistory",
+  summary: "Property activity history",
+  description: "Returns the edit history for a property in the registry, newest first.",
+  tags: ["Property Resolution"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "examplepub.com" }),
+      limit: z.string().optional().openapi({ example: "20" }),
+      offset: z.string().optional().openapi({ example: "0" }),
+    }),
+  },
+  responses: {
+    200: { description: "Property activity history", content: { "application/json": { schema: PropertyActivitySchema } } },
+    400: { description: "domain parameter required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Property not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string() }) } } },
   },
 });
 
@@ -812,6 +856,48 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  router.get("/brands/history", async (req, res) => {
+    try {
+      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      if (!domain) {
+        return res.status(400).json({ error: "domain parameter required" });
+      }
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+      const rawOffset = parseInt(req.query.offset as string, 10);
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+      const [revisions, total] = await Promise.all([
+        brandDb.getBrandRevisions(domain, { limit, offset }),
+        brandDb.getBrandRevisionCount(domain),
+      ]);
+
+      if (total === 0) {
+        const brand = await brandDb.getDiscoveredBrandByDomain(domain);
+        if (!brand) {
+          return res.status(404).json({ error: "Brand not found", domain });
+        }
+      }
+
+      return res.json({
+        domain,
+        total,
+        revisions: revisions.map((r) => ({
+          revision_number: r.revision_number,
+          editor_name: r.editor_name || "system",
+          edit_summary: r.edit_summary,
+          source: (r.snapshot as Record<string, unknown>)?.source_type,
+          is_rollback: r.is_rollback,
+          rolled_back_to: r.rolled_back_to,
+          created_at: r.created_at.toISOString(),
+        })),
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to get brand history");
+      return res.status(500).json({ error: "Failed to get brand history" });
+    }
+  });
+
   router.get("/brands/find", async (req, res) => {
     try {
       const q = (req.query.q as string | undefined)?.trim();
@@ -1119,6 +1205,49 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to list properties");
       return res.status(500).json({ error: "Failed to list properties" });
+    }
+  });
+
+  router.get("/properties/history", async (req, res) => {
+    try {
+      const domain = (req.query.domain as string)?.replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\/$/, "").toLowerCase();
+      if (!domain) {
+        return res.status(400).json({ error: "domain parameter required" });
+      }
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+      const rawOffset = parseInt(req.query.offset as string, 10);
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+      const [revisions, total] = await Promise.all([
+        propertyDb.getPropertyRevisions(domain, { limit, offset }),
+        propertyDb.getPropertyRevisionCount(domain),
+      ]);
+
+      if (total === 0) {
+        const hosted = await propertyDb.getHostedPropertyByDomain(domain);
+        const discovered = await propertyDb.getDiscoveredPropertiesByDomain(domain);
+        if (!hosted && discovered.length === 0) {
+          return res.status(404).json({ error: "Property not found", domain });
+        }
+      }
+
+      return res.json({
+        domain,
+        total,
+        revisions: revisions.map((r) => ({
+          revision_number: r.revision_number,
+          editor_name: r.editor_name || "system",
+          edit_summary: r.edit_summary,
+          source: (r.snapshot as Record<string, unknown>)?.source_type,
+          is_rollback: r.is_rollback,
+          rolled_back_to: r.rolled_back_to,
+          created_at: r.created_at.toISOString(),
+        })),
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to get property history");
+      return res.status(500).json({ error: "Failed to get property history" });
     }
   });
 

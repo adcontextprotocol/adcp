@@ -112,6 +112,94 @@ components:
         - source
         - has_manifest
         - verified
+    BrandActivity:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: acmecorp.com
+        total:
+          type: integer
+          example: 3
+        revisions:
+          type: array
+          items:
+            type: object
+            properties:
+              revision_number:
+                type: integer
+                example: 3
+              editor_name:
+                type: string
+                example: Pinnacle Media
+              edit_summary:
+                type: string
+                example: Updated logo and brand colors
+              source:
+                type: string
+                description: Source type of the record at the time of this revision (brand_json, enriched, community)
+              is_rollback:
+                type: boolean
+              rolled_back_to:
+                type: integer
+                description: Revision number that was restored; only present when is_rollback is true
+              created_at:
+                type: string
+                example: 2026-03-01T12:34:56Z
+            required:
+              - revision_number
+              - editor_name
+              - edit_summary
+              - is_rollback
+              - created_at
+      required:
+        - domain
+        - total
+        - revisions
+    PropertyActivity:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: examplepub.com
+        total:
+          type: integer
+          example: 3
+        revisions:
+          type: array
+          items:
+            type: object
+            properties:
+              revision_number:
+                type: integer
+                example: 3
+              editor_name:
+                type: string
+                example: Pinnacle Media
+              edit_summary:
+                type: string
+                example: Updated logo and brand colors
+              source:
+                type: string
+                description: Source type of the record at the time of this revision (brand_json, enriched, community)
+              is_rollback:
+                type: boolean
+              rolled_back_to:
+                type: integer
+                description: Revision number that was restored; only present when is_rollback is true
+              created_at:
+                type: string
+                example: 2026-03-01T12:34:56Z
+            required:
+              - revision_number
+              - editor_name
+              - edit_summary
+              - is_rollback
+              - created_at
+      required:
+        - domain
+        - total
+        - revisions
     ResolvedProperty:
       type: object
       properties:
@@ -831,6 +919,59 @@ paths:
                 required:
                   - brands
                   - stats
+  /api/brands/history:
+    get:
+      operationId: getBrandHistory
+      summary: Brand activity history
+      description: Returns the edit history for a brand in the registry, newest first. Only brands with community or enriched edits have history; brand.json-sourced brands are authoritative and do not generate revisions.
+      tags:
+        - Brand Resolution
+      parameters:
+        - schema:
+            type: string
+            example: acmecorp.com
+          required: true
+          name: domain
+          in: query
+        - schema:
+            type: string
+            example: "20"
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+            example: "0"
+          required: false
+          name: offset
+          in: query
+      responses:
+        "200":
+          description: Brand activity history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrandActivity"
+        "400":
+          description: domain parameter required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  domain:
+                    type: string
+                required:
+                  - error
+                  - domain
   /api/brands/enrich:
     get:
       operationId: enrichBrand
@@ -860,6 +1001,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/properties/history:
+    get:
+      operationId: getPropertyHistory
+      summary: Property activity history
+      description: Returns the edit history for a property in the registry, newest first.
+      tags:
+        - Property Resolution
+      parameters:
+        - schema:
+            type: string
+            example: examplepub.com
+          required: true
+          name: domain
+          in: query
+        - schema:
+            type: string
+            example: "20"
+          required: false
+          name: limit
+          in: query
+        - schema:
+            type: string
+            example: "0"
+          required: false
+          name: offset
+          in: query
+      responses:
+        "200":
+          description: Property activity history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PropertyActivity"
+        "400":
+          description: domain parameter required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Property not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  domain:
+                    type: string
+                required:
+                  - error
+                  - domain
   /api/properties/resolve:
     get:
       operationId: resolveProperty
