@@ -1,0 +1,377 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/bundled/media-buy/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "title": "Creative Filters",
+      "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
+      "type": "object",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "description": "Filter creatives by owning accounts. Useful for agencies managing multiple client accounts.",
+          "items": {
+            "title": "Account Reference",
+            "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the buyer manages accounts (e.g., picked from list_accounts). Use the natural key (brand + operator) when the seller resolves accounts internally.",
+            "type": "object",
+            "oneOf": [
+              {
+                "properties": {
+                  "account_id": {
+                    "type": "string",
+                    "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+                  }
+                },
+                "required": [
+                  "account_id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "properties": {
+                  "brand": {
+                    "title": "Brand Reference",
+                    "description": "Brand reference identifying the advertiser",
+                    "type": "object",
+                    "properties": {
+                      "domain": {
+                        "type": "string",
+                        "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                      },
+                      "brand_id": {
+                        "title": "Brand ID",
+                        "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                        "type": "string",
+                        "pattern": "^[a-z0-9_]+$",
+                        "examples": [
+                          "tide",
+                          "cheerios",
+                          "air_jordan",
+                          "nike",
+                          "pampers"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "domain"
+                    ],
+                    "additionalProperties": false,
+                    "examples": [
+                      {
+                        "domain": "nova-brands.com",
+                        "brand_id": "spark"
+                      },
+                      {
+                        "domain": "nova-brands.com",
+                        "brand_id": "glow"
+                      },
+                      {
+                        "domain": "acme-corp.com"
+                      }
+                    ]
+                  },
+                  "operator": {
+                    "type": "string",
+                    "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  }
+                },
+                "required": [
+                  "brand",
+                  "operator"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "examples": [
+              {
+                "account_id": "acc_acme_001"
+              },
+              {
+                "brand": {
+                  "domain": "acme-corp.com"
+                },
+                "operator": "acme-corp.com"
+              },
+              {
+                "brand": {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                "operator": "pinnacle-media.com"
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "formats": {
+          "type": "array",
+          "description": "Filter by creative format types (e.g., video, audio, display)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "statuses": {
+          "type": "array",
+          "description": "Filter by creative approval statuses",
+          "items": {
+            "title": "Creative Status",
+            "description": "Status of a creative asset",
+            "type": "string",
+            "enum": [
+              "processing",
+              "approved",
+              "rejected",
+              "pending_review",
+              "archived"
+            ],
+            "enumDescriptions": {
+              "processing": "Creative is being processed or transcoded",
+              "approved": "Creative has been approved and is ready for delivery",
+              "rejected": "Creative has been rejected due to policy or technical issues",
+              "pending_review": "Creative is under review",
+              "archived": "Creative has been archived and is excluded from default queries"
+            }
+          },
+          "minItems": 1
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter by creative tags (all tags must match)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "tags_any": {
+          "type": "array",
+          "description": "Filter by creative tags (any tag must match)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "name_contains": {
+          "type": "string",
+          "description": "Filter by creative names containing this text (case-insensitive)"
+        },
+        "creative_ids": {
+          "type": "array",
+          "description": "Filter by specific creative IDs",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "created_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created after this date (ISO 8601)"
+        },
+        "created_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives created before this date (ISO 8601)"
+        },
+        "updated_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated after this date (ISO 8601)"
+        },
+        "updated_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Filter creatives last updated before this date (ISO 8601)"
+        },
+        "assigned_to_packages": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these packages",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "description": "Filter creatives assigned to any of these media buys",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "buyer_refs": {
+          "type": "array",
+          "description": "Filter creatives assigned to media buys with any of these buyer references",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "unassigned": {
+          "type": "boolean",
+          "description": "Filter for unassigned creatives when true, assigned creatives when false"
+        },
+        "has_performance_data": {
+          "type": "boolean",
+          "description": "Filter creatives that have performance data when true"
+        }
+      },
+      "additionalProperties": true
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "title": "Creative Sort Field",
+          "description": "Field to sort by",
+          "type": "string",
+          "enum": [
+            "created_date",
+            "updated_date",
+            "name",
+            "status",
+            "assignment_count",
+            "performance_score"
+          ],
+          "default": "created_date"
+        },
+        "direction": {
+          "title": "Sort Direction",
+          "description": "Sort direction",
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "desc"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_performance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include aggregated performance metrics in response"
+    },
+    "include_sub_assets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include sub-assets (for carousel/native formats) in response"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields)",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "performance",
+          "sub_assets"
+        ]
+      }
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format": "video",
+          "status": "approved"
+        }
+      }
+    },
+    {
+      "description": "Search for Nike creatives with performance data",
+      "data": {
+        "filters": {
+          "name_contains": "nike",
+          "has_performance_data": true
+        },
+        "include_performance": true
+      }
+    },
+    {
+      "description": "Get unassigned creatives for assignment",
+      "data": {
+        "filters": {
+          "unassigned": true
+        },
+        "sort": {
+          "field": "created_date",
+          "direction": "desc"
+        },
+        "pagination": {
+          "max_results": 20
+        }
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-03-01T20:14:16.642Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

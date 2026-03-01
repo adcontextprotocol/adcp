@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/property/list-property-lists-request.json",
+  "title": "List Property Lists Request",
+  "description": "Request parameters for listing property lists",
+  "type": "object",
+  "properties": {
+    "principal": {
+      "type": "string",
+      "description": "Filter to lists owned by this principal"
+    },
+    "name_contains": {
+      "type": "string",
+      "description": "Filter to lists whose name contains this string"
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.2/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}

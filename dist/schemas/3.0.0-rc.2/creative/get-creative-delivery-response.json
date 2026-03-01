@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/creative/get-creative-delivery-response.json",
+  "title": "Get Creative Delivery Response",
+  "description": "Response payload for get_creative_delivery task. Returns creative delivery data with variant-level breakdowns including manifests and metrics.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account identifier. Present when the response spans or is scoped to a specific account."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Publisher's media buy identifier. Present when the request was scoped to a single media buy."
+    },
+    "media_buy_buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for the media buy. Echoed back so the buyer can correlate without mapping publisher IDs."
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "Date range for the report.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 start timestamp"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 end timestamp"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Creative delivery data with variant breakdowns",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Creative identifier"
+          },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's media buy identifier for this creative. Present when the request spanned multiple media buys, so the buyer can correlate each creative to its media buy."
+          },
+          "format_id": {
+            "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+            "description": "Format of this creative"
+          },
+          "totals": {
+            "$ref": "/schemas/3.0.0-rc.2/core/delivery-metrics.json",
+            "description": "Aggregate delivery metrics across all variants of this creative"
+          },
+          "variant_count": {
+            "type": "integer",
+            "description": "Total number of variants for this creative. When max_variants was specified in the request, this may exceed the number of items in the variants array.",
+            "minimum": 0
+          },
+          "variants": {
+            "type": "array",
+            "description": "Variant-level delivery breakdown. Each variant includes the rendered manifest and delivery metrics. For standard creatives, contains a single variant. For asset group optimization, one per combination. For generative creative, one per generated execution. Empty when a creative has no variants yet.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.2/core/creative-variant.json"
+            }
+          }
+        },
+        "required": [
+          "creative_id",
+          "variants"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination information. Present when the request included pagination parameters.",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of creatives requested",
+          "minimum": 1
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Number of creatives skipped",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more creatives are available beyond this page"
+        },
+        "total": {
+          "type": "integer",
+          "description": "Total number of creatives matching the request filters",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "limit",
+        "offset",
+        "has_more"
+      ],
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "reporting_period",
+    "currency",
+    "creatives"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/property/list-property-lists-response.json",
+  "title": "List Property Lists Response",
+  "description": "Response payload for list_property_lists task",
+  "type": "object",
+  "properties": {
+    "lists": {
+      "type": "array",
+      "description": "Array of property lists (metadata only, not resolved properties)",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/property/property-list.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.2/core/pagination-response.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["lists"],
+  "additionalProperties": false
+}

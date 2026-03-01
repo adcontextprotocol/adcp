@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/catalog-item-status.json",
+  "title": "Catalog Item Status",
+  "description": "Approval status of an individual item within a synced catalog. Platforms review catalog items and may approve, reject, or flag them for issues (similar to Google Merchant Center product review).",
+  "type": "string",
+  "enum": [
+    "approved",
+    "pending",
+    "rejected",
+    "warning"
+  ]
+}

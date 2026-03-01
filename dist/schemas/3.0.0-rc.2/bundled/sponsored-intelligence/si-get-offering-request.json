@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/bundled/sponsored-intelligence/si-get-offering-request.json",
+  "title": "SI Get Offering Request",
+  "description": "Get offering details and availability before session handoff. Returns offering information, availability status, and optionally matching products based on context.",
+  "type": "object",
+  "properties": {
+    "offering_id": {
+      "type": "string",
+      "description": "Offering identifier from the catalog to get details for"
+    },
+    "context": {
+      "type": "string",
+      "description": "Optional natural language context about user intent for personalized results (e.g., 'mens size 14 near Cincinnati'). Must be anonymous - no PII."
+    },
+    "include_products": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to include matching products in the response"
+    },
+    "product_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 5,
+      "description": "Maximum number of matching products to return"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "offering_id"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T20:14:16.680Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

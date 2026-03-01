@@ -1,0 +1,580 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/format.json",
+  "title": "Format",
+  "description": "Represents a creative format with its requirements",
+  "type": "object",
+  "$defs": {
+    "baseIndividualAsset": {
+      "type": "object",
+      "properties": {
+        "item_type": {
+          "type": "string",
+          "const": "individual",
+          "description": "Discriminator indicating this is an individual asset"
+        },
+        "asset_id": {
+          "type": "string",
+          "description": "Unique identifier for this asset. Creative manifests MUST use this exact value as the key in the assets object."
+        },
+        "asset_role": {
+          "type": "string",
+          "description": "Descriptive label for this asset's purpose (e.g., 'hero_image', 'logo', 'third_party_tracking'). For documentation and UI display only — manifests key assets by asset_id, not asset_role."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
+        },
+        "overlays": {
+          "type": "array",
+          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds.",
+          "items": { "$ref": "/schemas/3.0.0-rc.2/core/overlay.json" }
+        }
+      },
+      "required": ["item_type", "asset_id", "asset_type", "required"]
+    },
+    "baseGroupAsset": {
+      "type": "object",
+      "properties": {
+        "asset_id": {
+          "type": "string",
+          "description": "Identifier for this asset within the group"
+        },
+        "asset_role": {
+          "type": "string",
+          "description": "Descriptive label for this asset's purpose. For documentation and UI display only — manifests key assets by asset_id, not asset_role."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this asset is required within each repetition of the group",
+          "default": false
+        },
+        "overlays": {
+          "type": "array",
+          "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., carousel navigation arrows, slide indicators). Creative agents should avoid placing critical content within overlay bounds.",
+          "items": { "$ref": "/schemas/3.0.0-rc.2/core/overlay.json" }
+        }
+      },
+      "required": ["asset_id", "asset_type", "required"]
+    }
+  },
+  "properties": {
+    "format_id": {
+      "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+      "description": "Structured format identifier with agent URL and format name"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable format name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Plain text explanation of what this format does and what assets it requires"
+    },
+    "example_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL to showcase page with examples and interactive demos of this format"
+    },
+    "type": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/format-category.json",
+      "description": "DEPRECATED: High-level category for this format. Use the assets array to understand creative requirements instead - it provides precise information about what asset types are needed."
+    },
+    "accepts_parameters": {
+      "type": "array",
+      "description": "List of parameters this format accepts in format_id. Template formats define which parameters (dimensions, duration, etc.) can be specified when instantiating the format. Empty or omitted means this is a concrete format with fixed parameters.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/format-id-parameter.json"
+      },
+      "uniqueItems": true
+    },
+    "renders": {
+      "type": "array",
+      "description": "Specification of rendered pieces for this format. Most formats produce a single render. Companion ad formats (video + banner), adaptive formats, and multi-placement formats produce multiple renders. Each render specifies its role and dimensions.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Semantic role of this rendered piece (e.g., 'primary', 'companion', 'mobile_variant')"
+          },
+          "parameters_from_format_id": {
+            "type": "boolean",
+            "description": "When true, parameters for this render (dimensions and/or duration) are specified in the format_id. Used for template formats that accept parameters. Mutually exclusive with specifying dimensions object explicitly."
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "Dimensions for this rendered piece (in pixels)",
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed width in pixels"
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Fixed height in pixels"
+              },
+              "min_width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum width in pixels for responsive renders"
+              },
+              "min_height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum height in pixels for responsive renders"
+              },
+              "max_width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum width in pixels for responsive renders"
+              },
+              "max_height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum height in pixels for responsive renders"
+              },
+              "responsive": {
+                "type": "object",
+                "description": "Indicates which dimensions are responsive/fluid",
+                "properties": {
+                  "width": {
+                    "type": "boolean"
+                  },
+                  "height": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "width",
+                  "height"
+                ]
+              },
+              "aspect_ratio": {
+                "type": "string",
+                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1')",
+                "pattern": "^\\d+:\\d+$"
+              }
+            }
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "dimensions"
+            ],
+            "not": {
+              "required": [
+                "parameters_from_format_id"
+              ]
+            }
+          },
+          {
+            "required": [
+              "parameters_from_format_id"
+            ],
+            "properties": {
+              "parameters_from_format_id": {
+                "const": true
+              }
+            },
+            "not": {
+              "required": [
+                "dimensions"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "assets": {
+      "type": "array",
+      "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory.",
+      "items": {
+        "oneOf": [
+          {
+            "description": "Image asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "image" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/image-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Video asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "video" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/video-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Audio asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "audio" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/audio-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Text asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "text" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/text-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Markdown asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "markdown" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/markdown-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "HTML asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "html" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/html-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "CSS asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "css" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/css-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "JavaScript asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "javascript" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/javascript-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "VAST asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "vast" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/vast-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "DAAST asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "daast" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/daast-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "URL asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "url" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/url-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Webhook asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "webhook" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/webhook-asset-requirements.json" }
+            }
+          },
+          {
+            "description": "Brief asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "brief" }
+            }
+          },
+          {
+            "description": "Catalog asset",
+            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "properties": {
+              "item_type": { "const": "individual" },
+              "asset_type": { "const": "catalog" },
+              "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/catalog-requirements.json" }
+            }
+          },
+          {
+            "description": "Repeatable asset group (for carousels, slideshows, playlists, etc.)",
+            "type": "object",
+            "properties": {
+              "item_type": {
+                "type": "string",
+                "const": "repeatable_group",
+                "description": "Discriminator indicating this is a repeatable asset group"
+              },
+              "asset_group_id": {
+                "type": "string",
+                "description": "Identifier for this asset group (e.g., 'product', 'slide', 'card')"
+              },
+              "required": {
+                "type": "boolean",
+                "description": "Whether this asset group is required. If true, at least min_count repetitions must be provided."
+              },
+              "min_count": {
+                "type": "integer",
+                "description": "Minimum number of repetitions required (if group is required) or allowed (if optional)",
+                "minimum": 0
+              },
+              "max_count": {
+                "type": "integer",
+                "description": "Maximum number of repetitions allowed",
+                "minimum": 1
+              },
+              "selection_mode": {
+                "type": "string",
+                "description": "How the platform uses repetitions of this group. 'sequential' means all items display in order (carousels, playlists). 'optimize' means the platform selects the best-performing combination from alternatives (asset group optimization like Meta Advantage+ or Google Pmax).",
+                "enum": [
+                  "sequential",
+                  "optimize"
+                ],
+                "default": "sequential"
+              },
+              "assets": {
+                "type": "array",
+                "description": "Assets within each repetition of this group",
+                "items": {
+                  "oneOf": [
+                    {
+                      "description": "Image asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "image" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/image-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Video asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "video" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/video-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Audio asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "audio" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/audio-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Text asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "text" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/text-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Markdown asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "markdown" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/markdown-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "HTML asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "html" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/html-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "CSS asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "css" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/css-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "JavaScript asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "javascript" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/javascript-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "VAST asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "vast" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/vast-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "DAAST asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "daast" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/daast-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "URL asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "url" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/url-asset-requirements.json" }
+                      }
+                    },
+                    {
+                      "description": "Webhook asset in group",
+                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "properties": {
+                        "asset_type": { "const": "webhook" },
+                        "requirements": { "$ref": "/schemas/3.0.0-rc.2/core/requirements/webhook-asset-requirements.json" }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["item_type", "asset_group_id", "required", "min_count", "max_count", "assets"]
+          }
+        ]
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
+      "additionalProperties": true
+    },
+    "supported_macros": {
+      "type": "array",
+      "description": "List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling. See docs/creative/universal-macros.mdx for full documentation.",
+      "items": {
+        "oneOf": [
+          { "$ref": "/schemas/3.0.0-rc.2/enums/universal-macro.json" },
+          { "type": "string", "description": "Custom or publisher-specific macro name" }
+        ]
+      }
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Array of format IDs this format accepts as input creative manifests. When present, indicates this format can take existing creatives in these formats as input. Omit for formats that work from raw assets (images, text, etc.) rather than existing creatives.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      }
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Array of format IDs that this format can produce as output. When present, indicates this format can build creatives in these output formats (e.g., a multi-publisher template format might produce standard display formats across many publishers). Omit for formats that produce a single fixed output (the format itself).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      }
+    },
+    "format_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+          "description": "Creative format defining the card layout (typically format_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
+    },
+    "accessibility": {
+      "type": "object",
+      "description": "Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by this format will meet.",
+      "properties": {
+        "wcag_level": {
+          "$ref": "/schemas/3.0.0-rc.2/enums/wcag-level.json",
+          "description": "WCAG conformance level that this format achieves. For format-rendered creatives, the format guarantees this level. For opaque creatives, the format requires assets that self-certify to this level."
+        },
+        "requires_accessible_assets": {
+          "type": "boolean",
+          "description": "When true, all assets with x-accessibility fields must include those fields. For inspectable assets (image, video, audio), this means providing accessibility metadata like alt_text or captions. For opaque assets (HTML, JavaScript), this means providing self-declared accessibility properties."
+        }
+      },
+      "required": ["wcag_level"]
+    },
+    "supported_disclosure_positions": {
+      "type": "array",
+      "description": "Disclosure positions this format can render. Buyers use this to determine whether a format can satisfy their compliance requirements before submitting a creative. When omitted, the format makes no disclosure rendering guarantees — creative agents SHOULD treat this as incompatible with briefs that require specific disclosure positions. Values correspond to positions on creative-brief.json required_disclosures.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "format_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically format_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
+    },
+    "reported_metrics": {
+      "type": "array",
+      "description": "Metrics this format can produce in delivery reporting. Buyers receive the intersection of format reported_metrics and product available_metrics. If omitted, the format defers entirely to product-level metric declarations.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "format_id",
+    "name"
+  ],
+  "additionalProperties": true
+}

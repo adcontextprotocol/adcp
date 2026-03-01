@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/sponsored-intelligence/si-terminate-session-response.json",
+  "title": "SI Terminate Session Response",
+  "description": "Confirmation of session termination",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Terminated session identifier"
+    },
+    "terminated": {
+      "type": "boolean",
+      "description": "Whether session was successfully terminated"
+    },
+    "acp_handoff": {
+      "type": "object",
+      "description": "ACP checkout handoff data (for handoff_transaction)",
+      "properties": {
+        "checkout_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "ACP checkout initiation URL"
+        },
+        "checkout_token": {
+          "type": "string",
+          "description": "Token for ACP checkout flow"
+        },
+        "product": {
+          "type": "object",
+          "description": "Product details for checkout"
+        }
+      },
+      "additionalProperties": true
+    },
+    "follow_up": {
+      "type": "object",
+      "description": "Suggested follow-up actions",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["save_for_later", "set_reminder", "subscribe_updates", "none"]
+        },
+        "data": {
+          "type": "object",
+          "description": "Data for follow-up action"
+        }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/error.json"
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["session_id", "terminated"],
+  "additionalProperties": true
+}

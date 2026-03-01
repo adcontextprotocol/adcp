@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/package.json",
+  "title": "Package",
+  "description": "A specific product within a media buy (line item)",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Publisher's unique identifier for the package"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
+    },
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product this package is based on"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/catalog.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      }
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.0.0-rc.2/core/targeting.json"
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Creative assets assigned to this package",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/creative-assignment.json"
+      }
+    },
+    "format_ids_to_provide": {
+      "type": "array",
+      "description": "Format IDs that creative assets will be provided for this package",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "additionalProperties": true
+}

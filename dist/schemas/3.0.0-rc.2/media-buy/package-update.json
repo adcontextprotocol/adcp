@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/package-update.json",
+  "title": "Package Update",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id or buyer_ref and specifies fields to modify. Fields not present are left unchanged. Note: product_id, format_ids, and pricing_option_id cannot be changed after creation.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Publisher's ID of package to update"
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference for the package to update"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/pacing.json"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Updated bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Updated impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume specific package (true = paused, false = active)"
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Replace the catalogs this package promotes. Uses replacement semantics — the provided array replaces the current list. Omit to leave catalogs unchanged.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/catalog.json"
+      },
+      "minItems": 1
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.0.0-rc.2/core/targeting.json",
+      "description": "Targeting overlay to apply to this package. Uses replacement semantics — the full overlay replaces the previous one. Omit to leave targeting unchanged. For keyword and negative keyword updates, prefer the incremental operations (keyword_targets_add, keyword_targets_remove, negative_keywords_add, negative_keywords_remove) which avoid replacing the full overlay. Sellers SHOULD return a validation error if targeting_overlay.keyword_targets is present in the same request as keyword_targets_add or keyword_targets_remove, and likewise for negative_keywords."
+    },
+    "keyword_targets_add": {
+      "type": "array",
+      "description": "Keyword targets to add or update on this package. Upserts by (keyword, match_type) identity: if the pair already exists, its bid_price is updated; if not, a new keyword target is added. Use targeting_overlay.keyword_targets in create_media_buy to set the initial list.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type for this keyword"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price. Inherits currency and max_bid interpretation from the package's pricing option."
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "keyword_targets_remove": {
+      "type": "array",
+      "description": "Keyword targets to remove from this package. Removes matching (keyword, match_type) pairs. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to stop targeting"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type to remove"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords_add": {
+      "type": "array",
+      "description": "Negative keywords to add to this package. Appends to the existing negative keyword list — does not replace it. If a keyword+match_type pair already exists, sellers SHOULD treat it as a no-op for that entry. Use targeting_overlay.negative_keywords in create_media_buy to set the initial list.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type for exclusion"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords_remove": {
+      "type": "array",
+      "description": "Negative keywords to remove from this package. Removes matching keyword+match_type pairs from the existing list. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to stop excluding"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type to remove"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Replace creative assignments for this package with optional weights and placement targeting. Uses replacement semantics - omit to leave assignments unchanged.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/creative-assignment.json"
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "package_id"
+      ]
+    },
+    {
+      "required": [
+        "buyer_ref"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

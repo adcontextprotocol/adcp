@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0-rc.2
+
+### Patch Changes
+
+- 0c73006:
+- da4515c: Update AgenticAdvertising.org brand.json tone to structured { voice, attributes } format for agent compatibility.
+- 6729e8e: Empty changeset - no protocol impact (Addie admin tool default change only)
+- 556ad25: Enable Anthropic prompt caching for Addie to reduce latency and context window usage.
+- 108b6c4:
+- 7c851b2: Founding member sprint: deadline outreach goal, digest banner, throughput increase, auto-claim unowned prospects
+
 ## 3.0.0-rc.1
 
 ### Major Changes

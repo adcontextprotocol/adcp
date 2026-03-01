@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/get-products-async-response-input-required.json",
+  "title": "Get Products - Input Required",
+  "description": "Payload when search is paused waiting for user clarification.",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "enum": [
+        "CLARIFICATION_NEEDED",
+        "BUDGET_REQUIRED"
+      ],
+      "description": "Reason code indicating why input is needed"
+    },
+    "partial_results": {
+      "type": "array",
+      "description": "Partial product results that may help inform the clarification",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/product.json"
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Suggested values or options for the required input",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

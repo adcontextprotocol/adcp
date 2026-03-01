@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/proposal.json",
+  "title": "Proposal",
+  "description": "A proposed media plan with budget allocations across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable - buyers can execute them directly via create_media_buy by providing the proposal_id.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "description": "Unique identifier for this proposal. Used to execute it via create_media_buy."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this media plan proposal"
+    },
+    "description": {
+      "type": "string",
+      "description": "Explanation of the proposal strategy and what it achieves"
+    },
+    "allocations": {
+      "type": "array",
+      "description": "Budget allocations across products. Allocation percentages MUST sum to 100. Publishers are responsible for ensuring the sum equals 100; buyers SHOULD validate this before execution.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/product-allocation.json"
+      },
+      "minItems": 1
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this proposal expires and can no longer be executed. After expiration, referenced products or pricing may no longer be available."
+    },
+    "total_budget_guidance": {
+      "type": "object",
+      "description": "Optional budget guidance for this proposal",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum recommended budget",
+          "minimum": 0
+        },
+        "recommended": {
+          "type": "number",
+          "description": "Recommended budget for optimal performance",
+          "minimum": 0
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum budget before diminishing returns",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code"
+        }
+      },
+      "additionalProperties": true
+    },
+    "brief_alignment": {
+      "type": "string",
+      "description": "Explanation of how this proposal aligns with the campaign brief"
+    },
+    "forecast": {
+      "$ref": "/schemas/3.0.0-rc.2/core/delivery-forecast.json",
+      "description": "Aggregate forecasted delivery metrics for the entire proposal. When both proposal-level and allocation-level forecasts are present, the proposal-level forecast is authoritative for total delivery estimation."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "name",
+    "allocations"
+  ],
+  "additionalProperties": true
+}
