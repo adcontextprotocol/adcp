@@ -1,0 +1,121 @@
+---
+title: "Migrating brand identity"
+description: Step-by-step guide to migrating from inline brand_manifest objects to BrandRef references resolved via brand.json
+testable: true
+---
+
+# Migrating brand identity
+
+AdCP v3 rc.1 replaces inline `brand_manifest` objects with lightweight brand references (`BrandRef`). Brand data is resolved at execution time from `/.well-known/brand.json` or the community brand registry.
+
+## What changed
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `brand_manifest` (inline object) | `brand` (`BrandRef`) | Reference resolved at execution time |
+| Brand data passed in every request | Brand data fetched once from `brand.json` | Caching recommended (24h TTL) |
+| No standard identity format | `/.well-known/brand.json` specification | Four variants: House Portfolio, Brand Agent, House Redirect, Authoritative Location |
+
+## BrandRef schema
+
+A brand reference identifies a brand by domain and optional `brand_id`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/brand-ref.json",
+  "domain": "nova-brands.com",
+  "brand_id": "spark"
+}
+```
+
+- `domain` (required) — Domain where `/.well-known/brand.json` is hosted, or the brand's operating domain
+- `brand_id` (optional) — Brand identifier within a house portfolio. Omit for single-brand domains.
+
+For single-brand domains:
+```json
+{
+  "domain": "acme-corp.com"
+}
+```
+
+## Where brand appears
+
+| Task | Required? | Purpose |
+|------|-----------|---------|
+| `create_media_buy` | Yes | Campaign identity — immutable once set |
+| `get_products` | No | Discovery context. Required when `catalog` is provided |
+| `build_creative` | No | Resolves to colors, logos, tone for creative generation |
+
+`brand` does not appear on `update_media_buy` (immutable from creation), `sync_creatives` (scoped to account), or `sync_catalogs` (scoped to account).
+
+## Before and after
+
+**beta.3 — inline brand_manifest on create_media_buy:**
+```json test=false
+{
+  "brand_manifest": {
+    "name": "Spark",
+    "domain": "spark.nova-brands.com",
+    "logo_url": "https://spark.nova-brands.com/logo.png",
+    "industry": "consumer_electronics"
+  },
+  "account": { "account_id": "acct_nova" },
+  "start_time": "2025-04-01T00:00:00Z",
+  "end_time": "2025-04-30T23:59:59Z"
+}
+```
+
+**rc.1 — brand reference:**
+```json test=false
+{
+  "brand": {
+    "domain": "nova-brands.com",
+    "brand_id": "spark"
+  },
+  "account": { "account_id": "acct_nova" },
+  "buyer_ref": "campaign_spring_2025",
+  "start_time": "2025-04-01T00:00:00Z",
+  "end_time": "2025-04-30T23:59:59Z"
+}
+```
+
+The seller resolves `nova-brands.com` + `spark` to the full brand identity (logos, colors, tone, properties) via the Brand Protocol.
+
+## Resolution flow
+
+Given a `BrandRef`, the resolution is:
+
+1. Fetch `https://{domain}/.well-known/brand.json`
+2. If it's a **House Redirect** (has `house` field), follow to the house domain (max 3 redirects)
+3. If it's a **House Portfolio**, look up the brand by `brand_id` in the `brands` array
+4. If it's a **Brand Agent**, call the MCP agent for dynamic brand data
+5. If it's an **Authoritative Location**, follow the `location` URL
+
+Sellers cache resolved brand data (recommended 24-hour TTL for validated files, 1 hour for failed lookups).
+
+## Migration steps
+
+<Steps>
+  <Step title="Replace brand_manifest with brand">
+    In all task requests (`create_media_buy`, `get_products`, `build_creative`), replace the `brand_manifest` object with a `brand` BrandRef: `{ "domain": "...", "brand_id": "..." }`.
+  </Step>
+  <Step title="Host brand.json">
+    Publish `/.well-known/brand.json` on the brand's domain. Choose a variant: House Portfolio for multi-brand companies, Brand Agent for dynamic data, or single-brand for simple cases.
+  </Step>
+  <Step title="Register in brand registry">
+    If the brand domain doesn't host `brand.json`, register it in the community brand registry so sellers can resolve it.
+  </Step>
+  <Step title="Update seller resolution">
+    Seller agents must resolve `BrandRef` to full brand data at execution time. Implement caching and handle all four `brand.json` variants.
+  </Step>
+  <Step title="Remove inline brand data">
+    Remove any code that constructs or parses `brand_manifest` objects. Brand data is no longer passed inline.
+  </Step>
+  <Step title="Validate against schema">
+    Run requests against `brand-ref.json` schema. The `domain` field requires a valid lowercase domain pattern.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/dist/docs/3.0.0-rc.1/reference/migration/channels) | [Catalogs](/dist/docs/3.0.0-rc.1/reference/migration/catalogs) | [Brand Protocol](/dist/docs/3.0.0-rc.1/brand-protocol) | [AdCP v3 overview](/dist/docs/3.0.0-rc.1/reference/whats-new-in-v3)
