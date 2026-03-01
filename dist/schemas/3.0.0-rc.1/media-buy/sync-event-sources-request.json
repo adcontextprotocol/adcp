@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/media-buy/sync-event-sources-request.json",
+  "title": "Sync Event Sources Request",
+  "description": "Request parameters for configuring event sources on an account with upsert semantics. Existing event sources matched by event_source_id are updated, new ones are created. When delete_missing is true, buyer-managed event sources on the account not in this request are removed. When event_sources is omitted, the call is discovery-only: it returns all event sources on the account without modification. The response always includes both synced and seller-managed event sources for full visibility.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.1/core/account-ref.json",
+      "description": "Account to configure event sources for."
+    },
+    "event_sources": {
+      "type": "array",
+      "description": "Event sources to sync (create or update). When omitted, the call is discovery-only and returns all existing event sources on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_source_id": {
+            "type": "string",
+            "description": "Unique identifier for this event source"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this event source"
+          },
+          "event_types": {
+            "type": "array",
+            "description": "Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json"
+            },
+            "minItems": 1
+          },
+          "allowed_domains": {
+            "type": "array",
+            "description": "Domains authorized to send events for this event source",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "event_source_id"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, event sources not included in this sync will be removed"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "account"
+  ],
+  "additionalProperties": true
+}

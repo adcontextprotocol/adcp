@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/audience-source.json",
+  "title": "Audience Source",
+  "description": "Origin of an audience segment in delivery reporting breakdowns. Only 'synced' audiences are directly targetable via the targeting overlay; other sources are informational.",
+  "type": "string",
+  "enum": [
+    "synced",
+    "platform",
+    "third_party",
+    "lookalike",
+    "retargeting",
+    "unknown"
+  ]
+}

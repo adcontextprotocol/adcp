@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/pricing-options/cpm-option.json",
+  "title": "CPM Pricing Option",
+  "description": "Cost Per Mille (cost per 1,000 impressions) pricing. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Unique identifier for this pricing option within the product"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "cpm",
+      "description": "Cost per 1,000 impressions"
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$",
+      "examples": ["USD", "EUR", "GBP", "JPY"]
+    },
+    "fixed_price": {
+      "type": "number",
+      "description": "Fixed price per unit. If present, this is fixed pricing. If absent, auction-based.",
+      "minimum": 0
+    },
+    "floor_price": {
+      "type": "number",
+      "description": "Minimum acceptable bid for auction pricing (mutually exclusive with fixed_price). Bids below this value will be rejected.",
+      "minimum": 0
+    },
+    "max_bid": {
+      "type": "boolean",
+      "description": "When true, bid_price is interpreted as the buyer's maximum willingness to pay (ceiling) rather than an exact price. Sellers may optimize actual clearing prices between floor_price and bid_price based on delivery pacing. When false or absent, bid_price (if provided) is the exact bid/price to honor.",
+      "default": false
+    },
+    "price_guidance": {
+      "description": "Optional pricing guidance for auction-based bidding",
+      "$ref": "/schemas/3.0.0-rc.1/pricing-options/price-guidance.json"
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "description": "Minimum spend requirement per package using this pricing option, in the specified currency",
+      "minimum": 0
+    }
+  },
+  "required": ["pricing_option_id", "pricing_model", "currency"],
+  "additionalProperties": true
+}

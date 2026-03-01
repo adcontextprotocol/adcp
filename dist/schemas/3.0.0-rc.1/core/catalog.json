@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/catalog.json",
+  "title": "Catalog",
+  "description": "A typed data feed. Catalogs carry the items, locations, stock levels, or pricing that publishers use to render ads. They can be synced to a platform via sync_catalogs (managed lifecycle with approval), provided inline, or fetched from an external URL. The catalog type determines the item schema and can be structural (offering, product, inventory, store, promotion) or vertical-specific (hotel, flight, job, vehicle, real_estate, education, destination, app). Selectors (ids, tags, category, query) filter items regardless of sourcing method.",
+  "type": "object",
+  "properties": {
+    "catalog_id": {
+      "type": "string",
+      "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam Store Locations')."
+    },
+    "type": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/catalog-type.json",
+      "description": "Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (ecommerce entries), 'inventory' (stock per location), 'store' (physical locations), 'promotion' (deals and pricing). Vertical types: 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination', 'app' — each with an industry-specific item schema."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to an external catalog feed. The platform fetches and resolves items from this URL. For offering-type catalogs, the feed contains an array of Offering objects. For other types, the feed format is determined by feed_format. When omitted with type 'product', the platform uses its synced copy of the brand's product catalog."
+    },
+    "feed_format": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/feed-format.json",
+      "description": "Format of the external feed at url. Required when url points to a non-AdCP feed (e.g., Google Merchant Center XML, Meta Product Catalog). Omit for offering-type catalogs where the feed is native AdCP JSON."
+    },
+    "update_frequency": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/update-frequency.json",
+      "description": "How often the platform should re-fetch the feed from url. Only applicable when url is provided. Platforms may use this as a hint for polling schedules."
+    },
+    "items": {
+      "type": "array",
+      "description": "Inline catalog data. The item schema depends on the catalog type: Offering objects for 'offering', StoreItem for 'store', HotelItem for 'hotel', FlightItem for 'flight', JobItem for 'job', VehicleItem for 'vehicle', RealEstateItem for 'real_estate', EducationItem for 'education', DestinationItem for 'destination', AppItem for 'app', or freeform objects for 'product', 'inventory', and 'promotion'. Mutually exclusive with url — provide one or the other, not both. Implementations should validate items against the type-specific schema.",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 1
+    },
+    "ids": {
+      "type": "array",
+      "description": "Filter catalog to specific item IDs. For offering-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "gtins": {
+      "type": "array",
+      "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]{8,14}$"
+      },
+      "minItems": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "category": {
+      "type": "string",
+      "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')."
+    },
+    "conversion_events": {
+      "type": "array",
+      "description": "Event types that represent conversions for items in this catalog. Declares what events the platform should attribute to catalog items — e.g., a job catalog converts via submit_application, a product catalog via purchase. The event's content_ids field carries the item IDs that connect back to catalog items. Use content_id_type to declare what identifier type content_ids values represent.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "content_id_type": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/content-id-type.json",
+      "description": "Identifier type that the event's content_ids field should be matched against for items in this catalog. For example, 'gtin' means content_ids values are Global Trade Item Numbers, 'sku' means retailer SKUs. Omit when using a custom identifier scheme not listed in the enum."
+    },
+    "feed_field_mappings": {
+      "type": "array",
+      "description": "Declarative normalization rules for external feeds. Maps non-standard feed field names, date formats, price encodings, and image URLs to the AdCP catalog item schema. Applied during sync_catalogs ingestion. Supports field renames, named transforms (date, divide, boolean, split), static literal injection, and assignment of image URLs to typed asset pools.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/catalog-field-mapping.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": ["type"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Synced product catalog from Google Merchant Center",
+      "data": {
+        "catalog_id": "gmc-primary",
+        "name": "Primary Product Feed",
+        "type": "product",
+        "url": "https://feeds.acmecorp.com/products.xml",
+        "feed_format": "google_merchant_center",
+        "update_frequency": "daily"
+      }
+    },
+    {
+      "description": "Inventory feed for store-level stock data",
+      "data": {
+        "catalog_id": "store-inventory",
+        "name": "Store Inventory",
+        "type": "inventory",
+        "url": "https://feeds.acmecorp.com/inventory.json",
+        "feed_format": "custom",
+        "update_frequency": "hourly"
+      }
+    },
+    {
+      "description": "Store locator feed",
+      "data": {
+        "catalog_id": "retail-locations",
+        "name": "Retail Locations",
+        "type": "store",
+        "url": "https://feeds.acmecorp.com/stores.json",
+        "feed_format": "custom",
+        "update_frequency": "weekly"
+      }
+    },
+    {
+      "description": "Promotional pricing feed",
+      "data": {
+        "catalog_id": "summer-sale",
+        "name": "Summer Sale Promotions",
+        "type": "promotion",
+        "url": "https://feeds.acmecorp.com/promotions.json",
+        "feed_format": "google_merchant_center",
+        "update_frequency": "daily"
+      }
+    },
+    {
+      "description": "Inline offering catalog (no sync needed)",
+      "data": {
+        "type": "offering",
+        "items": [
+          {
+            "offering_id": "summer-sale",
+            "name": "Summer Sale",
+            "landing_url": "https://acme.com/summer"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Reference to a previously synced catalog by ID",
+      "data": {
+        "catalog_id": "gmc-primary",
+        "type": "product",
+        "ids": ["SKU-12345", "SKU-67890"]
+      }
+    },
+    {
+      "description": "Product catalog with GTIN cross-retailer matching and attribution",
+      "data": {
+        "type": "product",
+        "gtins": ["00013000006040", "00013000006057"],
+        "content_id_type": "gtin",
+        "conversion_events": ["purchase", "add_to_cart"]
+      }
+    },
+    {
+      "description": "Inline store catalog with catchment areas",
+      "data": {
+        "catalog_id": "retail-locations",
+        "name": "Retail Locations",
+        "type": "store",
+        "items": [
+          {
+            "store_id": "amsterdam-flagship",
+            "name": "Amsterdam Flagship",
+            "location": { "lat": 52.3676, "lng": 4.9041 },
+            "catchments": [
+              {
+                "catchment_id": "walk",
+                "travel_time": { "value": 10, "unit": "min" },
+                "transport_mode": "walking"
+              },
+              {
+                "catchment_id": "drive",
+                "travel_time": { "value": 15, "unit": "min" },
+                "transport_mode": "driving"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

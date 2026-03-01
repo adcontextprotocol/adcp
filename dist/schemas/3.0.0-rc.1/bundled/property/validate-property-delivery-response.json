@@ -1,0 +1,356 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/property/validate-property-delivery-response.json",
+  "title": "Validate Property Delivery Response",
+  "description": "Response payload for validate_property_delivery task. Returns aggregate compliance statistics and per-record validation results.",
+  "type": "object",
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list validated against"
+    },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate validation statistics",
+      "properties": {
+        "total_records": {
+          "type": "integer",
+          "description": "Total number of records validated"
+        },
+        "total_impressions": {
+          "type": "integer",
+          "description": "Total impressions across all records"
+        },
+        "compliant_records": {
+          "type": "integer",
+          "description": "Number of records with compliant status"
+        },
+        "compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from compliant records"
+        },
+        "non_compliant_records": {
+          "type": "integer",
+          "description": "Number of records with non_compliant status"
+        },
+        "non_compliant_impressions": {
+          "type": "integer",
+          "description": "Impressions from non_compliant records"
+        },
+        "not_covered_records": {
+          "type": "integer",
+          "description": "Number of records where identifier was recognized but no data available"
+        },
+        "not_covered_impressions": {
+          "type": "integer",
+          "description": "Impressions from not_covered records"
+        },
+        "unidentified_records": {
+          "type": "integer",
+          "description": "Number of records where identifier type was not resolvable"
+        },
+        "unidentified_impressions": {
+          "type": "integer",
+          "description": "Impressions from unidentified records"
+        }
+      },
+      "required": [
+        "total_records",
+        "total_impressions",
+        "compliant_records",
+        "compliant_impressions",
+        "non_compliant_records",
+        "non_compliant_impressions",
+        "not_covered_records",
+        "not_covered_impressions",
+        "unidentified_records",
+        "unidentified_impressions"
+      ],
+      "additionalProperties": false
+    },
+    "aggregate": {
+      "type": "object",
+      "description": "Optional aggregate measurements computed by the governance agent. Format and meaning are agent-specific.",
+      "properties": {
+        "score": {
+          "type": "number",
+          "description": "Numeric score (0-100 scale typical, but agent-defined)"
+        },
+        "grade": {
+          "type": "string",
+          "description": "Letter grade or category (e.g., 'A+', 'B-', 'Gold', 'Compliant')"
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable summary (e.g., '85% compliant', 'High quality')"
+        },
+        "methodology_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL explaining how this aggregate was calculated"
+        }
+      },
+      "additionalProperties": true
+    },
+    "authorization_summary": {
+      "type": "object",
+      "description": "Aggregate authorization statistics. Only present if any records included sales_agent_url.",
+      "properties": {
+        "records_checked": {
+          "type": "integer",
+          "description": "Number of records with sales_agent_url provided"
+        },
+        "impressions_checked": {
+          "type": "integer",
+          "description": "Total impressions from records with sales_agent_url"
+        },
+        "authorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was authorized"
+        },
+        "authorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from authorized records"
+        },
+        "unauthorized_records": {
+          "type": "integer",
+          "description": "Number of records where sales agent was NOT authorized"
+        },
+        "unauthorized_impressions": {
+          "type": "integer",
+          "description": "Impressions from unauthorized records"
+        },
+        "unknown_records": {
+          "type": "integer",
+          "description": "Number of records where authorization could not be determined (adagents.json unavailable)"
+        },
+        "unknown_impressions": {
+          "type": "integer",
+          "description": "Impressions from records where authorization could not be determined"
+        }
+      },
+      "required": [
+        "records_checked",
+        "impressions_checked",
+        "authorized_records",
+        "authorized_impressions",
+        "unauthorized_records",
+        "unauthorized_impressions",
+        "unknown_records",
+        "unknown_impressions"
+      ],
+      "additionalProperties": false
+    },
+    "results": {
+      "type": "array",
+      "description": "Per-record validation results. By default only includes non_compliant and unknown records. Set include_compliant=true to include all records.",
+      "items": {
+        "title": "Validation Result",
+        "description": "Result of validating a single delivery record against a property list.",
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "description": "The identifier that was validated",
+            "type": "object",
+            "properties": {
+              "type": {
+                "title": "Property Identifier Types",
+                "description": "Type of identifier",
+                "type": "string",
+                "enum": [
+                  "domain",
+                  "subdomain",
+                  "network_id",
+                  "ios_bundle",
+                  "android_package",
+                  "apple_app_store_id",
+                  "google_play_id",
+                  "roku_store_id",
+                  "fire_tv_asin",
+                  "samsung_app_id",
+                  "apple_tv_bundle",
+                  "bundle_id",
+                  "venue_id",
+                  "screen_id",
+                  "openooh_venue_type",
+                  "rss_url",
+                  "apple_podcast_id",
+                  "spotify_show_id",
+                  "podcast_guid"
+                ],
+                "examples": [
+                  "domain",
+                  "ios_bundle",
+                  "venue_id",
+                  "apple_podcast_id"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "record_id": {
+            "type": "string",
+            "description": "Client-provided ID from the delivery record (if provided)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "compliant",
+              "non_compliant",
+              "not_covered",
+              "unidentified"
+            ],
+            "description": "Validation status: compliant (in list), non_compliant (not in list), not_covered (identifier recognized but no data available), unidentified (identifier type not resolvable by this governance agent)"
+          },
+          "impressions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of impressions from this record"
+          },
+          "violations": {
+            "type": "array",
+            "description": "Specific violations found (only present for non_compliant records)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "description": "Machine-readable violation code"
+                },
+                "message": {
+                  "type": "string",
+                  "description": "Human-readable violation description"
+                },
+                "feature_id": {
+                  "type": "string",
+                  "description": "ID of the feature that caused the violation (only present for feature_failed violations)"
+                },
+                "requirement": {
+                  "type": "object",
+                  "description": "The feature requirement that was not met (only present for feature_failed violations)",
+                  "properties": {
+                    "min_value": {
+                      "type": "number",
+                      "description": "Minimum value that was required"
+                    },
+                    "max_value": {
+                      "type": "number",
+                      "description": "Maximum value that was allowed"
+                    },
+                    "allowed_values": {
+                      "type": "array",
+                      "description": "Values that would have been acceptable",
+                      "items": {}
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "authorization": {
+            "title": "Authorization Result",
+            "description": "Authorization validation result (only present if sales_agent_url was provided in the delivery record)",
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "authorized",
+                  "unauthorized",
+                  "unknown"
+                ],
+                "description": "Authorization status: authorized (agent in adagents.json), unauthorized (agent not in adagents.json), unknown (could not fetch or parse adagents.json)"
+              },
+              "publisher_domain": {
+                "type": "string",
+                "description": "The publisher domain where adagents.json was checked"
+              },
+              "sales_agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "The sales agent URL that was validated"
+              },
+              "violation": {
+                "type": "object",
+                "description": "Details about the authorization failure (only present for unauthorized status)",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "Machine-readable violation code"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Human-readable violation description"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "identifier",
+          "status",
+          "impressions"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "validated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when validation was performed"
+    },
+    "list_resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the property list resolution used for validation"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "list_id",
+    "summary",
+    "results",
+    "validated_at"
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.694Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

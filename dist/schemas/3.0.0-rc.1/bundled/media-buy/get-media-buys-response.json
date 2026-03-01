@@ -1,0 +1,678 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/media-buy/get-media-buys-response.json",
+  "title": "Get Media Buys Response",
+  "description": "Response payload for get_media_buys task. Returns media buy configuration, creative approval state, and optional delivery snapshots.",
+  "type": "object",
+  "properties": {
+    "media_buys": {
+      "type": "array",
+      "description": "Array of media buys with status, creative approval state, and optional delivery snapshots",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's unique identifier for the media buy"
+          },
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference identifier for this media buy"
+          },
+          "buyer_campaign_ref": {
+            "type": "string",
+            "description": "Buyer campaign reference label sourced from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign; may be absent when not provided at creation time."
+          },
+          "account": {
+            "title": "Account",
+            "description": "Account billed for this media buy",
+            "type": "object",
+            "properties": {
+              "account_id": {
+                "type": "string",
+                "description": "Unique identifier for this account"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')"
+              },
+              "advertiser": {
+                "type": "string",
+                "description": "The advertiser whose rates apply to this account"
+              },
+              "billing_proxy": {
+                "type": "string",
+                "description": "Optional intermediary who receives invoices on behalf of the advertiser (e.g., agency)"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "pending_approval",
+                  "rejected",
+                  "payment_required",
+                  "suspended",
+                  "closed"
+                ],
+                "description": "Account status. pending_approval: seller reviewing (credit, contracts). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+              },
+              "brand": {
+                "title": "Brand Reference",
+                "description": "Brand reference identifying the advertiser",
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "type": "string",
+                    "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "brand_id": {
+                    "title": "Brand ID",
+                    "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                    "type": "string",
+                    "pattern": "^[a-z0-9_]+$",
+                    "examples": [
+                      "tide",
+                      "cheerios",
+                      "air_jordan",
+                      "nike",
+                      "pampers"
+                    ]
+                  }
+                },
+                "required": [
+                  "domain"
+                ],
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "domain": "nova-brands.com",
+                    "brand_id": "spark"
+                  },
+                  {
+                    "domain": "nova-brands.com",
+                    "brand_id": "glow"
+                  },
+                  {
+                    "domain": "acme-corp.com"
+                  }
+                ]
+              },
+              "operator": {
+                "type": "string",
+                "description": "Domain of the entity operating this account. When the brand operates directly, this is the brand's domain.",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "billing": {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "agent"
+                ],
+                "description": "Who is invoiced on this account. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing."
+              },
+              "rate_card": {
+                "type": "string",
+                "description": "Identifier for the rate card applied to this account"
+              },
+              "payment_terms": {
+                "type": "string",
+                "description": "Payment terms (e.g., 'net_30', 'prepay')"
+              },
+              "credit_limit": {
+                "type": "object",
+                "description": "Maximum outstanding balance allowed",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "currency"
+                ]
+              },
+              "setup": {
+                "type": "object",
+                "description": "Present when status is 'pending_approval'. Contains next steps for completing account activation.",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)."
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Human-readable description of what's needed."
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When this setup link expires."
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": true
+              },
+              "account_scope": {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "brand",
+                  "operator_brand",
+                  "agent"
+                ],
+                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
+              },
+              "sandbox": {
+                "type": "boolean",
+                "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."
+              },
+              "ext": {
+                "title": "Extension Object",
+                "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "account_id",
+              "name",
+              "status"
+            ],
+            "additionalProperties": true,
+            "examples": [
+              {
+                "description": "Direct advertiser account",
+                "data": {
+                  "account_id": "acc_acme_direct",
+                  "name": "Acme",
+                  "advertiser": "Acme Corp",
+                  "brand": {
+                    "domain": "acme-corp.com"
+                  },
+                  "operator": "acme-corp.com",
+                  "status": "active",
+                  "billing": "operator",
+                  "account_scope": "brand",
+                  "rate_card": "acme_vip_2024",
+                  "payment_terms": "net_30"
+                }
+              },
+              {
+                "description": "Advertiser account with agency billing proxy",
+                "data": {
+                  "account_id": "acc_acme_pinnacle",
+                  "name": "Acme c/o Pinnacle",
+                  "advertiser": "Acme Corp",
+                  "billing_proxy": "Pinnacle Media",
+                  "brand": {
+                    "domain": "acme-corp.com"
+                  },
+                  "operator": "pinnacle-media.com",
+                  "status": "active",
+                  "billing": "operator",
+                  "account_scope": "operator_brand",
+                  "rate_card": "acme_vip_2024",
+                  "payment_terms": "net_60"
+                }
+              },
+              {
+                "description": "Agency as direct buyer",
+                "data": {
+                  "account_id": "acc_pinnacle",
+                  "name": "Pinnacle",
+                  "advertiser": "Pinnacle Media",
+                  "brand": {
+                    "domain": "pinnacle-media.com"
+                  },
+                  "operator": "pinnacle-media.com",
+                  "status": "active",
+                  "billing": "operator",
+                  "account_scope": "operator",
+                  "rate_card": "agency_standard",
+                  "payment_terms": "net_45"
+                }
+              },
+              {
+                "description": "Account with brand identity and operator (via sync_accounts)",
+                "data": {
+                  "account_id": "acc_spark_001",
+                  "name": "Spark (via Pinnacle)",
+                  "advertiser": "Nova Brands",
+                  "status": "active",
+                  "brand": {
+                    "domain": "nova-brands.com",
+                    "brand_id": "spark"
+                  },
+                  "operator": "pinnacle-media.com",
+                  "billing": "agent",
+                  "account_scope": "operator_brand",
+                  "payment_terms": "net_30"
+                }
+              },
+              {
+                "description": "Pending account awaiting seller approval",
+                "data": {
+                  "account_id": "acc_glow_pending",
+                  "name": "Glow",
+                  "advertiser": "Nova Brands",
+                  "status": "pending_approval",
+                  "brand": {
+                    "domain": "nova-brands.com",
+                    "brand_id": "glow"
+                  },
+                  "operator": "pinnacle-media.com",
+                  "billing": "operator",
+                  "account_scope": "brand"
+                }
+              }
+            ]
+          },
+          "status": {
+            "title": "Media Buy Status",
+            "description": "Status of a media buy.",
+            "type": "string",
+            "enum": [
+              "pending_activation",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled"
+            ],
+            "enumDescriptions": {
+              "pending_activation": "Media buy created but not yet activated",
+              "active": "Media buy is currently running",
+              "paused": "Media buy is temporarily paused",
+              "completed": "Media buy has finished running",
+              "rejected": "Media buy was declined by the seller after creation",
+              "canceled": "Media buy was terminated by the buyer before natural completion"
+            }
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "total_budget": {
+            "type": "number",
+            "description": "Total budget amount across all packages, denominated in media_buy.currency",
+            "minimum": 0
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 flight start time for this media buy (earliest package start_time). Avoids requiring buyers to compute min(packages[].start_time)."
+          },
+          "end_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 flight end time for this media buy (latest package end_time). Avoids requiring buyers to compute max(packages[].end_time)."
+          },
+          "creative_deadline": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp for creative upload deadline"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          },
+          "packages": {
+            "type": "array",
+            "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
+            "items": {
+              "type": "object",
+              "properties": {
+                "package_id": {
+                  "type": "string",
+                  "description": "Publisher's package identifier"
+                },
+                "buyer_ref": {
+                  "type": "string",
+                  "description": "Buyer's reference identifier for this package"
+                },
+                "product_id": {
+                  "type": "string",
+                  "description": "Product identifier this package is purchased from"
+                },
+                "budget": {
+                  "type": "number",
+                  "description": "Package budget amount, denominated in package.currency when present, otherwise media_buy.currency",
+                  "minimum": 0
+                },
+                "currency": {
+                  "type": "string",
+                  "description": "ISO 4217 currency code for monetary values at this package level (budget, bid_price, snapshot.spend). When absent, inherit media_buy.currency.",
+                  "pattern": "^[A-Z]{3}$"
+                },
+                "bid_price": {
+                  "type": "number",
+                  "description": "Current bid price for auction-based packages. Denominated in package.currency when present, otherwise media_buy.currency. Relevant for automated price optimization loops.",
+                  "minimum": 0
+                },
+                "impressions": {
+                  "type": "number",
+                  "description": "Goal impression count for impression-based packages",
+                  "minimum": 0
+                },
+                "start_time": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 flight start time for this package. Use to determine whether the package is within its scheduled flight before interpreting delivery status."
+                },
+                "end_time": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 flight end time for this package"
+                },
+                "paused": {
+                  "type": "boolean",
+                  "description": "Whether this package is currently paused by the buyer"
+                },
+                "creative_approvals": {
+                  "type": "array",
+                  "description": "Approval status for each creative assigned to this package. Absent when no creatives have been assigned.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "creative_id": {
+                        "type": "string",
+                        "description": "Creative identifier"
+                      },
+                      "approval_status": {
+                        "title": "Creative Approval Status",
+                        "description": "Approval state of a creative on a specific package",
+                        "type": "string",
+                        "enum": [
+                          "pending_review",
+                          "approved",
+                          "rejected"
+                        ],
+                        "enumDescriptions": {
+                          "pending_review": "Creative has been submitted and is awaiting platform review",
+                          "approved": "Creative has been approved and is eligible for delivery",
+                          "rejected": "Creative was rejected by the platform, including change requests; see rejection_reason for required fixes and re-upload via sync_creatives"
+                        }
+                      },
+                      "rejection_reason": {
+                        "type": "string",
+                        "description": "Human-readable explanation of why the creative was rejected. Present only when approval_status is 'rejected'."
+                      }
+                    },
+                    "required": [
+                      "creative_id",
+                      "approval_status"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "format_ids_pending": {
+                  "type": "array",
+                  "description": "Format IDs from the original create_media_buy format_ids_to_provide that have not yet been uploaded via sync_creatives. When empty or absent, all required formats have been provided.",
+                  "items": {
+                    "title": "Format ID",
+                    "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+                    "type": "object",
+                    "properties": {
+                      "agent_url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9_-]+$",
+                        "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "height": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+                      },
+                      "duration_ms": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+                      }
+                    },
+                    "required": [
+                      "agent_url",
+                      "id"
+                    ],
+                    "additionalProperties": true,
+                    "dependencies": {
+                      "width": [
+                        "height"
+                      ],
+                      "height": [
+                        "width"
+                      ]
+                    }
+                  }
+                },
+                "snapshot_unavailable_reason": {
+                  "type": "string",
+                  "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot is unavailable for this package.",
+                  "enum": [
+                    "SNAPSHOT_UNSUPPORTED",
+                    "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
+                    "SNAPSHOT_PERMISSION_DENIED"
+                  ]
+                },
+                "snapshot": {
+                  "type": "object",
+                  "description": "Near-real-time delivery snapshot for this package. Only present when include_snapshot was true in the request. Represents the latest available entity-level stats from the platform — not billing-grade data.",
+                  "properties": {
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp when this snapshot was captured by the platform"
+                    },
+                    "staleness_seconds": {
+                      "type": "integer",
+                      "description": "Maximum age of this data in seconds. For example, 900 means the data may be up to 15 minutes old. Use this to interpret zero delivery: a value of 900 means zero impressions is likely real; a value of 14400 means reporting may still be catching up.",
+                      "minimum": 0
+                    },
+                    "impressions": {
+                      "type": "number",
+                      "description": "Total impressions delivered since package start",
+                      "minimum": 0
+                    },
+                    "spend": {
+                      "type": "number",
+                      "description": "Total spend since package start, denominated in snapshot.currency when present, otherwise package.currency or media_buy.currency",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code for spend in this snapshot. Optional when unchanged from package.currency or media_buy.currency.",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "clicks": {
+                      "type": "number",
+                      "description": "Total clicks since package start (when available)",
+                      "minimum": 0
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "description": "Current delivery pace relative to expected (1.0 = on track, <1.0 = behind, >1.0 = ahead). Absent when pacing cannot be determined.",
+                      "minimum": 0
+                    },
+                    "delivery_status": {
+                      "type": "string",
+                      "description": "Operational delivery state of this package. 'not_delivering' means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle — the signal for automated price adjustments or buyer alerts. Implementers must not return 'not_delivering' until at least staleness_seconds have elapsed since package activation.",
+                      "enum": [
+                        "delivering",
+                        "not_delivering",
+                        "completed",
+                        "budget_exhausted",
+                        "flight_ended",
+                        "goal_met"
+                      ]
+                    },
+                    "ext": {
+                      "title": "Extension Object",
+                      "description": "Optional extension object for seller-specific snapshot fields.",
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "as_of",
+                    "staleness_seconds",
+                    "impressions",
+                    "spend"
+                  ],
+                  "additionalProperties": true
+                },
+                "ext": {
+                  "title": "Extension Object",
+                  "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "package_id"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "media_buy_id",
+          "status",
+          "currency",
+          "total_budget",
+          "packages"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors (e.g., media buy not found)",
+      "items": {
+        "title": "Error",
+        "description": "Standard error structure for task-specific errors and warnings",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Error code for programmatic handling. Standard codes are defined in error-code.json and enable autonomous agent recovery. Sellers MAY use codes not in the standard vocabulary for platform-specific errors; agents MUST handle unknown codes gracefully by falling back to the recovery classification."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "field": {
+            "type": "string",
+            "description": "Field path associated with the error (e.g., 'packages[0].targeting')"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Suggested fix for the error"
+          },
+          "retry_after": {
+            "type": "number",
+            "description": "Seconds to wait before retrying the operation",
+            "minimum": 0
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional task-specific error details",
+            "additionalProperties": true
+          },
+          "recovery": {
+            "type": "string",
+            "enum": [
+              "transient",
+              "correctable",
+              "terminal"
+            ],
+            "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found)."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "pagination": {
+      "title": "Pagination Response",
+      "description": "Pagination metadata for the media_buys array.",
+      "type": "object",
+      "properties": {
+        "has_more": {
+          "type": "boolean",
+          "description": "Whether more results are available beyond this page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor to pass in the next request to fetch the next page. Only present when has_more is true."
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of items matching the query across all pages. Optional because not all backends can efficiently compute this."
+        }
+      },
+      "required": [
+        "has_more"
+      ],
+      "additionalProperties": false
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "media_buys"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.650Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

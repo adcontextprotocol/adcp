@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/content-standards/list-content-standards-response.json",
+  "title": "List Content Standards Response",
+  "description": "Response payload with list of content standards configurations",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response - returns array of content standards",
+      "properties": {
+        "standards": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-rc.1/content-standards/content-standards.json" },
+          "description": "Array of content standards configurations matching the filter criteria"
+        },
+        "pagination": {
+          "$ref": "/schemas/3.0.0-rc.1/core/pagination-response.json"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": ["standards"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-rc.1/core/error.json" }
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

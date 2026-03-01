@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/a2ui/user-action.json",
+  "title": "A2UI User Action",
+  "description": "User interaction event sent from client to agent",
+  "type": "object",
+  "properties": {
+    "surfaceId": {
+      "type": "string",
+      "description": "ID of the surface where the action occurred"
+    },
+    "componentId": {
+      "type": "string",
+      "description": "ID of the component that triggered the action"
+    },
+    "action": {
+      "type": "object",
+      "description": "The action that was triggered",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Action identifier (e.g., 'view_product', 'add_to_cart')"
+        },
+        "context": {
+          "type": "object",
+          "description": "Context data resolved from data model bindings",
+          "additionalProperties": true
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the action occurred"
+    }
+  },
+  "required": ["surfaceId", "componentId", "action"],
+  "additionalProperties": true
+}

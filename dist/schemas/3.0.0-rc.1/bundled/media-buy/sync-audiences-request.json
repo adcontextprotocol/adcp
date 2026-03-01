@@ -1,0 +1,391 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/media-buy/sync-audiences-request.json",
+  "title": "Sync Audiences Request",
+  "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "title": "Account Reference",
+      "description": "Account to manage audiences for.",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Reference",
+              "description": "Brand reference identifying the advertiser",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ]
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "glow"
+                },
+                {
+                  "domain": "acme-corp.com"
+                }
+              ]
+            },
+            "operator": {
+              "type": "string",
+              "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_acme_001"
+        },
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com"
+        },
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
+          "operator": "pinnacle-media.com"
+        }
+      ]
+    },
+    "audiences": {
+      "type": "array",
+      "description": "Audiences to sync (create or update). When omitted, the call is discovery-only and returns all existing audiences on the account without modification.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "audience_id": {
+            "type": "string",
+            "description": "Buyer's identifier for this audience. Used to reference the audience in targeting overlays."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this audience"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this audience's composition or purpose (e.g., 'High-value customers who purchased in the last 90 days')."
+          },
+          "audience_type": {
+            "type": "string",
+            "enum": [
+              "crm",
+              "suppression",
+              "lookalike_seed"
+            ],
+            "description": "Intended use for this audience. 'crm': target these users. 'suppression': exclude these users from delivery. 'lookalike_seed': use as a seed for the seller's lookalike modeling. Sellers may handle audiences differently based on type (e.g., suppression lists bypass minimum size requirements on some platforms)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Buyer-defined tags for organizing and filtering audiences (e.g., 'holiday_2026', 'high_ltv'). Tags are stored by the seller and returned in discovery-only calls.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "add": {
+            "type": "array",
+            "description": "Members to add to this audience. Hashed before sending — normalize emails to lowercase+trim, phones to E.164.",
+            "items": {
+              "title": "Audience Member",
+              "description": "A CRM audience member identified by a buyer-assigned external_id and at least one matchable identifier. All identifiers must be normalized before hashing: emails to lowercase+trim, phone numbers to E.164 format (e.g. +12065551234). Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip for Google Customer Match) are not yet standardized — use the ext field for platform-specific extensions.",
+              "type": "object",
+              "properties": {
+                "external_id": {
+                  "type": "string",
+                  "description": "Buyer-assigned stable identifier for this audience member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. Adapters for CDPs that don't natively assign IDs can derive one (e.g. hash of the member's identifiers)."
+                },
+                "hashed_email": {
+                  "type": "string",
+                  "description": "SHA-256 hash of lowercase, trimmed email address.",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "hashed_phone": {
+                  "type": "string",
+                  "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234).",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "uids": {
+                  "type": "array",
+                  "description": "Universal ID values (MAIDs, RampID, UID2, etc.) for user matching.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "title": "UID Type",
+                        "description": "Universal ID type",
+                        "type": "string",
+                        "enum": [
+                          "rampid",
+                          "id5",
+                          "uid2",
+                          "euid",
+                          "pairid",
+                          "maid",
+                          "other"
+                        ],
+                        "enumDescriptions": {
+                          "rampid": "LiveRamp RampID",
+                          "id5": "ID5 universal ID",
+                          "uid2": "Unified ID 2.0",
+                          "euid": "European Unified ID",
+                          "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
+                          "maid": "Mobile Advertising ID (IDFA/GAID)",
+                          "other": "Other universal ID type (specify in ext)"
+                        }
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "Universal ID value"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "additionalProperties": true
+                  },
+                  "minItems": 1
+                },
+                "ext": {
+                  "title": "Extension Object",
+                  "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "external_id"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "hashed_email"
+                  ]
+                },
+                {
+                  "required": [
+                    "hashed_phone"
+                  ]
+                },
+                {
+                  "required": [
+                    "uids"
+                  ]
+                }
+              ],
+              "additionalProperties": true
+            },
+            "minItems": 1
+          },
+          "remove": {
+            "type": "array",
+            "description": "Members to remove from this audience. If the same identifier appears in both add and remove in a single request, remove takes precedence.",
+            "items": {
+              "title": "Audience Member",
+              "description": "A CRM audience member identified by a buyer-assigned external_id and at least one matchable identifier. All identifiers must be normalized before hashing: emails to lowercase+trim, phone numbers to E.164 format (e.g. +12065551234). Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip for Google Customer Match) are not yet standardized — use the ext field for platform-specific extensions.",
+              "type": "object",
+              "properties": {
+                "external_id": {
+                  "type": "string",
+                  "description": "Buyer-assigned stable identifier for this audience member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. Adapters for CDPs that don't natively assign IDs can derive one (e.g. hash of the member's identifiers)."
+                },
+                "hashed_email": {
+                  "type": "string",
+                  "description": "SHA-256 hash of lowercase, trimmed email address.",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "hashed_phone": {
+                  "type": "string",
+                  "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234).",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "uids": {
+                  "type": "array",
+                  "description": "Universal ID values (MAIDs, RampID, UID2, etc.) for user matching.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "title": "UID Type",
+                        "description": "Universal ID type",
+                        "type": "string",
+                        "enum": [
+                          "rampid",
+                          "id5",
+                          "uid2",
+                          "euid",
+                          "pairid",
+                          "maid",
+                          "other"
+                        ],
+                        "enumDescriptions": {
+                          "rampid": "LiveRamp RampID",
+                          "id5": "ID5 universal ID",
+                          "uid2": "Unified ID 2.0",
+                          "euid": "European Unified ID",
+                          "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
+                          "maid": "Mobile Advertising ID (IDFA/GAID)",
+                          "other": "Other universal ID type (specify in ext)"
+                        }
+                      },
+                      "value": {
+                        "type": "string",
+                        "description": "Universal ID value"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "value"
+                    ],
+                    "additionalProperties": true
+                  },
+                  "minItems": 1
+                },
+                "ext": {
+                  "title": "Extension Object",
+                  "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "external_id"
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "hashed_email"
+                  ]
+                },
+                {
+                  "required": [
+                    "hashed_phone"
+                  ]
+                },
+                {
+                  "required": [
+                    "uids"
+                  ]
+                }
+              ],
+              "additionalProperties": true
+            },
+            "minItems": 1
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
+          },
+          "consent_basis": {
+            "title": "Consent Basis",
+            "description": "GDPR lawful basis for processing this audience list. Informational — not validated by the protocol, but required by some sellers operating in regulated markets (e.g. EU). When omitted, the buyer asserts they have a lawful basis appropriate to their jurisdiction.",
+            "type": "string",
+            "enum": [
+              "consent",
+              "legitimate_interest",
+              "contract",
+              "legal_obligation"
+            ]
+          }
+        },
+        "required": [
+          "audience_id"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, buyer-managed audiences on the account not included in this sync will be removed. Does not affect seller-managed audiences. Do not combine with an omitted audiences array or all buyer-managed audiences will be deleted."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "account"
+  ],
+  "if": {
+    "properties": {
+      "delete_missing": {
+        "const": true
+      }
+    },
+    "required": [
+      "delete_missing"
+    ]
+  },
+  "then": {
+    "required": [
+      "audiences"
+    ]
+  },
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.672Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

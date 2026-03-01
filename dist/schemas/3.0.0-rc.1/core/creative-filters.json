@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/creative-filters.json",
+  "title": "Creative Filters",
+  "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "description": "Filter creatives by owning accounts. Useful for agencies managing multiple client accounts.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/account-ref.json"
+      },
+      "minItems": 1
+    },
+    "formats": {
+      "type": "array",
+      "description": "Filter by creative format types (e.g., video, audio, display)",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "statuses": {
+      "type": "array",
+      "description": "Filter by creative approval statuses",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/enums/creative-status.json"
+      },
+      "minItems": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Filter by creative tags (all tags must match)",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "tags_any": {
+      "type": "array",
+      "description": "Filter by creative tags (any tag must match)",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "name_contains": {
+      "type": "string",
+      "description": "Filter by creative names containing this text (case-insensitive)"
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Filter by specific creative IDs",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "created_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives created after this date (ISO 8601)"
+    },
+    "created_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives created before this date (ISO 8601)"
+    },
+    "updated_after": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives last updated after this date (ISO 8601)"
+    },
+    "updated_before": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Filter creatives last updated before this date (ISO 8601)"
+    },
+    "assigned_to_packages": {
+      "type": "array",
+      "description": "Filter creatives assigned to any of these packages",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Filter creatives assigned to any of these media buys",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "buyer_refs": {
+      "type": "array",
+      "description": "Filter creatives assigned to media buys with any of these buyer references",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "unassigned": {
+      "type": "boolean",
+      "description": "Filter for unassigned creatives when true, assigned creatives when false"
+    },
+    "has_performance_data": {
+      "type": "boolean",
+      "description": "Filter creatives that have performance data when true"
+    }
+  },
+  "additionalProperties": true
+}

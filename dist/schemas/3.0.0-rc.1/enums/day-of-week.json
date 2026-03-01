@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/day-of-week.json",
+  "title": "Day of Week",
+  "description": "Days of the week for daypart targeting",
+  "type": "string",
+  "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+}

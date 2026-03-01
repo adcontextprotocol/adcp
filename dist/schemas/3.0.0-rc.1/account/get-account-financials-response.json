@@ -1,0 +1,264 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/account/get-account-financials-response.json",
+  "title": "Get Account Financials Response",
+  "description": "Financial status for an operator-billed account. Returns spend summary, credit/balance status, payment status, and invoice history. The level of detail varies by seller — only account, currency, and period are guaranteed on success.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "GetAccountFinancialsSuccess",
+      "description": "Financial data retrieved successfully",
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "/schemas/3.0.0-rc.1/core/account-ref.json",
+          "description": "Account reference, echoed from the request"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "ISO 4217 currency code for all monetary amounts in this response"
+        },
+        "period": {
+          "$ref": "/schemas/3.0.0-rc.1/core/date-range.json",
+          "description": "The actual period covered by spend data. May differ from the requested period if the seller adjusts to billing cycle boundaries."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
+        },
+        "spend": {
+          "type": "object",
+          "description": "Spend summary for the period",
+          "properties": {
+            "total_spend": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total spend in the period, in currency"
+            },
+            "media_buy_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of active media buys in the period"
+            }
+          },
+          "required": ["total_spend"]
+        },
+        "credit": {
+          "type": "object",
+          "description": "Credit status. Present for credit-based accounts (payment_terms like net_30).",
+          "properties": {
+            "credit_limit": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Maximum outstanding balance allowed"
+            },
+            "available_credit": {
+              "type": "number",
+              "description": "Remaining credit available (credit_limit minus outstanding balance)"
+            },
+            "utilization_percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Credit utilization as a percentage (0-100)"
+            }
+          },
+          "required": ["credit_limit", "available_credit"]
+        },
+        "balance": {
+          "type": "object",
+          "description": "Prepay balance. Present for prepay accounts.",
+          "properties": {
+            "available": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Remaining prepaid balance"
+            },
+            "last_top_up": {
+              "type": "object",
+              "description": "Most recent balance top-up",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Top-up amount"
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Date of top-up"
+                }
+              },
+              "required": ["amount", "date"]
+            }
+          },
+          "required": ["available"]
+        },
+        "payment_status": {
+          "type": "string",
+          "enum": ["current", "past_due", "suspended"],
+          "description": "Overall payment status. current: all obligations met. past_due: one or more invoices overdue. suspended: account suspended due to payment issues."
+        },
+        "payment_terms": {
+          "type": "string",
+          "description": "Payment terms in effect (e.g., 'net_30', 'prepay')"
+        },
+        "invoices": {
+          "type": "array",
+          "description": "Recent invoices. Sellers may limit the number returned.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "invoice_id": {
+                "type": "string",
+                "description": "Seller-assigned invoice identifier"
+              },
+              "period": {
+                "$ref": "/schemas/3.0.0-rc.1/core/date-range.json",
+                "description": "Billing period covered by this invoice"
+              },
+              "amount": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Invoice total in currency"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["draft", "issued", "paid", "past_due", "void"],
+                "description": "Invoice status"
+              },
+              "due_date": {
+                "type": "string",
+                "format": "date",
+                "description": "Payment due date"
+              },
+              "paid_date": {
+                "type": "string",
+                "format": "date",
+                "description": "Date payment was received. Present when status is 'paid'."
+              }
+            },
+            "required": ["invoice_id", "amount", "status"]
+          }
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": ["account", "currency", "period", "timezone"],
+      "additionalProperties": true,
+      "not": {
+        "required": ["errors"]
+      }
+    },
+    {
+      "title": "GetAccountFinancialsError",
+      "description": "Operation failed — financials not available",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["account"] },
+          { "required": ["currency"] },
+          { "required": ["period"] },
+          { "required": ["timezone"] }
+        ]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "description": "Credit account — current, with invoice history",
+      "data": {
+        "account": { "account_id": "acc_acme_001" },
+        "currency": "USD",
+        "period": {
+          "start": "2026-02-01",
+          "end": "2026-02-28"
+        },
+        "timezone": "America/New_York",
+        "spend": {
+          "total_spend": 45230.00,
+          "media_buy_count": 3
+        },
+        "credit": {
+          "credit_limit": 100000.00,
+          "available_credit": 54770.00,
+          "utilization_percent": 45.23
+        },
+        "payment_status": "current",
+        "payment_terms": "net_30",
+        "invoices": [
+          {
+            "invoice_id": "inv_2026_01",
+            "period": { "start": "2026-01-01", "end": "2026-01-31" },
+            "amount": 38500.00,
+            "status": "paid",
+            "due_date": "2026-02-28",
+            "paid_date": "2026-02-15"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Prepay account with low balance",
+      "data": {
+        "account": {
+          "brand": { "domain": "acme-corp.com" },
+          "operator": "acme-corp.com"
+        },
+        "currency": "USD",
+        "period": {
+          "start": "2026-02-01",
+          "end": "2026-02-28"
+        },
+        "timezone": "America/Los_Angeles",
+        "spend": {
+          "total_spend": 8200.00,
+          "media_buy_count": 2
+        },
+        "balance": {
+          "available": 1800.00,
+          "last_top_up": {
+            "amount": 10000.00,
+            "date": "2026-02-01"
+          }
+        },
+        "payment_status": "current",
+        "payment_terms": "prepay"
+      }
+    },
+    {
+      "description": "Agent-billed account — not supported",
+      "data": {
+        "errors": [
+          {
+            "code": "UNSUPPORTED_FEATURE",
+            "message": "Financial data is not available for agent-billed accounts. The agent's own billing system is the source of truth."
+          }
+        ]
+      }
+    }
+  ]
+}

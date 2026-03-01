@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/postal-system.json",
+  "title": "Postal Code System",
+  "description": "Postal code systems for geographic targeting. System names encode country and precision level.",
+  "type": "string",
+  "enum": [
+    "us_zip",
+    "us_zip_plus_four",
+    "gb_outward",
+    "gb_full",
+    "ca_fsa",
+    "ca_full",
+    "de_plz",
+    "fr_code_postal",
+    "au_postcode",
+    "ch_plz",
+    "at_plz"
+  ]
+}

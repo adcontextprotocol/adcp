@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/signal-filters.json",
+  "title": "Signal Filters",
+  "description": "Filters to refine signal discovery results",
+  "type": "object",
+  "properties": {
+    "catalog_types": {
+      "type": "array",
+      "description": "Filter by catalog type",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/enums/signal-catalog-type.json"
+      },
+      "minItems": 1
+    },
+    "data_providers": {
+      "type": "array",
+      "description": "Filter by specific data providers",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "max_cpm": {
+      "type": "number",
+      "description": "Maximum CPM filter. Applies only to signals with model='cpm'.",
+      "minimum": 0
+    },
+    "max_percent": {
+      "type": "number",
+      "description": "Maximum percent-of-media rate filter. Signals where all percent_of_media pricing options exceed this value are excluded. Does not account for max_cpm caps.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "min_coverage_percentage": {
+      "type": "number",
+      "description": "Minimum coverage requirement",
+      "minimum": 0,
+      "maximum": 100
+    }
+  },
+  "additionalProperties": true
+}

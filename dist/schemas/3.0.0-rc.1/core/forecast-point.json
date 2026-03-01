@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/forecast-point.json",
+  "title": "Forecast Point",
+  "description": "A forecast at a specific budget level. A single point represents a standard forecast; multiple points ordered by ascending budget form a curve showing how delivery metrics scale with spend.",
+  "type": "object",
+  "properties": {
+    "budget": {
+      "type": "number",
+      "description": "Budget amount for this forecast point. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget.",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted metric values at this budget level. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. Include spend when the platform predicts it will differ from budget. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
+      "properties": {
+        "audience_size": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "reach": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "frequency": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "impressions": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "clicks": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "spend": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "views": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "completed_views": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "grps": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "engagements": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "follows": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "saves": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" },
+        "profile_visits": { "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json" }
+      },
+      "additionalProperties": {
+        "$ref": "/schemas/3.0.0-rc.1/core/forecast-range.json"
+      }
+    }
+  },
+  "required": ["budget", "metrics"],
+  "additionalProperties": true
+}

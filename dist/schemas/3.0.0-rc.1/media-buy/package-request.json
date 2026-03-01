@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "type": "object",
+  "properties": {
+    "buyer_ref": {
+      "type": "string",
+      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/catalog.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.0.0-rc.1/core/targeting.json"
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/creative-assignment.json"
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "buyer_ref",
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
+  "additionalProperties": true
+}

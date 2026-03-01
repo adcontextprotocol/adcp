@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/sort-direction.json",
+  "title": "Sort Direction",
+  "description": "Sort direction for list queries",
+  "type": "string",
+  "enum": [
+    "asc",
+    "desc"
+  ]
+}

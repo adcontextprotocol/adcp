@@ -1,0 +1,478 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/property/update-property-list-response.json",
+  "title": "Update Property List Response",
+  "description": "Response payload for update_property_list task",
+  "type": "object",
+  "properties": {
+    "list": {
+      "title": "Property List",
+      "description": "The updated property list",
+      "type": "object",
+      "properties": {
+        "list_id": {
+          "type": "string",
+          "description": "Unique identifier for this property list"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for the list"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the list's purpose"
+        },
+        "principal": {
+          "type": "string",
+          "description": "Principal identity that owns this list"
+        },
+        "base_properties": {
+          "type": "array",
+          "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
+          "items": {
+            "title": "Base Property Source",
+            "description": "A source of properties for a property list. Supports three selection patterns: publisher with tags, publisher with property IDs, or direct identifiers.",
+            "discriminator": {
+              "propertyName": "selection_type"
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "title": "Publisher Tags Source",
+                "description": "Select properties from a publisher by tag membership",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "publisher_tags",
+                    "description": "Discriminator indicating selection by property tags within a publisher"
+                  },
+                  "publisher_domain": {
+                    "type": "string",
+                    "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "description": "Property tags from the publisher's adagents.json. Selects all properties with these tags.",
+                    "items": {
+                      "title": "Property Tag",
+                      "description": "Tag for categorizing publisher properties. Must be lowercase alphanumeric with underscores only.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "examples": [
+                        "ctv",
+                        "premium",
+                        "news",
+                        "sports",
+                        "meta_network",
+                        "social_media"
+                      ]
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "publisher_domain",
+                  "tags"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "title": "Publisher Property IDs Source",
+                "description": "Select specific properties from a publisher by ID",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "publisher_ids",
+                    "description": "Discriminator indicating selection by specific property IDs within a publisher"
+                  },
+                  "publisher_domain": {
+                    "type": "string",
+                    "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                  },
+                  "property_ids": {
+                    "type": "array",
+                    "description": "Specific property IDs from the publisher's adagents.json",
+                    "items": {
+                      "title": "Property ID",
+                      "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+                      "type": "string",
+                      "pattern": "^[a-z0-9_]+$",
+                      "examples": [
+                        "cnn_ctv_app",
+                        "homepage",
+                        "mobile_ios",
+                        "instagram"
+                      ]
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "publisher_domain",
+                  "property_ids"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "title": "Direct Identifiers Source",
+                "description": "Select properties by direct identifiers (domains, app IDs, etc.) without publisher context",
+                "properties": {
+                  "selection_type": {
+                    "type": "string",
+                    "const": "identifiers",
+                    "description": "Discriminator indicating selection by direct identifiers"
+                  },
+                  "identifiers": {
+                    "type": "array",
+                    "description": "Direct property identifiers (domains, app IDs, etc.)",
+                    "items": {
+                      "title": "Identifier",
+                      "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "title": "Property Identifier Types",
+                          "description": "Type of identifier",
+                          "type": "string",
+                          "enum": [
+                            "domain",
+                            "subdomain",
+                            "network_id",
+                            "ios_bundle",
+                            "android_package",
+                            "apple_app_store_id",
+                            "google_play_id",
+                            "roku_store_id",
+                            "fire_tv_asin",
+                            "samsung_app_id",
+                            "apple_tv_bundle",
+                            "bundle_id",
+                            "venue_id",
+                            "screen_id",
+                            "openooh_venue_type",
+                            "rss_url",
+                            "apple_podcast_id",
+                            "spotify_show_id",
+                            "podcast_guid"
+                          ],
+                          "examples": [
+                            "domain",
+                            "ios_bundle",
+                            "venue_id",
+                            "apple_podcast_id"
+                          ]
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection_type",
+                  "identifiers"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "filters": {
+          "title": "Property List Filters",
+          "description": "Dynamic filters applied when resolving the list",
+          "type": "object",
+          "properties": {
+            "countries_all": {
+              "type": "array",
+              "description": "Property must have feature data for ALL listed countries (ISO codes). When omitted, no country restriction is applied.",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              },
+              "minItems": 1
+            },
+            "channels_any": {
+              "type": "array",
+              "description": "Property must support ANY of the listed channels. When omitted, no channel restriction is applied.",
+              "items": {
+                "title": "Media Channel",
+                "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+                "type": "string",
+                "enum": [
+                  "display",
+                  "olv",
+                  "social",
+                  "search",
+                  "ctv",
+                  "linear_tv",
+                  "radio",
+                  "streaming_audio",
+                  "podcast",
+                  "dooh",
+                  "ooh",
+                  "print",
+                  "cinema",
+                  "email",
+                  "gaming",
+                  "retail_media",
+                  "influencer",
+                  "affiliate",
+                  "product_placement"
+                ],
+                "enumDescriptions": {
+                  "display": "Digital display advertising (banners, native, rich media) across web and app",
+                  "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+                  "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+                  "search": "Search engine advertising and search networks",
+                  "ctv": "Connected TV and streaming on television screens",
+                  "linear_tv": "Traditional broadcast and cable television",
+                  "radio": "Traditional AM/FM radio broadcast",
+                  "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+                  "podcast": "Podcast advertising (host-read or dynamically inserted)",
+                  "dooh": "Digital out-of-home screens in public spaces",
+                  "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+                  "print": "Newspapers, magazines, and other print publications",
+                  "cinema": "Movie theater advertising",
+                  "email": "Email advertising and sponsored newsletter content",
+                  "gaming": "In-game advertising across platforms",
+                  "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+                  "influencer": "Creator and influencer marketing partnerships",
+                  "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+                  "product_placement": "Product placement, branded content, and sponsorship integrations"
+                }
+              },
+              "minItems": 1
+            },
+            "property_types": {
+              "type": "array",
+              "description": "Filter to these property types",
+              "items": {
+                "title": "Property Type",
+                "description": "Types of addressable advertising properties with verifiable ownership. Property types are a subset of media channels - they represent inventory surfaces that can be validated via adagents.json.",
+                "type": "string",
+                "enum": [
+                  "website",
+                  "mobile_app",
+                  "ctv_app",
+                  "desktop_app",
+                  "dooh",
+                  "podcast",
+                  "radio",
+                  "streaming_audio"
+                ],
+                "enumDescriptions": {
+                  "website": "Web properties accessible via browser, identified by domain",
+                  "mobile_app": "Native mobile applications, identified by app store IDs or bundle identifiers",
+                  "ctv_app": "Connected TV applications, identified by platform-specific store IDs",
+                  "desktop_app": "Desktop applications (Electron, native, Chromium wrappers), identified by application bundle IDs",
+                  "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
+                  "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
+                  "radio": "Radio station properties, identified by call signs or station IDs",
+                  "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs"
+                }
+              },
+              "minItems": 1
+            },
+            "feature_requirements": {
+              "type": "array",
+              "description": "Feature-based requirements. Property must pass ALL requirements (AND logic).",
+              "items": {
+                "title": "Feature Requirement",
+                "description": "A feature-based requirement for property filtering. Use min_value/max_value for quantitative features, allowed_values for binary/categorical features.",
+                "type": "object",
+                "properties": {
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Feature to evaluate (discovered via get_adcp_capabilities)"
+                  },
+                  "min_value": {
+                    "type": "number",
+                    "description": "Minimum numeric value required (for quantitative features)"
+                  },
+                  "max_value": {
+                    "type": "number",
+                    "description": "Maximum numeric value allowed (for quantitative features)"
+                  },
+                  "allowed_values": {
+                    "type": "array",
+                    "description": "Values that pass the requirement (for binary/categorical features)",
+                    "items": {},
+                    "minItems": 1
+                  },
+                  "if_not_covered": {
+                    "type": "string",
+                    "enum": [
+                      "exclude",
+                      "include"
+                    ],
+                    "default": "exclude",
+                    "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
+                  }
+                },
+                "required": [
+                  "feature_id"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            },
+            "exclude_identifiers": {
+              "type": "array",
+              "description": "Identifiers to always exclude from results",
+              "items": {
+                "title": "Identifier",
+                "description": "A property identifier with type and value. Used to identify properties across platforms (domains, app store IDs, etc.).",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "title": "Property Identifier Types",
+                    "description": "Type of identifier",
+                    "type": "string",
+                    "enum": [
+                      "domain",
+                      "subdomain",
+                      "network_id",
+                      "ios_bundle",
+                      "android_package",
+                      "apple_app_store_id",
+                      "google_play_id",
+                      "roku_store_id",
+                      "fire_tv_asin",
+                      "samsung_app_id",
+                      "apple_tv_bundle",
+                      "bundle_id",
+                      "venue_id",
+                      "screen_id",
+                      "openooh_venue_type",
+                      "rss_url",
+                      "apple_podcast_id",
+                      "spotify_show_id",
+                      "podcast_guid"
+                    ],
+                    "examples": [
+                      "domain",
+                      "ios_bundle",
+                      "venue_id",
+                      "apple_podcast_id"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The identifier value. For domain type: 'example.com' matches base domain plus www and m subdomains; 'edition.example.com' matches that specific subdomain; '*.example.com' matches ALL subdomains but NOT base domain"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "brand": {
+          "title": "Brand Reference",
+          "description": "Brand reference used to automatically apply appropriate rules. Resolved to full brand identity at execution time.",
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "brand_id": {
+              "title": "Brand ID",
+              "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$",
+              "examples": [
+                "tide",
+                "cheerios",
+                "air_jordan",
+                "nike",
+                "pampers"
+              ]
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "additionalProperties": false,
+          "examples": [
+            {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            {
+              "domain": "nova-brands.com",
+              "brand_id": "glow"
+            },
+            {
+              "domain": "acme-corp.com"
+            }
+          ]
+        },
+        "webhook_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to receive notifications when the resolved list changes"
+        },
+        "cache_duration_hours": {
+          "type": "integer",
+          "description": "Recommended cache duration for resolved list. Consumers should re-fetch after this period.",
+          "minimum": 1,
+          "default": 24
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the list was created"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the list was last modified"
+        },
+        "property_count": {
+          "type": "integer",
+          "description": "Number of properties in the resolved list (at time of last resolution)"
+        }
+      },
+      "required": [
+        "list_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.693Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/assets/daast-asset.json",
+  "title": "DAAST Asset",
+  "description": "DAAST (Digital Audio Ad Serving Template) tag for third-party audio ad serving",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "url",
+          "description": "Discriminator indicating DAAST is delivered via URL endpoint"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL endpoint that returns DAAST XML"
+        },
+        "daast_version": {
+          "$ref": "/schemas/3.0.0-rc.1/enums/daast-version.json",
+          "description": "DAAST specification version"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Expected audio duration in milliseconds (if known)",
+          "minimum": 0
+        },
+        "tracking_events": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/daast-tracking-event.json"
+          },
+          "description": "Tracking events supported by this DAAST tag"
+        },
+        "companion_ads": {
+          "type": "boolean",
+          "description": "Whether companion display ads are included"
+        },
+        "transcript_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to text transcript of the audio content",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/3.0.0-rc.1/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "delivery_type",
+        "url"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "inline",
+          "description": "Discriminator indicating DAAST is delivered as inline XML content"
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline DAAST XML content"
+        },
+        "daast_version": {
+          "$ref": "/schemas/3.0.0-rc.1/enums/daast-version.json",
+          "description": "DAAST specification version"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "description": "Expected audio duration in milliseconds (if known)",
+          "minimum": 0
+        },
+        "tracking_events": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/daast-tracking-event.json"
+          },
+          "description": "Tracking events supported by this DAAST tag"
+        },
+        "companion_ads": {
+          "type": "boolean",
+          "description": "Whether companion display ads are included"
+        },
+        "transcript_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to text transcript of the audio content",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "/schemas/3.0.0-rc.1/core/provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "delivery_type",
+        "content"
+      ],
+      "additionalProperties": true
+    }
+  ]
+}
