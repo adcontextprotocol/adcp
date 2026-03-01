@@ -368,7 +368,7 @@ IMPORTANT: Select tool SETS based on the user's INTENT:
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Billing, invoices, payment links, resending invoices → ["billing"]
-- Scheduling meetings, calendar → ["meetings"]
+- Scheduling meetings, events, calendar, RSVPs, covering topics, joining a call, meeting agendas → ["meetings"]
 - Escalations, pending requests, user role changes, merging orgs → ["admin"]
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []
