@@ -1295,7 +1295,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const adagentsJson: Record<string, unknown> = {
-        $schema: "https://adcontextprotocol.org/schemas/v1/adagents.json",
+        $schema: "https://adcontextprotocol.org/schemas/latest/adagents.json",
         authorized_agents,
         properties: properties || [],
       };

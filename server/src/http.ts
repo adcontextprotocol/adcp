@@ -602,13 +602,6 @@ export class HTTPServer {
         // Build aliases list
         const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
 
-        // v1 -> latest (backward compatibility)
-        aliases.push({
-          alias: "v1",
-          resolves_to: "latest",
-          path: "/schemas/v1/"
-        });
-
         // Major version aliases (e.g., v2 -> 2.6.0)
         if (latestMajorVersion) {
           const { major } = parseSemver(latestMajorVersion);
@@ -655,13 +648,13 @@ export class HTTPServer {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
-          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+          "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "house": "agenticadvertising.org",
           "note": "AdCP is a sub-brand of AgenticAdvertising.org"
         });
       }
       return res.json({
-        "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+        "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
         "authoritative_location": "https://agenticadvertising.org/brands/agenticadvertising.org/brand.json"
       });
     });

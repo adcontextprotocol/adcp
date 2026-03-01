@@ -71,8 +71,8 @@ function createAjvInstance() {
  */
 function uriToLocalPath(uri) {
   // Handle various URI formats:
-  // - https://adcontextprotocol.org/schemas/v2/adagents.json -> static/schemas/source/adagents.json
-  // - /schemas/v2/core/property.json -> static/schemas/source/core/property.json
+  // - https://adcontextprotocol.org/schemas/latest/adagents.json -> static/schemas/source/adagents.json
+  // - /schemas/latest/core/property.json -> static/schemas/source/core/property.json
   // - /schemas/core/property.json -> static/schemas/source/core/property.json
 
   let schemaPath = uri;
@@ -80,7 +80,8 @@ function uriToLocalPath(uri) {
   // Remove URL prefix if present
   schemaPath = schemaPath.replace(/^https?:\/\/[^/]+/, '');
 
-  // Remove /schemas/v{n}/ or /schemas/ prefix
+  // Remove /schemas/latest/, /schemas/v{n}/, or /schemas/ prefix
+  schemaPath = schemaPath.replace(/^\/schemas\/latest\//, '/');
   schemaPath = schemaPath.replace(/^\/schemas\/v\d+(\.\d+)*\//, '/');
   schemaPath = schemaPath.replace(/^\/schemas\//, '/');
 
@@ -236,8 +237,9 @@ async function validateJsonBlock(ajv, block) {
   try {
     validate = ajv.getSchema(schemaUri);
     if (!validate) {
-      // Try without the version prefix
-      const simplifiedUri = schemaUri.replace(/\/v\d+(\.\d+)*\//, '/');
+      // Try without the version prefix (latest/ or v{n}/)
+      let simplifiedUri = schemaUri.replace(/\/latest\//, '/');
+      simplifiedUri = simplifiedUri.replace(/\/v\d+(\.\d+)*\//, '/');
       validate = ajv.getSchema(simplifiedUri);
     }
   } catch (e) {

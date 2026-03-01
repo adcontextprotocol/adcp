@@ -1,0 +1,173 @@
+---
+title: "Migrating signals"
+description: Step-by-step guide to migrating signals delivery targets, pricing models, and usage reporting
+testable: true
+---
+
+# Migrating signals
+
+AdCP v3 rc.1 makes three changes to the Signals Protocol: delivery target flattening, structured pricing options, and usage reporting simplification.
+
+## Deliver-to flattening
+
+The nested `deliver_to` object in `get_signals` requests is replaced by two top-level fields.
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `deliver_to.destinations` | `destinations` | Moved to top level |
+| `deliver_to.countries` | `countries` | Moved to top level |
+
+**beta.3:**
+```json test=false
+{
+  "signal_spec": "in-market auto intenders",
+  "deliver_to": {
+    "destinations": [
+      { "agent_url": "https://dsp.example.com", "seat_id": "seat_123" }
+    ],
+    "countries": ["US", "CA"]
+  }
+}
+```
+
+**rc.1:**
+```json test=false
+{
+  "signal_spec": "in-market auto intenders",
+  "destinations": [
+    { "agent_url": "https://dsp.example.com", "seat_id": "seat_123" }
+  ],
+  "countries": ["US", "CA"]
+}
+```
+
+---
+
+## Pricing options
+
+The legacy `pricing` object (with a single `cpm` field) is replaced by a `pricing_options` array. Each option is a discriminated union on `model`.
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `pricing: { cpm: 2.50 }` | `pricing_options[]` | Array of pricing model objects |
+| Implicit pricing selection | `pricing_option_id` on `activate_signal` | Explicit buyer commitment |
+| No idempotency | `idempotency_key` on `report_usage` | Prevents duplicate billing |
+
+### Three pricing models
+
+**CPM** — Fixed cost per thousand impressions:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "pricing_option_id": "po_auto_cpm",
+  "model": "cpm",
+  "cpm": 2.50,
+  "currency": "USD"
+}
+```
+
+**Percent of media** — Percentage of media spend, with optional CPM cap:
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "pricing_option_id": "po_auto_pom",
+  "model": "percent_of_media",
+  "percent": 15,
+  "max_cpm": 5.00,
+  "currency": "USD"
+}
+```
+
+**Flat fee** — Fixed charge per reporting period (monthly licensed segments):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/signal-pricing-option.json",
+  "pricing_option_id": "po_auto_flat",
+  "model": "flat_fee",
+  "amount": 10000.00,
+  "period": "monthly",
+  "currency": "USD"
+}
+```
+
+### Activation with pricing
+
+When activating a signal, pass the selected `pricing_option_id`:
+
+```json test=false
+{
+  "signal_agent_segment_id": "luxury_auto_intenders",
+  "destinations": [
+    { "type": "agent", "agent_url": "https://dsp.example.com", "account": { "account_id": "acct_pinnacle" } }
+  ],
+  "pricing_option_id": "po_auto_cpm"
+}
+```
+
+---
+
+## Usage reporting
+
+`report_usage` adds `idempotency_key` and removes the `kind` and `operator_id` fields.
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `kind` field | Removed | Usage records are self-describing via `signal_agent_segment_id` or `standards_id` |
+| `operator_id` field | Removed | Account reference provides operator identity |
+| No idempotency | `idempotency_key` | Client-generated UUID prevents duplicate billing on retries |
+
+**rc.1 usage report:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/report-usage-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "reporting_period": {
+    "start": "2025-03-01T00:00:00Z",
+    "end": "2025-03-31T23:59:59Z"
+  },
+  "usage": [
+    {
+      "account": { "account_id": "acct_pinnacle_signals" },
+      "buyer_campaign_ref": "mb_spring_launch_001",
+      "signal_agent_segment_id": "luxury_auto_intenders",
+      "pricing_option_id": "po_auto_cpm",
+      "impressions": 4200000,
+      "media_spend": 21000.00,
+      "vendor_cost": 2100.00,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+The `pricing_option_id` in the usage record must match the one passed at activation, allowing the vendor to verify the correct rate was applied.
+
+## Migration steps
+
+<Steps>
+  <Step title="Flatten deliver_to">
+    Move `deliver_to.destinations` and `deliver_to.countries` to top-level fields in `get_signals` requests.
+  </Step>
+  <Step title="Parse pricing_options array">
+    Update signal response parsing to read `pricing_options` (array) instead of `pricing` (object). Switch on `model` field to determine the pricing type.
+  </Step>
+  <Step title="Select pricing at activation">
+    When calling `activate_signal`, pass the selected `pricing_option_id` from the signal's `pricing_options` array.
+  </Step>
+  <Step title="Add idempotency_key to report_usage">
+    Generate a unique key (UUID) for each `report_usage` call. Retries with the same key are idempotent.
+  </Step>
+  <Step title="Remove kind and operator_id">
+    Remove `kind` and `operator_id` from usage records. Usage type is determined by the presence of `signal_agent_segment_id` (signals) or `standards_id` (governance).
+  </Step>
+  <Step title="Track pricing_option_id through lifecycle">
+    Store the `pricing_option_id` at activation time and pass it in `report_usage` records so the vendor can verify billing.
+  </Step>
+  <Step title="Validate against schemas">
+    Run requests against `get-signals-request.json`, `activate-signal-request.json`, and `report-usage-request.json` schemas.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Pricing](/docs/reference/migration/pricing) | [Optimization goals](/docs/reference/migration/optimization-goals) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)

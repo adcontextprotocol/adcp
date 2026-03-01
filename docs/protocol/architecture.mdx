@@ -1,0 +1,147 @@
+---
+title: Protocol architecture
+sidebarTitle: Architecture
+description: How AdCP's layers fit together — business principals, orchestration, technical execution, and governance.
+keywords: [AdCP architecture, advertising protocol layers, media orchestration, governance agents, AXE execution engine]
+---
+
+# Protocol architecture
+
+AdCP operates at multiple layers, providing a clean separation between business roles, orchestration, and technical execution.
+
+## Protocol domain map
+
+```mermaid
+flowchart TB
+    subgraph Identity["Identity layer"]
+        BP["**Brand Protocol**<br/>brand.json — buy-side identity"]
+        REG["**Registry**<br/>Entity resolution, agent discovery"]
+        ACCT["**Accounts**<br/>Billing relationships, usage reporting"]
+    end
+
+    subgraph Core["Transaction domains"]
+        MB["**Media Buy**<br/>Inventory discovery, campaign management,<br/>delivery reporting"]
+        CR["**Creative**<br/>Format discovery, AI creative generation,<br/>catalogs"]
+        SIG["**Signals**<br/>Audience and targeting data<br/>discovery and activation"]
+        SI["**Sponsored Intelligence**<br/>Conversational brand experiences<br/>in AI assistants"]
+    end
+
+    subgraph Cross["Cross-cutting"]
+        GOV["**Governance**<br/>Brand suitability, property lists,<br/>content standards, creative governance"]
+    end
+
+    BP --> ACCT
+    REG --> ACCT
+    ACCT --> MB
+    ACCT --> CR
+    ACCT --> SIG
+    ACCT --> SI
+    GOV -.-> MB
+    GOV -.-> CR
+    GOV -.-> SIG
+    GOV -.-> SI
+    CR --> MB
+    SIG --> MB
+    BP --> CR
+```
+
+### Identity layer
+
+Three protocol domains establish who the parties are before any transaction occurs.
+
+**Brand Protocol** defines buy-side identity through `brand.json` files hosted at `/.well-known/brand.json`. Brands declare their corporate hierarchy, sub-brands, properties, and authorized operators. Any domain can be resolved to a canonical brand identity. See [Brand Protocol](/docs/brand-protocol).
+
+**Registry** provides a public REST API for entity resolution and agent discovery. Resolve a brand domain, find which agents are authorized to sell a publisher's inventory, or discover agents by capability. See [Registry API](/docs/registry).
+
+**Accounts** establishes the commercial relationship between buyers and sellers. Every AdCP transaction happens within an account that defines billing terms, operator authorization, and usage reporting. Accounts are grounded in brand identity from the Brand Protocol. See [Accounts Protocol](/docs/accounts/overview).
+
+### Transaction domains
+
+Four protocol domains handle core advertising operations.
+
+**Media Buy** covers inventory discovery (`get_products`), campaign creation (`create_media_buy`), and delivery reporting (`get_media_buy_delivery`). Publishers return structured media products with pricing, targeting options, and delivery forecasts. Buyers can request proposals — structured media plans that encode publisher expertise. See [Media Buy](/docs/media-buy).
+
+**Creative** handles format discovery (`list_creative_formats`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
+
+**Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal catalogs that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
+
+**Sponsored Intelligence** defines conversational brand experiences in AI assistants. When a user expresses interest in a brand, the host initiates a consent-first session where the brand's agent engages conversationally with text, voice, UI components, or commerce handoffs. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
+
+### Governance (cross-cutting)
+
+**Governance** operates across all transaction domains. Governance agents manage property lists (curated sets of properties for targeting or exclusion), content standards (brand suitability policies), and creative governance (security scanning, content categorization). Governance data flows into media buy decisions, creative validation, and signal activation. See [Governance Protocol](/docs/governance/overview).
+
+Human-in-the-loop approval checkpoints are supported at any stage — campaign approval, creative review, budget thresholds, and policy exceptions. This is not a real-time protocol: operations may take minutes to days when human approval is required.
+
+---
+
+## Ecosystem layers
+
+The protocol domain map above shows how AdCP tasks relate to each other. The diagram below shows how these map to real-world roles and systems.
+
+```mermaid
+flowchart TB
+    subgraph Business["Business principals"]
+        BP["**Buying principal**<br/>Advertiser, agency, retail media network, curator"]
+        MS["**Media seller**<br/>Publisher, sales house, rep firm, SSP, or ad network"]
+        BP <-->|"imps & money"| MS
+    end
+
+    subgraph Orchestration["Orchestration layer"]
+        MOP["**Media orchestration platform**<br/>Evaluates sellers and audiences; executes strategies"]
+        SA["**Signals agent**<br/>Signals discovery and activation"]
+        SalesA["**Sales agent**<br/>Media product discovery and execution"]
+        CA["**Creative agent**<br/>Format discovery and ad generation"]
+        MOP -->|"MCP"| SA
+        MOP -->|"MCP"| SalesA
+        MOP -->|"MCP"| CA
+    end
+
+    subgraph Technical["Technical execution"]
+        AXE["**Agentic eXecution Engine (AXE)**<br/>Real-time decisioning for brand suitability, frequency caps, 1p data"]
+        DP["**Decisioning platform**<br/>Selects impression to serve (direct or programmatic)"]
+        AXE <-->|"KV or RTB"| DP
+    end
+
+    subgraph Governance["Governance (cross-cutting)"]
+        GOV["**Governance agents**<br/>Brand suitability, quality, property lists, compliance"]
+        HITL["**Human oversight**<br/>Manual approval checkpoints"]
+    end
+
+    Business --> Orchestration
+    Orchestration --> Technical
+    GOV -.-> Business
+    GOV -.-> Orchestration
+    GOV -.-> Technical
+    HITL -.-> Orchestration
+```
+
+### Business principals
+
+**Buying principal** — the demand side: advertisers, agencies, retail media networks, and curators packaging inventory and data for specific use cases.
+
+**Media seller** — the supply side: publishers, sales houses, rep firms, SSPs, and ad networks.
+
+These parties exchange impressions and money through the orchestration layer.
+
+### Orchestration layer
+
+**Media orchestration platform** — evaluates sellers and audiences, executes buying strategies. Communicates with specialized agents via MCP.
+
+**Signals agent** — MCP servers exposing audience and targeting data discovery and activation.
+
+**Sales agent** — MCP servers exposing media product discovery and campaign execution.
+
+**Creative agent** — MCP servers exposing format discovery and AI-powered creative generation.
+
+### Technical execution
+
+**Agentic eXecution Engine (AXE)** — real-time execution layer for brand suitability, frequency capping, first-party data activation, and dynamic audience targeting. Connects via key-value pairs or RTB protocols. See [AXE documentation](/docs/media-buy/advanced-topics/agentic-execution-engine).
+
+**Decisioning platform** — the infrastructure that selects which ad to serve, via direct campaigns or programmatic (RTB). Examples include DSPs, SSPs, and ad servers.
+
+### Governance and human oversight
+
+**Governance agents** provide compliance and quality control across all layers: property lists, brand suitability scoring, quality measurement (MFA score, ad density), and privacy compliance (COPPA, TCF, GDPR). They operate at setup time, real-time, and post-bid.
+
+**Human-in-the-loop** — optional manual approval at key decision points: campaign approval, creative review, budget thresholds, and policy exceptions.

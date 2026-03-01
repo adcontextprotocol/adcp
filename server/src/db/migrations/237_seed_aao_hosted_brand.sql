@@ -5,7 +5,7 @@ INSERT INTO hosted_brands (brand_domain, brand_json, domain_verified, is_public)
 VALUES (
   'agenticadvertising.org',
   '{
-    "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+    "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
     "version": "1.0",
     "house": {
       "domain": "agenticadvertising.org",

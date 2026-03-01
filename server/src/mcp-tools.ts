@@ -1713,7 +1713,7 @@ export class MCPToolHandler {
         }
 
         const adagentsJson: Record<string, unknown> = {
-          $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+          $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
           authorized_agents: authorizedAgents,
           properties: propertyItems,
         };
