@@ -7,7 +7,7 @@
   "properties": {
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account to retrieve media buys for."
+      "description": "Account to retrieve media buys for. When omitted, returns data across all accessible accounts."
     },
     "media_buy_ids": {
       "type": "array",
@@ -56,6 +56,5 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account"],
   "additionalProperties": true
 }
