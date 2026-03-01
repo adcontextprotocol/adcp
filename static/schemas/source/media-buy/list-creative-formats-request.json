@@ -53,6 +53,15 @@
       "$ref": "/schemas/enums/wcag-level.json",
       "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
     },
+    "disclosure_positions": {
+      "type": "array",
+      "description": "Filter to formats whose supported_disclosure_positions include all of these positions. Use to find formats compatible with a brief's compliance requirements.",
+      "items": {
+        "$ref": "/schemas/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "output_format_ids": {
       "type": "array",
       "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",

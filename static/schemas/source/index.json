@@ -1,15 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/index.json",
-  "title": "AdCP Schema Registry v1",
+  "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.0.0-beta.3",
+  "adcp_version": "3.0.0-rc.1",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2025-02-01",
-  "baseUrl": "/schemas/v1",
+  "lastUpdated": "2026-02-27",
+  "baseUrl": "/schemas/latest",
   "schemas": {
     "core": {
       "description": "Core data models used throughout AdCP",
@@ -38,9 +38,17 @@
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
         },
+        "duration": {
+          "$ref": "/schemas/core/duration.json",
+          "description": "A time duration with value and unit (hours or days)"
+        },
         "frequency-cap": {
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"
+        },
+        "geo-breakdown-support": {
+          "$ref": "/schemas/core/geo-breakdown-support.json",
+          "description": "Geographic breakdown capability declaration for reporting"
         },
         "format": {
           "$ref": "/schemas/core/format.json",
@@ -50,9 +58,9 @@
           "$ref": "/schemas/core/overlay.json",
           "description": "A publisher-controlled element that renders on top of buyer creative content within an ad placement"
         },
-        "measurement": {
-          "$ref": "/schemas/core/measurement.json",
-          "description": "Measurement capabilities included with a product"
+        "outcome-measurement": {
+          "$ref": "/schemas/core/outcome-measurement.json",
+          "description": "Business outcome measurement capabilities included with a product"
         },
         "delivery-metrics": {
           "$ref": "/schemas/core/delivery-metrics.json",
@@ -77,6 +85,14 @@
         "pagination-response": {
           "$ref": "/schemas/core/pagination-response.json",
           "description": "Standard cursor-based pagination metadata for list response schemas"
+        },
+        "date-range": {
+          "$ref": "/schemas/core/date-range.json",
+          "description": "Date range with inclusive start and end calendar dates"
+        },
+        "datetime-range": {
+          "$ref": "/schemas/core/datetime-range.json",
+          "description": "Datetime range with inclusive start and end timestamps"
         },
         "sub-asset": {
           "$ref": "/schemas/core/sub-asset.json",
@@ -105,10 +121,6 @@
         "creative-brief": {
           "$ref": "/schemas/core/creative-brief.json",
           "description": "Campaign-level creative context for AI-powered creative generation"
-        },
-        "creative-brief-ref": {
-          "$ref": "/schemas/core/creative-brief-ref.json",
-          "description": "Creative brief reference (inline object or URL)"
         },
         "reference-asset": {
           "$ref": "/schemas/core/reference-asset.json",
@@ -230,6 +242,14 @@
           "$ref": "/schemas/core/signal-filters.json",
           "description": "Filters to refine signal discovery results"
         },
+        "signal-pricing": {
+          "$ref": "/schemas/core/signal-pricing.json",
+          "description": "Signal pricing model — discriminated union of cpm (fixed CPM), percent_of_media (percentage of spend, with optional CPM cap), or flat_fee (fixed charge per reporting period)"
+        },
+        "signal-pricing-option": {
+          "$ref": "/schemas/core/signal-pricing-option.json",
+          "description": "A pricing option offered by a signals agent, combining a pricing_option_id with a signal pricing model. Returned in get_signals, referenced in report_usage."
+        },
         "property-id": {
           "$ref": "/schemas/core/property-id.json",
           "description": "Identifier for a publisher property - lowercase alphanumeric with underscores only"
@@ -301,6 +321,14 @@
         "audience-member": {
           "$ref": "/schemas/core/audience-member.json",
           "description": "Hashed identifiers for a CRM audience member (hashed email, phone, or universal IDs)"
+        },
+        "account-ref": {
+          "$ref": "/schemas/core/account-ref.json",
+          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator)"
+        },
+        "provenance": {
+          "$ref": "/schemas/core/provenance.json",
+          "description": "AI provenance and disclosure metadata — declares how content was produced, C2PA references, regulatory disclosure requirements, and third-party verification results"
         }
       },
       "requirements": {
@@ -423,6 +451,10 @@
         "asset-content-type": {
           "$ref": "/schemas/enums/asset-content-type.json",
           "description": "Types of content that can be used as creative assets (image, video, html, etc.)"
+        },
+        "disclosure-position": {
+          "$ref": "/schemas/enums/disclosure-position.json",
+          "description": "Where a required disclosure should appear within a creative"
         },
         "format-category": {
           "$ref": "/schemas/enums/format-category.json",
@@ -556,6 +588,10 @@
           "$ref": "/schemas/enums/sort-direction.json",
           "description": "Sort direction for list queries (asc, desc)"
         },
+        "sort-metric": {
+          "$ref": "/schemas/enums/sort-metric.json",
+          "description": "Numeric delivery metrics available for sorting breakdown rows"
+        },
         "history-entry-type": {
           "$ref": "/schemas/enums/history-entry-type.json",
           "description": "Type of task history entry (request, response)"
@@ -600,6 +636,10 @@
           "$ref": "/schemas/enums/device-platform.json",
           "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV"
         },
+        "device-type": {
+          "$ref": "/schemas/enums/device-type.json",
+          "description": "Device form factor categories for targeting and reporting (desktop, mobile, tablet, ctv, dooh, unknown)"
+        },
         "signal-value-type": {
           "$ref": "/schemas/enums/signal-value-type.json",
           "description": "Signal value types for targeting (binary, categorical, numeric)"
@@ -628,6 +668,10 @@
           "$ref": "/schemas/enums/attribution-model.json",
           "description": "Attribution model used for conversion measurement"
         },
+        "audience-source": {
+          "$ref": "/schemas/enums/audience-source.json",
+          "description": "Origin of an audience segment in delivery reporting (synced, platform, third_party, lookalike, retargeting, unknown)"
+        },
         "wcag-level": {
           "$ref": "/schemas/enums/wcag-level.json",
           "description": "Web Content Accessibility Guidelines conformance level (A, AA, AAA)"
@@ -651,6 +695,18 @@
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",
           "description": "Units of distance measurement for radius-based catchment areas (km, mi, m)"
+        },
+        "error-code": {
+          "$ref": "/schemas/enums/error-code.json",
+          "description": "Standard error code vocabulary for agent recovery classification"
+        },
+        "consent-basis": {
+          "$ref": "/schemas/enums/consent-basis.json",
+          "description": "GDPR Article 6(1) lawful basis for processing personal data"
+        },
+        "digital-source-type": {
+          "$ref": "/schemas/enums/digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in content creation (digital_capture, trained_algorithmic_media, composite_with_trained_algorithmic_media, etc.)"
         }
       }
     },
@@ -711,11 +767,31 @@
         "sync-accounts": {
           "request": {
             "$ref": "/schemas/account/sync-accounts-request.json",
-            "description": "Request parameters for syncing advertiser accounts with upsert semantics"
+            "description": "Request parameters for syncing advertiser accounts with a seller"
           },
           "response": {
             "$ref": "/schemas/account/sync-accounts-response.json",
             "description": "Response payload for sync_accounts task"
+          }
+        },
+        "report-usage": {
+          "request": {
+            "$ref": "/schemas/account/report-usage-request.json",
+            "description": "Request parameters for reporting vendor service consumption after delivery"
+          },
+          "response": {
+            "$ref": "/schemas/account/report-usage-response.json",
+            "description": "Response payload for report_usage task"
+          }
+        },
+        "get-account-financials": {
+          "request": {
+            "$ref": "/schemas/account/get-account-financials-request.json",
+            "description": "Request parameters for querying financial status of an operator-billed account"
+          },
+          "response": {
+            "$ref": "/schemas/account/get-account-financials-response.json",
+            "description": "Response payload for get_account_financials task"
           }
         }
       }

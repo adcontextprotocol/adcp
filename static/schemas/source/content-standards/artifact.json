@@ -64,6 +64,10 @@
                 "minimum": 1,
                 "maximum": 6,
                 "description": "Heading level (1-6), only for role=heading"
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance for this text block, overrides artifact-level provenance"
               }
             },
             "required": ["type", "content"]
@@ -97,6 +101,10 @@
               "height": {
                 "type": "integer",
                 "description": "Image height in pixels"
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance for this image, overrides artifact-level provenance"
               }
             },
             "required": ["type", "url"]
@@ -132,6 +140,10 @@
                 "type": "string",
                 "format": "uri",
                 "description": "Video thumbnail URL"
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance for this video, overrides artifact-level provenance"
               }
             },
             "required": ["type", "url"]
@@ -162,6 +174,10 @@
                 "type": "string",
                 "enum": ["original_script", "closed_captions", "generated"],
                 "description": "How the transcript was generated"
+              },
+              "provenance": {
+                "$ref": "/schemas/core/provenance.json",
+                "description": "Provenance for this audio, overrides artifact-level provenance"
               }
             },
             "required": ["type", "url"]
@@ -203,6 +219,10 @@
         }
       },
       "additionalProperties": true
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this artifact. Serves as the default provenance for all assets within this artifact — individual assets can override with their own provenance."
     },
     "identifiers": {
       "type": "object",

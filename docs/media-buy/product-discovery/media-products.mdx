@@ -15,19 +15,66 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `product_id` (string, required)
 - `name` (string, required)
 - `description` (string, required)
+- `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
 - `channels` (list[string], optional): Advertising channels this product is sold as (e.g., `["retail_media"]`, `["display", "olv"]`). Sellers SHOULD declare `channels` on products that span non-obvious channels, particularly retail media, CTV/OLV, and multi-channel bundles. Product channels SHOULD be a subset of the union of their properties' `supported_channels`. See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy).
-- `formats` (list[Format], required): See [Creative Formats](/docs/creative/formats).
+- `format_ids` (list[FormatID], required): Structured format ID references. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
-- `measurement` (Measurement, optional): Included measurement capabilities. Common for retail media products.
+- `delivery_measurement` (object, required): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). See [Delivery Measurement](#delivery-measurement-required).
+- `outcome_measurement` (OutcomeMeasurement, optional): Business outcome measurement included with the product — incremental sales lift, brand lift studies, etc. Common for retail media products.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
 - `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
+- `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
+- `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
+- `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
+
+### Metric optimization
+
+Products that support `optimization_goals` with `kind: "metric"` declare their capabilities in `metric_optimization`. No event source or conversion tracking setup is required for metric goals — the seller tracks these metrics natively.
+
+```json
+{
+  "metric_optimization": {
+    "supported_metrics": ["clicks", "views", "completed_views", "engagements"],
+    "supported_view_durations": [2, 6, 15],
+    "supported_targets": ["cost_per", "threshold_rate"]
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_metrics` | string[] | Yes | Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. |
+| `supported_view_durations` | number[] | No | Video view duration thresholds (in seconds) supported for `completed_views` goals. When absent, the seller uses their platform default. |
+| `supported_targets` | string[] | No | Target kinds available: `cost_per`, `threshold_rate`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can set target-less metric goals (maximize volume) but cannot set specific targets. |
+
+### Conversion tracking
+
+Products that support `optimization_goals` with `kind: "event"` declare their capabilities in `conversion_tracking`. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+
+```json
+{
+  "conversion_tracking": {
+    "action_sources": ["website", "app"],
+    "supported_targets": ["cost_per", "per_ad_spend", "maximize_value"],
+    "platform_managed": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action_sources` | string[] | No | Action sources relevant to this product (e.g., a retail media product might have `in_store` and `website`). |
+| `supported_targets` | string[] | No | Target kinds available for event goals: `cost_per`, `per_ad_spend`, `maximize_value`. Values match `target.kind` on the optimization goal. Only listed kinds are accepted. When omitted, buyers can still set target-less event goals. |
+| `platform_managed` | boolean | No | Whether the seller provides always-on measurement (e.g., retailer purchase attribution). When true, `sync_event_sources` returns seller-managed event sources. |
+
+See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracking) for the full optimization goals reference.
 
 ### Pricing Models
 
@@ -53,7 +100,7 @@ Publishers declare which pricing models they support for each product. Buyers se
 Each pricing option includes:
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v2/pricing-options/cpcv-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpcv-option.json",
   "pricing_option_id": "cpcv_usd_guaranteed",
   "pricing_model": "cpcv",
   "fixed_price": 0.15,
@@ -99,14 +146,14 @@ Common provider examples:
 - `"Comscore vCE for video completion tracking"`
 - `"Self-reported impressions from proprietary ad server"`
 
-### Measurement Object
+### Outcome Measurement Object
 
-For products that include measurement (common in retail media):
+For products that include outcome measurement (common in retail media):
 ```json
 {
   "type": "incremental_sales_lift",
   "attribution": "deterministic_purchase",
-  "window": "30_days",
+  "window": { "interval": 30, "unit": "days" },
   "reporting": "weekly_dashboard"
 }
 ```
@@ -260,6 +307,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "connected_tv_prime",
   "name": "Connected TV - Prime Time",
   "description": "Premium CTV inventory 8PM-11PM",
+  "publisher_properties": [
+    { "publisher_domain": "streaming.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -311,6 +361,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "custom_abc123",
   "name": "Custom - Gaming Enthusiasts",
   "description": "Custom audience package for gaming campaign",
+  "publisher_properties": [
+    { "publisher_domain": "gaming.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -359,6 +412,9 @@ A server can offer a general catalog, but it can also return:
   "product_id": "albertsons_pet_category_offsite",
   "name": "Pet Category Shoppers - Offsite Display & Video",
   "description": "Target Albertsons shoppers who have purchased pet products in the last 90 days. Reach them across premium display and video inventory.",
+  "publisher_properties": [
+    { "publisher_domain": "groceryretail.example.com", "selection_type": "all" }
+  ],
   "format_ids": [
     {
       "agent_url": "https://creative.adcontextprotocol.org",
@@ -387,10 +443,10 @@ A server can offer a general catalog, but it can also return:
     "provider": "Self-reported impressions from proprietary ad server",
     "notes": "Impressions counted per IAB guidelines. Viewability measured via IAS."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   },
   "creative_policy": {
@@ -581,25 +637,35 @@ The `tags` field enables grouping allocations by dimension:
 
 ### Iterating on Proposals
 
-Proposals can be refined through session continuity. Within the same session (`context_id` in MCP, `contextId` in A2A), subsequent `get_products` calls carry conversation history, so the publisher can interpret follow-up briefs in context:
+Proposals can be refined using `buying_mode: "refine"` with the `refine` array. Reference proposals by ID — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
 
 ```
-// Initial request
+// Initial discovery
 get_products({
+  buying_mode: "brief",
   brief: "Swiss campaign, $50k, 50% desktop/20% mobile/30% in-app, 40% German/60% French"
 })
 
 // Response includes proposal "swiss_balanced_v1"
 
-// Follow-up within the same session
+// Refine the proposal
 get_products({
-  brief: "focus more on German speakers - try 60/40 instead of 40/60"
+  buying_mode: "refine",
+  refine: [
+    { scope: "product", id: "ch_desktop_de", action: "include" },
+    { scope: "product", id: "ch_desktop_fr", action: "include" },
+    { scope: "product", id: "ch_mobile_de", action: "include" },
+    { scope: "product", id: "ch_mobile_fr", action: "include" },
+    { scope: "product", id: "ch_inapp_de", action: "include" },
+    { scope: "product", id: "ch_inapp_fr", action: "include" },
+    { scope: "proposal", id: "swiss_balanced_v1", action: "include", ask: "focus more on German speakers - try 60/40 instead of 40/60" }
+  ]
 })
 
-// Publisher remembers the conversation and returns an updated proposal
+// Seller returns an updated proposal with revised allocations
 ```
 
-See [Context & Sessions](/docs/building/integration/context-sessions) for how session continuity works across protocols.
+See [`get_products` refinement](/docs/media-buy/task-reference/get_products#refinement) for the full workflow and examples.
 
 ### Executing a Proposal
 
@@ -633,7 +699,9 @@ Publishers include proposals when:
 - The publisher can provide strategic guidance based on campaign goals
 - Multiple products work better together than individually
 
-Proposals are optional - publishers may return only products if allocation guidance isn't applicable.
+Publishers typically omit proposals in `wholesale` mode (the buyer is directing targeting and allocation themselves) or when the brief doesn't suggest a multi-product strategy.
+
+Proposals are optional — publishers may return only products if allocation guidance isn't applicable. In `refine` mode, sellers MAY return proposals alongside refined products even when the buyer did not include proposal entries. Proposals are a seller suggestion — allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
 
 ### Delivery Forecasts
 

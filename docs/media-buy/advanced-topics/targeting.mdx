@@ -204,6 +204,33 @@ Use for **technical requirements**:
 - CTV: `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
 - Other: `unknown`
 
+### Device type (form factor)
+Use for **performance optimization** targeting by hardware category rather than OS:
+- **Mobile campaigns**: Target all mobile devices regardless of OS
+- **CTV campaigns**: Target connected TVs across all platforms
+- **Exclude form factors**: Skip CTV for app-install campaigns
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "device_type": ["mobile", "tablet"]
+}
+```
+
+**Exclusion** — use `device_type_exclude` to exclude specific form factors:
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "device_type_exclude": ["dooh"]
+}
+```
+
+**Available types** (defined in [`device-type.json`](https://adcontextprotocol.org/schemas/latest/enums/device-type.json)):
+- `desktop`, `mobile`, `tablet`, `ctv`, `dooh`, `unknown`
+
+**Device type vs device platform**: `device_type` targets form factors (mobile, desktop, CTV). `device_platform` targets operating systems (iOS, Android, tvOS). Use `device_type` for performance optimization; use `device_platform` for technical compatibility.
+
 ### Language (Localization)
 Use for **localization requirements**:
 - Creative is in a specific language
@@ -219,15 +246,31 @@ Use for **localization requirements**:
 **Format**: ISO 639-1 two-letter language codes (e.g., `en`, `es`, `fr`, `de`, `zh`).
 
 ### Frequency Capping
-Basic impression suppression controls:
+Two frequency controls can be used independently or together:
+
+**Cooldown between exposures** — `suppress` prevents back-to-back delivery:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "frequency_cap": {
-    "suppress_minutes": 60
+    "suppress": { "interval": 60, "unit": "minutes" }
   }
 }
 ```
+
+**Impression cap per entity per window** — `max_impressions` + `per` + `window` limits total exposure:
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "frequency_cap": {
+    "max_impressions": 5,
+    "per": "households",
+    "window": { "interval": 7, "unit": "days" }
+  }
+}
+```
+
+Both can be combined. The `per` field uses the same entity types as `reach_unit` on reach optimization goals — use matching values when layering a hard cap on top of a reach campaign.
 
 ### Example Geographic Overlay (RCT Testing)
 
@@ -306,6 +349,10 @@ Inclusion targeting works the same way for cases where you want to specify exact
 | Language for audience preference | | ✅ "Spanish-speaking audiences" |
 | First-party CRM audience (retargeting, suppression) | ✅ `audience_include` / `audience_exclude` | |
 | Third-party audience segment (interest targeting) | | ✅ "Auto intenders" in brief, or use signals protocol |
+| Search/retail media keyword targeting | ✅ `keyword_targets` / `negative_keywords` | |
+| Broad thematic intent ("people searching for shoes") | | ✅ "Reach in-market shoe shoppers" |
+| Proximity to specific coordinates (within 2hr drive of a city) | ✅ `geo_proximity` | |
+| Nearby audience ("people near coffee shops") | | ✅ "Reach people near coffee shops" |
 
 **Why briefs work better for preferences:**
 - Natural language captures intent more clearly
@@ -369,7 +416,7 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 ### geo_postal_areas
 - **Description**: Restrict delivery to specific postal areas
 - **Format**: Array of objects, each with a `system` and `values`
-- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`
+- **Systems**: `us_zip`, `us_zip_plus_four`, `gb_outward`, `gb_full`, `ca_fsa`, `ca_full`, `de_plz`, `fr_code_postal`, `au_postcode`, `ch_plz`, `at_plz`
 - **Example**: `[{ "system": "us_zip", "values": ["10001", "10002"] }]`
 - **Use cases**: Hyper-local campaigns, postal-level restrictions
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`
@@ -413,10 +460,11 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Note**: Seller must declare support in `get_adcp_capabilities`
 
 ### frequency_cap
-- **Description**: Limit ad exposure frequency per user
-- **Format**: Frequency cap object with `suppress_minutes` (required)
-- **Use cases**: User experience management, ad fatigue prevention
-- **Example**: `{"suppress_minutes": 60}`
+- **Description**: Limit ad exposure frequency per entity. Two optional controls can be used independently or together.
+- **Cooldown control**: `suppress` — minimum duration between consecutive exposures to the same entity. `suppress_minutes` (number) is also accepted for backwards compatibility.
+- **Impression cap**: `max_impressions` + `per` + `window` — total impression ceiling per entity per time window. All three fields are required together.
+- **Use cases**: User experience management, ad fatigue prevention, complementing reach optimization goals with a hard ceiling
+- **Examples**: `{"suppress": {"interval": 60, "unit": "minutes"}}`, `{"max_impressions": 5, "per": "households", "window": {"interval": 7, "unit": "days"}}`
 
 ### age_restriction
 - **Description**: Require minimum age for compliance
@@ -432,11 +480,65 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
 - **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
 
+### device_type
+- **Description**: Restrict to specific device form factors
+- **Format**: Array of device type identifiers
+- **Examples**: `["mobile"]`, `["mobile", "tablet"]`, `["ctv"]`
+- **Use cases**: Mobile-only promotions, CTV campaigns targeting all TV platforms, excluding DOOH from certain campaigns
+- **Values**: `desktop`, `mobile`, `tablet`, `ctv`, `dooh`, `unknown`
+- **Note**: Seller must declare `device_type: true` in `get_adcp_capabilities` targeting
+
+### device_type_exclude
+- **Description**: Exclude specific device form factors from delivery
+- **Format**: Array of device type identifiers
+- **Examples**: `["dooh"]`, `["ctv", "dooh"]`
+- **Use cases**: Exclude CTV for app-install campaigns, exclude DOOH for direct-response campaigns
+- **Note**: Supported when seller declares `device_type: true` in `get_adcp_capabilities`
+
 ### language
 - **Description**: Restrict to users with specific language preferences
 - **Format**: Array of ISO 639-1 two-letter language codes
 - **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
 - **Use cases**: Localized creative, language-specific campaigns
+
+### keyword_targets
+- **Description**: Target specific keywords for search and retail media platforms. Restricts delivery to queries matching the specified keywords.
+- **Format**: Array of objects with `keyword`, `match_type` (`broad`, `phrase`, or `exact`), and optional `bid_price`
+- **Identity**: Each keyword is identified by the tuple `(keyword, match_type)`. The same keyword string with different match types are distinct targets. Duplicate pairs in a single request SHOULD be rejected by sellers.
+- **Match types**:
+  - `broad` — matches related and synonym queries
+  - `phrase` — matches queries containing the keyword phrase in order
+  - `exact` — matches the keyword query only
+- **Per-keyword bid**: The optional `bid_price` overrides the package-level `bid_price` for that keyword. Inherits the `max_bid` interpretation from the pricing option: when `max_bid` is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package `bid_price` applies.
+- **Use cases**: Search campaigns, retail media sponsored products, keyword-based intent targeting
+- **Note**: Seller must declare `execution.targeting.keyword_targets` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Only use match types the seller declares — sellers must reject unsupported match types. Use `keyword_targets_add` and `keyword_targets_remove` in `update_media_buy` to add or update keywords incrementally after launch. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "keyword_targets": [
+    { "keyword": "running shoes", "match_type": "broad", "bid_price": 0.45 },
+    { "keyword": "trail running shoes womens", "match_type": "phrase", "bid_price": 0.85 },
+    { "keyword": "acme cloudrunner 5", "match_type": "exact", "bid_price": 1.20 }
+  ]
+}
+```
+
+### negative_keywords
+- **Description**: Exclude specific keywords from delivery. Queries matching these keywords will not trigger the ad.
+- **Format**: Array of objects with `keyword` and `match_type` (`broad`, `phrase`, or `exact`)
+- **Use cases**: Prevent wasteful spend on irrelevant queries, exclude competitor brand terms
+- **Note**: Seller must declare `execution.targeting.negative_keywords` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Use `negative_keywords_add` and `negative_keywords_remove` in `update_media_buy` to add/remove negatives incrementally after launch.
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "negative_keywords": [
+    { "keyword": "free", "match_type": "broad" },
+    { "keyword": "used running shoes", "match_type": "phrase" }
+  ]
+}
+```
 
 ### store_catchments
 - **Description**: Target users within store catchment areas from a synced store catalog
@@ -460,6 +562,119 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 ```
 
 When `store_ids` is omitted, all stores in the catalog are targeted. When `catchment_ids` is omitted, all catchment zones are targeted. The seller must declare support for store catchment targeting in `get_adcp_capabilities`.
+
+### geo_proximity
+- **Description**: Target users within travel time, distance, or a custom boundary around arbitrary geographic points
+- **Format**: Array of objects, each with exactly one method: `travel_time` + `transport_mode`, `radius`, or `geometry`
+- **Required fields**: `lat` + `lng` (for travel_time and radius methods), or `geometry` (for pre-computed boundaries)
+- **Optional fields**: `label` (human-readable name for the entry)
+- **Use cases**: Tourism campaigns (within 2hr drive of a city), event targeting (near a venue), airport catchment areas
+- **Semantics**: Multiple entries use OR — a user within range of any listed point is eligible. Intersects with other geo targeting fields (e.g., combining with `geo_countries` restricts proximity to those countries)
+
+Travel time (isochrone) example:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "lat": 51.2277,
+        "lng": 6.7735,
+        "label": "Düsseldorf",
+        "travel_time": { "value": 2, "unit": "hr" },
+        "transport_mode": "driving"
+      }
+    ]
+  }
+}
+```
+
+Radius-based example:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "lat": 51.4700,
+        "lng": -0.4543,
+        "label": "Heathrow Airport",
+        "radius": { "value": 30, "unit": "km" }
+      }
+    ]
+  }
+}
+```
+
+Pre-computed geometry example (buyer provides the polygon):
+
+```json
+{
+  "targeting_overlay": {
+    "geo_proximity": [
+      {
+        "label": "2hr drive from Düsseldorf",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [[[5.87, 50.35], [8.23, 50.35], [8.23, 52.10], [5.87, 52.10], [5.87, 50.35]]]
+        }
+      }
+    ]
+  }
+}
+```
+
+For travel time entries, the platform resolves the isochrone to a geographic boundary based on actual transportation networks. Transport modes: `driving`, `walking`, `cycling`, `public_transport`. The `geometry` method allows buyers who have already computed isochrones (via TravelTime, Mapbox, etc.) to pass the polygon directly — this also enables sellers without routing engines to participate.
+
+For campaigns targeting 10+ locations, consider using `store_catchments` with a location catalog instead, which supports ongoing management and per-location reporting. `geo_proximity` does not have an exclusion variant — this is by design, as excluding "everyone near a point" is rarely a meaningful targeting constraint.
+
+Sellers SHOULD enforce minimum area thresholds consistent with their privacy policies and applicable regulations. The seller must declare `geo_proximity` support in `get_adcp_capabilities`, specifying which methods (`radius`, `travel_time`, `geometry`) and transport modes are supported.
+
+Validated examples:
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "lat": 51.2277,
+      "lng": 6.7735,
+      "label": "Düsseldorf",
+      "travel_time": { "value": 2, "unit": "hr" },
+      "transport_mode": "driving"
+    }
+  ]
+}
+```
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "lat": 51.4700,
+      "lng": -0.4543,
+      "label": "Heathrow Airport",
+      "radius": { "value": 30, "unit": "km" }
+    }
+  ]
+}
+```
+
+```json
+{
+  "$schema": "/schemas/core/targeting.json",
+  "geo_proximity": [
+    {
+      "label": "2hr drive from Düsseldorf",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[5.87, 50.35], [8.23, 50.35], [8.23, 52.10], [5.87, 52.10], [5.87, 50.35]]]
+      }
+    }
+  ]
+}
+```
 
 ## Benefits for Different Stakeholders
 
@@ -507,6 +722,39 @@ Real-time signals are provided through the [AdCP Signals Protocol](/docs/signals
 - Contextual targeting (page-level or moment-level decisions)
 - High-cardinality targeting (thousands of values)
 - Targeting that changes during campaign flight
+
+## Managing keywords after launch
+
+Both keyword targets and negative keywords support incremental operations in `update_media_buy`, avoiding the need to replace the full `targeting_overlay`:
+
+- **`keyword_targets_add`** — upserts by `(keyword, match_type)` identity. Adds new keywords or updates `bid_price` on existing ones.
+- **`keyword_targets_remove`** — removes matching `(keyword, match_type)` pairs.
+- **`negative_keywords_add`** — appends negatives. Duplicates are no-ops.
+- **`negative_keywords_remove`** — removes matching pairs. Missing entries are no-ops.
+
+```json
+{
+  "packages": [
+    {
+      "package_id": "pkg_sponsored_search_001",
+      "keyword_targets_add": [
+        { "keyword": "trail running shoes", "match_type": "phrase", "bid_price": 0.95 }
+      ],
+      "keyword_targets_remove": [
+        { "keyword": "running shoes", "match_type": "broad" }
+      ],
+      "negative_keywords_add": [
+        { "keyword": "diy", "match_type": "broad" },
+        { "keyword": "how to make running shoes", "match_type": "phrase" }
+      ]
+    }
+  ]
+}
+```
+
+Sellers SHOULD return a validation error if `targeting_overlay.keyword_targets` is present in the same request as `keyword_targets_add` or `keyword_targets_remove` (and likewise for negative keywords). The incremental operations and the full overlay replacement are mutually exclusive within a single update.
+
+To remove all keyword targeting while preserving other overlay fields, send the full `targeting_overlay` without the `keyword_targets` field.
 
 ## Implementation Requirements
 

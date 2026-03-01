@@ -6,7 +6,7 @@ testable: true
 
 # Migrating pricing
 
-AdCP v3 renames pricing fields for clarity and separates hard constraints (prices the publisher enforces) from soft hints (historical data to help buyers bid).
+AdCP 3.0 renames pricing fields for clarity and separates hard constraints (prices the publisher enforces) from soft hints (historical data to help buyers bid).
 
 ## What changed
 
@@ -61,7 +61,7 @@ PG and Preferred Deals both use `fixed_price`. The distinction between them is i
 **v3:**
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/pricing-options/cpm-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_fixed",
   "pricing_model": "cpm",
   "currency": "USD",
@@ -90,7 +90,7 @@ Rename `fixed_rate` to `fixed_price`. No structural changes.
 **v3:**
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/pricing-options/cpm-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_auction",
   "pricing_model": "cpm",
   "currency": "USD",
@@ -112,7 +112,7 @@ The v3 `price_guidance` object contains only statistical percentiles:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/pricing-options/price-guidance.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/price-guidance.json",
   "p25": 8.50,
   "p50": 15.00,
   "p75": 18.00,
@@ -128,7 +128,7 @@ Flat-rate pricing (DOOH, sponsorships, time-based) follows the same pattern:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/pricing-options/flat-rate-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "dooh_times_square",
   "pricing_model": "flat_rate",
   "currency": "USD",
@@ -149,7 +149,7 @@ v3 adds an optional `min_spend_per_package` field to all pricing options:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/pricing-options/cpm-option.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
   "pricing_option_id": "cpm_usd_premium",
   "pricing_model": "cpm",
   "currency": "USD",
@@ -194,10 +194,10 @@ v3 writers should only emit the new field names. Old field names (`fixed_rate`, 
     Verify floor enforcement works with the new field location.
   </Step>
   <Step title="Validate against schemas">
-    Each pricing model has its own schema in `/schemas/v1/pricing-options/`.
+    Each pricing model has its own schema in `/schemas/v3/pricing-options/`.
   </Step>
 </Steps>
 
 ---
 
-**Related:** [Channels](/docs/reference/migration/channels) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)
+**Related:** [Channels](/docs/reference/migration/channels) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [Catalogs](/docs/reference/migration/catalogs) | [Attribution](/docs/reference/migration/attribution) | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)

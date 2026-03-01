@@ -107,6 +107,21 @@ When there is an active SI session, use send_to_si_agent for EVERY user message 
 - list_brands: List brands in the registry with optional filters
 - list_missing_brands: List most-requested brands not yet in the registry
 
+**Property Registry:**
+The community property registry maps publisher domains to their inventory properties and agent authorizations. It has three data sources:
+- **Authoritative** (source: adagents_json): Publisher self-hosts /.well-known/adagents.json. The registry validates and indexes it automatically. These entries cannot be community-edited — the publisher controls them directly.
+- **Enriched** (source: hosted, enriched): Pre-seeded from Scope3 data (~1,250 publishers). Community-editable with revision tracking.
+- **Community** (source: hosted, community): Contributed by members or Addie. New entries submitted by members go to pending review; entries Addie creates are auto-approved. All edits are revision-tracked (Wikipedia-style).
+
+Typical workflow for an unknown domain: use check_property_list to audit a domain list → unknown domains land in the "assess" bucket → use enhance_property to analyze and submit each one as pending.
+
+- resolve_property: Look up a publisher domain — checks the registry, then falls back to live adagents.json validation
+- save_property: Create or update a hosted property entry. New properties created by Addie are auto-approved; updates to existing approved entries stay approved. Use source_type "community" for member-contributed data, "enriched" for data from third-party sources.
+- list_properties: Browse registry entries. Optional filters: source (adagents_json, hosted, or discovered), search term.
+- list_missing_properties: Show most-requested domains not yet in the registry (demand signals — pair with save_property to fill gaps)
+- check_property_list: Audit up to 10,000 publisher domains at once. Returns four buckets: remove (ad tech infrastructure / duplicates), modify (normalized), assess (unknown), ok (found in registry). Always returns a report_url for full details — surface this to the member.
+- enhance_property: Analyze an unknown domain from the assess bucket. Checks domain age (flags < 90 days as high risk), validates adagents.json presence, uses AI to assess whether it's a real publisher. Submits to registry as pending — Addie runs an automated quality review and approves if it looks legitimate. Run one domain at a time.
+
 **Content:**
 - list_perspectives: Browse community articles
 
@@ -146,7 +161,7 @@ This ensures users are notified when their escalated requests are handled.
 - find_prospect: Quick search for prospects
 - add_prospect: Add a new prospect
 - update_prospect: Update prospect info
-- list_prospects: List prospects with filtering
+- query_prospects: Query prospects across views (all, my_engaged, my_followups, unassigned, addie_pipeline)
 - enrich_company: Research a company via Lusha
 - prospect_search_lusha: Search Lusha for prospects
 - lookup_organization: Look up membership status
@@ -346,7 +361,7 @@ export type { MessageTurn };
  * Options for building message turns
  */
 export interface BuildMessageTurnsOptions {
-  /** Maximum number of messages to include (default: 10, 0 = unlimited) */
+  /** Maximum number of messages to include (default: 20, 0 = unlimited) */
   maxMessages?: number;
   /** Token limit for conversation history (default: calculated from model limit) */
   tokenLimit?: number;
@@ -400,7 +415,7 @@ export function buildMessageTurnsWithMetadata(
   threadContext?: ThreadContextEntry[],
   options?: BuildMessageTurnsOptions
 ): BuildMessageTurnsResult {
-  const maxMessages = options?.maxMessages ?? 10;
+  const maxMessages = options?.maxMessages ?? 20;
   // Pass toolCount for more accurate token budget when available
   const tokenLimit = options?.tokenLimit ?? getConversationTokenLimit(options?.model, options?.toolCount);
 

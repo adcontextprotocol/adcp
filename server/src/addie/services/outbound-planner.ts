@@ -307,6 +307,21 @@ export class OutboundPlanner {
       }
     }
 
+    // PRIORITY 3.5: Addie-owned prospects — prioritize invitation/membership goals
+    // These are prospects Addie has triaged and claimed; she should nudge them toward membership
+    if (ctx.company?.is_addie_prospect && !ctx.user.is_member) {
+      const inviteGoal = goals.find(g => g.category === 'invitation');
+      if (inviteGoal) {
+        return {
+          goal: inviteGoal,
+          reason: 'Addie-owned prospect — prioritizing membership invitation',
+          priority_score: 80,
+          alternative_goals: goals.filter(g => g.id !== inviteGoal.id).slice(0, 3),
+          decision_method: 'rule_match',
+        };
+      }
+    }
+
     // PRIORITY 4: Vendor membership (tech companies benefit from profile visibility)
     // Only for non-members at vendor-type companies
     const vendorTypes = ['adtech', 'ai', 'data'];
@@ -493,7 +508,7 @@ export class OutboundPlanner {
 - Name: ${ctx.user.display_name ?? 'Unknown'}
 - Company: ${ctx.company?.name ?? 'Unknown'}
 - Role in Community: ${roleStr}
-- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}, ${ctx.user.is_member ? 'Paying member' : 'Not yet a member'}
+- Account Status: ${ctx.user.is_mapped ? 'Linked' : 'Not linked'}, ${ctx.user.is_member ? 'Paying member' : 'Not yet a member'}${ctx.company?.is_addie_prospect ? '\n- SDR Status: Addie-owned prospect (actively being nurtured toward membership)' : ''}
 - Engagement Score: ${ctx.user.engagement_score}/100
 
 ## What They've Done (Capabilities)

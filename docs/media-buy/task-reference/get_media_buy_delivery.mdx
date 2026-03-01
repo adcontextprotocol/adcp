@@ -8,19 +8,20 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 **Response Time**: ~60 seconds (reporting query)
 
-**Request Schema**: [`/schemas/v2/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
 
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | No | Filter to a specific account. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. Optional if the agent has a single account. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Only returns media buys belonging to this account. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `buyer_refs` | string[] | No* | Array of buyer reference IDs |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_activation"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
+| `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Include a key as an empty object (e.g., `"device_type": {}`) to activate with defaults. Keys: `geo`, `device_type`, `device_platform`, `audience`, `placement`. Each accepts optional `limit` (defaults to 25 for geo, audience, placement) and `sort_by` (sort-metric enum, default: `spend`). Geo requires `geo_level` (one per request) and `system` for metro/postal levels. Unsupported dimensions are silently omitted; malformed requests return a validation error. |
 
 > **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00`). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
 
@@ -43,7 +44,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 |-------|-------------|
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
-| `attribution_window` | Attribution methodology: `click_window_days`, `view_window_days`, and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
+| `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
 | `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, video_completions, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, media_buy_count) |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
@@ -432,7 +433,7 @@ import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
 
 // Get delivery for a specific advertiser account
 const result = await testAgent.getMediaBuyDelivery({
-  account_id: 'acc_acme_pinnacle',
+  account: { account_id: 'acc_acme_pinnacle' },
   status_filter: 'active',
   start_date: '2024-02-01',
   end_date: '2024-02-07'
@@ -461,7 +462,7 @@ async def main():
     # Get delivery for a specific advertiser account
     result = await test_agent.get_media_buy_delivery(
         GetMediaBuyDeliveryRequest(
-            account_id='acc_acme_pinnacle',
+            account={'account_id': 'acc_acme_pinnacle'},
             status_filter='active',
             start_date='2024-02-01',
             end_date='2024-02-07'
@@ -664,6 +665,54 @@ This is optional. Sellers that support item-level reporting populate `by_catalog
   ]
 }
 ```
+
+## Dimension Breakdowns
+
+When you include `reporting_dimensions` in the request, the response includes dimensional breakdown arrays within each `by_package` entry. Each breakdown entry inherits all fields from `delivery-metrics` plus dimension-specific identifiers.
+
+### Requesting breakdowns
+
+```json test=false
+{
+  "media_buy_ids": ["mb_123"],
+  "reporting_dimensions": {
+    "geo": { "geo_level": "metro", "system": "nielsen_dma", "limit": 10 },
+    "device_type": {},
+    "placement": { "limit": 5, "sort_by": "roas" }
+  }
+}
+```
+
+Each dimension accepts optional `limit` (max rows; defaults to 25 for geo, audience, and placement) and `sort_by` (any value from the `sort-metric` enum, e.g., `spend`, `impressions`, `clicks`, `roas` — defaults to `spend` descending; falls back to `spend` if the seller does not report the requested metric). Geo requires `geo_level` (`country`, `region`, `metro`, `postal_area`) and `system` for metro/postal levels. Each request uses a single geo_level — for multiple granularities (e.g., country and region), make separate requests. Unsupported dimensions are silently omitted from the response, but malformed requests (e.g., geo without `geo_level`) return a validation error. Breakdowns are per-dimension only — cross-dimensional intersections (e.g., device_type × geo) are not supported.
+
+### Available dimensions
+
+| Dimension | Breakdown field | Required fields | Capability flag |
+|-----------|----------------|-----------------|-----------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `supports_geo_breakdown` |
+| Device type | `by_device_type` | `device_type`, `impressions`, `spend` | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `supports_placement_breakdown` |
+
+Check `reporting_capabilities` on the product to discover which dimensions are available. Product-level capabilities are authoritative since different products from the same seller may support different breakdowns.
+
+### Truncation
+
+Each breakdown array has a sibling boolean flag (e.g., `by_geo_truncated`). When `true`, additional rows exist beyond the returned set. When `false`, the list is complete. Sellers MUST return the truncated flag whenever the corresponding breakdown array is present. Rows are sorted by the requested `sort_by` metric descending.
+
+### Audience sources
+
+The `audience_source` field indicates where the audience segment originated:
+
+| Source | Description | Targetable? |
+|--------|-------------|-------------|
+| `synced` | Buyer's first-party data via `sync_audiences` | Yes — use `audience_include`/`audience_exclude` |
+| `platform` | Seller's native segments (interest, behavioral) | No — informational |
+| `third_party` | External data provider segments | No — informational |
+| `lookalike` | Platform-generated expansion from a seed | No — informational |
+| `retargeting` | Prior engagement via seller's pixel/tag | No — informational |
+| `unknown` | Unclassified or unrecognized audience source | No — informational |
 
 ## Best Practices
 

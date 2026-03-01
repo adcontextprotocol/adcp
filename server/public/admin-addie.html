@@ -2627,11 +2627,13 @@
             <div class="conversation-header">
               <div>
                 <span class="badge badge-${thread.channel}">${thread.channel}</span>
+                ${thread.slack_channel_name ? `<span class="badge" style="background: var(--color-gray-100); color: var(--color-gray-700); margin-left: var(--space-1);">#${escapeHtml(thread.slack_channel_name)}</span>` : ''}
                 <strong style="margin-left: var(--space-2);">${escapeHtml(thread.user_display_name || thread.user_id || 'Anonymous')}</strong>
                 <span style="color: var(--color-text-secondary); font-size: var(--text-sm);">
                   • ${thread.message_count} message${thread.message_count === 1 ? '' : 's'}
                   ${thread.flagged ? '• <span class="badge badge-flagged">Flagged</span>' : ''}
-                  ${!thread.reviewed ? '• <span class="badge badge-pending">Needs Review</span>' : ''}
+                  ${thread.slack_deleted ? '• <span class="badge" style="background: var(--color-gray-100); color: var(--color-gray-500);">deleted in Slack</span>' : ''}
+                  ${!thread.reviewed ? '• <span class="badge badge-pending">Needs review</span>' : ''}
                 </span>
                 ${feedbackIndicator ? `<span style="margin-left: var(--space-2);">${feedbackIndicator}</span>` : ''}
               </div>

@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent registry - AgenticAdvertising.org</title>
+    <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/design-system.css">
+    <style>
+        /* =============================================================================
+           Registry Page Styles
+           Uses design system variables - see /design-system.css for tokens
+           Registry uses success/green color as accent
+           ============================================================================= */
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font-sans);
+            line-height: var(--leading-normal);
+            color: var(--color-text-body);
+            background: var(--color-bg-page);
+            padding-top: var(--nav-height);
+        }
+        header {
+            background: linear-gradient(135deg, var(--color-success-500) 0%, var(--color-success-600) 100%);
+            color: white;
+            padding: var(--space-8) 0;
+            text-align: center;
+        }
+        h1 { font-size: var(--text-4xl); margin-bottom: var(--space-2); }
+        .subtitle { font-size: var(--text-lg); opacity: 0.9; }
+        .container { max-width: var(--container-2xl); margin: var(--space-8) auto; padding: 0 var(--space-4); }
+
+        /* Tabs */
+        .tabs { display: flex; gap: var(--space-2); border-bottom: var(--border-2) solid var(--color-border); margin-bottom: var(--space-8); }
+        .tab {
+            padding: var(--space-4) var(--space-8);
+            background: var(--color-bg-card);
+            border: none;
+            border-radius: var(--radius-md) var(--radius-md) 0 0;
+            cursor: pointer;
+            font-size: var(--text-base);
+            font-weight: var(--font-semibold);
+            color: var(--color-text-muted);
+            transition: var(--transition-all);
+        }
+        .tab:hover { color: var(--color-success-500); }
+        .tab.active { color: var(--color-success-500); background: var(--color-bg-card); border-bottom: 3px solid var(--color-success-500); }
+
+        /* Search and Filters */
+        .search-filters {
+            background: var(--color-bg-card);
+            padding: var(--space-6);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-8);
+            box-shadow: var(--shadow-sm);
+        }
+        .search-box { margin-bottom: var(--space-4); }
+        .search-box input {
+            width: 100%;
+            padding: var(--space-3);
+            border: var(--border-2) solid var(--color-border);
+            border-radius: var(--radius-md);
+            font-size: var(--text-base);
+        }
+        .search-box input:focus { outline: none; border-color: var(--color-success-500); }
+        .filter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; }
+        .filter-group { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+        .filter-group label { font-weight: var(--font-semibold); font-size: var(--text-sm); color: var(--color-text-muted); }
+        .filter-btn {
+            padding: var(--space-2) var(--space-4);
+            background: var(--color-gray-50);
+            border: var(--border-2) solid var(--color-border);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: var(--text-sm);
+            transition: var(--transition-all);
+        }
+        .filter-btn:hover { border-color: var(--color-success-500); color: var(--color-success-500); }
+        .filter-btn.active { background: var(--color-success-500); border-color: var(--color-success-500); color: white; }
+
+        /* Agent Grid */
+        .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: var(--space-6); }
+        .agent-card {
+            background: var(--color-bg-card);
+            border-radius: var(--radius-lg);
+            padding: var(--space-6);
+            box-shadow: var(--shadow-sm);
+            transition: var(--transition-all);
+            cursor: pointer;
+        }
+        .agent-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+        .agent-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-4); }
+        .agent-title { flex: 1; }
+        .agent-name { font-size: var(--text-lg); font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
+        .agent-url { font-size: var(--text-sm); color: var(--color-success-500); }
+        .status-badge {
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
+            font-weight: var(--font-semibold);
+            text-transform: uppercase;
+        }
+        .status-badge.online { background: var(--color-success-100); color: var(--color-success-800); }
+        .status-badge.offline { background: var(--color-error-100); color: var(--color-error-700); }
+        .agent-meta { display: flex; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+        .meta-item { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+        .meta-value { font-weight: var(--font-semibold); color: var(--color-text-heading); }
+        .agent-properties { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--border-1) solid var(--color-border-light); }
+        .property-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+        .property-tag {
+            padding: var(--space-1) var(--space-3);
+            background: var(--color-purple-100);
+            color: var(--color-purple-700);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
+            font-weight: var(--font-semibold);
+        }
+        .formats-list { margin-top: var(--space-2); display: flex; gap: var(--space-2); flex-wrap: wrap; }
+        .format-badge {
+            padding: var(--space-1) var(--space-3);
+            background: var(--color-primary-100);
+            color: var(--color-primary-800);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
+            font-weight: var(--font-semibold);
+        }
+
+        /* Detail Page */
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-3) var(--space-6);
+            background: var(--color-bg-card);
+            border: var(--border-2) solid var(--color-success-500);
+            color: var(--color-success-500);
+            border-radius: var(--radius-md);
+            text-decoration: none;
+            font-weight: var(--font-semibold);
+            margin-bottom: var(--space-8);
+        }
+        .back-btn:hover { background: var(--color-success-500); color: white; }
+        .detail-hero {
+            background: linear-gradient(135deg, var(--color-success-500) 0%, var(--color-success-600) 100%);
+            color: white;
+            padding: var(--space-12) 0;
+        }
+        .detail-hero h2 { font-size: var(--text-3xl); margin-bottom: var(--space-2); }
+        .detail-content {
+            background: var(--color-bg-card);
+            margin-top: calc(-1 * var(--space-8));
+            border-radius: var(--card-radius) var(--card-radius) 0 0;
+            padding: var(--space-8);
+        }
+        .detail-section { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: var(--border-1) solid var(--color-border-light); }
+        .detail-section:last-child { border-bottom: none; }
+        .detail-section h3 {
+            font-size: var(--text-xl);
+            margin-bottom: var(--space-4);
+            color: var(--color-success-500);
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+        .tools-list, .publishers-grid { display: grid; gap: var(--space-4); }
+        .tool-item, .publisher-item {
+            background: var(--color-gray-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-success-500);
+        }
+        .tool-name { font-weight: var(--font-semibold); font-family: var(--font-mono); margin-bottom: var(--space-1); }
+        .tool-description { font-size: var(--text-sm); color: var(--color-text-muted); }
+        .publisher-domain { font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
+        .info-box { background: var(--color-gray-50); padding: var(--space-4); border-radius: var(--radius-md); }
+        .loading { text-align: center; padding: var(--space-12); color: var(--color-text-muted); }
+        .error-text { color: var(--color-error-500); font-size: var(--text-sm); }
+        .hidden { display: none !important; }
+        .add-record-cta { margin-top: var(--space-4); text-align: center; }
+        .view { display: none; }
+        .view.active { display: block; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        footer {
+            background: var(--color-bg-card);
+            border-top: var(--border-2) solid var(--color-border-light);
+            padding: var(--space-8);
+            margin-top: var(--space-12);
+        }
+        .footer-content {
+            max-width: var(--container-2xl);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-8);
+        }
+        .footer-section h3 { font-size: var(--text-lg); margin-bottom: var(--space-4); color: var(--color-success-500); }
+        .mcp-box {
+            background: var(--color-gray-50);
+            padding: var(--space-4);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-success-500);
+        }
+        .mcp-box code {
+            background: var(--color-purple-100);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-sm);
+            font-family: var(--font-mono);
+            font-size: var(--text-sm);
+            color: var(--color-purple-700);
+        }
+        .mcp-url {
+            background: var(--color-purple-100);
+            padding: var(--space-3);
+            border-radius: var(--radius-md);
+            margin: var(--space-3) 0;
+            font-family: var(--font-mono);
+            font-size: var(--text-sm);
+            word-break: break-all;
+            color: var(--color-purple-700);
+        }
+        .footer-links {
+            text-align: center;
+            margin-top: var(--space-8);
+            padding-top: var(--space-8);
+            border-top: var(--border-1) solid var(--color-border-light);
+            color: var(--color-text-muted);
+        }
+        .footer-links a { color: var(--color-success-500); text-decoration: none; margin: 0 var(--space-4); }
+
+
+        /* Collapsible details */
+        details[open] summary span { transform: rotate(90deg); }
+        details summary { user-select: none; }
+        details summary::-webkit-details-marker { display: none; }
+
+        /* Dynamic JS template styles */
+        .agent-description { color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+        .property-section-small { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+        .format-discovery-note { margin-top: var(--space-4); font-size: var(--text-xs); color: var(--color-text-light); }
+
+        /* Status banner styles */
+        .status-banner { padding: var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-8); display: flex; justify-content: space-between; align-items: center; color: white; }
+        .status-banner--online { background: var(--color-success-500); }
+        .status-banner--offline { background: var(--color-error-500); }
+        .status-banner__text { font-size: var(--text-lg); font-weight: var(--font-semibold); }
+        .status-banner__meta { opacity: 0.9; margin-left: var(--space-4); }
+        .status-banner__time { opacity: 0.9; font-size: var(--text-sm); }
+
+        /* Compliance badge styles */
+        .compliance-badge { border-left: 4px solid; padding: var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-8); display: flex; align-items: center; gap: var(--space-3); }
+        .compliance-badge--compliant { background: var(--color-success-50); border-color: var(--color-success-500); }
+        .compliance-badge--incomplete { background: var(--color-warning-50); border-color: var(--color-warning-500); }
+        .compliance-badge__icon { font-size: var(--text-2xl); }
+        .compliance-badge__title { font-size: var(--text-lg); font-weight: var(--font-semibold); }
+        .compliance-badge__subtitle { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
+
+        /* Detail section styles */
+        .detail-section__summary { font-size: var(--text-xl); font-weight: var(--font-semibold); color: var(--color-success-500); list-style: none; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+        .detail-section__arrow { transition: transform 0.2s; }
+        .detail-section__content { margin-top: var(--space-4); }
+
+        /* Publishers grid styles */
+        .publishers-group { margin-bottom: var(--space-6); }
+        .publishers-group__title { font-size: var(--text-base); margin-bottom: var(--space-4); }
+        .publishers-group__title--verified { color: var(--color-success-500); }
+        .publishers-group__title--unverified { color: var(--color-error-500); }
+        .publishers-group__title--unchecked { color: var(--color-warning-500); }
+
+        .publisher-item--verified { border-left: 3px solid var(--color-success-500); }
+        .publisher-item--unverified { border-left: 3px solid var(--color-error-500); background: var(--color-error-50); }
+        .publisher-item--unchecked { border-left: 3px solid var(--color-warning-500); }
+
+        .publisher-verify-link { color: var(--color-success-500); text-decoration: none; font-size: var(--text-xs); white-space: nowrap; }
+        .publisher-verify-link--error { color: var(--color-error-500); }
+
+        .publisher-warning { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--color-error-700); background: var(--color-error-100); padding: var(--space-2); border-radius: var(--radius-sm); }
+
+        .property-metadata-toggle { margin-top: var(--space-3); font-size: var(--text-xs); cursor: pointer; color: var(--color-success-500); }
+        .property-metadata-pre { margin-top: var(--space-2); background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto; }
+
+        /* Tools section styles */
+        .tools-summary { background: var(--color-info-50); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-info-500); margin-bottom: var(--space-6); }
+        .tools-summary__count { font-weight: var(--font-semibold); }
+        .tools-summary__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+
+        .tool-item__header { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--space-2); }
+        .tool-schema-toggle { font-size: var(--text-xs); color: var(--color-success-500); cursor: pointer; }
+        .tool-schema-pre { margin-top: var(--space-2); background: var(--color-bg-subtle); padding: var(--space-2); border-radius: var(--radius-sm); overflow-x: auto; font-size: var(--text-xs); max-height: 200px; }
+
+        /* Format card styles */
+        .format-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+        .format-card-item { background: var(--color-bg-card); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; transition: var(--transition-all); cursor: pointer; }
+        .format-card-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .format-card-preview { width: 100%; height: 200px; background: var(--color-bg-subtle); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .format-card-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .format-card-preview__placeholder { color: var(--color-text-light); font-size: var(--text-4xl); }
+        .format-card-body { padding: var(--space-4); }
+        .format-card-name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); color: var(--color-text-heading); }
+        .format-card-dimensions { font-size: var(--text-xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
+        .format-card-type { display: inline-block; padding: var(--space-1) var(--space-2); background: var(--color-brand-50); color: var(--color-brand); border-radius: var(--radius-sm); font-size: var(--text-xs); text-transform: capitalize; margin-top: var(--space-2); }
+
+        /* Format filter buttons */
+        .format-filters { margin-bottom: var(--space-4); display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+        .format-filters__label { font-size: var(--text-sm); font-weight: var(--font-semibold); }
+        .format-filter-btn { padding: var(--space-2) var(--space-4); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); cursor: pointer; font-size: var(--text-xs); text-transform: capitalize; transition: var(--transition-all); }
+        .format-filter-btn.active { background: var(--color-success-500); color: white; border-color: var(--color-success-500); }
+
+        /* Products grid styles */
+        .products-grid { display: grid; gap: var(--space-4); }
+        .product-card { background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-success-500); }
+        .product-card__name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); }
+        .product-card__desc { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-2); }
+        .product-card__meta { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+        /* Agent requires params box */
+        .agent-params-required { background: var(--color-warning-50); padding: var(--space-4); border-radius: var(--radius-md); border-left: 3px solid var(--color-warning-500); }
+        .agent-params-required__title { font-weight: var(--font-semibold); }
+        .agent-params-required__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+
+        /* Agent info box styles */
+        .info-box__desc { margin-bottom: var(--space-4); font-size: var(--text-base); }
+        .info-box__grid { display: grid; gap: var(--space-3); }
+        .info-box__code { background: var(--color-brand-50); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); word-break: break-all; }
+        .info-box__contact { margin-top: var(--space-6); padding-top: var(--space-6); border-top: var(--border-1) solid var(--color-border); }
+        .info-box__contact-link { color: var(--color-success-500); }
+
+        /* Modal styles for format detail */
+        .format-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-8); }
+        .format-modal { background: var(--color-bg-card); border-radius: var(--radius-xl); max-width: 800px; max-height: 90vh; overflow: auto; box-shadow: var(--shadow-2xl); }
+        .format-modal__header { position: sticky; top: 0; background: var(--color-bg-card); border-bottom: var(--border-1) solid var(--color-border); padding: var(--space-6); display: flex; justify-content: space-between; align-items: center; }
+        .format-modal__title { margin: 0; font-size: var(--text-xl); }
+        .format-modal__close { background: none; border: none; font-size: var(--text-2xl); cursor: pointer; color: var(--color-text-light); }
+        .format-modal__body { padding: var(--space-6); }
+        .format-modal__preview { margin-bottom: var(--space-6); text-align: center; }
+        .format-modal__preview img { max-width: 100%; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+        .format-modal__desc { color: var(--color-text-muted); margin-bottom: var(--space-6); }
+        .format-modal__meta { display: grid; gap: var(--space-4); margin-bottom: var(--space-6); }
+        .format-modal__code { background: var(--color-bg-subtle); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); }
+        .format-modal__cta { display: inline-block; padding: var(--space-3) var(--space-6); background: var(--color-success-500); color: white; text-decoration: none; border-radius: var(--radius-md); margin-top: var(--space-4); }
+
+        /* Error styling in tool errors */
+        .tool-error-box { font-size: var(--text-xs); color: var(--color-error-600); padding: var(--space-2); background: var(--color-error-50); border-radius: var(--radius-sm); border-left: 3px solid var(--color-error-500); }
+        .tool-error-box__title { font-weight: var(--font-semibold); }
+        .tool-error-box__msg { font-size: var(--text-xs); color: var(--color-error-700); font-family: monospace; word-break: break-word; }
+
+        /* Footer link color */
+        .footer-resource-link { color: var(--color-success-500); text-decoration: none; }
+
+        /* Skeleton shimmer animation */
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .skeleton-bg { background: linear-gradient(90deg, var(--color-bg-subtle) 25%, var(--color-border-light) 50%, var(--color-bg-subtle) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+
+        @media (max-width: 768px) { .footer-content { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <!-- Navigation (loaded by nav.js) -->
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <header>
+        <h1>Agent registry</h1>
+        <p class="subtitle">Discover agents for advertising automation</p>
+    </header>
+
+    <!-- List View -->
+    <div id="list-view" class="view active">
+        <div class="container">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('sales')">🏢 Sales Agents</button>
+                <button class="tab" onclick="switchTab('creative')">🎨 Creative Agents</button>
+                <button class="tab" onclick="switchTab('signals')">📊 Signals Agents</button>
+            </div>
+
+            <!-- Sales Tab -->
+            <div id="sales-tab" class="tab-content active">
+                <div class="search-filters">
+                    <div class="search-box">
+                        <input type="text" id="sales-search" placeholder="Search by publisher name, domain, or country..." onkeyup="filterSalesAgents()">
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Status:</label>
+                            <button class="filter-btn active" data-status="all" onclick="setSalesStatusFilter('all')">All</button>
+                            <button class="filter-btn" data-status="online" onclick="setSalesStatusFilter('online')">Active</button>
+                            <button class="filter-btn" data-status="offline" onclick="setSalesStatusFilter('offline')">Issues</button>
+                        </div>
+                        <div class="filter-group" id="sales-channel-filters" style="display: none;">
+                            <label>Channel:</label>
+                        </div>
+                        <div class="filter-group" id="sales-country-filters" style="display: none;">
+                            <label>Country:</label>
+                        </div>
+                    </div>
+                </div>
+                <div id="sales-agents" class="agent-grid"></div>
+            </div>
+
+            <!-- Creative Tab -->
+            <div id="creative-tab" class="tab-content">
+                <div class="search-filters">
+                    <div class="search-box">
+                        <input type="text" id="creative-search" placeholder="Search by format dimensions (e.g., 300x250, native)..." onkeyup="filterCreativeAgents()">
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Status:</label>
+                            <button class="filter-btn active" data-status="all" onclick="setCreativeStatusFilter('all')">All</button>
+                            <button class="filter-btn" data-status="online" onclick="setCreativeStatusFilter('online')">Active</button>
+                            <button class="filter-btn" data-status="offline" onclick="setCreativeStatusFilter('offline')">Issues</button>
+                        </div>
+                        <div class="filter-group" id="creative-format-filters" style="display: none;">
+                            <label>Format:</label>
+                        </div>
+                    </div>
+                </div>
+                <div id="creative-agents" class="agent-grid"></div>
+            </div>
+
+            <!-- Signals Tab -->
+            <div id="signals-tab" class="tab-content">
+                <div class="search-filters">
+                    <div class="search-box">
+                        <input type="text" id="signals-search" placeholder="Search signals agents..." onkeyup="filterSignalsAgents()">
+                    </div>
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Status:</label>
+                            <button class="filter-btn active" data-status="all" onclick="setSignalsStatusFilter('all')">All</button>
+                            <button class="filter-btn" data-status="online" onclick="setSignalsStatusFilter('online')">Active</button>
+                            <button class="filter-btn" data-status="offline" onclick="setSignalsStatusFilter('offline')">Issues</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="signals-agents" class="agent-grid"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Detail View -->
+    <div id="detail-view" class="view">
+        <div class="detail-hero">
+            <div class="container">
+                <a href="#" class="back-btn" onclick="navigateToList(); return false;">← Back to Agents</a>
+                <h2 id="detail-name"></h2>
+                <div id="detail-url" class="agent-url"></div>
+            </div>
+        </div>
+        <div class="container">
+            <div class="detail-content" id="detail-body"></div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3>🤖 Use in Your AI Assistant</h3>
+                <div class="mcp-box">
+                    <p>Add this MCP server to Claude Desktop or ChatGPT:</p>
+                    <div class="mcp-url">https://agenticadvertising.org/mcp</div>
+                    <p class="property-section-small">Exposes 4 tools: <code>list_agents</code>, <code>get_agent</code>, <code>find_agents_for_property</code>, <code>get_properties_for_agent</code></p>
+                </div>
+            </div>
+            <div class="footer-section">
+                <h3>📚 Resources</h3>
+                <p style="margin-bottom: var(--space-2);">Learn more about the Ad Context Protocol:</p>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="margin: var(--space-2) 0;"><a href="https://adcontextprotocol.org" target="_blank" class="footer-resource-link">→ AdCP Documentation</a></li>
+                    <li style="margin: var(--space-2) 0;"><a href="/api/registry/agents" class="footer-resource-link">→ REST API</a></li>
+                    <li style="margin: var(--space-2) 0;"><a href="https://github.com/adcontextprotocol" target="_blank" class="footer-resource-link">→ GitHub</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-links">
+            <a href="/api/agreement?type=privacy_policy">Privacy Policy</a> |
+            <a href="/api/agreement?type=terms_of_service">Terms of Use</a> |
+            Powered by <a href="https://adcontextprotocol.org" target="_blank">Ad Context Protocol</a>
+        </div>
+    </footer>
+
+    <script type="module">
+        let salesAgents = [];
+        let creativeAgents = [];
+        let signalsAgents = [];
+        let salesAgentsEnriched = []; // With properties data
+        let creativeAgentsEnriched = []; // With formats data
+        let currentTab = 'sales';
+        let salesFilters = { status: 'all', channel: null, country: null, search: '' };
+        let creativeFilters = { status: 'all', format: null, search: '' };
+        let signalsFilters = { status: 'all', search: '' };
+        let isLoading = true;
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            handleRoute();
+            window.addEventListener('hashchange', handleRoute);
+
+            // Show loading skeletons immediately
+            renderCurrentTab();
+
+            await loadAllAgents();
+            handleQueryParams();
+        });
+
+        function handleQueryParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const type = urlParams.get('type');
+
+            if (type && ['sales', 'creative', 'signals'].includes(type)) {
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                const activeTab = Array.from(document.querySelectorAll('.tab')).find(t =>
+                    t.textContent.toLowerCase().includes(type)
+                );
+                if (activeTab) activeTab.classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(`${type}-tab`).classList.add('active');
+
+                currentTab = type;
+                renderCurrentTab();
+            }
+        }
+
+        async function loadAllAgents() {
+            try {
+                const agentsResponse = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+
+                const data = await agentsResponse.json();
+                const agents = data.agents || data; // Handle both wrapped and unwrapped response
+
+                salesAgents = agents.filter(a => a.type === 'sales');
+                creativeAgents = agents.filter(a => a.type === 'creative');
+                signalsAgents = agents.filter(a => a.type === 'signals');
+
+                // Sales agents already have properties from server
+                // Mark agents as offline if they have property errors (missing required tool)
+                salesAgentsEnriched = salesAgents.map(agent => {
+                    const hasPropertyError = agent.propertiesError && agent.propertiesError.length > 0;
+                    return {
+                        ...agent,
+                        properties: agent.properties || [],
+                        propertiesError: agent.propertiesError,
+                        health: hasPropertyError
+                            ? { ...agent.health, online: false, error: `Missing required tool: ${agent.propertiesError}` }
+                            : agent.health
+                    };
+                });
+                buildSalesFilters();
+
+                // Enrich creative agents with formats
+                await enrichCreativeAgents();
+
+                // Done loading
+                isLoading = false;
+
+                // Render current tab
+                renderCurrentTab();
+            } catch (error) {
+                console.error('Failed to load agents:', error);
+                isLoading = false;
+                renderCurrentTab();
+            }
+        }
+
+        async function enrichCreativeAgents() {
+            // Extract formats from capabilities if available
+            creativeAgentsEnriched = creativeAgents.map(agent => ({
+                ...agent,
+                formats: agent.capabilities?.creative_capabilities?.formats_supported || []
+            }));
+        }
+
+        function buildSalesFilters() {
+            const channels = new Set();
+            const countries = new Set();
+
+            salesAgentsEnriched.forEach(agent => {
+                agent.properties.forEach(prop => {
+                    if (prop.tags) {
+                        prop.tags.forEach(tag => {
+                            if (tag.toLowerCase().includes('dooh') || tag.toLowerCase().includes('digital') ||
+                                tag.toLowerCase().includes('mobile') || tag.toLowerCase().includes('ctv') ||
+                                tag.toLowerCase().includes('web') || tag.toLowerCase().includes('display')) {
+                                channels.add(tag);
+                            }
+                        });
+                    }
+                    if (prop.country) countries.add(prop.country);
+                });
+            });
+
+            // Render channel filters
+            const channelContainer = document.getElementById('sales-channel-filters');
+            if (channels.size > 0) {
+                channelContainer.style.display = 'flex';
+                channels.forEach(channel => {
+                    const btn = document.createElement('button');
+                    btn.className = 'filter-btn';
+                    btn.textContent = channel;
+                    btn.onclick = () => setSalesChannelFilter(channel);
+                    channelContainer.appendChild(btn);
+                });
+            }
+
+            // Render country filters
+            const countryContainer = document.getElementById('sales-country-filters');
+            if (countries.size > 0) {
+                countryContainer.style.display = 'flex';
+                countries.forEach(country => {
+                    const btn = document.createElement('button');
+                    btn.className = 'filter-btn';
+                    btn.textContent = country;
+                    btn.onclick = () => setSalesCountryFilter(country);
+                    countryContainer.appendChild(btn);
+                });
+            }
+        }
+
+        window.switchTab = function(tab) {
+            currentTab = tab;
+
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`${tab}-tab`).classList.add('active');
+
+            renderCurrentTab();
+        };
+
+        function renderCurrentTab() {
+            if (currentTab === 'sales') renderSalesAgents();
+            else if (currentTab === 'creative') renderCreativeAgents();
+            else if (currentTab === 'signals') renderSignalsAgents();
+        }
+
+        function renderLoadingSkeleton(count = 3) {
+            return Array(count).fill(0).map(() => `
+                <div class="agent-card" style="pointer-events: none; opacity: 0.6;">
+                    <div class="agent-header">
+                        <div class="agent-title" style="flex: 1;">
+                            <div class="skeleton-bg" style="height: 20px; border-radius: var(--radius-sm); width: 60%; margin-bottom: var(--space-2);"></div>
+                            <div class="skeleton-bg" style="height: 14px; border-radius: var(--radius-sm); width: 80%;"></div>
+                        </div>
+                        <span class="status-badge" style="background: var(--color-bg-subtle); color: transparent;">...</span>
+                    </div>
+                    <div class="skeleton-bg" style="height: 40px; border-radius: var(--radius-sm); margin-bottom: var(--space-4);"></div>
+                    <div class="agent-meta">
+                        <div class="skeleton-bg" style="height: 16px; border-radius: var(--radius-sm); width: 100px;"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderSalesAgents() {
+            const container = document.getElementById('sales-agents');
+
+            // Show loading skeleton while data is being fetched
+            if (isLoading) {
+                container.innerHTML = renderLoadingSkeleton(4);
+                return;
+            }
+
+            const filtered = salesAgentsEnriched.filter(agent => {
+                // Status filter
+                if (salesFilters.status !== 'all') {
+                    const online = agent.health?.online || false;
+                    if (salesFilters.status === 'online' && !online) return false;
+                    if (salesFilters.status === 'offline' && online) return false;
+                }
+
+                // Channel filter
+                if (salesFilters.channel) {
+                    const hasChannel = agent.properties.some(p =>
+                        p.tags && p.tags.some(t => t === salesFilters.channel)
+                    );
+                    if (!hasChannel) return false;
+                }
+
+                // Country filter
+                if (salesFilters.country) {
+                    const hasCountry = agent.properties.some(p => p.country === salesFilters.country);
+                    if (!hasCountry) return false;
+                }
+
+                // Search filter
+                if (salesFilters.search) {
+                    const query = salesFilters.search.toLowerCase();
+                    const matchesName = agent.name.toLowerCase().includes(query);
+                    const matchesProperty = agent.properties.some(p =>
+                        (p.identifier && p.identifier.toLowerCase().includes(query)) ||
+                        (p.domain && p.domain.toLowerCase().includes(query)) ||
+                        (p.description && p.description.toLowerCase().includes(query)) ||
+                        (p.country && p.country.toLowerCase().includes(query))
+                    );
+                    if (!matchesName && !matchesProperty) return false;
+                }
+
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="loading">No sales agents found matching your filters.</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(agent => `
+                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
+                    <div class="agent-header">
+                        <div class="agent-title">
+                            <div class="agent-name">${agent.name}</div>
+                            <div class="agent-url">${agent.url}</div>
+                        </div>
+                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
+                            ${agent.health?.online ? 'Active' : 'Issues'}
+                        </span>
+                    </div>
+
+                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
+
+                    <div class="agent-meta">
+                        <div class="meta-item">
+                            <span>📊</span>
+                            <span class="meta-value">${agent.properties.length}</span> properties
+                        </div>
+                        ${agent.health?.response_time_ms ? `
+                        <div class="meta-item">
+                            <span>⚡</span>
+                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    ${agent.properties.length > 0 ? `
+                    <div class="agent-properties">
+                        <div class="property-section-small">
+                            <strong>Publishers:</strong> ${agent.properties.slice(0, 3).map(p => p.identifier || p.domain).join(', ')}${agent.properties.length > 3 ? ` +${agent.properties.length - 3} more` : ''}
+                        </div>
+                        <div class="property-tags">
+                            ${Array.from(new Set(agent.properties.flatMap(p => p.tags || []))).slice(0, 5).map(tag =>
+                                `<span class="property-tag">${tag}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                    ` : agent.propertiesError ? `
+                    <div class="agent-properties">
+                        <div class="tool-error-box">
+                            <span class="tool-error-box__title">❌ Tool Error:</span><br>
+                            <span class="tool-error-box__msg">${agent.propertiesError}</span>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function renderCreativeAgents() {
+            const container = document.getElementById('creative-agents');
+
+            // Show loading skeleton while data is being fetched
+            if (isLoading) {
+                container.innerHTML = renderLoadingSkeleton(3);
+                return;
+            }
+
+            const filtered = creativeAgentsEnriched.filter(agent => {
+                // Status filter
+                if (creativeFilters.status !== 'all') {
+                    const online = agent.health?.online || false;
+                    if (creativeFilters.status === 'online' && !online) return false;
+                    if (creativeFilters.status === 'offline' && online) return false;
+                }
+
+                // Search filter
+                if (creativeFilters.search) {
+                    const query = creativeFilters.search.toLowerCase();
+                    const matchesName = agent.name.toLowerCase().includes(query);
+                    const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
+                    if (!matchesName && !matchesFormat) return false;
+                }
+
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="loading">No creative agents found matching your filters.</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(agent => `
+                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
+                    <div class="agent-header">
+                        <div class="agent-title">
+                            <div class="agent-name">${agent.name}</div>
+                            <div class="agent-url">${agent.url}</div>
+                        </div>
+                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
+                            ${agent.health?.online ? 'Active' : 'Issues'}
+                        </span>
+                    </div>
+
+                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
+
+                    <div class="agent-meta">
+                        <div class="meta-item">
+                            <span>🎨</span>
+                            <span class="meta-value">${agent.formats.length || 'TBD'}</span> formats
+                        </div>
+                        ${agent.health?.response_time_ms ? `
+                        <div class="meta-item">
+                            <span>⚡</span>
+                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    ${agent.formats.length > 0 ? `
+                    <div class="formats-list">
+                        ${agent.formats.slice(0, 5).map(format =>
+                            `<span class="format-badge">${format}</span>`
+                        ).join('')}
+                        ${agent.formats.length > 5 ? `<span class="format-badge">+${agent.formats.length - 5} more</span>` : ''}
+                    </div>
+                    ` : `
+                    <div class="format-discovery-note">📐 Format discovery coming soon</div>
+                    `}
+                </div>
+            `).join('');
+        }
+
+        function renderSignalsAgents() {
+            const container = document.getElementById('signals-agents');
+
+            // Show loading skeleton while data is being fetched
+            if (isLoading) {
+                container.innerHTML = renderLoadingSkeleton(2);
+                return;
+            }
+
+            const filtered = signalsAgents.filter(agent => {
+                // Status filter
+                if (signalsFilters.status !== 'all') {
+                    const online = agent.health?.online || false;
+                    if (signalsFilters.status === 'online' && !online) return false;
+                    if (signalsFilters.status === 'offline' && online) return false;
+                }
+
+                // Search filter
+                if (signalsFilters.search) {
+                    const query = signalsFilters.search.toLowerCase();
+                    if (!agent.name.toLowerCase().includes(query)) return false;
+                }
+
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="loading">No signals agents registered yet.</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(agent => `
+                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
+                    <div class="agent-header">
+                        <div class="agent-title">
+                            <div class="agent-name">${agent.name}</div>
+                            <div class="agent-url">${agent.url}</div>
+                        </div>
+                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
+                            ${agent.health?.online ? 'Active' : 'Issues'}
+                        </span>
+                    </div>
+
+                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
+
+                    <div class="agent-meta">
+                        ${agent.health?.response_time_ms ? `
+                        <div class="meta-item">
+                            <span>⚡</span>
+                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Filter functions for sales
+        window.setSalesStatusFilter = function(status) {
+            salesFilters.status = status;
+            document.querySelectorAll('#sales-tab .filter-btn[data-status]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.status === status);
+            });
+            renderSalesAgents();
+        };
+
+        window.setSalesChannelFilter = function(channel) {
+            salesFilters.channel = salesFilters.channel === channel ? null : channel;
+            document.querySelectorAll('#sales-channel-filters .filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent === channel && salesFilters.channel);
+            });
+            renderSalesAgents();
+        };
+
+        window.setSalesCountryFilter = function(country) {
+            salesFilters.country = salesFilters.country === country ? null : country;
+            document.querySelectorAll('#sales-country-filters .filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent === country && salesFilters.country);
+            });
+            renderSalesAgents();
+        };
+
+        window.filterSalesAgents = function() {
+            salesFilters.search = document.getElementById('sales-search').value;
+            renderSalesAgents();
+        };
+
+        // Filter functions for creative
+        window.setCreativeStatusFilter = function(status) {
+            creativeFilters.status = status;
+            document.querySelectorAll('#creative-tab .filter-btn[data-status]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.status === status);
+            });
+            renderCreativeAgents();
+        };
+
+        window.filterCreativeAgents = function() {
+            creativeFilters.search = document.getElementById('creative-search').value;
+            renderCreativeAgents();
+        };
+
+        // Filter functions for signals
+        window.setSignalsStatusFilter = function(status) {
+            signalsFilters.status = status;
+            document.querySelectorAll('#signals-tab .filter-btn[data-status]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.status === status);
+            });
+            renderSignalsAgents();
+        };
+
+        window.filterSignalsAgents = function() {
+            signalsFilters.search = document.getElementById('signals-search').value;
+            renderSignalsAgents();
+        };
+
+        // Navigation
+        window.navigateToAgent = function(agentId) {
+            window.location.hash = `#agent/${agentId}`;
+        };
+
+        window.navigateToList = function() {
+            window.location.hash = '';
+        };
+
+        function handleRoute() {
+            const hash = window.location.hash.slice(1);
+            if (hash.startsWith('agent/')) {
+                const agentId = hash.replace('agent/', '');
+                showAgentDetail(agentId);
+            } else {
+                showListView();
+            }
+        }
+
+        function showListView() {
+            document.getElementById('list-view').classList.add('active');
+            document.getElementById('detail-view').classList.remove('active');
+        }
+
+        async function showAgentDetail(agentId) {
+            document.getElementById('list-view').classList.remove('active');
+            document.getElementById('detail-view').classList.add('active');
+
+            try {
+                const [type, ...nameParts] = agentId.split('/');
+                const name = nameParts.join('/');
+
+                // Fetch all agents with enrichment and find the specific one
+                const capsResp = await fetch('/api/registry/agents?health=true&capabilities=true&properties=true');
+                const capsData = await capsResp.json();
+                const allAgents = capsData.agents || [];
+
+                // Find the specific agent using multiple matching strategies (most to least specific)
+                const agentWithCaps =
+                    // 1. Exact type + slug match
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return a.type === type && slugName === name;
+                    }) ||
+                    // 2. Type match + URL hostname contains the name (more specific than includes)
+                    allAgents.find(a => {
+                        try {
+                            const hostname = new URL(a.url).hostname.toLowerCase();
+                            return a.type === type && hostname.includes(name.toLowerCase());
+                        } catch { return false; }
+                    }) ||
+                    // 3. Any agent with exact slug match (fallback for type mismatch)
+                    allAgents.find(a => {
+                        const slugName = a.name?.toLowerCase().replace(/\s+/g, '-') || '';
+                        return slugName === name;
+                    });
+
+                const agent = agentWithCaps || { name: name, url: '', type: type };
+
+                document.getElementById('detail-name').textContent = agent.name;
+                document.getElementById('detail-url').textContent = agent.url;
+
+                let html = '';
+
+                // Health status banner
+                const health = agent.health || {};
+                const statusText = health.online ? 'Active' : 'Offline';
+                html += `
+                    <div class="status-banner ${health.online ? 'status-banner--online' : 'status-banner--offline'}">
+                        <div>
+                            <span class="status-banner__text">Status: ${statusText}</span>
+                            ${health.response_time_ms ? `<span class="status-banner__meta">Response time: ${health.response_time_ms}ms</span>` : ''}
+                        </div>
+                        ${health.last_check ? `<div class="status-banner__time">Last check: ${new Date(health.last_check).toLocaleString()}</div>` : ''}
+                    </div>
+                `;
+
+                // Spec Compliance Badge
+                if (agentWithCaps.capabilities) {
+                    const caps = agentWithCaps.capabilities;
+
+                    if (agent.type === 'sales' && caps.tools) {
+                        // Check for actual AdCP spec required tools (from @adcp/client types)
+                        const toolNames = new Set(caps.tools.map(t => t.name.toLowerCase()));
+                        const requiredTools = [
+                            'get_products',
+                            'create_media_buy',
+                            'update_media_buy',
+                            'get_media_buy_delivery',
+                            'sync_creatives',
+                            'list_authorized_properties'
+                        ];
+                        const implementedTools = requiredTools.filter(tool => toolNames.has(tool));
+                        const isCompliant = implementedTools.length === requiredTools.length;
+
+                        html += `
+                            <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                                <span class="compliance-badge__icon">${isCompliant ? '✅' : '⚠️'}</span>
+                                <div>
+                                    <div class="compliance-badge__title">${isCompliant ? 'AdCP Sales Agent' : 'Incomplete Implementation'}</div>
+                                    <div class="compliance-badge__subtitle">
+                                        Implements ${implementedTools.length} of ${requiredTools.length} required tools: ${requiredTools.join(', ')}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    } else if (agent.type === 'creative' && caps.creative_capabilities) {
+                        const cc = caps.creative_capabilities;
+                        // Only list_creative_formats is required per AdCP spec
+                        const isCompliant = cc.formats_supported.length > 0;
+                        const hasOptionalBuild = cc.can_generate;
+                        const hasOptionalPreview = cc.can_preview;
+
+                        const capabilities = [];
+                        if (hasOptionalBuild) capabilities.push('Generate');
+                        if (hasOptionalPreview) capabilities.push('Preview');
+
+                        html += `
+                            <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                                <span class="compliance-badge__icon">${isCompliant ? '✅' : '⚠️'}</span>
+                                <div>
+                                    <div class="compliance-badge__title">${isCompliant ? 'AdCP Creative Agent' : 'Incomplete Implementation'}</div>
+                                    <div class="compliance-badge__subtitle">
+                                        ${isCompliant ?
+                                            `${cc.formats_supported.length} format(s)${capabilities.length > 0 ? ' • ' + capabilities.join(' • ') : ' • Formats only'}` :
+                                            'Missing required list_creative_formats tool'}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                // Type-specific sections (MOVED TO TOP)
+                if (agent.type === 'sales') {
+                    html += `
+                        <div class="detail-section">
+                            <h3>📰 Publishers & Properties</h3>
+                            <div id="publishers-section"><div class="loading">Loading publishers...</div></div>
+                        </div>
+                        <div class="detail-section">
+                            <details>
+                                <summary class="detail-section__summary">
+                                    <span class="detail-section__arrow">▶</span>
+                                    📦 Public Products
+                                </summary>
+                                <div id="products-section" class="detail-section__content"><div class="loading">Click to load available products...</div></div>
+                            </details>
+                        </div>
+                        <div class="detail-section">
+                            <details>
+                                <summary class="detail-section__summary">
+                                    <span class="detail-section__arrow">▶</span>
+                                    🎨 Creative Formats
+                                </summary>
+                                <div id="creative-formats-section" class="detail-section__content"><div class="loading">Click to load supported formats...</div></div>
+                            </details>
+                        </div>
+                    `;
+                } else if (agent.type === 'creative') {
+                    html += `
+                        <div class="detail-section">
+                            <h3>🎨 Creative Formats</h3>
+                            <div id="formats-section"><div class="loading">Loading formats...</div></div>
+                        </div>
+                    `;
+                }
+
+                // Tools section (moved to bottom, collapsible)
+                html += `
+                    <div class="detail-section">
+                        <details>
+                            <summary class="detail-section__summary">
+                                <span class="detail-section__arrow">▶</span>
+                                🛠️ Tools (${agentWithCaps.capabilities?.tools_count || 0})
+                            </summary>
+                            <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
+                        </details>
+                    </div>
+                `;
+
+                // Agent info
+                html += `
+                    <div class="detail-section">
+                        <h3>ℹ️ Agent Information</h3>
+                        <div class="info-box">
+                            ${agent.description ? `<p class="info-box__desc">${agent.description}</p>` : ''}
+                            <div class="info-box__grid">
+                                <div><strong>Type:</strong> <span style="text-transform: capitalize;">${agent.type}</span></div>
+                                <div><strong>Protocol:</strong> ${agent.protocol || 'mcp'}</div>
+                                <div><strong>Endpoint:</strong> <code class="info-box__code">${agent.url}</code></div>
+                                ${agent.mcp_endpoint ? `<div><strong>MCP Endpoint:</strong> <code class="info-box__code">${agent.mcp_endpoint}</code></div>` : ''}
+                            </div>
+                            ${agent.contact ? `
+                                <div class="info-box__contact">
+                                    <strong>Contact Information</strong><br>
+                                    <div style="margin-top: var(--space-2);">
+                                        ${agent.contact.name}<br>
+                                        <a href="mailto:${agent.contact.email}" class="info-box__contact-link">${agent.contact.email}</a>
+                                        ${agent.contact.website ? `<br><a href="${agent.contact.website}" target="_blank" class="info-box__contact-link">${agent.contact.website}</a>` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('detail-body').innerHTML = html;
+
+                // Fetch tools and additional data
+                fetchTools(agent);
+                if (agent.type === 'sales') {
+                    fetchPublishers(agent);
+
+                    // Add event listeners for lazy-loaded sections
+                    const productsDetails = document.querySelector('#products-section').closest('details');
+                    const creativeFormatsDetails = document.querySelector('#creative-formats-section').closest('details');
+
+                    productsDetails.addEventListener('toggle', function() {
+                        if (this.open && document.getElementById('products-section').innerHTML.includes('Click to load')) {
+                            fetchPublicProducts(agent);
+                        }
+                    });
+
+                    creativeFormatsDetails.addEventListener('toggle', function() {
+                        if (this.open && document.getElementById('creative-formats-section').innerHTML.includes('Click to load')) {
+                            fetchCreativeFormats(agent);
+                        }
+                    });
+                } else if (agent.type === 'creative') {
+                    fetchFormats(agent);
+                }
+            } catch (error) {
+                document.getElementById('detail-body').innerHTML = `<div class="error-text">Failed to load agent details: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchTools(agent) {
+            const section = document.getElementById('tools-section');
+            try {
+                // Fetch capability discovery which includes all tools
+                const response = await fetch('/api/registry/agents?health=true&capabilities=true');
+                const data = await response.json();
+                const allAgents = data.agents || data;
+                const agentWithCaps = allAgents.find(a => a.url === agent.url);
+
+                if (!agentWithCaps || !agentWithCaps.capabilities || agentWithCaps.capabilities.tools_count === 0) {
+                    section.innerHTML = `<div class="property-section-small">No tools discovered yet.</div>`;
+                    return;
+                }
+
+                const tools = agentWithCaps.capabilities.tools || [];
+
+                if (tools.length === 0) {
+                    section.innerHTML = `
+                        <div class="tools-summary">
+                            <span class="tools-summary__count">Total Tools: ${agentWithCaps.capabilities.tools_count}</span>
+                            <p class="tools-summary__desc">This agent exposes ${agentWithCaps.capabilities.tools_count} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <div class="tools-summary">
+                        <span class="tools-summary__count">Total Tools: ${tools.length}</span>
+                        <p class="tools-summary__desc">This agent exposes ${tools.length} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                    </div>
+                    <div class="tools-list">
+                `;
+
+                tools.forEach((tool, index) => {
+                    const hasSchema = tool.input_schema && Object.keys(tool.input_schema).length > 0;
+                    html += `
+                        <div class="tool-item">
+                            <div class="tool-item__header">
+                                <div class="tool-name">${index + 1}. ${tool.name}</div>
+                                ${hasSchema ? `<details class="tool-schema-toggle">
+                                    <summary>Schema</summary>
+                                    <pre class="tool-schema-pre">${JSON.stringify(tool.input_schema, null, 2)}</pre>
+                                </details>` : ''}
+                            </div>
+                            ${tool.description ? `<div class="tool-description">${tool.description}</div>` : '<div class="tool-description" style="color: var(--color-text-light);">No description available</div>'}
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                section.innerHTML = html;
+            } catch (error) {
+                section.innerHTML = `<div class="error-text">Failed to load tools: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchPublishers(agent) {
+            try {
+                const response = await fetch(`/mcp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 1,
+                        method: 'tools/call',
+                        params: {
+                            name: 'get_properties_for_agent',
+                            arguments: { agent_url: agent.url }
+                        }
+                    })
+                });
+                const data = await response.json();
+                const result = JSON.parse(data.result.content[0].resource.text);
+
+                const section = document.getElementById('publishers-section');
+
+                if (result.error) {
+                    section.innerHTML = `<div class="tool-error-box">
+                        <strong>Error:</strong> ${result.error}
+                    </div>`;
+                    return;
+                }
+
+                if (result.properties && result.properties.length > 0) {
+                    // Group by verification status
+                    const verified = result.properties.filter(p => p.verified === true);
+                    const unverified = result.properties.filter(p => p.verified === false);
+                    const unchecked = result.properties.filter(p => p.verified === undefined);
+
+                    let html = '';
+
+                    if (verified.length > 0) {
+                        html += '<div class="publishers-group">';
+                        html += '<h4 class="publishers-group__title publishers-group__title--verified">✓ Verified Properties</h4>';
+                        html += '<div class="publishers-grid">' +
+                            verified.map(p => `
+                                <div class="publisher-item publisher-item--verified">
+                                    <div style="display: flex; justify-content: between; align-items: start; gap: var(--space-2);">
+                                        <div style="flex: 1;">
+                                            <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
+                                            <div class="property-section-small" style="margin-top: var(--space-1);">
+                                                <strong>Type:</strong> ${p.type || 'domain'}
+                                                ${p.country ? ` | <strong>Country:</strong> ${p.country}` : ''}
+                                            </div>
+                                        </div>
+                                        <a href="${p.verification_url}" target="_blank" class="publisher-verify-link" title="View adagents.json">
+                                            🔗 Verified
+                                        </a>
+                                    </div>
+                                    ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${p.description}</div>` : ''}
+                                    ${p.tags && p.tags.length > 0 ? `
+                                        <div class="property-tags" style="margin-top: var(--space-3);">
+                                            ${p.tags.map(tag => `<span class="property-tag">${tag}</span>`).join('')}
+                                        </div>
+                                    ` : ''}
+                                    ${p.metadata ? `<details class="property-metadata-toggle">
+                                        <summary>Additional metadata</summary>
+                                        <pre class="property-metadata-pre">${JSON.stringify(p.metadata, null, 2)}</pre>
+                                    </details>` : ''}
+                                </div>
+                            `).join('') +
+                        '</div>';
+                        html += '</div>';
+                    }
+
+                    if (unverified.length > 0) {
+                        html += '<div class="publishers-group">';
+                        html += '<h4 class="publishers-group__title publishers-group__title--unverified">✗ Unverified Properties (Claims Not Authorized)</h4>';
+                        html += '<div class="publishers-grid">' +
+                            unverified.map(p => `
+                                <div class="publisher-item publisher-item--unverified">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; gap: var(--space-2);">
+                                        <div style="flex: 1;">
+                                            <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
+                                            <div class="property-section-small" style="margin-top: var(--space-1);">${p.type || 'domain'}</div>
+                                        </div>
+                                        ${p.verification_url ? `<a href="${p.verification_url}" target="_blank" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
+                                            🔗 Check
+                                        </a>` : ''}
+                                    </div>
+                                    <div class="publisher-warning">
+                                        <strong>⚠️ Warning:</strong> ${p.verification_error || 'This agent is not listed in the domain\'s .well-known/adagents.json file'}
+                                    </div>
+                                </div>
+                            `).join('') +
+                        '</div>';
+                        html += '</div>';
+                    }
+
+                    if (unchecked.length > 0) {
+                        html += '<div class="publishers-group">';
+                        html += '<h4 class="publishers-group__title publishers-group__title--unchecked">⚠️ Unchecked Properties</h4>';
+                        html += '<div class="publishers-grid">' +
+                            unchecked.map(p => `
+                                <div class="publisher-item publisher-item--unchecked">
+                                    <div class="publisher-domain">${p.identifier || p.domain || 'Unknown'}</div>
+                                    <div class="property-section-small" style="margin-top: var(--space-1);">${p.type || 'domain'}</div>
+                                </div>
+                            `).join('') +
+                        '</div>';
+                        html += '</div>';
+                    }
+
+                    section.innerHTML = html;
+                } else {
+                    section.innerHTML = `<div class="property-section-small">No properties available from this agent yet.</div>`;
+                }
+            } catch (error) {
+                document.getElementById('publishers-section').innerHTML = `<div class="error-text">Failed to load publishers: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchFormats(agent) {
+            const section = document.getElementById('formats-section');
+            section.innerHTML = '<div class="loading">Loading formats...</div>';
+
+            try {
+                const response = await fetch(`/mcp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 1,
+                        method: 'tools/call',
+                        params: {
+                            name: 'list_creative_formats_for_agent',
+                            arguments: { agent_url: agent.url, params: {} }
+                        }
+                    })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${data.error.message || 'Unknown error'}</div>`;
+                    return;
+                }
+
+                const result = JSON.parse(data.result.content[0].resource.text);
+
+                if (result.error) {
+                    section.innerHTML = `<div class="property-section-small">${result.error}</div>`;
+                    return;
+                }
+
+                // Handle different response formats
+                let formats = [];
+                if (Array.isArray(result)) {
+                    formats = result;
+                } else if (result.formats && Array.isArray(result.formats)) {
+                    formats = result.formats;
+                } else if (result.data && Array.isArray(result.data)) {
+                    formats = result.data;
+                } else if (result.data && result.data.formats) {
+                    formats = result.data.formats;
+                }
+
+                if (formats.length === 0) {
+                    section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
+                    return;
+                }
+
+                // Display formats in a grid
+                let html = '<div class="format-card-grid">';
+                formats.forEach(format => {
+                    const formatName = typeof format === 'string' ? format : (format.name || format.format || 'Unknown');
+                    const dimensions = typeof format === 'object' ? (format.dimensions || format.size) : null;
+                    const type = typeof format === 'object' ? (format.type || format.format_type) : null;
+                    const description = typeof format === 'object' ? format.description : null;
+
+                    html += `
+                        <div class="product-card">
+                            <div class="product-card__name">${formatName}</div>
+                            ${dimensions ? `<div class="format-card-dimensions">📐 ${dimensions}</div>` : ''}
+                            ${type ? `<div class="format-card-type">${type}</div>` : ''}
+                            ${description ? `<div class="product-card__desc">${description}</div>` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+
+                section.innerHTML = html;
+            } catch (error) {
+                section.innerHTML = `<div class="error-text">Failed to load formats: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchPublicProducts(agent) {
+            const section = document.getElementById('products-section');
+            section.innerHTML = '<div class="loading">Loading products...</div>';
+
+            try {
+                const response = await fetch(`/mcp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 1,
+                        method: 'tools/call',
+                        params: {
+                            name: 'get_products_for_agent',
+                            arguments: { agent_url: agent.url, params: {} }
+                        }
+                    })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    section.innerHTML = `<div class="property-section-small">Unable to fetch products: ${data.error.message || 'Unknown error'}</div>`;
+                    return;
+                }
+
+                const result = JSON.parse(data.result.content[0].resource.text);
+
+                if (result.error) {
+                    const isValidationError = result.error.includes('does not match') || result.error.includes('Input should be');
+                    section.innerHTML = `
+                        <div class="agent-params-required">
+                            <div class="agent-params-required__title">${isValidationError ? 'Agent Requires Parameters' : 'Agent Error'}</div>
+                            <div class="agent-params-required__desc">
+                                ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : result.error}
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const products = result.products || [];
+
+                if (products.length === 0) {
+                    section.innerHTML = '<div class="property-section-small">No public products available (may require targeting)</div>';
+                    return;
+                }
+
+                let html = '<div class="products-grid">';
+                products.forEach(product => {
+                    html += `
+                        <div class="product-card">
+                            <div class="product-card__name">${product.name || product.id || 'Unnamed Product'}</div>
+                            ${product.description ? `<div class="product-card__desc">${product.description}</div>` : ''}
+                            ${product.inventory_type ? `<div class="product-card__meta"><strong>Type:</strong> ${product.inventory_type}</div>` : ''}
+                            ${product.price ? `<div class="product-card__meta"><strong>Price:</strong> ${product.price.amount} ${product.price.currency}</div>` : ''}
+                            ${product.publisher_domain ? `<div class="product-card__meta"><strong>Publisher:</strong> ${product.publisher_domain}</div>` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+
+                section.innerHTML = html;
+            } catch (error) {
+                section.innerHTML = `<div class="error-text">Failed to load products: ${error.message}</div>`;
+            }
+        }
+
+        async function fetchCreativeFormats(agent) {
+            const section = document.getElementById('creative-formats-section');
+            section.innerHTML = '<div class="loading">Loading formats...</div>';
+
+            try {
+                const response = await fetch(`/mcp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: 1,
+                        method: 'tools/call',
+                        params: {
+                            name: 'list_creative_formats_for_agent',
+                            arguments: { agent_url: agent.url, params: {} }
+                        }
+                    })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    section.innerHTML = `<div class="property-section-small">Unable to fetch formats: ${data.error.message || 'Unknown error'}</div>`;
+                    return;
+                }
+
+                const result = JSON.parse(data.result.content[0].resource.text);
+
+                if (result.error) {
+                    section.innerHTML = `<div class="property-section-small">${result.error}</div>`;
+                    return;
+                }
+
+                const formats = result.formats || [];
+
+                if (formats.length === 0) {
+                    section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
+                    return;
+                }
+
+                // Extract unique types for filtering
+                const types = [...new Set(formats.map(f => f.type).filter(Boolean))];
+
+                let html = `
+                    <div class="format-filters">
+                        <span class="format-filters__label">Filter:</span>
+                        <button onclick="filterFormats('all')" class="format-filter-btn active" data-type="all">
+                            All (${formats.length})
+                        </button>
+                        ${types.map(type => `
+                            <button onclick="filterFormats('${type}')" class="format-filter-btn" data-type="${type}">
+                                ${type.replace(/_/g, ' ')} (${formats.filter(f => f.type === type).length})
+                            </button>
+                        `).join('')}
+                    </div>
+                    <div id="formats-grid" class="format-card-grid">
+                `;
+
+                formats.forEach((format, index) => {
+                    const dimensions = format.renders?.[0]?.dimensions;
+                    const width = dimensions?.width || dimensions?.max_width;
+                    const height = dimensions?.height || dimensions?.max_height;
+                    const isResponsive = dimensions?.min_width || dimensions?.min_height;
+
+                    html += `
+                        <div class="format-card format-card-item" data-type="${format.type || 'unknown'}" onclick="showFormatDetails(${index}, ${JSON.stringify(format).replace(/"/g, '&quot;')})">
+                            ${format.preview_image ? `
+                                <div class="format-card-preview">
+                                    <img src="${format.preview_image}" alt="${format.name}" onerror="this.parentElement.innerHTML='<div class=&quot;format-card-preview__placeholder&quot;>🎨</div>'">
+                                </div>
+                            ` : `
+                                <div class="format-card-preview">
+                                    <span class="format-card-preview__placeholder">🎨</span>
+                                </div>
+                            `}
+                            <div class="format-card-body">
+                                <div class="format-card-name">${format.name || format.format_id || 'Unnamed Format'}</div>
+                                ${width && height ? `
+                                    <div class="format-card-dimensions">
+                                        📐 ${isResponsive ? 'Responsive: ' : ''}${width}×${height}${dimensions?.unit ? dimensions.unit : 'px'}
+                                    </div>
+                                ` : ''}
+                                ${format.type ? `
+                                    <div class="format-card-type">
+                                        ${format.type.replace(/_/g, ' ')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+
+                section.innerHTML = html;
+
+                // Store formats for filtering
+                window.currentFormats = formats;
+
+            } catch (error) {
+                section.innerHTML = `<div class="error-text">Failed to load formats: ${error.message}</div>`;
+            }
+        }
+
+        function filterFormats(type) {
+            const cards = document.querySelectorAll('.format-card');
+            const buttons = document.querySelectorAll('.format-filter-btn');
+
+            buttons.forEach(btn => {
+                if (btn.dataset.type === type) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            cards.forEach(card => {
+                if (type === 'all' || card.dataset.type === type) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        function showFormatDetails(index, format) {
+            const modal = document.createElement('div');
+            modal.className = 'format-modal-overlay';
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+            const dimensions = format.renders?.[0]?.dimensions;
+            const width = dimensions?.width || dimensions?.max_width;
+            const height = dimensions?.height || dimensions?.max_height;
+
+            modal.innerHTML = `
+                <div class="format-modal" onclick="event.stopPropagation()">
+                    <div class="format-modal__header">
+                        <h3 class="format-modal__title">${format.name || format.format_id}</h3>
+                        <button onclick="this.closest('.format-modal-overlay').remove()" class="format-modal__close">×</button>
+                    </div>
+                    <div class="format-modal__body">
+                        ${format.preview_image ? `
+                            <div class="format-modal__preview">
+                                <img src="${format.preview_image}" alt="${format.name}">
+                            </div>
+                        ` : ''}
+                        ${format.description ? `<p class="format-modal__desc">${format.description}</p>` : ''}
+                        <div class="format-modal__meta">
+                            ${format.format_id ? `<div><strong>Format ID:</strong> <code class="format-modal__code">${format.format_id}</code></div>` : ''}
+                            ${format.type ? `<div><strong>Type:</strong> <span style="text-transform: capitalize;">${format.type.replace(/_/g, ' ')}</span></div>` : ''}
+                            ${width && height ? `<div><strong>Dimensions:</strong> ${width}×${height}${dimensions?.unit || 'px'}</div>` : ''}
+                            ${dimensions?.min_width || dimensions?.min_height ? `<div><strong>Responsive:</strong> Yes (${dimensions.min_width || 0}×${dimensions.min_height || 0} to ${dimensions.max_width || width}×${dimensions.max_height || height})</div>` : ''}
+                        </div>
+                        ${format.example_url ? `
+                            <a href="${format.example_url}" target="_blank" class="format-modal__cta">
+                                View Examples & Demos →
+                            </a>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+        }
+    </script>
+</body>
+</html>

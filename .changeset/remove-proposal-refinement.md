@@ -2,6 +2,6 @@
 "adcontextprotocol": major
 ---
 
-Remove `proposal_id` from get_products request schema
+Redesign `refine` as a typed change-request array with seller acknowledgment
 
-Proposal refinement now uses protocol-level session continuity (`context_id` in MCP, `contextId` in A2A) instead of a task-level parameter. This makes refinement consistent across get_products, get_signals, and build_creative. Proposal execution via create_media_buy is unchanged.
+The `refine` field is now an array of change requests, each with a `scope` discriminator (`request`, `product`, or `proposal`) and an `ask` field describing what the buyer wants. The seller responds via `refinement_applied` — a positionally-matched array reporting whether each ask was `applied`, `partial`, or `unable`. This replaces the previous object structure with separate `overall`, `products`, and `proposals` fields.

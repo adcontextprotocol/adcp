@@ -6,7 +6,7 @@ testable: true
 
 # Migrating creatives
 
-AdCP v3 makes two breaking changes to creative handling: weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
+AdCP 3.0 makes two breaking changes to creative handling: weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
 
 ## Creative assignments
 
@@ -28,7 +28,7 @@ AdCP v3 makes two breaking changes to creative handling: weighted creative assig
 **v3 — omit `weight` for equal distribution:**
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/creative-assignment.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-assignment.json",
   "creative_id": "creative_1"
 }
 ```
@@ -98,7 +98,7 @@ Each assignment object:
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v1/core/creative-assignment.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-assignment.json",
   "creative_id": "hero_video",
   "weight": 60,
   "placement_ids": ["homepage_hero"]
@@ -299,4 +299,4 @@ v2's `preview_image` URL is replaced by `format_card`, which uses the creative r
 
 ---
 
-**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [AdCP v3 overview](/docs/reference/whats-new-in-v3)
+**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Catalogs](/docs/reference/migration/catalogs) | [Attribution](/docs/reference/migration/attribution) | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)

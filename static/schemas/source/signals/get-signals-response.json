@@ -31,6 +31,29 @@
             "$ref": "/schemas/enums/signal-value-type.json",
             "description": "The data type of this signal's values (binary, categorical, numeric)"
           },
+          "categories": {
+            "type": "array",
+            "description": "Valid values for categorical signals. Present when value_type is 'categorical'. Buyers must use one of these values in SignalTargeting.values.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "range": {
+            "type": "object",
+            "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
+            "properties": {
+              "min": {
+                "type": "number",
+                "description": "Minimum value (inclusive)"
+              },
+              "max": {
+                "type": "number",
+                "description": "Maximum value (inclusive)"
+              }
+            },
+            "required": ["min", "max"],
+            "additionalProperties": false
+          },
           "signal_type": {
             "$ref": "/schemas/enums/signal-catalog-type.json",
             "description": "Catalog type of signal (marketplace, custom, owned)"
@@ -52,26 +75,13 @@
               "$ref": "/schemas/core/deployment.json"
             }
           },
-          "pricing": {
-            "type": "object",
-            "description": "Pricing information",
-            "properties": {
-              "cpm": {
-                "type": "number",
-                "description": "Cost per thousand impressions",
-                "minimum": 0
-              },
-              "currency": {
-                "type": "string",
-                "description": "Currency code",
-                "pattern": "^[A-Z]{3}$"
-              }
+          "pricing_options": {
+            "type": "array",
+            "description": "Pricing options available for this signal. The buyer selects one and passes its pricing_option_id in report_usage for billing verification.",
+            "items": {
+              "$ref": "/schemas/core/signal-pricing-option.json"
             },
-            "required": [
-              "cpm",
-              "currency"
-            ],
-            "additionalProperties": true
+            "minItems": 1
           }
         },
         "required": [
@@ -82,7 +92,7 @@
           "data_provider",
           "coverage_percentage",
           "deployments",
-          "pricing"
+          "pricing_options"
         ],
         "additionalProperties": true
       }

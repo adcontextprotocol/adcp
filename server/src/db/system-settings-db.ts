@@ -30,12 +30,19 @@ export interface AdminChannelSetting {
   channel_name: string | null;
 }
 
+export interface ProspectChannelSetting {
+  channel_id: string | null;
+  channel_name: string | null;
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
   BILLING_SLACK_CHANNEL: 'billing_slack_channel',
   ESCALATION_SLACK_CHANNEL: 'escalation_slack_channel',
   ADMIN_SLACK_CHANNEL: 'admin_slack_channel',
+  PROSPECT_SLACK_CHANNEL: 'prospect_slack_channel',
+  PROSPECT_TRIAGE_ENABLED: 'prospect_triage_enabled',
 } as const;
 
 // ============== Generic Operations ==============
@@ -149,6 +156,55 @@ export async function setAdminChannel(
   await setSetting<AdminChannelSetting>(
     SETTING_KEYS.ADMIN_SLACK_CHANNEL,
     { channel_id: channelId, channel_name: channelName },
+    updatedBy
+  );
+}
+
+// ============== Prospect Channel Operations ==============
+
+/**
+ * Get the configured prospect notification Slack channel
+ */
+export async function getProspectChannel(): Promise<ProspectChannelSetting> {
+  const result = await getSetting<ProspectChannelSetting>(SETTING_KEYS.PROSPECT_SLACK_CHANNEL);
+  return result ?? { channel_id: null, channel_name: null };
+}
+
+/**
+ * Set the prospect notification Slack channel
+ */
+export async function setProspectChannel(
+  channelId: string | null,
+  channelName: string | null,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<ProspectChannelSetting>(
+    SETTING_KEYS.PROSPECT_SLACK_CHANNEL,
+    { channel_id: channelId, channel_name: channelName },
+    updatedBy
+  );
+}
+
+// ============== Prospect Triage Toggle ==============
+
+/**
+ * Check if automatic prospect triage is enabled (defaults to true)
+ */
+export async function getProspectTriageEnabled(): Promise<boolean> {
+  const result = await getSetting<{ enabled: boolean }>(SETTING_KEYS.PROSPECT_TRIAGE_ENABLED);
+  return result?.enabled ?? true;
+}
+
+/**
+ * Enable or disable automatic prospect triage
+ */
+export async function setProspectTriageEnabled(
+  enabled: boolean,
+  updatedBy?: string
+): Promise<void> {
+  await setSetting<{ enabled: boolean }>(
+    SETTING_KEYS.PROSPECT_TRIAGE_ENABLED,
+    { enabled },
     updatedBy
   );
 }

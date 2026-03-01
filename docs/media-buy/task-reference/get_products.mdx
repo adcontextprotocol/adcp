@@ -74,7 +74,7 @@ uvx adcp \
 
 ### Using Structured Filters
 
-You can also use structured filters instead of (or in addition to) a brief:
+You can also use structured filters instead of (or in addition to) a brief. In `brief` mode, filters act as hard constraints on top of the publisher's curation — the brief describes intent, filters enforce requirements:
 
 <CodeGroup>
 
@@ -125,9 +125,11 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"` or `"wholesale"`. When `"brief"`, `brief` is required. When `"wholesale"`, publisher returns raw inventory for buyer-directed targeting, `brief` must not be provided, and proposals are omitted. |
-| `brief` | string | No | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"`. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. |
+| `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
+| `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
+| `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `buyer_campaign_ref` | string | No | Buyer's campaign label for CRM and ad server correlation (e.g., `"NovaDrink_Meals_Q2"`). Groups related discovery and buy operations. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
@@ -159,6 +161,48 @@ asyncio.run(discover_with_filters())
 | `max` | number | No* | Maximum budget amount |
 
 *At least one of `min` or `max` must be specified.
+
+### Refine array
+
+The `refine` array is a list of change requests. Each entry declares a `scope` and what the buyer is asking for. At least one entry is required. The seller considers all entries together when composing the response, and replies to each via `refinement_applied`.
+
+Each entry is a discriminated union on `scope`:
+
+#### scope: "request"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"request"` |
+| `ask` | string | Yes | Direction for the selection as a whole (e.g., `"more video options"`, `"suggest how to combine these products"`). |
+
+#### scope: "product"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"product"` |
+| `id` | string | Yes | Product ID from a previous `get_products` response |
+| `action` | string | Yes | `"include"`: return this product with updated pricing and data. `"omit"`: exclude from the response. `"more_like_this"`: find similar products (the original is also returned). |
+| `ask` | string | No | What the buyer is asking for. For `"include"`: specific changes (e.g., `"add 16:9 format"`). For `"more_like_this"`: what "similar" means (e.g., `"same audience but video format"`). Ignored when `action` is `"omit"`. |
+
+#### scope: "proposal"
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"proposal"` |
+| `id` | string | Yes | Proposal ID from a previous `get_products` response |
+| `action` | string | Yes | `"include"`: return with updated allocations and pricing. `"omit"`: exclude from the response. |
+| `ask` | string | No | What the buyer is asking for (e.g., `"shift more budget toward video"`, `"reduce total by 10%"`). Ignored when `action` is `"omit"`. |
+
+### refinement_applied (response)
+
+When the seller receives a `refine` array, the response includes `refinement_applied` — an array matched by position. Each entry reports whether the ask was fulfilled:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | No | Echoes the scope from the corresponding `refine` entry for cross-validation. |
+| `id` | string | No | Echoes the id from the corresponding `refine` entry (for product and proposal scopes). |
+| `status` | string | Yes | `"applied"`: ask fulfilled. `"partial"`: partially fulfilled. `"unable"`: could not fulfill. |
+| `notes` | string | No | Seller explanation. Recommended when status is `"partial"` or `"unable"`. |
 
 ### Catalog discovery
 
@@ -233,6 +277,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 |-------|------|-------------|
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
 | `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
+| `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
@@ -551,6 +596,7 @@ import { testAgent } from '@adcp/client/testing';
 
 // Discover retail media products for specific catalog items
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -580,6 +626,7 @@ from adcp.testing import test_agent
 async def discover_commerce_products():
     # Discover retail media products for specific catalog items
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -604,7 +651,7 @@ asyncio.run(discover_commerce_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
-  '{"brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  '{"buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
   --auth 1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ
 ```
 
@@ -722,12 +769,100 @@ This allows publishers to offer run-of-network products that can't be cherry-pic
 
 See [Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more details and [Property Governance](/docs/governance/property/specification) for more on property lists.
 
+## Refinement
+
+After initial discovery, use `buying_mode: "refine"` to iterate on specific products and proposals. The `refine` array is a list of change requests — each entry declares a scope and what the buyer is asking for. The seller returns updated products with revised pricing and configurations, plus `refinement_applied` acknowledging each ask. See [Refinement](/docs/media-buy/product-discovery/refinement) for the full guide.
+
+### Refine products
+
+Each product entry declares an explicit action. Use `scope: "request"` for set-level direction. Filters contain absolute values (not deltas), so `budget_range` is the new target budget:
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "refine": [
+    { "scope": "request", "ask": "good selection but I want more video options and less display" },
+    { "scope": "product", "id": "prod_premium_video", "action": "include", "ask": "add 16:9 format option" },
+    { "scope": "product", "id": "prod_display_run_of_site", "action": "omit" },
+    { "scope": "product", "id": "prod_native_feed", "action": "more_like_this", "ask": "same audience but video format" }
+  ],
+  "filters": {
+    "start_date": "2026-04-01",
+    "end_date": "2026-04-30",
+    "budget_range": { "min": 200000, "max": 200000, "currency": "USD" }
+  }
+}
+```
+
+### Refine a proposal
+
+Reference proposals by ID to request adjustments:
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "refine": [
+    { "scope": "product", "id": "prod_premium_video", "action": "include" },
+    { "scope": "product", "id": "prod_display_run_of_site", "action": "include" },
+    { "scope": "proposal", "id": "prop_awareness_q2", "action": "include", "ask": "shift more budget toward video, reduce display allocation" }
+  ],
+  "filters": {
+    "start_date": "2026-04-01",
+    "end_date": "2026-05-31",
+    "budget_range": { "min": 300000, "max": 300000, "currency": "USD" }
+  }
+}
+```
+
+### Find similar products
+
+Use `more_like_this` to discover products similar to ones you like. The seller returns the original product plus additional options:
+
+```json test=false
+{
+  "buying_mode": "refine",
+  "refine": [
+    { "scope": "product", "id": "prod_premium_video", "action": "more_like_this", "ask": "same premium audience but different formats" }
+  ]
+}
+```
+
+### Proposals in refine mode
+
+Sellers MAY return proposals alongside refined products, even when the buyer did not include proposal entries. For example, a buyer refining three products may receive those products back with updated pricing *and* a proposal suggesting how to combine them.
+
+Key points:
+
+- **Proposals are not guaranteed.** Sellers are not required to generate proposals in refine mode. Allocation and campaign optimization are primarily orchestrator (buyer-side agent) responsibilities.
+- **Signal interest via a request-level ask.** Include `{ "scope": "request", "ask": "suggest how to combine these products" }` to indicate you'd welcome a proposal.
+- **Unsolicited proposals can be refined or ignored.** If a seller returns a proposal you didn't request, you can refine it in a follow-up call, or simply ignore it and build packages manually via `create_media_buy`.
+
+### Notes
+
+- **`refine` is only valid in `refine` mode.** Requests that include this field in `brief` or `wholesale` mode are rejected with `INVALID_REQUEST`.
+- **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`. Re-discover with a new `brief` request to get a fresh proposal. Proposals without `expires_at` remain valid until the seller invalidates them.
+- **Product IDs are stable catalog identifiers.** They reference the seller's inventory and are validated at request time. You can refine products from a previous call — even from a different brief — and the seller will confirm eligibility against the current request context. Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
+
+The response uses the same format as discovery, plus `refinement_applied` acknowledging each ask. Each product reflects the updated parameters — revised pricing options and any configuration changes the seller recommends based on the `refine` entries and filters. Call refine as many times as needed before committing to a `create_media_buy`.
+
+### Client validation
+
+Orchestrators building refinement workflows should validate requests before sending:
+
+- **Non-empty refine**: The `refine` array requires at least one entry. An empty `[]` is rejected by schema validation.
+- **Valid entries**: Each product entry requires `scope`, `id`, and `action` (`include`, `omit`, or `more_like_this`). Each proposal entry requires `scope`, `id`, and `action` (`include` or `omit`). Request-level entries require `scope` and `ask`.
+- **Filters are absolute**: When refining, `filters` represent the complete target state, not a delta from the previous request. Always send the full filter set you want applied.
+
+Client implementations should validate refinement requests against the [request schema](/docs/building/schemas-and-sdks) before sending.
+
 ## Error Handling
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
+| `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
+| `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
 | `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
 
 ### Authentication Comparison
@@ -854,9 +989,7 @@ Response (200 OK):
 {
   "status": "completed",
   "message": "Found 3 products matching your requirements",
-  "data": {
-    "products": [...]
-  }
+  "products": [...]
 }
 ```
 
@@ -871,11 +1004,9 @@ Response (200 OK):
   "message": "I need a bit more information. What's your budget range and campaign duration?",
   "task_id": "task_789",
   "context_id": "ctx_123",
-  "data": {
-    "reason": "CLARIFICATION_NEEDED",
-    "partial_results": [],
-    "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
-  }
+  "reason": "CLARIFICATION_NEEDED",
+  "partial_results": [],
+  "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
 }
 ```
 
@@ -893,9 +1024,7 @@ Response (200 OK):
 {
   "status": "completed",
   "message": "Perfect! Found 5 products within your budget",
-  "data": {
-    "products": [...]
-  }
+  "products": [...]
 }
 ```
 
@@ -928,10 +1057,8 @@ Response (200 OK):
   "message": "Searching premium inventory across display, video, and audio",
   "task_id": "task_456",
   "context_id": "ctx_123",
-  "data": {
-    "percentage": 10,
-    "current_step": "searching_inventory"
-  }
+  "percentage": 10,
+  "current_step": "searching_inventory"
 }
 
 // Later, webhook POST to https://buyer.com/webhooks/adcp/get_products

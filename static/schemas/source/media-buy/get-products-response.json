@@ -34,6 +34,35 @@
       "type": "boolean",
       "description": "Whether the seller filtered results based on the provided catalog. True if the seller matched catalog items against its inventory. Absent or false if no catalog was provided or the seller does not support catalog matching."
     },
+    "refinement_applied": {
+      "type": "array",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["request", "product", "proposal"],
+            "description": "Echoes the scope from the corresponding refine entry. Allows orchestrators to cross-validate alignment."
+          },
+          "id": {
+            "type": "string",
+            "description": "Echoes the id from the corresponding refine entry (for product and proposal scopes)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["applied", "partial", "unable"],
+            "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      }
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },

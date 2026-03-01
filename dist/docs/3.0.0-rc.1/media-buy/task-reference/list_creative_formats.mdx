@@ -1,0 +1,61 @@
+---
+title: list_creative_formats
+---
+
+
+Discover creative formats supported by a sales agent. Returns formats used by active products with references to authoritative creative agents.
+
+For complete API documentation with request parameters, response structure, and testable examples, see the [list_creative_formats Task Reference](/dist/docs/3.0.0-rc.1/creative/task-reference/list_creative_formats).
+
+## Sales Agent Behavior
+
+Sales agents implement `list_creative_formats` differently from creative agents:
+
+**Sales agents** (like `https://test-agent.adcontextprotocol.org`):
+- Return **only formats used by active products**
+- Reference creative agents for authoritative format specifications
+- Filter results based on what's actually purchasable
+
+**Creative agents** (like `https://creative.adcontextprotocol.org`):
+- Return **authoritative format definitions** they own
+- Provide full specifications for building and validating creatives
+
+## Response Structure
+
+Sales agent responses include:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_300x250"
+      },
+      "name": "Display 300x250"
+    }
+  ],
+  "creative_agents": [{
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "agent_name": "AdCP Reference Creative Agent",
+    "capabilities": ["validation", "assembly", "preview"]
+  }]
+}
+```
+
+**Key differences from creative agents:**
+- Formats may reference external creative agents via `format_id.agent_url`
+- `creative_agents` array provides entry points for full format specs
+- Format list is filtered to purchasable inventory
+
+## Typical Workflow
+
+1. Call sales agent's `list_creative_formats` to see available formats
+2. For full specs, query the creative agent at `format_id.agent_url`
+3. Use format specs to build and validate creatives
+
+## Related Documentation
+
+- [list_creative_formats (Creative Agent)](/dist/docs/3.0.0-rc.1/creative/task-reference/list_creative_formats) - Full API documentation with examples
+- [Creative Formats](/dist/docs/3.0.0-rc.1/creative/formats) - Understanding format specifications
+- [Implementing Standard Format Support](/dist/docs/3.0.0-rc.1/media-buy/capability-discovery/implementing-standard-formats) - For sales agents

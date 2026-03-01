@@ -13,13 +13,12 @@ For information about format IDs and how to reference formats, see [Creative For
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. |
-| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v2/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
+| `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes. |
+| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
-| `creative_brief` | object \| string | No | Campaign-level creative brief. Inline [Creative Brief](https://adcontextprotocol.org/schemas/v2/core/creative-brief.json) object or URL to a hosted brief. Provides objective, audience, messaging, and reference assets. |
 
-**Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.catalogs` field.
+**Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
 ## Use Cases
 
@@ -43,17 +42,18 @@ For pure generation, provide a minimal source manifest with the required input a
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalogs": [{
-      "type": "offering",
-      "items": [
-        {
-          "offering_id": "winter-sale",
-          "name": "Winter Sale Collection",
-          "description": "50% off all winter items"
-        }
-      ]
-    }],
-    "assets": {}
+    "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "items": [
+          {
+            "offering_id": "winter-sale",
+            "name": "Winter Sale Collection",
+            "description": "50% off all winter items"
+          }
+        ]
+      }
+    }
   }
 }
 ```
@@ -123,11 +123,11 @@ The response contains the transformed or generated creative manifest:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250"
     },
-    "catalogs": [{
-      "type": "offering",
-      "catalog_id": "winter-sale"
-    }],
     "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "catalog_id": "winter-sale"
+      },
       "banner_image": {
         "asset_type": "image",
         "url": "https://cdn.example.com/generated-banner.png",
@@ -151,8 +151,32 @@ The response contains the transformed or generated creative manifest:
 
 - **creative_manifest**: The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
 - **format_id**: The target format (matches `target_format_id` from request)
-- **catalogs**: Catalogs this creative renders (optional, for dynamic product ads)
-- **assets**: Map of asset IDs to actual asset content, matching the format's `assets` specification
+- **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
+
+### Compliance Errors
+
+If the manifest includes a brief asset with `compliance` requirements that the creative agent cannot satisfy, the agent MUST return an error — not a partial success. Unsatisfied disclosures are a hard failure.
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "errors": [
+    {
+      "code": "COMPLIANCE_UNSATISFIED",
+      "message": "Required disclosure cannot be rendered in this format",
+      "field": "creative_manifest.assets.brief.compliance.required_disclosures[0]",
+      "details": {
+        "disclosure_text": "Past performance is not indicative of future results.",
+        "position": "footer",
+        "reason": "Format display_mobile_320x50 does not support footer position"
+      },
+      "suggestion": "Use a format that supports footer disclosures, or change position to 'overlay'"
+    }
+  ]
+}
+```
+
+Creative agents MUST validate that all `required_disclosures` can be satisfied in the target format before generating the creative. If any disclosure cannot be placed as specified, the entire request fails. This ensures regulated creatives are never served without required legal text.
 
 ## Workflow Integration
 
@@ -170,10 +194,12 @@ The response contains the transformed or generated creative manifest:
   "brand": { "domain": "mybrand.com" },
   "creative_manifest": {
     "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
-    "catalogs": [{
-      "type": "product",
-      "catalog_id": "winter-products"
-    }]
+    "assets": {
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "winter-products"
+      }
+    }
   }
 }
 
@@ -192,7 +218,7 @@ The response contains the transformed or generated creative manifest:
 }
 ```
 
-**Key insight**: The manifest carries everything. The `catalogs` field (if the format renders catalog items) flows through from input to output, and is available for preview. No need to pass it separately at each step.
+**Key insight**: The manifest carries everything. Briefs, catalogs, images, text — all live in the assets map and flow through from input to output. No need to pass them separately at each step.
 
 ## Examples
 
@@ -216,17 +242,18 @@ Generate a creative from scratch using a generative format:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalogs": [{
-      "type": "offering",
-      "items": [
-        {
-          "offering_id": "winter-sale",
-          "name": "Winter Sale Collection",
-          "description": "50% off all winter items"
-        }
-      ]
-    }],
-    "assets": {}
+    "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "items": [
+          {
+            "offering_id": "winter-sale",
+            "name": "Winter Sale Collection",
+            "description": "50% off all winter items"
+          }
+        ]
+      }
+    }
   }
 }
 ```
@@ -240,11 +267,11 @@ Generate a creative from scratch using a generative format:
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250"
     },
-    "catalogs": [{
-      "type": "offering",
-      "catalog_id": "winter-sale"
-    }],
     "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "catalog_id": "winter-sale"
+      },
       "banner_image": {
         "asset_type": "image",
         "url": "https://cdn.creative-agent.com/generated/banner_12345.png",
@@ -398,7 +425,7 @@ Adapt a creative for mobile with specific design changes:
 
 ### Example 4: Generation with Creative Brief
 
-Generate a creative using structured campaign context via `brand` and `creative_brief`:
+Generate a creative using structured campaign context via `brand` and a brief asset on the manifest:
 
 ```json
 {
@@ -411,82 +438,173 @@ Generate a creative using structured campaign context via `brand` and `creative_
   "brand": {
     "domain": "acmecorp.com"
   },
-  "creative_brief": {
-    "name": "Holiday Sale 2025",
-    "objective": "conversion",
-    "audience": "Holiday gift shoppers aged 25-55",
-    "territory": "festive savings",
-    "messaging": {
-      "headline": "Holiday Deals Are Here",
-      "cta": "Shop Now",
-      "key_messages": [
-        "Up to 50% off select items",
-        "Free shipping on orders over $50"
-      ]
-    },
-    "reference_assets": [
-      {
-        "url": "https://cdn.acmecorp.com/holiday-mood-board.pdf",
-        "role": "mood_board",
-        "description": "Holiday campaign mood board with festive color palette"
-      }
-    ]
-  },
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalogs": [{
-      "type": "offering",
-      "items": [
-        {
-          "offering_id": "holiday-sale",
-          "name": "Holiday Sale Collection",
-          "description": "Up to 50% off select holiday items"
-        }
-      ]
-    }],
-    "assets": {}
+    "assets": {
+      "brief": {
+        "name": "Holiday Sale 2025",
+        "objective": "conversion",
+        "audience": "Holiday gift shoppers aged 25-55",
+        "territory": "festive savings",
+        "messaging": {
+          "headline": "Holiday Deals Are Here",
+          "cta": "Shop Now",
+          "key_messages": [
+            "Up to 50% off select items",
+            "Free shipping on orders over $50"
+          ]
+        },
+        "reference_assets": [
+          {
+            "url": "https://cdn.acmecorp.com/holiday-mood-board.pdf",
+            "role": "mood_board",
+            "description": "Holiday campaign mood board with festive color palette"
+          }
+        ]
+      },
+      "offering_catalog": {
+        "type": "offering",
+        "items": [
+          {
+            "offering_id": "holiday-sale",
+            "name": "Holiday Sale Collection",
+            "description": "Up to 50% off select holiday items"
+          }
+        ]
+      }
+    }
   }
 }
 ```
 
-### Example 5: URL-Referenced Brief
+### Example 5: Generation with Compliance Requirements
 
-When reusing the same brief across multiple creatives, reference it by URL:
+Generate a financial services creative with regulatory disclosures and prohibited claims:
 
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
-  "message": "Weekend brunch version with lighter, morning energy",
+  "message": "Create a display banner promoting retirement planning advisory services",
   "target_format_id": {
     "agent_url": "https://creative.adcontextprotocol.org",
     "id": "display_300x250_generative"
   },
   "brand": {
-    "domain": "acmecorp.com"
+    "domain": "pinnaclewealth.com"
   },
-  "creative_brief": "https://cdn.acmecorp.com/briefs/holiday-2025.json",
   "creative_manifest": {
     "format_id": {
       "agent_url": "https://creative.adcontextprotocol.org",
       "id": "display_300x250_generative"
     },
-    "catalogs": [{
-      "type": "offering",
-      "items": [
-        {
-          "offering_id": "brunch-menu",
-          "name": "Weekend Brunch Menu",
-          "description": "Fresh brunch items every Saturday and Sunday"
+    "assets": {
+      "brief": {
+        "name": "Retirement Advisory Q1 2026",
+        "objective": "consideration",
+        "audience": "Pre-retirees aged 50-65 with investable assets",
+        "territory": "trusted financial guidance",
+        "messaging": {
+          "headline": "Plan Your Retirement with Confidence",
+          "cta": "Schedule a Consultation",
+          "key_messages": [
+            "Personalized retirement planning",
+            "Tax-efficient investment strategies"
+          ]
+        },
+        "compliance": {
+          "required_disclosures": [
+            {
+              "text": "Past performance is not indicative of future results.",
+              "position": "footer",
+              "jurisdictions": ["US"],
+              "regulation": "SEC Rule 156"
+            },
+            {
+              "text": "Securities offered through Pinnacle Wealth Securities, LLC. Member FINRA/SIPC.",
+              "position": "footer",
+              "jurisdictions": ["US"],
+              "regulation": "FINRA Rule 2210"
+            },
+            {
+              "text": "Capital at risk. The value of investments can go down as well as up.",
+              "position": "prominent",
+              "jurisdictions": ["GB"],
+              "regulation": "FCA COBS 4.5"
+            },
+            {
+              "text": "Pinnacle Wealth Advisors is a registered investment adviser.",
+              "position": "footer"
+            }
+          ],
+          "prohibited_claims": [
+            "guaranteed returns",
+            "risk-free investment",
+            "outperform the market"
+          ]
         }
-      ]
-    }],
-    "assets": {}
+      }
+    }
   }
 }
 ```
+
+Compliance requirements differ by jurisdiction: the US requires SEC-mandated disclosures while the UK requires FCA-mandated risk warnings. The third disclosure (no `jurisdictions`) applies globally. The `prohibited_claims` array tells the creative agent which claims to avoid in generated copy.
+
+### Example 6: Commerce Media with Brief and Product Catalog
+
+Generate a sponsored product carousel with campaign context, compliance disclosures, and a synced product catalog:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Create a product carousel highlighting the top 4 sale items",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "sponsored_product_carousel"
+  },
+  "brand": {
+    "domain": "novabrands.com"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "sponsored_product_carousel"
+    },
+    "assets": {
+      "brief": {
+        "name": "Spring Sale 2026",
+        "objective": "conversion",
+        "audience": "Value-conscious shoppers aged 25-45",
+        "messaging": {
+          "headline": "Spring Sale — Up to 40% Off",
+          "cta": "Shop Now"
+        },
+        "compliance": {
+          "required_disclosures": [
+            {
+              "text": "Sponsored",
+              "position": "prominent"
+            },
+            {
+              "text": "Prices may vary by location. See store for details.",
+              "position": "footer"
+            }
+          ]
+        }
+      },
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "spring_sale_2026"
+      }
+    }
+  }
+}
+```
+
+The brief and product catalog travel together in the manifest's `assets` map. The format declares both a `brief` and `catalog` asset type — the buying agent discovers this via `list_creative_formats` and syncs the required catalog before submitting.
 
 ## Key Concepts
 
@@ -496,25 +614,27 @@ When reusing the same brief across multiple creatives, reference it by URL:
 |---|---|---|
 | **Scope** | Brand identity | Campaign context |
 | **Lifespan** | Stable across campaigns | Specific to a campaign or flight |
-| **Contains** | Colors, logos, fonts, tone | Audience, territory, messaging, reference assets |
+| **Contains** | Colors, logos, fonts, tone | Audience, territory, messaging, compliance, reference assets |
+| **Legal** | Brand-level disclaimers (always-on) | Campaign-specific regulatory disclosures (regional, product-based) |
 | **Source** | Brand registry / `/.well-known/brand.json` | Agency or brand team |
+| **Lives on** | Resolved via domain lookup | The manifest's assets map (`assets.brief`) |
 
-Both are optional. `brand` provides stable brand identity (colors, logos, tone) resolved via the domain's `/.well-known/brand.json`. `creative_brief` provides campaign-specific direction (audience, messaging, tone, visual references). The `message` field provides per-request natural language instructions. Creative agents that support briefs declare `supports_brief: true` in their `get_adcp_capabilities` response.
+Both are optional. `brand` provides stable brand identity (colors, logos, tone) resolved via the domain's `/.well-known/brand.json`. The brief is an asset on the manifest (`assets.brief`), so it travels with the creative through regeneration, resizing, and auditing. The `message` field provides per-request natural language instructions.
 
-**Precedence**: The top-level `brand` parameter is the authoritative source for creative rendering context (colors, logos, tone).
+**Precedence**: The `brand` parameter is the authoritative source for creative rendering context (colors, logos, tone).
 
-**Layering**: `creative_brief` provides structured direction; `message` provides per-request natural language overrides. When both provide conflicting direction, `message` takes precedence as the most specific instruction.
+**Layering**: The brief asset on the manifest provides structured direction; `message` on the request provides per-request natural language overrides. When both provide conflicting direction, `message` takes precedence as the most specific instruction.
 
 ### Transformation Model
 
 `build_creative` follows a **manifest-in, manifest-out** model:
-- Input: Creative manifest (can be minimal or complete, includes required assets)
-- Process: Transform/generate based on `message` and manifest assets
-- Output: Target creative manifest ready for preview or sync
+- Input: Creative manifest (can be minimal or complete -- everything lives in assets)
+- Process: Transform/generate based on `message` and manifest content
+- Output: Target creative manifest ready for preview or sync (brief carries forward)
 
 ### Pure Generation vs Transformation
 
-- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, a `catalogs` reference (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
+- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, catalog assets (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
 - **Transformation**: Provide complete `creative_manifest` with all existing assets. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
 
 ### Integration with Other Tasks
@@ -527,3 +647,54 @@ This separation allows you to:
 - Build once, preview multiple times with different contexts
 - Iterate on build without re-syncing
 - Preview before committing to traffic
+
+### Iterative refinement
+
+`build_creative` supports multi-turn iteration without a mode flag. The presence and combination of fields determines the operation:
+
+- **Generation**: `message` + minimal `creative_manifest` (empty or seed assets) + `target_format_id`
+- **Transformation**: full `creative_manifest` + `message` + `target_format_id`
+- **Refinement**: previous output as `creative_manifest` + `message` with changes
+
+To refine, pass the previous response's `creative_manifest` back as input with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Make the headline bolder and increase the contrast on the CTA button",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_generative"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    "assets": {
+      "banner_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/generated/banner_12345.png",
+        "width": 300,
+        "height": 250
+      },
+      "headline": {
+        "asset_type": "text",
+        "content": "50% Off Winter Sale"
+      },
+      "clickthrough_url": {
+        "asset_type": "url",
+        "url": "https://mybrand.com/winter-sale"
+      }
+    }
+  }
+}
+```
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| `FORMAT_NOT_SUPPORTED` | The `target_format_id` is not supported by this creative agent |
+| `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
+| `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |

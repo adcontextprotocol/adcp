@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/app-item.json",
+  "title": "App Item",
+  "description": "A mobile application within an app-type catalog. Carries the app metadata and store identifiers that platforms use for app install campaigns and re-engagement ads. Maps to Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, and Snapchat App Install Ads. Each item represents one app on one platform — iOS and Android variants are separate items.",
+  "type": "object",
+  "properties": {
+    "app_id": {
+      "type": "string",
+      "description": "Buyer-assigned unique identifier for this app item. Used for catalog deduplication and content_ids matching on install and launch events."
+    },
+    "name": {
+      "type": "string",
+      "description": "App display name as shown in the store (e.g., 'Puzzle Quest: Match 3', 'Acme Banking')."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android"],
+      "description": "Target platform. iOS and Android are separate items because they have distinct store identifiers and attribution mechanisms."
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Reverse-domain bundle identifier (e.g., 'com.acmegames.puzzlequest'). The universal store identifier: required for Android (Google Play), also used for iOS MMP attribution, SKAN matching, and app-ads.txt verification. Distinct from app_id, which is a buyer-assigned catalog key."
+    },
+    "apple_id": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Numeric Apple App Store ID (e.g., '389801252'). Required for Apple Search Ads and iOS platforms that use the numeric ID rather than bundle_id."
+    },
+    "description": {
+      "type": "string",
+      "description": "App description. Platforms typically pull this from the store listing automatically; supply here to override or for platforms that require it in the request."
+    },
+    "category": {
+      "type": "string",
+      "description": "Primary store category (e.g., 'games', 'productivity', 'finance', 'health_fitness', 'social_networking')."
+    },
+    "genre": {
+      "type": "string",
+      "description": "Sub-genre within the category. Particularly relevant for games (e.g., 'puzzle', 'strategy', 'rpg', 'casual', 'simulation', 'action')."
+    },
+    "icon_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "App icon image URL. Typically 1024×1024 px."
+    },
+    "screenshots": {
+      "type": "array",
+      "description": "App store screenshot URLs. Used by platforms for creative generation when native store assets are not available.",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1
+    },
+    "preview_video_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "App preview or gameplay video URL for use in video ad creatives."
+    },
+    "store_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Direct link to the app's store listing (Apple App Store or Google Play)."
+    },
+    "deep_link_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Deep link URI for re-engagement campaigns targeting existing users. Use Universal Links (iOS) or App Links (Android) where available (e.g., 'https://acmegames.com/app/level/5'). Falls back to URI scheme (e.g., 'acmegames://level/5') when universal links are not configured."
+    },
+    "price": {
+      "$ref": "/schemas/3.0.0-rc.1/core/price.json",
+      "description": "App download price. Set amount to 0 for free apps."
+    },
+    "rating": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 5,
+      "description": "Average store rating (0–5). Use 0 to indicate no ratings yet."
+    },
+    "rating_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of store ratings."
+    },
+    "content_rating": {
+      "type": "string",
+      "description": "Age or content rating (e.g., '4+', '12+', 'Everyone', 'Teen', 'PEGI 12'). Format depends on store and region."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for filtering and targeting (e.g., 'multiplayer', 'offline', 'no-ads', 'subscription').",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this app. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (promotional hero), 'images_vertical' (9:16 for Snap, Stories), 'images_square' (1:1 for display), 'video' (gameplay or demo video). Supplements icon_url and screenshots for platform-specific format requirements.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": ["app_id", "name", "platform"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "iOS casual game targeting new installs",
+      "data": {
+        "app_id": "puzzlequest-ios",
+        "name": "Puzzle Quest: Match 3",
+        "platform": "ios",
+        "bundle_id": "com.acmegames.puzzlequest",
+        "apple_id": "1234567890",
+        "category": "games",
+        "genre": "puzzle",
+        "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
+        "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
+        "price": { "amount": 0, "currency": "USD" },
+        "rating": 4.7,
+        "rating_count": 82000,
+        "content_rating": "4+",
+        "tags": ["casual", "offline"]
+      }
+    },
+    {
+      "description": "Android app with re-engagement deep links",
+      "data": {
+        "app_id": "acmebank-android",
+        "name": "Acme Banking",
+        "platform": "android",
+        "bundle_id": "com.acmefinancial.banking",
+        "category": "finance",
+        "icon_url": "https://assets.acmefinancial.com/app/icon.png",
+        "store_url": "https://play.google.com/store/apps/details?id=com.acmefinancial.banking",
+        "deep_link_url": "https://app.acmefinancial.com/offers",
+        "price": { "amount": 0, "currency": "USD" },
+        "rating": 4.4,
+        "rating_count": 31500,
+        "content_rating": "Everyone",
+        "tags": ["finance", "banking"]
+      }
+    }
+  ]
+}

@@ -885,7 +885,7 @@ export class BrandManager {
    */
   createHouseRedirect(houseDomain: string, options?: { region?: string; note?: string }): string {
     const brandJson: HouseRedirectVariant = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+      $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
       house: houseDomain,
     };
 
@@ -907,7 +907,7 @@ export class BrandManager {
    */
   createAuthoritativeRedirect(authoritativeUrl: string): string {
     const brandJson: AuthoritativeLocationVariant = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+      $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
       authoritative_location: authoritativeUrl,
       last_updated: new Date().toISOString(),
     };
@@ -925,7 +925,7 @@ export class BrandManager {
     auth?: BrandAgentVariant['auth']
   ): string {
     const brandJson: BrandAgentVariant = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+      $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
       version: '1.0',
       brand_agent: {
         url: agentUrl,
@@ -951,7 +951,7 @@ export class BrandManager {
     options?: { contact?: HousePortfolioVariant['contact'] }
   ): string {
     const brandJson: HousePortfolioVariant = {
-      $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+      $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
       version: '1.0',
       house,
       brands,

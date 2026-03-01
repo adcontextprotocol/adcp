@@ -41,9 +41,15 @@ DO NOT USE FOR:
 - Things that don't require admin attention
 - General conversation
 
-BEFORE ESCALATING — gather enough context to make the escalation actionable:
-- Ask what specifically they need if the request is vague
-- Confirm who the request is from: their name and organization. If someone is asking on behalf of another person, capture that person's name and contact details in the summary.
+CONFIRM WITH USER BEFORE ESCALATING — you must get the user's consent first:
+- Tell the user you don't have a tool for this and explain what you'd escalate
+- Ask if they'd like you to pass it to the team
+- Only call this tool after the user confirms they want you to escalate
+
+BEFORE CALLING THIS TOOL — gather enough context to make the escalation actionable:
+- If the request is vague, ask clarifying questions first
+- Confirm who the request is from: their name and organization
+- If someone is asking on behalf of another person, capture that person's name and contact details in the summary
 - Include any relevant context (timeline, urgency, what they've already tried)
 
 When you escalate, be honest with the user that you're passing this to a human who can help.`,

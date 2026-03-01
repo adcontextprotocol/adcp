@@ -1,0 +1,180 @@
+---
+title: si_initiate_session
+---
+
+Start a conversational session with a brand agent. The host platform invokes this task when a user expresses interest in engaging with a brand.
+
+## Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `context` | string | Yes | Natural language description of user intent |
+| `identity` | object | Yes | User identity with consent status |
+| `media_buy_id` | string | No | AdCP media buy ID if triggered by advertising |
+| `placement` | string | No | Where the session was triggered (e.g., "chatgpt_search") |
+| `offering_id` | string | No | Brand-specific offering reference to apply |
+| `supported_capabilities` | object | No | What the host platform supports |
+| `offering_token` | string | No | Token from `si_get_offering` for correlation |
+
+### Offering Token
+
+If a host performed a [`si_get_offering`](./si_get_offering) lookup before initiating, include the token for **session continuity**:
+
+```json
+{
+  "offering_token": "offering_abc123xyz"
+}
+```
+
+The token lets the brand agent know exactly what products were shown to the user (and in what order). This enables natural conversation flow:
+
+- User sees: "Nike Pegasus ($89), Air Max ($129), Vomero ($139)"
+- User says: "Tell me more about the middle one"
+- Brand agent resolves "middle one" → Air Max via the token's stored context
+
+### Identity Object
+
+When `consent_granted` is `true`:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `consent_granted` | boolean | Yes | Must be `true` |
+| `consent_timestamp` | string | Yes | ISO 8601 timestamp of consent |
+| `consent_scope` | array | Yes | Fields the user agreed to share |
+| `privacy_policy_acknowledged` | object | No | Brand policy user accepted |
+| `user` | object | Yes | User's PII |
+
+When `consent_granted` is `false`:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `consent_granted` | boolean | Yes | Must be `false` |
+| `anonymous_session_id` | string | Yes | Unique ID for this anonymous session |
+
+### Supported Capabilities Object
+
+Declares what the host platform can render:
+
+```json
+{
+  "modalities": {
+    "conversational": true,
+    "voice": { "providers": ["elevenlabs", "openai"] },
+    "video": false,
+    "avatar": false
+  },
+  "components": {
+    "standard": ["text", "link", "image", "product_card", "carousel", "action_button"],
+    "extensions": {
+      "chatgpt_apps_sdk": "1.0"
+    }
+  },
+  "commerce": {
+    "acp_checkout": true
+  }
+}
+```
+
+## Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | Unique identifier for this session |
+| `response` | object | Brand agent's initial response |
+| `negotiated_capabilities` | object | Intersection of brand and host capabilities |
+
+### Response Object
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | string | Text response from brand agent |
+| `ui_elements` | array | Visual components to render |
+
+## Example
+
+### Request
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/sponsored-intelligence/si-initiate-session-request.json",
+  "context": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
+  "media_buy_id": "delta_q1_premium_upgrade",
+  "placement": "chatgpt_search",
+  "offering_id": "delta_chatgpt_3313",
+  "identity": {
+    "consent_granted": true,
+    "consent_timestamp": "2026-01-18T10:30:00Z",
+    "consent_scope": ["name", "email"],
+    "privacy_policy_acknowledged": {
+      "brand_policy_url": "https://delta.com/privacy",
+      "brand_policy_version": "2026-01"
+    },
+    "user": {
+      "email": "jane@example.com",
+      "name": "Jane Smith",
+      "locale": "en-US"
+    }
+  },
+  "supported_capabilities": {
+    "modalities": {
+      "conversational": true,
+      "voice": true
+    },
+    "components": {
+      "standard": ["text", "link", "image", "product_card", "carousel", "action_button"]
+    },
+    "commerce": {
+      "acp_checkout": true
+    }
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "$schema": "/schemas/3.0.0-rc.1/sponsored-intelligence/si-initiate-session-response.json",
+  "session_id": "sess_abc123",
+  "response": {
+    "message": "Hi Jane! I found DL632 departing at 6:15 AM next Tuesday. Great news—as a SkyMiles Gold member, you qualify for our free Premium Economy upgrade on this flight.",
+    "ui_elements": [
+      {
+        "type": "product_card",
+        "data": {
+          "title": "DL632 to Boston - Tue Jan 27",
+          "subtitle": "6:15 AM → 9:42 AM (3h 27m)",
+          "price": "$199",
+          "badge": "Free Premium Economy Upgrade",
+          "image_url": "https://delta.com/images/premium-economy.jpg",
+          "cta": { "label": "Book with Upgrade", "action": "checkout" }
+        }
+      }
+    ]
+  },
+  "negotiated_capabilities": {
+    "modalities": {
+      "conversational": true,
+      "voice": true
+    },
+    "components": {
+      "standard": ["text", "link", "image", "product_card", "carousel", "action_button"]
+    },
+    "commerce": {
+      "acp_checkout": true
+    }
+  }
+}
+```
+
+## Key Points
+
+1. **Context is a conversation handoff** - The host tells the brand agent what the user needs. The brand agent responds naturally, continuing the conversation.
+
+2. **Brand looks up loyalty data** - If Jane's email is recognized, Delta retrieves her SkyMiles status automatically. Hosts don't store loyalty numbers.
+
+3. **offering_id is brand-specific** - The brand interprets this reference to apply promotions, discounts, or loyalty rewards. Hosts pass it through without needing to understand offering semantics.
+
+4. **Capability negotiation** - The response includes `negotiated_capabilities` showing what features this session can use (intersection of brand and host capabilities).
+
+5. **Clear PII with explicit consent** - When `consent_granted` is true, actual email/name are passed (not hashed). This is a direct, consented handoff.

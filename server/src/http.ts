@@ -33,7 +33,8 @@ import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
-import { requireAuth, requireAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
 import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
@@ -52,6 +53,7 @@ import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
+import { invalidateMembershipCache } from "./db/org-filters.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
@@ -62,6 +64,8 @@ import { registerAllJobs, JOB_NAMES } from "./addie/jobs/job-definitions.js";
 import { createBillingRouter } from "./routes/billing.js";
 import { createPublicBillingRouter } from "./routes/billing-public.js";
 import { createOrganizationsRouter } from "./routes/organizations.js";
+import { createReferralsRouter } from "./routes/referrals.js";
+import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
@@ -277,7 +281,7 @@ async function upsertInvoiceCache(
  * Build app config object for injection into HTML pages.
  * This allows nav.js to read config synchronously instead of making an async fetch.
  */
-function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null) {
+function buildAppConfig(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false) {
   let isAdmin = false;
   if (user) {
     const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
@@ -292,6 +296,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
       firstName: user.firstName,
       lastName: user.lastName,
       isAdmin,
+      isManage: isManage || isAdmin,
       isMember: !!user.isMember,
     } : null,
     posthog: POSTHOG_API_KEY ? {
@@ -304,8 +309,8 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
 /**
  * Generate the script tags to inject app config and PostHog into HTML.
  */
-function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null): string {
-  const config = buildAppConfig(user);
+function getAppConfigScript(user?: { id?: string; email: string; firstName?: string | null; lastName?: string | null; isMember?: boolean } | null, isManage = false): string {
+  const config = buildAppConfig(user, isManage);
   const configScript = `<script>window.__APP_CONFIG__=${JSON.stringify(config)};</script>`;
 
   // Add PostHog script if API key is configured
@@ -597,13 +602,6 @@ export class HTTPServer {
         // Build aliases list
         const aliases: Array<{ alias: string, resolves_to: string, path: string }> = [];
 
-        // v1 -> latest (backward compatibility)
-        aliases.push({
-          alias: "v1",
-          resolves_to: "latest",
-          path: "/schemas/v1/"
-        });
-
         // Major version aliases (e.g., v2 -> 2.6.0)
         if (latestMajorVersion) {
           const { major } = parseSemver(latestMajorVersion);
@@ -650,13 +648,13 @@ export class HTTPServer {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
-          "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+          "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "house": "agenticadvertising.org",
           "note": "AdCP is a sub-brand of AgenticAdvertising.org"
         });
       }
       return res.json({
-        "$schema": "https://adcontextprotocol.org/schemas/v1/brand.json",
+        "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
         "authoritative_location": "https://agenticadvertising.org/brands/agenticadvertising.org/brand.json"
       });
     });
@@ -688,6 +686,13 @@ export class HTTPServer {
     // Intercepts both .html requests and extensionless paths that map to .html files
     this.app.use(async (req, res, next) => {
       const urlPath = req.path;
+
+      // Skip paths that have their own route handlers which manage auth and config injection
+      // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
+      // /agents does content negotiation to serve HTML or JSON)
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
+        return next();
+      }
 
       // Determine the file path to check
       let filePath: string;
@@ -759,9 +764,20 @@ export class HTTPServer {
       const user = await getUserFromRequest(req, res);
       await enrichUserWithMembership(user);
 
+      // Determine manage-tier access for nav rendering
+      let isManage = false;
+      if (user) {
+        if (isDevModeEnabled()) {
+          const devUser = getDevUser(req);
+          isManage = devUser?.isManage ?? false;
+        } else if (user.id) {
+          isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
+        }
+      }
+
       // Read and inject config
       let html = await fs.readFile(filePath, 'utf-8');
-      const configScript = getAppConfigScript(user);
+      const configScript = getAppConfigScript(user, isManage);
 
       // Inject before </head>
       if (html.includes('</head>')) {
@@ -867,6 +883,10 @@ export class HTTPServer {
     // Mount organization routes
     const organizationsRouter = createOrganizationsRouter();
     this.app.use('/api/organizations', organizationsRouter); // Organization API routes: /api/organizations/*
+
+    // Mount public referral routes
+    const referralsRouter = createReferralsRouter();
+    this.app.use('/api', referralsRouter); // Public referral routes: /api/referral/*
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
     const registryApiRouter = createRegistryApiRouter({
@@ -1396,7 +1416,18 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
-        const configScript = getAppConfigScript(user);
+
+        let isManage = false;
+        if (user) {
+          if (isDevModeEnabled()) {
+            const devUser = getDevUser(req);
+            isManage = devUser?.isManage ?? false;
+          } else if (user.id) {
+            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
+          }
+        }
+
+        const configScript = getAppConfigScript(user, isManage);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1434,7 +1465,18 @@ export class HTTPServer {
         // Inject user config for nav.js, passing res to update cookie if session is refreshed
         const user = await getUserFromRequest(req, res);
         await enrichUserWithMembership(user);
-        const configScript = getAppConfigScript(user);
+
+        let isManage = false;
+        if (user) {
+          if (isDevModeEnabled()) {
+            const devUser = getDevUser(req);
+            isManage = devUser?.isManage ?? false;
+          } else if (user.id) {
+            isManage = await isWebUserAAOCouncil(user.id) || await isWebUserAAOAdmin(user.id);
+          }
+        }
+
+        const configScript = getAppConfigScript(user, isManage);
         if (html.includes('</head>')) {
           html = html.replace('</head>', `${configScript}\n</head>`);
         }
@@ -1635,11 +1677,13 @@ export class HTTPServer {
 
 
 
-    // Simple REST API endpoint - for web apps and quick integrations
+    // Agent registry - serves HTML for browsers, JSON for API clients
     this.app.get("/agents", async (req, res) => {
+      if (req.accepts('text/html', 'application/json') === 'text/html') {
+        return this.serveHtmlWithConfig(req, res, 'agents.html');
+      }
       const type = req.query.type as AgentType | undefined;
       const agents = await this.agentService.listAgents(type);
-
       res.json({
         agents,
         count: agents.length,
@@ -1799,6 +1843,11 @@ export class HTTPServer {
     // Properties registry page (redirects to publishers - consolidated)
     this.app.get("/properties", (_req, res) => {
       res.redirect(301, '/publishers');
+    });
+
+    // Referral landing page - personalized invite page for prospects
+    this.app.get("/join/:code", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'join.html');
     });
 
     // About AAO page - serve about.html at /about
@@ -3288,6 +3337,7 @@ export class HTTPServer {
                 // Invalidate member context cache for all users in this org
                 // (subscription status affects is_member and subscription fields)
                 invalidateMemberContextCache();
+                invalidateMembershipCache(org.workos_organization_id);
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
@@ -3494,6 +3544,7 @@ export class HTTPServer {
 
                 // Invalidate member context cache
                 invalidateMemberContextCache();
+                invalidateMembershipCache(org.workos_organization_id);
               }
 
               // Record revenue event
@@ -3853,6 +3904,15 @@ export class HTTPServer {
             const customerId = session.customer as string | null;
             const workosOrgId = session.metadata?.workos_organization_id;
 
+            if (workosOrgId) {
+              // Mark any pending referral as converted
+              try {
+                await convertReferral(workosOrgId);
+              } catch (err) {
+                logger.warn({ err, workosOrgId }, 'Failed to convert referral on checkout completion');
+              }
+            }
+
             if (customerId && workosOrgId) {
               // Ensure the Stripe customer is linked to the organization.
               // This catches cases where the checkout session was created with
@@ -3897,6 +3957,21 @@ export class HTTPServer {
         res.status(500).json({ error: 'Webhook processing failed' });
       }
     });
+
+    // Manage routes — kitchen cabinet + admin
+    this.app.get('/manage', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage.html'));
+    this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
+    this.app.get('/manage/prospects', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-prospects.html'));
+    this.app.get('/manage/accounts', requireAuth, (req, res) => res.redirect(302, '/admin/accounts'));
+    this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
+
+    // Redirect moved admin pages to their new /manage paths
+    this.app.get('/admin/prospects', (req, res) => res.redirect(302, '/manage/prospects'));
+    this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -4165,20 +4240,47 @@ export class HTTPServer {
     });
 
     // GET /api/admin/analytics-data - Get simple analytics data from views
-    this.app.get('/api/admin/analytics-data', requireAuth, requireAdmin, async (req, res) => {
+    this.app.get('/api/admin/analytics-data', requireAuth, requireManage, async (req, res) => {
       try {
         const pool = getPool();
         // Query all analytics views
-        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers] = await Promise.all([
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups] = await Promise.all([
           pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
           pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
           pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
           pool.query('SELECT * FROM product_revenue ORDER BY total_revenue DESC'),
           pool.query('SELECT SUM(net_revenue) as total FROM revenue_by_month'),
           pool.query('SELECT COUNT(*) as total FROM customer_health'),
+          pool.query(`
+            SELECT COUNT(*) as count, COALESCE(SUM(amount_due), 0) as total_cents
+            FROM org_invoices
+            WHERE status IN ('draft', 'open')
+          `),
+          pool.query(`
+            SELECT oi.stripe_invoice_id, oi.amount_due, oi.status, oi.due_date,
+              oi.hosted_invoice_url, oi.invoice_number, oi.product_name,
+              oi.customer_email, oi.created_at,
+              o.name as org_name, o.workos_organization_id as org_id
+            FROM org_invoices oi
+            LEFT JOIN organizations o ON o.workos_organization_id = oi.workos_organization_id
+            WHERE oi.status IN ('draft', 'open')
+            ORDER BY oi.due_date ASC NULLS LAST
+          `),
+          pool.query(`
+            SELECT workos_organization_id as org_id, name, company_type,
+              subscription_amount, subscription_interval, created_at
+            FROM organizations
+            WHERE subscription_status = 'active'
+              AND subscription_canceled_at IS NULL
+              AND created_at >= NOW() - INTERVAL '90 days'
+              AND is_personal IS NOT TRUE
+            ORDER BY created_at DESC
+            LIMIT 20
+          `),
         ]);
 
         const metrics = subscriptionMetrics.rows[0] || {};
+        const outstandingRow = outstandingSummary.rows[0] || {};
         res.json({
           revenue_by_month: revenueByMonth.rows,
           customer_health: customerHealth.rows,
@@ -4189,6 +4291,31 @@ export class HTTPServer {
             total_customers: totalCustomers.rows[0]?.total || 0,
           },
           product_revenue: productRevenue.rows,
+          outstanding_invoices_summary: {
+            count: Number(outstandingRow.count) || 0,
+            total_dollars: (Number(outstandingRow.total_cents) || 0) / 100,
+          },
+          outstanding_invoices: outstandingList.rows.map((row: any) => ({
+            stripe_invoice_id: row.stripe_invoice_id,
+            amount_due_dollars: (row.amount_due || 0) / 100,
+            status: row.status,
+            due_date: row.due_date,
+            hosted_invoice_url: row.hosted_invoice_url,
+            invoice_number: row.invoice_number,
+            product_name: row.product_name,
+            customer_email: row.customer_email,
+            created_at: row.created_at,
+            org_name: row.org_name,
+            org_id: row.org_id,
+          })),
+          recent_signups: recentSignups.rows.map((row: any) => ({
+            org_id: row.org_id,
+            name: row.name,
+            company_type: row.company_type,
+            subscription_amount_dollars: (row.subscription_amount || 0) / 100,
+            subscription_interval: row.subscription_interval,
+            created_at: row.created_at,
+          })),
         });
       } catch (error) {
         logger.error({ err: error }, 'Error fetching analytics data');
@@ -4196,6 +4323,17 @@ export class HTTPServer {
           error: 'Internal server error',
           message: 'Unable to fetch analytics data',
         });
+      }
+    });
+
+    // GET /api/admin/referrals - Aggregate referral activity for manage tier
+    this.app.get('/api/admin/referrals', requireAuth, requireManage, async (_req, res) => {
+      try {
+        const rows = await listAllReferralCodes();
+        res.json(rows);
+      } catch (error) {
+        logger.error({ err: error }, 'Error fetching referral data');
+        res.status(500).json({ error: 'Internal server error', message: 'Unable to fetch referral data' });
       }
     });
 
@@ -4720,10 +4858,6 @@ Disallow: /api/admin/
 
     this.app.get('/admin/agreements', requireAuth, requireAdmin, async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'admin-agreements.html');
-    });
-
-    this.app.get('/admin/analytics', requireAuth, requireAdmin, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-analytics.html');
     });
 
     this.app.get('/admin/audit', requireAuth, requireAdmin, async (req, res) => {
@@ -5315,6 +5449,7 @@ Disallow: /api/admin/
               first_name: user.firstName,
               last_name: user.lastName,
               isAdmin: devUser.isAdmin,
+              isManage: devUser.isManage || devUser.isAdmin,
             },
             organizations,
             // Include dev mode info for debugging
@@ -5355,6 +5490,7 @@ Disallow: /api/admin/
         // Check if user is admin
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
+        const isManage = isAdmin || await isWebUserAAOCouncil(user.id);
 
         // Build response with optional impersonation info
         const response: Record<string, unknown> = {
@@ -5364,6 +5500,7 @@ Disallow: /api/admin/
             first_name: user.firstName,
             last_name: user.lastName,
             isAdmin,
+            isManage,
           },
           organizations,
         };

@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/account/sync-accounts-response.json",
+  "title": "Sync Accounts Response",
+  "description": "Response from account sync operation. Returns per-account results with status and billing, or operation-level errors on complete failure.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "SyncAccountsSuccess",
+      "description": "Sync operation processed accounts (individual accounts may be pending or have action=failed)",
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean",
+          "description": "Whether this was a dry run (no actual changes made)"
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Results for each account processed",
+          "items": {
+            "type": "object",
+            "properties": {
+              "brand": {
+                "$ref": "/schemas/3.0.0-rc.1/core/brand-ref.json",
+                "description": "Brand reference, echoed from the request"
+              },
+              "operator": {
+                "type": "string",
+                "description": "Operator domain, echoed from request"
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable account name assigned by the seller"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "updated",
+                  "unchanged",
+                  "failed"
+                ],
+                "description": "Action taken for this account. created: new account provisioned. updated: existing account modified. unchanged: no changes needed. failed: could not process (see errors)."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "pending_approval",
+                  "rejected",
+                  "payment_required",
+                  "suspended",
+                  "closed"
+                ],
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+              },
+              "billing": {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "agent"
+                ],
+                "description": "Who is invoiced on this account. Matches the requested billing model."
+              },
+              "account_scope": {
+                "type": "string",
+                "enum": ["operator", "brand", "operator_brand", "agent"],
+                "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to this operator+brand pair. agent: the agent's default account."
+              },
+              "setup": {
+                "type": "object",
+                "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation.",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Human-readable description of what's needed"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When this setup link expires"
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": true
+              },
+              "rate_card": {
+                "type": "string",
+                "description": "Rate card applied to this account"
+              },
+              "payment_terms": {
+                "type": "string",
+                "description": "Payment terms (e.g., 'net_30', 'prepay')"
+              },
+              "credit_limit": {
+                "type": "object",
+                "properties": {
+                  "amount": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "currency"
+                ]
+              },
+              "errors": {
+                "type": "array",
+                "description": "Per-account errors (only present when action is 'failed')",
+                "items": {
+                  "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "description": "Non-fatal warnings about this account",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sandbox": {
+                "type": "boolean",
+                "description": "Whether this is a sandbox account, echoed from the request."
+              }
+            },
+            "required": [
+              "brand",
+              "operator",
+              "action",
+              "status"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": [
+        "accounts"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "SyncAccountsError",
+      "description": "Operation failed completely, no accounts were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "accounts"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "description": "Mixed results — one active, one pending approval",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "name": "Spark (via Pinnacle)",
+            "action": "created",
+            "status": "active",
+            "billing": "operator",
+            "account_scope": "operator_brand"
+          },
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
+            "name": "Glow",
+            "action": "created",
+            "status": "pending_approval",
+            "billing": "operator",
+            "account_scope": "operator_brand",
+            "setup": {
+              "url": "https://seller.example.com/advertiser-onboard",
+              "message": "Complete advertiser registration and credit application",
+              "expires_at": "2026-03-10T00:00:00Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "description": "Rejected account — no account_id assigned",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com", "brand_id": "clearance" },
+            "operator": "acme-corp.com",
+            "action": "created",
+            "status": "rejected",
+            "warnings": [
+              "Account request declined: advertiser category not accepted on this platform."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Unsupported billing — seller rejects the request",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "action": "failed",
+            "status": "rejected",
+            "errors": [
+              {
+                "code": "BILLING_NOT_SUPPORTED",
+                "message": "Operator billing is not supported. This seller only accepts agent billing."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

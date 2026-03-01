@@ -30,6 +30,7 @@ import type { Router } from 'express';
 import { logger } from '../logger.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
+import { getPool } from '../db/client.js';
 import {
   isKnowledgeReady,
   createKnowledgeToolHandlers,
@@ -307,6 +308,7 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
     const channelInfo = await getChannelInfo(channelId);
     if (channelInfo) {
       context.viewing_channel_name = channelInfo.name;
+      context.viewing_channel_is_private = channelInfo.is_private;
       if (channelInfo.purpose?.value) {
         context.viewing_channel_description = channelInfo.purpose.value;
       }
@@ -548,6 +550,10 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   boltApp.action('addie_home_browse_groups', handleBrowseGroups);
   boltApp.action('addie_home_view_flagged', handleViewFlagged);
 
+  // Register prospect notification action handlers
+  boltApp.action('prospect_claim', handleProspectClaim);
+  boltApp.action('prospect_disqualify', handleProspectDisqualify);
+
   // Register reaction handler for thumbs up/down confirmations
   boltApp.event('reaction_added', handleReactionAdded);
 
@@ -612,11 +618,12 @@ async function getDynamicSuggestedPrompts(userId: string): Promise<SuggestedProm
  */
 async function buildRequestContext(
   userId: string,
-  threadContext?: ThreadContext
+  threadContext?: ThreadContext,
+  existingMemberContext?: MemberContext | null
 ): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
   try {
-    const memberContext = await getMemberContext(userId);
-    const memberContextText = formatMemberContextForPrompt(memberContext);
+    const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
+    const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
 
     // Build channel context if available
     let channelContextText = '';
@@ -634,6 +641,11 @@ async function buildRequestContext(
       if (threadContext.viewing_channel_working_group_name && threadContext.viewing_channel_working_group_slug) {
         channelLines.push(`**Working Group:** ${threadContext.viewing_channel_working_group_name} (slug: "${threadContext.viewing_channel_working_group_slug}")`);
         channelLines.push(`When scheduling meetings for this channel, use working_group_slug="${threadContext.viewing_channel_working_group_slug}" by default.`);
+      }
+      // Public channels are visible to all workspace members — never share sensitive data there
+      if (threadContext.viewing_channel_is_private === false) {
+        channelLines.push('');
+        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members. You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.**');
       }
       channelContextText = channelLines.join('\n');
     }
@@ -1081,7 +1093,7 @@ async function handleUserMessage({
 
   // Fetch conversation history from database for context
   // This ensures Claude has context from previous turns in the DM thread
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -1524,21 +1536,31 @@ async function handleAppMention({
     }
   }
 
+  // Fetch member context early so we can store display name on the thread
+  let mentionMemberContext: MemberContext | null = null;
+  try {
+    mentionMemberContext = await getMemberContext(userId);
+  } catch (error) {
+    logger.debug({ error, userId }, 'Addie Bolt: Could not get member context for mention');
+  }
+
   // Get or create unified thread for this mention
   const thread = await threadService.getOrCreateThread({
     channel: 'slack',
     external_id: externalId,
     user_type: 'slack',
     user_id: userId,
+    user_display_name: mentionMemberContext?.slack_user?.display_name || undefined,
     context: {
       mention_channel_id: channelId,
+      channel_name: mentionChannelContext.viewing_channel_name,
       mention_type: 'app_mention',
     },
   });
 
   // Fetch conversation history from database for context
   // This ensures Claude remembers what Addie said in previous turns
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -1565,9 +1587,11 @@ async function handleAppMention({
   }
 
   // Build per-request context (member info, channel, goals) for system prompt
+  // Pass pre-fetched member context to avoid a duplicate DB call
   const { requestContext: memberRequestContext, memberContext } = await buildRequestContext(
     userId,
-    mentionChannelContext
+    mentionChannelContext,
+    mentionMemberContext
   );
 
   // Include Slack thread context in requestContext (reference info, not user speech)
@@ -1767,6 +1791,204 @@ async function handleFeedbackAction({ ack, body, client }: any): Promise<void> {
     });
   } catch (error) {
     logger.warn({ error }, 'Addie Bolt: Failed to send feedback confirmation');
+  }
+}
+
+/**
+ * Handle "Claim this prospect" button from prospect notification
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const orgId = body.actions?.[0]?.value;
+  const userId = body.user?.id;
+  const channelId = body.channel?.id;
+  const messageTs = body.message?.ts;
+
+  if (!orgId || !userId || !channelId) {
+    logger.warn({ orgId, userId, channelId }, 'Addie Bolt: Prospect claim missing required fields');
+    return;
+  }
+
+  if (!/^[UW][A-Z0-9]+$/.test(userId)) {
+    logger.warn({ userId }, 'Addie Bolt: Invalid Slack user ID format in prospect claim');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+
+    // Look up the Slack user's WorkOS identity and verify they're an admin
+    const userResult = await pool.query<{ workos_user_id: string; first_name: string; email: string; is_admin: boolean }>(
+      `SELECT u.workos_user_id, u.first_name, u.email,
+              EXISTS(
+                SELECT 1 FROM org_memberships om
+                WHERE om.workos_user_id = u.workos_user_id
+                  AND om.workos_organization_id = (
+                    SELECT workos_organization_id FROM organizations WHERE slug = 'agenticadvertising-org' LIMIT 1
+                  )
+                  AND om.role IN ('admin')
+              ) as is_admin
+       FROM users u WHERE u.slack_user_id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: 'You need to link your Slack account first. Visit the admin portal to connect your account.',
+      });
+      return;
+    }
+
+    const user = userResult.rows[0];
+
+    // Verify the org is still an active prospect
+    const orgCheck = await pool.query<{ name: string; subscription_status: string | null; prospect_owner: string | null }>(
+      `SELECT name, subscription_status, prospect_owner FROM organizations WHERE workos_organization_id = $1`,
+      [orgId]
+    );
+
+    if (!orgCheck.rows[0]) {
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: 'Organization not found.' });
+      return;
+    }
+
+    if (orgCheck.rows[0].subscription_status) {
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: 'This organization is already a member.' });
+      return;
+    }
+
+    // Assign the user as owner via org_stakeholders
+    await pool.query(
+      `INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
+       VALUES ($1, $2, $3, $4, 'owner', $5)
+       ON CONFLICT (organization_id, user_id)
+       DO UPDATE SET role = 'owner', notes = $5, updated_at = NOW()`,
+      [orgId, user.workos_user_id, user.first_name, user.email, `Claimed via Slack on ${new Date().toISOString().split('T')[0]}`]
+    );
+
+    // Also set prospect_owner to the human's name
+    await pool.query(
+      `UPDATE organizations SET prospect_owner = $1, updated_at = NOW() WHERE workos_organization_id = $2`,
+      [user.first_name, orgId]
+    );
+
+    // Get org name for confirmation
+    const orgResult = await pool.query<{ name: string }>(`SELECT name FROM organizations WHERE workos_organization_id = $1`, [orgId]);
+    const orgName = orgResult.rows[0]?.name || orgId;
+
+    // Update the original message to show who claimed it
+    try {
+      await client.chat.update({
+        channel: channelId,
+        ts: messageTs,
+        text: `Enterprise prospect claimed by <@${userId}>: ${orgName}`,
+        blocks: [
+          ...(body.message?.blocks?.slice(0, -1) || []),
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Claimed by:* <@${userId}>` },
+          },
+        ],
+      });
+    } catch (updateErr) {
+      logger.warn({ error: updateErr }, 'Addie Bolt: Failed to update prospect claim message');
+    }
+
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: `You are now the owner of ${orgName}. View details in the admin prospects page.`,
+    });
+
+    logger.info({ orgId, orgName, userId }, 'Addie Bolt: Prospect claimed via Slack button');
+  } catch (error) {
+    logger.error({ error, orgId, userId }, 'Addie Bolt: Error handling prospect claim');
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: 'Failed to claim prospect. Please try again or use the admin portal.',
+    });
+  }
+}
+
+/**
+ * Handle "Not relevant" button from prospect notification
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleProspectDisqualify({ ack, body, client }: any): Promise<void> {
+  await ack();
+
+  const orgId = body.actions?.[0]?.value;
+  const userId = body.user?.id;
+  const channelId = body.channel?.id;
+  const messageTs = body.message?.ts;
+
+  if (!orgId || !userId || !channelId) {
+    logger.warn({ orgId, userId, channelId }, 'Addie Bolt: Prospect disqualify missing required fields');
+    return;
+  }
+
+  if (!/^[UW][A-Z0-9]+$/.test(userId)) {
+    logger.warn({ userId }, 'Addie Bolt: Invalid Slack user ID format in prospect disqualify');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+
+    await pool.query(
+      `UPDATE organizations
+       SET prospect_status = 'disqualified',
+           disqualification_reason = $1,
+           prospect_notes = COALESCE(prospect_notes, '') || $2,
+           updated_at = NOW()
+       WHERE workos_organization_id = $3`,
+      [
+        'Marked not relevant via Slack',
+        `\n\n${new Date().toISOString().split('T')[0]}: Marked not relevant via Slack by <@${userId}>`,
+        orgId,
+      ]
+    );
+
+    const orgResult = await pool.query<{ name: string }>(`SELECT name FROM organizations WHERE workos_organization_id = $1`, [orgId]);
+    const orgName = orgResult.rows[0]?.name || orgId;
+
+    // Update the original message to show it was disqualified
+    try {
+      await client.chat.update({
+        channel: channelId,
+        ts: messageTs,
+        text: `Prospect ${orgName} marked as not relevant by <@${userId}>`,
+        blocks: [
+          ...(body.message?.blocks?.slice(0, -1) || []),
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*Disqualified by:* <@${userId}>` },
+          },
+        ],
+      });
+    } catch (updateErr) {
+      logger.warn({ error: updateErr }, 'Addie Bolt: Failed to update prospect disqualify message');
+    }
+
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: `${orgName} has been marked as not relevant.`,
+    });
+
+    logger.info({ orgId, orgName, userId }, 'Addie Bolt: Prospect disqualified via Slack button');
+  } catch (error) {
+    logger.error({ error, orgId, userId }, 'Addie Bolt: Error handling prospect disqualify');
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: 'Failed to update prospect. Please try again or use the admin portal.',
+    });
   }
 }
 
@@ -2023,7 +2245,7 @@ async function handleDirectMessage(
   }
 
   // Fetch conversation history from database for context
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -2318,13 +2540,14 @@ async function handleActiveThreadReply({
     user_display_name: memberContext?.slack_user?.display_name || undefined,
     context: {
       channel_id: channelId,
+      channel_name: channelContext?.viewing_channel_name,
       message_type: 'active_thread_reply',
     },
   });
 
   // Fetch conversation history from database for context
   // This ensures Claude remembers what Addie said in previous turns
-  const MAX_DB_HISTORY_MESSAGES = 10;
+  const MAX_DB_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {
@@ -2520,6 +2743,20 @@ async function handleChannelMessage({
 
   const userId = 'user' in event ? event.user : undefined;
 
+  // Handle message_deleted for any channel type (DMs included)
+  if (hasSubtype && 'subtype' in event && event.subtype === 'message_deleted') {
+    const deletedTs = 'deleted_ts' in event ? (event as { deleted_ts: string }).deleted_ts : undefined;
+    if (deletedTs) {
+      const externalId = `${event.channel}:${deletedTs}`;
+      const threadService = getThreadService();
+      const deleted = await threadService.markSlackDeleted('slack', externalId);
+      if (deleted) {
+        logger.info({ channelId: event.channel, deletedTs }, 'Addie Bolt: Marked thread slack_deleted for deleted Slack message');
+      }
+    }
+    return;
+  }
+
   // Handle DMs differently - route to the user message handler
   // For DMs, allow messages with attachments or files even if text is empty
   if (event.channel_type === 'im') {
@@ -2551,7 +2788,7 @@ async function handleChannelMessage({
     return;
   }
 
-  // For channel messages, require text and skip subtypes
+  // For channel messages, require text and skip remaining subtypes
   if (!hasText || hasSubtype) {
     return;
   }
@@ -2738,8 +2975,10 @@ async function handleChannelMessage({
       external_id: externalId,
       user_type: 'slack',
       user_id: userId,
+      user_display_name: memberContext?.slack_user?.display_name || undefined,
       context: {
         channel_id: channelId,
+        channel_name: channelContext?.viewing_channel_name,
         message_type: 'channel_message',
       },
     });
@@ -3308,7 +3547,7 @@ async function handleReactionAdded({
   }
 
   // Fetch conversation history from database for context
-  const MAX_HISTORY_MESSAGES = 10;
+  const MAX_HISTORY_MESSAGES = 20;
   let conversationHistory: Array<{ user: string; text: string }> | undefined;
   let historyUnavailable = false;
   try {

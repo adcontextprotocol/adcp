@@ -1,0 +1,231 @@
+---
+title: get_account_financials
+testable: false
+---
+
+Query financial status for an operator-billed account — spend summary, credit or prepay balance, payment status, and invoice history. This gives budget-aware agents the context they need to make spend decisions without leaving the protocol.
+
+`get_account_financials` is only available when the seller declares `account_financials: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). It applies to **operator-billed accounts** only. For agent-billed accounts, the agent's own billing system is the source of truth.
+
+**Response Time**: ~1s.
+
+**Request Schema**: [`/schemas/latest/account/get-account-financials-request.json`](https://adcontextprotocol.org/schemas/latest/account/get-account-financials-request.json)
+**Response Schema**: [`/schemas/latest/account/get-account-financials-response.json`](https://adcontextprotocol.org/schemas/latest/account/get-account-financials-response.json)
+
+## Quick start
+
+Check remaining credit before launching a campaign:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+
+const result = await testAgent.getAccountFinancials({
+  account: { account_id: "acc_acme_001" },
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+if ("errors" in result.data && result.data.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(result.data.errors)}`);
+}
+
+const { spend, credit, payment_status } = result.data;
+console.log(`Spent: $${spend?.total_spend} this period`);
+
+if (credit) {
+  console.log(`Available credit: $${credit.available_credit} of $${credit.credit_limit}`);
+}
+
+if (payment_status === "past_due") {
+  console.log("Warning: payment is past due — campaigns may be paused");
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.get_account_financials(
+        account={"account_id": "acc_acme_001"},
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Spent: ${result.spend.total_spend} this period")
+
+    if hasattr(result, 'credit') and result.credit:
+        print(f"Available credit: ${result.credit.available_credit} of ${result.credit.credit_limit}")
+
+    if getattr(result, 'payment_status', None) == 'past_due':
+        print("Warning: payment is past due — campaigns may be paused")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | object | Yes | [Account reference](/docs/building/integration/accounts-and-agents#account-references) — by `account_id` or natural key (`brand` + `operator`). Must be an operator-billed account. |
+| `period` | object | No | Date range for spend summary: `start` and `end` as ISO 8601 dates. Defaults to the current billing cycle if omitted. |
+
+## Response
+
+**Success response:**
+
+Returns financial data for the account. Only `account`, `currency`, `period`, and `timezone` are guaranteed — everything else depends on what the seller exposes.
+
+| Field | Description |
+|-------|-------------|
+| `account` | Account reference, echoed from the request. |
+| `currency` | ISO 4217 currency code for all monetary amounts. |
+| `period` | Actual period covered (`start`, `end`). May differ from requested period if adjusted to billing cycle boundaries. |
+| `timezone` | IANA timezone of the seller's billing day boundaries (e.g., `America/New_York`). All dates in the response are calendar dates in this timezone. |
+| `spend` | Spend summary: `total_spend` (amount in `currency`) and optional `media_buy_count`. |
+| `credit` | Present for credit-based accounts. Contains `credit_limit`, `available_credit`, and optional `utilization_percent` (0-100). |
+| `balance` | Present for prepay accounts. Contains `available` balance and optional `last_top_up` (`amount`, `date`). |
+| `payment_status` | `current`, `past_due`, or `suspended`. |
+| `payment_terms` | Payment terms in effect (e.g., `net_30`, `prepay`). |
+| `invoices` | Array of recent invoices: `invoice_id`, `amount`, `status` (`draft`, `issued`, `paid`, `past_due`, `void`), optional `period`, `due_date`, `paid_date`. |
+
+**Error response:**
+
+- `errors` -- Array of operation-level errors. No financial data is present.
+
+**Note:** Responses use discriminated unions -- you get either financial data OR `errors`, never both.
+
+## Common scenarios
+
+### Budget check before campaign launch
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+
+const financials = await testAgent.getAccountFinancials({
+  account: { account_id: "acc_acme_001" },
+});
+
+if (!financials.success || "errors" in financials.data) {
+  throw new Error("Could not check financials");
+}
+
+const campaignBudget = 15000;
+const { credit } = financials.data;
+
+if (credit && credit.available_credit < campaignBudget) {
+  console.log(
+    `Insufficient credit: $${credit.available_credit} available, ` +
+    `$${campaignBudget} needed. ` +
+    `Credit utilization: ${credit.utilization_percent}%`
+  );
+} else {
+  console.log("Budget check passed — proceeding with campaign");
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    financials = await test_agent.simple.get_account_financials(
+        account={"account_id": "acc_acme_001"},
+    )
+
+    if hasattr(financials, 'errors') and financials.errors:
+        raise Exception("Could not check financials")
+
+    campaign_budget = 15000
+    credit = getattr(financials, 'credit', None)
+
+    if credit and credit.available_credit < campaign_budget:
+        print(
+            f"Insufficient credit: ${credit.available_credit} available, "
+            f"${campaign_budget} needed. "
+            f"Credit utilization: {credit.utilization_percent}%"
+        )
+    else:
+        print("Budget check passed — proceeding with campaign")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Prepay balance monitoring
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+
+const financials = await testAgent.getAccountFinancials({
+  account: {
+    brand: { domain: "acme-corp.com" },
+    operator: "acme-corp.com",
+  },
+});
+
+if (!financials.success || "errors" in financials.data) {
+  throw new Error("Could not check financials");
+}
+
+const { balance } = financials.data;
+if (balance && balance.available < 2000) {
+  console.log(
+    `Low balance warning: $${balance.available} remaining. ` +
+    `Consider topping up before launching new campaigns.`
+  );
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    financials = await test_agent.simple.get_account_financials(
+        account={
+            "brand": {"domain": "acme-corp.com"},
+            "operator": "acme-corp.com",
+        },
+    )
+
+    if hasattr(financials, 'errors') and financials.errors:
+        raise Exception("Could not check financials")
+
+    balance = getattr(financials, 'balance', None)
+    if balance and balance.available < 2000:
+        print(
+            f"Low balance warning: ${balance.available} remaining. "
+            f"Consider topping up before launching new campaigns."
+        )
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Error handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `UNSUPPORTED_FEATURE` | Account uses agent billing — financials not available from seller | Query your own billing system for agent-billed accounts |
+| `UNSUPPORTED_FEATURE` | Seller doesn't have financial data for this account or period | Verify `account_financials` capability is `true` |
+| `ACCOUNT_NOT_FOUND` | Account does not exist or is not accessible | Check account reference or re-sync |
+
+## Next steps
+
+- [list_accounts](/docs/accounts/tasks/list_accounts) -- Discover accounts and check their status
+- [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) -- Check `account_financials` before calling this task
+- [Accounts and agents](/docs/building/integration/accounts-and-agents) -- Billing models and account references

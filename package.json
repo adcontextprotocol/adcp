@@ -1,6 +1,6 @@
 {
   "name": "adcontextprotocol",
-  "version": "3.0.0-beta.3",
+  "version": "3.0.0-rc.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -52,7 +52,7 @@
     "@opentelemetry/semantic-conventions": "^1.38.0",
     "@slack/bolt": "^4.6.0",
     "@types/jsonwebtoken": "^9.0.10",
-    "@workos-inc/node": "^7.77.0",
+    "@workos-inc/node": "^8.5.0",
     "@workos-inc/widgets": "^1.6.1",
     "axios": "^1.13.2",
     "cookie-parser": "^1.4.7",
@@ -108,7 +108,7 @@
     "vitest": "^4.0.15"
   },
   "engines": {
-    "node": ">=18.0"
+    "node": ">=20.0"
   },
   "overrides": {
     "webpack-dev-server": "^5.2.2",
@@ -121,6 +121,7 @@
     "js-yaml": "^4.1.1",
     "axios": "^1.13.2",
     "express": "^4.22.1",
+    "@types/express-serve-static-core": "5.1.0",
     "zod": "$zod"
   }
 }

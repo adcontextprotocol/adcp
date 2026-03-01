@@ -16,18 +16,14 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `signal_spec` | string | Yes | Natural language description of the desired signals |
-| `deliver_to` | DeliverTo | Yes | Deployment targets where signals need to be activated (see Deliver To Object below) |
+| `signal_spec` | string | Conditional | Natural language description of the desired signals. Required unless `signal_ids` is provided. |
+| `signal_ids` | SignalID[] | Conditional | Specific signals to look up by data provider and ID. Required unless `signal_spec` is provided. |
+| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account for this request. When provided, the signals agent returns per-account pricing options if configured. |
+| `destinations` | Destination[] | No | Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. See Destination Object below. |
+| `countries` | string[] | No | Countries where signals will be used (ISO 3166-1 alpha-2 codes) |
 | `filters` | Filters | No | Filters to refine results (see Filters Object below) |
 | `max_results` | number | No | Maximum number of results to return |
 | `pagination` | object | No | Pagination: `cursor` (opaque cursor from previous response) for paging through large result sets |
-
-### Deliver To Object
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `deployments` | Destination[] | Yes | List of deployment targets (DSPs, sales agents, etc.) - see Destination Object below |
-| `countries` | string[] | Yes | Countries where signals will be used (ISO 3166-1 alpha-2 codes, case-insensitive, uppercase recommended) |
 
 ### Destination Object
 
@@ -42,7 +38,9 @@ Each deployment target uses a `type` field to discriminate between platform-base
 
 *`platform` is required when `type="platform"`, `agent_url` is required when `type="agent"`.
 
-**Activation Keys**: If the authenticated caller has access to any of the deployment targets in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
+**Destination filtering**: Signals are returned if they are available on *any* of the requested destinations (OR semantics). Destinations where a signal is not available are omitted from that signal's response `deployments` array. A `PARTIAL_COVERAGE` warning may be included when some destinations don't support the signal.
+
+**Activation Keys**: If the authenticated caller has access to any of the destinations in the request, the signal agent will include `activation_key` fields in the response for those deployments (when `is_live: true`).
 
 **Permission Model**: The signal agent determines key inclusion based on the caller's authentication and authorization. For example:
 - A sales agent receives keys for deployments matching its `agent_url`
@@ -55,7 +53,7 @@ Each deployment target uses a `type` field to discriminate between platform-base
 |-----------|------|----------|-------------|
 | `catalog_types` | string[] | No | Filter by catalog type ("marketplace", "custom", "owned") |
 | `data_providers` | string[] | No | Filter by specific data providers |
-| `max_cpm` | number | No | Maximum CPM price filter |
+| `max_cpm` | number | No | Maximum CPM price filter. Excludes signals where all CPM-based pricing options exceed this value. Signals without CPM-based pricing options are not affected by this filter. |
 | `min_coverage_percentage` | number | No | Minimum coverage requirement |
 
 ## Response Structure
@@ -94,10 +92,13 @@ The response structure is identical across protocols, with only the transport wr
           "estimated_activation_duration_minutes": "number"
         }
       ],
-      "pricing": {
-        "cpm": "number",
-        "currency": "string"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "string",
+          "model": "cpm | percent_of_media | flat_fee",
+          "...": "..."
+        }
+      ]
     }
   ]
 }
@@ -116,11 +117,16 @@ The response structure is identical across protocols, with only the transport wr
     - **agent_url**: URL identifying the destination agent
     - **account**: Account identifier if applicable
     - **is_live**: Whether signal is currently active on this deployment
-    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present if `is_live=true` AND this deployment has `requester=true` in the request.**
+    - **activation_key**: The key to use for targeting (see Activation Key below). **Only present when `is_live=true` and the authenticated caller has access to this deployment.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
-  - **pricing**: Pricing information
-    - **cpm**: Cost per thousand impressions
-    - **currency**: Currency code
+  - **pricing_options**: Array of pricing options for this signal. Pass the selected `pricing_option_id` in `report_usage` for billing verification.
+    - **pricing_option_id**: Unique identifier for this pricing option
+    - **model**: Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
+    - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
+    - `model: "percent_of_media"` — `percent` (0–100), `currency` (ISO 4217), `max_cpm` (optional CPM cap: effective charge = `min(percent × media_spend_per_mille, max_cpm)`)
+    - `model: "flat_fee"` — `amount` (fixed charge), `currency` (ISO 4217), `period` (`monthly`, `quarterly`, `annual`, or `campaign`)
+
+Select the pricing option that matches your billing model and pass its `pricing_option_id` in `report_usage` for billing verification. If a signal offers multiple models (e.g., CPM and flat fee), choose based on your expected delivery volume and campaign structure.
 
 ### Activation Key Object
 
@@ -156,15 +162,13 @@ A sales agent querying for signals. Because the authenticated caller is wonderst
   "tool": "get_signals",
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "deployments": [
-        {
-          "type": "agent",
-          "agent_url": "https://wonderstruck.salesagents.com"
-        }
-      ],
-      "countries": ["US"]
-    },
+    "destinations": [
+      {
+        "type": "agent",
+        "agent_url": "https://wonderstruck.salesagents.com"
+      }
+    ],
+    "countries": ["US"],
     "filters": {
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
@@ -203,10 +207,69 @@ Because the authenticated caller matches the deployment target, the response inc
           }
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### MCP Response - Multiple Pricing Options
+
+Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage`:
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-response.json",
+  "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
+  "context_id": "ctx-signals-456",
+  "signals": [
+    {
+      "signal_agent_segment_id": "eco_conscious_shoppers",
+      "name": "Eco-Conscious Shoppers",
+      "description": "Users with demonstrated interest in sustainable and eco-friendly products",
+      "signal_type": "marketplace",
+      "data_provider": "Acme Data",
+      "coverage_percentage": 18,
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "eco_seg_789"
+          }
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_eco_cpm",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_eco_pom",
+          "model": "percent_of_media",
+          "percent": 15,
+          "max_cpm": 1.50,
+          "currency": "USD"
+        },
+        {
+          "pricing_option_id": "po_eco_flat",
+          "model": "flat_fee",
+          "amount": 5000,
+          "period": "monthly",
+          "currency": "USD"
+        }
+      ]
     }
   ]
 }
@@ -221,20 +284,18 @@ A buyer checking availability across multiple DSP platforms:
   "tool": "get_signals",
   "arguments": {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "deployments": [
-        {
-          "type": "platform",
-          "platform": "the-trade-desk",
-          "account": "agency-123"
-        },
-        {
-          "type": "platform",
-          "platform": "amazon-dsp"
-        }
-      ],
-      "countries": ["US"]
-    },
+    "destinations": [
+      {
+        "type": "platform",
+        "platform": "the-trade-desk",
+        "account": "agency-123"
+      },
+      {
+        "type": "platform",
+        "platform": "amazon-dsp"
+      }
+    ],
+    "countries": ["US"],
     "filters": {
       "max_cpm": 5.0,
       "catalog_types": ["marketplace"]
@@ -279,10 +340,14 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
           "estimated_activation_duration_minutes": 60
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
     }
   ]
 }
@@ -312,20 +377,18 @@ await a2a.send({
         skill: "get_signals",
         parameters: {
           signal_spec: "High-income households interested in luxury goods",
-          deliver_to: {
-            deployments: [
-              {
-                type: "agent",
-                agent_url: "https://thetradedesk.com",
-                account: "agency-123"
-              },
-              {
-                type: "agent",
-                agent_url: "https://advertising.amazon.com/dsp"
-              }
-            ],
-            countries: ["US"]
-          },
+          destinations: [
+            {
+              type: "agent",
+              agent_url: "https://thetradedesk.com",
+              account: "agency-123"
+            },
+            {
+              type: "agent",
+              agent_url: "https://advertising.amazon.com/dsp"
+            }
+          ],
+          countries: ["US"],
           filters: {
             max_cpm: 5.0,
             catalog_types: ["marketplace"]
@@ -376,10 +439,14 @@ A2A returns results as artifacts with the same data structure:
                     "estimated_activation_duration_minutes": 60
                   }
                 ],
-                "pricing": {
-                  "cpm": 3.50,
-                  "currency": "USD"
-                }
+                "pricing_options": [
+                  {
+                    "pricing_option_id": "po_cpm_usd",
+                    "model": "cpm",
+                    "cpm": 3.50,
+                    "currency": "USD"
+                  }
+                ]
               }
             ]
           }
@@ -404,14 +471,12 @@ Discover all available deployments across platforms:
 {
   "$schema": "/schemas/signals/get-signals-request.json",
   "signal_spec": "Contextual segments for luxury automotive content",
-  "deliver_to": {
-    "deployments": [
-      { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
-      { "type": "platform", "platform": "openx" },
-      { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
-    ],
-    "countries": ["US"]
-  },
+  "destinations": [
+    { "type": "platform", "platform": "index-exchange", "account": "agency-123-ix" },
+    { "type": "platform", "platform": "openx" },
+    { "type": "platform", "platform": "pubmatic", "account": "brand-456-pm" }
+  ],
+  "countries": ["US"],
   "filters": {
     "data_providers": ["Peer39"],
     "catalog_types": ["marketplace"]
@@ -466,10 +531,14 @@ Discover all available deployments across platforms:
         "estimated_activation_duration_minutes": 60
       }
     ],
-    "pricing": {
-      "cpm": 2.50,
-      "currency": "USD"
-    }
+    "pricing_options": [
+      {
+        "pricing_option_id": "po_cpm_usd",
+        "model": "cpm",
+        "cpm": 2.50,
+        "currency": "USD"
+      }
+    ]
   }]
 }
 ```
@@ -491,9 +560,9 @@ Discover all available deployments across platforms:
     - **scope** (string): "platform-wide" or "account-specific"
     - **decisioning_platform_segment_id** (string): Platform-specific ID to use
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
-  - **pricing** (object): Pricing information
-    - **cpm** (number): Cost per thousand impressions
-    - **currency** (string): Currency code
+  - **pricing_options** (array): Array of pricing options available for this signal. Select one and pass its `pricing_option_id` in `report_usage`.
+    - **pricing_option_id** (string): Unique identifier for this pricing option
+    - **model** (string): Pricing model — `cpm`, `percent_of_media`, or `flat_fee`
 
 ## Error Codes
 
@@ -515,6 +584,41 @@ Discover all available deployments across platforms:
 4. **Multiple Deployments**: Query multiple deployment targets to check availability across platforms
 5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
 6. **The message field** provides a quick summary of the most relevant findings
+
+## Iterative refinement
+
+`get_signals` supports iterative refinement without a separate mode flag. The combination of `signal_spec` and `signal_ids` determines the operation:
+
+| Fields provided | Behavior |
+|----------------|----------|
+| `signal_spec` only | Discovery — find signals matching the description |
+| `signal_ids` only | Exact lookup — return specific signals by ID |
+| `signal_ids` + `signal_spec` | Refinement — start from known signals, adjust per the spec |
+
+To refine previous results, pass back the `signal_id` values from signals you want to keep, and provide an updated `signal_spec` describing what to change:
+
+```json
+{
+  "$schema": "/schemas/signals/get-signals-request.json",
+  "signal_spec": "Same audience but with broader coverage, ideally above 20%",
+  "signal_ids": [
+    {
+      "source": "catalog",
+      "data_provider_domain": "experian.com",
+      "id": "luxury_auto_intenders"
+    }
+  ],
+  "destinations": [
+    {
+      "type": "agent",
+      "agent_url": "https://wonderstruck.salesagents.com"
+    }
+  ],
+  "countries": ["US"]
+}
+```
+
+The signal agent uses the provided IDs as a starting point and the spec as adjustment guidance, returning signals that reflect both the original selection and the requested changes (e.g., broader segments from the same provider, or comparable segments from alternative providers with higher coverage).
 
 ### Response - Multiple Signals Found
 
@@ -548,10 +652,14 @@ Discover all available deployments across platforms:
           "decisioning_platform_segment_id": "ox_agency123_affluent_789"
         }
       ],
-      "pricing": {
-        "cpm": 3.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 3.50,
+          "currency": "USD"
+        }
+      ]
     }
     // ... more signals
   ]
@@ -582,17 +690,21 @@ Discover all available deployments across platforms:
           "decisioning_platform_segment_id": "ttd_exp_auto_premium"
         }
       ],
-      "pricing": {
-        "cpm": 4.50,
-        "currency": "USD"
-      }
+      "pricing_options": [
+        {
+          "pricing_option_id": "po_cpm_usd",
+          "model": "cpm",
+          "cpm": 4.50,
+          "currency": "USD"
+        }
+      ]
     }
   ],
   "errors": [
     {
       "code": "PRICING_UNAVAILABLE",
       "message": "Pricing data temporarily unavailable for The Trade Desk platform",
-      "field": "signals[0].pricing",
+      "field": "signals[0].pricing_options",
       "suggestion": "Retry in 15-30 minutes when platform pricing feed updates",
       "details": {
         "affected_platform": "the-trade-desk",
@@ -635,28 +747,39 @@ The `message` field should provide actionable insights:
 def generate_signals_message(signals, request):
     if not signals:
         return generate_no_signals_message(request.signal_spec)
-    
-    # Analyze deployment readiness
-    ready_count = sum(1 for s in signals if all_platforms_live(s, request.deliver_to))
+
     best_signal = find_best_signal(signals)
-    
+
     if len(signals) == 1:
         signal = signals[0]
-        deployment_status = get_deployment_summary(signal, request.deliver_to)
-        price_commentary = f"The CPM is ${signal.pricing.cpm}, which {'is well within' if signal.pricing.cpm <= request.filters.max_cpm else 'exceeds'} your budget."
+        deployment_status = get_deployment_summary(signal, request.destinations)
+        pricing = signal.pricing_options[0] if signal.pricing_options else None
+        if pricing:
+            p = pricing.pricing
+            if p.model == "cpm":
+                price_commentary = f"Priced at ${p.cpm:.2f} CPM {p.currency}."
+            elif p.model == "percent_of_media":
+                cap = f", capped at ${p.max_cpm:.2f} CPM" if getattr(p, "max_cpm", None) else ""
+                price_commentary = f"Priced at {p.percent}% of media spend{cap}."
+            elif p.model == "flat_fee":
+                price_commentary = f"Flat fee of {p.amount} {p.currency} per {p.period}."
+            else:
+                price_commentary = ""
+        else:
+            price_commentary = ""
         return f"I found a perfect match: '{signal.name}' from {signal.data_provider} with {signal.coverage_percentage}% coverage. {deployment_status} {price_commentary}"
     else:
         return f"I found {len(signals)} signals matching your {extract_key_criteria(request.signal_spec)} criteria. {describe_best_option(best_signal)} {get_pricing_range(signals)}."
 
-def get_deployment_summary(signal, deliver_to):
-    live_platforms = [d.platform for d in signal.deployments if d.is_live]
-    needs_activation = [d for d in signal.deployments if not d.is_live and d.platform in deliver_to.platforms]
-    
-    if len(live_platforms) == len(deliver_to.platforms):
-        return "It's already live on all requested platforms, ready to use immediately."
-    elif live_platforms:
-        activation_time = max(d.estimated_activation_duration_minutes for d in needs_activation)
-        return f"It's live on {', '.join(live_platforms)}. Activation on {needs_activation[0].platform} would take about {activation_time} minutes."
+def get_deployment_summary(signal, requested_deployments):
+    live = [d for d in signal.deployments if d.is_live]
+    pending = [d for d in signal.deployments if not d.is_live]
+
+    if not pending:
+        return "Already live on all requested deployments, ready to use immediately."
+    elif live:
+        activation_time = max((d.estimated_activation_duration_minutes or 0) for d in pending)
+        return f"Live on {len(live)} deployment(s). Activation on {len(pending)} more would take about {activation_time} minutes."
     else:
-        return "It requires activation on all platforms, which typically takes 1-2 hours."
+        return "Requires activation on all deployments, which typically takes 1-2 hours."
 ```

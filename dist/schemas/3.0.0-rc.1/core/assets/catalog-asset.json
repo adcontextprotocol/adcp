@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/assets/catalog-asset.json",
+  "title": "Catalog Asset",
+  "description": "A typed data feed as a creative asset. Carries catalog context (products, stores, jobs, etc.) within the manifest's assets map.",
+  "allOf": [
+    { "$ref": "/schemas/3.0.0-rc.1/core/catalog.json" }
+  ]
+}

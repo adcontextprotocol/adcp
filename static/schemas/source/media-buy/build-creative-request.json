@@ -7,7 +7,7 @@
   "properties": {
     "message": {
       "type": "string",
-      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative."
+      "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
@@ -20,10 +20,6 @@
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."
-    },
-    "creative_brief": {
-      "$ref": "/schemas/core/creative-brief-ref.json",
-      "description": "Campaign-level creative brief with objective, audience, messaging, and reference assets. Can be an inline brief object or a URL to a hosted brief. Supplements the natural language message with structured creative direction."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

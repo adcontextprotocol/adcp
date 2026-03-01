@@ -7,7 +7,7 @@
   "properties": {
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for this package"
+      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
     },
     "product_id": {
       "type": "string",
@@ -48,12 +48,20 @@
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
       "default": false
     },
-    "catalog": {
-      "$ref": "/schemas/core/catalog.json",
-      "description": "Catalog this package promotes. Makes the package catalog-driven: one budget envelope, platform optimizes across items. Reference a synced catalog by catalog_id with optional selectors to narrow scope."
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
     },
-    "optimization_goal": {
-      "$ref": "/schemas/core/optimization-goal.json"
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/core/optimization-goal.json"
+      },
+      "minItems": 1
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"

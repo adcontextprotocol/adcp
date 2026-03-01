@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/sponsored-intelligence/si-get-offering-response.json",
+  "title": "SI Get Offering Response",
+  "description": "Offering details, availability status, and optionally matching products. Use the offering_token in si_initiate_session for correlation.",
+  "type": "object",
+  "properties": {
+    "available": {
+      "type": "boolean",
+      "description": "Whether the offering is currently available"
+    },
+    "offering_token": {
+      "type": "string",
+      "description": "Token to pass to si_initiate_session for session continuity. Brand stores the full query context server-side (products shown, order, context) so they can resolve references like 'the second one' when the session starts."
+    },
+    "ttl_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How long this offering information is valid (seconds). Host should re-fetch after TTL expires."
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this offering information was retrieved"
+    },
+    "offering": {
+      "type": "object",
+      "description": "Offering details",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "description": "Offering identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Offering title"
+        },
+        "summary": {
+          "type": "string",
+          "description": "Brief summary of the offering"
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Short promotional tagline"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this offering expires"
+        },
+        "price_hint": {
+          "type": "string",
+          "description": "Price indication (e.g., 'from $199', '50% off')"
+        },
+        "image_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Hero image for the offering"
+        },
+        "landing_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Landing page URL"
+        }
+      },
+      "additionalProperties": true
+    },
+    "matching_products": {
+      "type": "array",
+      "description": "Products matching the request context. Only included if include_products was true.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "description": "Product identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Product name"
+          },
+          "price": {
+            "type": "string",
+            "description": "Display price (e.g., '$129', '$89.99')"
+          },
+          "original_price": {
+            "type": "string",
+            "description": "Original price if on sale"
+          },
+          "image_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Product image"
+          },
+          "availability_summary": {
+            "type": "string",
+            "description": "Brief availability info (e.g., 'In stock', 'Size 14 available', '3 left')"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Product detail page URL"
+          }
+        },
+        "required": ["product_id", "name"],
+        "additionalProperties": true
+      }
+    },
+    "total_matching": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of products matching the context (may be more than returned in matching_products)"
+    },
+    "unavailable_reason": {
+      "type": "string",
+      "description": "If not available, why (e.g., 'expired', 'sold_out', 'region_restricted')"
+    },
+    "alternative_offering_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Alternative offerings to consider if this one is unavailable"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+      },
+      "description": "Errors during offering lookup"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": ["available"],
+  "additionalProperties": true
+}

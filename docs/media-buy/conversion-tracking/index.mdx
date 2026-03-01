@@ -1,8 +1,8 @@
 ---
-title: Conversion Tracking
-description: Configure event sources, send conversion events, match users for attribution, and optimize delivery with ROAS and CPA goals.
+title: Conversion Tracking & Optimization Goals
+description: Configure event sources, send conversion events, match users for attribution, and optimize delivery with metric and event optimization goals.
 testable: true
-keywords: [conversion tracking, event sources, attribution, ROAS, CPA, optimization goals, user matching, event logging]
+keywords: [conversion tracking, event sources, attribution, optimization goals, user matching, event logging, cost_per, per_ad_spend, threshold_rate, maximize_value, metric optimization, engagements, follows, saves, completed_views]
 ---
 
 
@@ -32,7 +32,7 @@ sequenceDiagram
 
     rect rgb(255, 248, 240)
         Note over B,S: Optimization
-        B->>S: create_media_buy (with optimization_goal)
+        B->>S: create_media_buy (with optimization_goals)
         S->>S: Optimize delivery toward conversions
         B->>S: get_media_buy_delivery
         S->>B: Conversion metrics (ROAS, CPA)
@@ -66,7 +66,7 @@ To discover all sources on an account (including seller-managed), call `sync_eve
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
-  "account_id": "acct_12345"
+  "account": { "account_id": "acct_12345" }
 }
 ```
 
@@ -228,59 +228,267 @@ Where the conversion event originated:
 
 ## Optimization goals
 
-An optimization goal tells the seller which conversions to optimize delivery against. Set it on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization) to move beyond impression-based delivery.
+Optimization goals tell the seller what to optimize delivery toward. Set them on a package in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy#campaign-with-conversion-optimization). A package accepts an array of goals — each with an optional `priority` (1 = highest). Products declare `max_optimization_goals` when they limit how many goals a package can carry (most social platforms accept only 1).
 
 **Schema**: [`/schemas/v3/core/optimization-goal.json`](https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json)
 
-**ROAS target** (optimize for return on ad spend):
+There are two kinds of goals, discriminated by `kind`:
+
+- **`kind: "metric"`** — Optimize for a seller-tracked delivery metric (clicks, views, engagements, etc.). No event source or conversion tracking setup required. The product declares which metrics it supports in `metric_optimization`.
+- **`kind: "event"`** — Optimize for advertiser-tracked conversion events. Requires event sources registered via `sync_event_sources`. The product declares support in `conversion_tracking`.
+
+### kind: event
+
+Optimize for advertiser-tracked conversion events. The `event_sources` array defines which source-type pairs feed this goal. When the seller supports `multi_source_event_dedup` (declared in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)), they deduplicate by `event_id` across all entries — the same business event reported by multiple sources counts once, using `value_field` and `value_factor` from the first matching entry. When `multi_source_event_dedup` is absent or false, buyers should use a single event source per goal.
+
+**Cost per conversion** (single source):
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json",
-  "event_source_id": "website_pixel",
-  "event_type": "purchase",
-  "target_roas": 4.0,
-  "attribution_window": {
-    "click_through": "28d",
-    "view_through": "1d"
-  }
+  "kind": "event",
+  "event_sources": [
+    { "event_source_id": "website_pixel", "event_type": "lead" }
+  ],
+  "target": { "kind": "cost_per", "value": 25.00 },
+  "priority": 1
 }
 ```
 
-**CPA target** (optimize for cost per conversion):
+**Return on ad spend** (multiple sources with refunds):
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json",
-  "event_source_id": "website_pixel",
-  "event_type": "lead",
-  "target_cpa": 25.00
+  "kind": "event",
+  "event_sources": [
+    { "event_source_id": "web_pixel", "event_type": "purchase", "value_field": "order_total" },
+    { "event_source_id": "app_sdk", "event_type": "purchase", "value_field": "order_total" },
+    { "event_source_id": "web_pixel", "event_type": "refund", "value_field": "refund_amount", "value_factor": -1 }
+  ],
+  "target": { "kind": "per_ad_spend", "value": 4.0 },
+  "attribution_window": { "post_click": { "interval": 28, "unit": "days" }, "post_view": { "interval": 1, "unit": "days" } },
+  "priority": 1
+}
+```
+
+For `per_ad_spend` targets, each event source entry specifies a `value_field` (which field on `custom_data` carries the monetary value) and an optional `value_factor` (multiplier, defaults to 1). The seller computes `sum(value_field * value_factor) / spend` across all deduplicated events.
+
+**Maximize conversion value** (no specific ROAS target):
+
+```json
+{
+  "kind": "event",
+  "event_sources": [
+    { "event_source_id": "web_pixel", "event_type": "purchase", "value_field": "value" }
+  ],
+  "target": { "kind": "maximize_value" },
+  "priority": 1
+}
+```
+
+A `maximize_value` target steers spend toward higher-value conversions without committing to a specific return ratio. Requires `value_field` on at least one event source entry.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | `"event"` | Yes | Discriminator |
+| `event_sources` | array | Yes | Source-type pairs feeding this goal. Seller deduplicates by `event_id` across entries — when the same `event_id` arrives from multiple sources with different `value_field`s, the seller uses the `value_field` and `value_factor` from the first matching entry in this array. |
+| `event_sources[].event_source_id` | string | Yes | Event source (must be configured via `sync_event_sources`) |
+| `event_sources[].event_type` | [EventType](#event-types) | Yes | Event type to include (e.g., `purchase`, `lead`, `refund`) |
+| `event_sources[].custom_event_name` | string | When event_type is `custom` | Platform-specific custom event name |
+| `event_sources[].value_field` | string | When target is `per_ad_spend` or `maximize_value` | Which field on `custom_data` carries the monetary value. The seller must use this for value extraction and aggregation — it is not passed directly to underlying platform APIs. |
+| `event_sources[].value_factor` | number | No | Multiplier the seller must apply to `value_field` before aggregation (default 1). Use -1 for refunds, 0.01 for cents, 0 to zero out a source's value contribution while still counting it for dedup. |
+| `target.kind` | `"cost_per"` \| `"per_ad_spend"` \| `"maximize_value"` | No | Target type. When omitted, the seller maximizes conversions within budget. |
+| `target.value` | number | Yes (if target set) | Cost per event in buy currency, or return ratio (e.g., 4.0 = $4 per $1 spent) |
+| `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+### kind: metric
+
+Optimize for a seller-tracked delivery metric. No event source needed — the seller tracks these natively. Products declare which metrics they support in `metric_optimization.supported_metrics`.
+
+**Maximize clicks** (no target — seller optimizes for volume within budget):
+
+```json
+{
+  "kind": "metric",
+  "metric": "clicks"
+}
+```
+
+**Cost per click**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "clicks",
+  "target": { "kind": "cost_per", "value": 2.00 },
+  "priority": 2
+}
+```
+
+**Minimum click-through rate**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "clicks",
+  "target": { "kind": "threshold_rate", "value": 0.001 },
+  "priority": 2
+}
+```
+
+**Minimum attention time**:
+
+```json
+{
+  "kind": "metric",
+  "metric": "attention_seconds",
+  "target": { "kind": "threshold_rate", "value": 5.0 },
+  "priority": 3
+}
+```
+
+**Maximize engagements** (social reactions, comments, shares, story opens, overlay taps):
+
+```json
+{
+  "kind": "metric",
+  "metric": "engagements"
+}
+```
+
+**Completed views with duration threshold** (6-second views on TikTok):
+
+```json
+{
+  "kind": "metric",
+  "metric": "completed_views",
+  "view_duration_seconds": 6,
+  "target": { "kind": "cost_per", "value": 0.02 },
+  "priority": 1
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `event_source_id` | string | Yes | Event source to optimize against (must be configured via `sync_event_sources`) |
-| `event_type` | [EventType](#event-types) | Yes | Event type to optimize for (e.g., `purchase`, `lead`) |
-| `target_roas` | number | No | Target return on ad spend (e.g., 4.0 = $4 conversion value per $1 spent). Mutually exclusive with `target_cpa`. |
-| `target_cpa` | number | No | Target cost per acquisition in buy currency. Mutually exclusive with `target_roas`. |
-| `attribution_window` | object | No | Click-through and view-through windows. When omitted, the seller uses their default. |
+| `kind` | `"metric"` | Yes | Discriminator |
+| `metric` | string | Yes | Seller-native metric (see metrics table below) |
+| `view_duration_seconds` | number | No | Minimum video view duration (in seconds) that qualifies as a `completed_views` event. Only applicable when metric is `completed_views`. When omitted, the seller uses their platform default. Must be a value listed in the product's `metric_optimization.supported_view_durations` — sellers reject unsupported values. |
+| `target.kind` | `"cost_per"` \| `"threshold_rate"` | No | Target type. When omitted, the seller maximizes metric volume within budget. |
+| `target.value` | number | Yes (if target set) | Cost per metric unit in buy currency, or minimum per-impression value |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+**Metrics**:
+
+| Metric | Unit | `threshold_rate` example | Description |
+|---|---|---|---|
+| `clicks` | count/impression | 0.001 (0.1% CTR) | Link clicks, swipe-throughs, CTA taps that navigate away |
+| `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
+| `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions. Use `view_duration_seconds` to control the qualifying threshold (e.g., 2s, 6s, 15s). |
+| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression |
+| `attention_seconds` | seconds/impression | 5.0 (5s attention) | Attention time per impression |
+| `attention_score` | score/impression | 40.0 (vendor-specific) | Attention score per impression |
+| `engagements` | count/impression | — | Direct interaction beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio |
+| `follows` | count/impression | — | New followers, page likes, artist/podcast/channel subscribes |
+| `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
+| `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
+| `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
+
+### Target kinds
+
+All target kinds across both goal types:
+
+| `target.kind` | Metric goals | Event goals | Description |
+|---|---|---|---|
+| `cost_per` | Cost per click/view/etc. | Cost per conversion event | `spend / count` |
+| `threshold_rate` | Minimum per-impression value | — | `at least X per impression` |
+| `per_ad_spend` | — | Target return on ad spend | `sum(value_field * value_factor) / spend` |
+| `maximize_value` | — | Maximize total conversion value | Steers spend toward higher-value conversions. Requires `value_field`. |
 
 ### Choosing a strategy
 
-| Strategy | When to use | What you set |
-|----------|-------------|-------------|
-| Max conversions | You want as many conversions as possible within budget | `event_source_id` + `event_type` only |
-| Target ROAS | You need a specific return on ad spend | Add `target_roas` (e.g., 4.0) |
-| Target CPA | You need a specific cost per conversion | Add `target_cpa` (e.g., 25.00) |
+| Goal | When to use | What you set |
+|---|---|---|
+| Max conversions | As many conversions as possible within budget | `kind: "event"` + event sources, no target |
+| Target cost per conversion | Specific cost per event | `kind: "event"` + `target: { kind: "cost_per", value: 25.0 }` |
+| Target return on ad spend | Specific return ratio on event values | `kind: "event"` + `value_field` on sources + `target: { kind: "per_ad_spend", value: 4.0 }` |
+| Maximize conversion value | Steer toward higher-value conversions without a ROAS target | `kind: "event"` + `value_field` on sources + `target: { kind: "maximize_value" }` |
+| Max clicks | Maximize clicks within budget | `kind: "metric"`, `metric: "clicks"`, no target |
+| Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
+| Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
+| Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
+| Target attention | Minimum attention time | `kind: "metric"`, `metric: "attention_seconds"` + `target: { kind: "threshold_rate", value: 5.0 }` |
+| Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
+| Completed views with duration | Video views with specific duration threshold | `kind: "metric"`, `metric: "completed_views"` + `view_duration_seconds: 6` |
+| Max engagements | Maximize social interactions within budget | `kind: "metric"`, `metric: "engagements"`, no target |
+| Max follows | Maximize new followers/subscribers | `kind: "metric"`, `metric: "follows"`, no target |
+| Max saves | Maximize saves/bookmarks/playlist adds | `kind: "metric"`, `metric: "saves"`, no target |
+| Max profile visits | Drive traffic to brand page/profile | `kind: "metric"`, `metric: "profile_visits"`, no target |
+| Max unique reach | Maximize unique audience within budget | `kind: "metric"`, `metric: "reach"` + `reach_unit: "households"`, no target |
+| Reach with frequency | Reach at 1-3x/week frequency band | `kind: "metric"`, `metric: "reach"` + `reach_unit` + `target_frequency: { min: 1, max: 3, window: "7d" }` |
+
+### Multiple goals and priority
+
+A package can have multiple goals. Priority controls which the seller treats as primary. A common pattern is to use metric goals as proxy signals when event data is sparse:
+
+```json
+"optimization_goals": [
+  {
+    "kind": "metric",
+    "metric": "clicks",
+    "target": { "kind": "cost_per", "value": 2.00 },
+    "priority": 2
+  },
+  {
+    "kind": "event",
+    "event_sources": [
+      { "event_source_id": "mobile_sdk", "event_type": "app_install" },
+      { "event_source_id": "mmp_adjust", "event_type": "app_install" }
+    ],
+    "target": { "kind": "cost_per", "value": 10.00 },
+    "priority": 1
+  }
+]
+```
+
+The seller focuses on the `priority: 1` goal (installs at $10 cost per, deduplicated across SDK and MMP) and uses clicks as a proxy signal until install data accumulates.
+
+### Pricing model vs. optimization goal
+
+The pricing model (CPC, CPM, CPA, etc.) determines what the buyer pays. The optimization goal determines how the seller allocates impressions. These are independent — a package can use CPM pricing while optimizing toward a CPA target, or use CPA pricing while optimizing for ROAS. See [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) for details on billing.
+
+### Reach and frequency
+
+Reach-based optimization uses `metric: "reach"` with two additional fields:
+
+- **`reach_unit`** (required): The unit of measurement — must be a value declared in the product's `metric_optimization.supported_reach_units` (e.g., `households`, `individuals`).
+- **`target_frequency`** (optional): Frequency band that guides optimization. The seller treats impressions toward unreached entities as higher-value and impressions toward already-saturated entities as lower-value. Includes `min`, `max`, and `window` (e.g., `"7d"`, `"campaign"`). When omitted, the seller maximizes unique reach.
+
+```json
+{
+  "kind": "metric",
+  "metric": "reach",
+  "reach_unit": "households",
+  "target_frequency": { "min": 1, "max": 3, "window": "7d" },
+  "priority": 1
+}
+```
+
+For GRP-based buys, use [CPP pricing](/docs/media-buy/advanced-topics/pricing-models#cpp-cost-per-point). For hard frequency limits independent of optimization, use `frequency_cap` on the package. Reach and frequency metrics are available in delivery reporting via [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 ### Prerequisites
 
-Before setting an optimization goal:
+**For metric goals** (`kind: "metric"`):
 
-1. **Configure event sources** — Call [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) to set up the event source referenced in `event_source_id`
-2. **Check seller support** — The product must declare support in `conversion_tracking.supported_optimization_strategies` (returned by [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities))
-3. **Send events** — Use [`log_event`](/docs/media-buy/task-reference/log_event) to send conversion data. The seller needs event history to optimize effectively.
+1. **Check product support** — The product must declare `metric_optimization` with the desired metric in `supported_metrics`. No event source or conversion tracking setup is required.
+2. **Check target support** — If setting a target, verify the target kind is listed in `metric_optimization.supported_targets`.
+3. **Check view durations** — If using `completed_views` with `view_duration_seconds`, verify the value is listed in `metric_optimization.supported_view_durations`.
+
+**For event goals** (`kind: "event"`):
+
+1. **Configure event sources** — Call [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) to set up the event sources referenced in `event_sources`.
+2. **Check product support** — The product must declare `conversion_tracking` with the desired target kind in `supported_targets`.
+3. **Check dedup support** — If using multiple event sources per goal, verify the seller supports `multi_source_event_dedup` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). When unsupported, use a single event source per goal.
+4. **Send events** — Use [`log_event`](/docs/media-buy/task-reference/log_event) to send conversion data. The seller needs event history to optimize effectively.
 
 ### Attribution windows
 
@@ -288,10 +496,10 @@ Attribution windows control how far back the seller looks to credit an ad impres
 
 | Window | Meaning |
 |--------|---------|
-| `click_through: "7d"` | Conversions within 7 days of a click |
-| `click_through: "28d"` | Conversions within 28 days of a click |
-| `view_through: "1d"` | Conversions within 1 day of viewing an ad |
-| `view_through: "7d"` | Conversions within 7 days of viewing an ad |
+| `post_click: {interval: 7, unit: "days"}` | Conversions within 7 days of a click |
+| `post_click: {interval: 28, unit: "days"}` | Conversions within 28 days of a click |
+| `post_view: {interval: 1, unit: "days"}` | Conversions within 1 day of viewing an ad |
+| `post_view: {interval: 7, unit: "days"}` | Conversions within 7 days of viewing an ad |
 
 Values must match an option in the seller's `conversion_tracking.attribution_windows` capability. When omitted, the seller applies their default window.
 
@@ -304,7 +512,7 @@ Once event sources are configured and events are flowing, conversion metrics app
 - **`roas`** — Return on ad spend (conversion_value / spend)
 - **`cost_per_acquisition`** — Cost per conversion (spend / conversions)
 
-These metrics are reported per-package when the package has an `optimization_goal` set. Sellers that support `by_action_source` breakdowns can show conversions split by source (website, app, in_store, etc.).
+These metrics are reported per-package when the package has `optimization_goals` set. Sellers that support `by_action_source` breakdowns can show conversions split by source (website, app, in_store, etc.).
 
 ## Catalog-item attribution
 

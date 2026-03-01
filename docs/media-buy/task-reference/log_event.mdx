@@ -504,7 +504,7 @@ Choose `event_id` values that are stable across retries:
 | `INVALID_EVENT_TIME` | Event time too far in the past/future | Use timestamps within the seller's attribution window |
 | `MISSING_USER_MATCH` | No user identifiers provided | Include at least one of: uids, hashed_email, hashed_phone, click_id, or client_ip + client_user_agent |
 | `BATCH_TOO_LARGE` | More than 10,000 events | Split into smaller batches |
-| `RATE_LIMIT_EXCEEDED` | Too many requests | Wait and retry with exponential backoff |
+| `RATE_LIMITED` | Too many requests | Wait and retry with exponential backoff |
 
 ## Best Practices
 

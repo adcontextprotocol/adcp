@@ -41,6 +41,12 @@
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Optional webhook configuration for async update notifications. Publisher will send webhook when update completes if operation takes longer than immediate response time. This is separate from reporting_webhook which configures ongoing campaign reporting."
     },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated idempotency key for safe retries. If an update fails without a response, resending with the same idempotency_key guarantees the update is applied at most once.",
+      "minLength": 8,
+      "maxLength": 255
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

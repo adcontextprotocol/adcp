@@ -7,8 +7,8 @@ Manage catalog feeds on a seller account. Sync product feeds, inventory data, st
 
 **Response Time**: Instant to days (returns `completed` for small catalogs, or `submitted` for large feeds requiring platform review)
 
-**Request Schema**: [`/schemas/v2/media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-response.json)
+**Request Schema**: [`/schemas/latest/media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-response.json)
 
 ## Who calls whom
 
@@ -26,7 +26,7 @@ sequenceDiagram
 
 This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/integration/account-state):
 
-1. `list_creative_formats` — check `catalog_requirements` to know what feeds to sync
+1. `list_creative_formats` — check `catalog` asset types in each format's `assets` array to know what feeds to sync
 2. **`sync_catalogs`** — push the required feeds to the account
 3. `sync_creatives` — submit creatives that reference synced catalogs by `catalog_id`
 4. `create_media_buy` — launch the campaign
@@ -37,7 +37,7 @@ Sync a product feed:
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -55,7 +55,7 @@ Sync a product feed:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Conditional | Account that owns these catalogs. Required when the agent has multiple accounts. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Conditional | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required when the agent has multiple accounts. |
 | `catalogs` | Catalog[] | No | Catalog feeds to sync (max 50). Omit for discovery mode. |
 | `catalog_ids` | string[] | No | Limit sync scope to specific catalog IDs. Others on the account are unaffected. |
 | `delete_missing` | boolean | No | When true, buyer-managed catalogs not in this sync are removed. Does not affect seller-managed catalogs. Requires `catalogs` to be present. Default: false. |
@@ -134,7 +134,7 @@ Omit `catalogs` to list all catalogs on the account without modification:
 
 ```json
 {
-  "account_id": "acct_acmecorp"
+  "account": { "account_id": "acct_acmecorp" }
 }
 ```
 
@@ -157,7 +157,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -188,7 +188,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_restaurants",
+  "account": { "account_id": "acct_restaurants" },
   "catalogs": [
     {
       "catalog_id": "chef-vacancies",
@@ -213,7 +213,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ```json
 {
-  "account_id": "acct_acmecorp",
+  "account": { "account_id": "acct_acmecorp" },
   "dry_run": true,
   "catalogs": [
     {
@@ -238,7 +238,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ## Best practices
 
-1. **Check format requirements first** — Call `list_creative_formats` and check `catalog_requirements` before syncing. This tells you what catalog types to sync and what fields each item needs.
+1. **Check format requirements first** — Call `list_creative_formats` and check `catalog` asset types in each format's `assets` array before syncing. This tells you what catalog types to sync and what fields each item needs.
 
 2. **Use discovery mode** — Before syncing, call without `catalogs` to see what the seller already has. The seller may have brand data from other sources.
 

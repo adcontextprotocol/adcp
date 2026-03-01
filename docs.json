@@ -28,7 +28,7 @@
         "href": "https://agenticadvertising.org/perspectives"
       },
       {
-        "label": "Join AAO",
+        "label": "Join",
         "href": "https://agenticadvertising.org"
       }
     ],
@@ -50,25 +50,31 @@
     }
   ],
   "navigation": {
-    "default": "3.0-beta",
+    "default": "3.0-rc",
     "versions": [
       {
-        "version": "3.0-beta",
+        "version": "3.0-rc",
         "groups": [
           {
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/protocol/architecture",
               "docs/quickstart",
               {
-                "group": "AdCP v3",
+                "group": "AdCP 3.0",
                 "pages": [
                   "docs/reference/whats-new-in-v3",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
                   "docs/reference/migration/geo-targeting",
                   "docs/reference/migration/creatives",
-                  "docs/reference/migration/catalogs"
+                  "docs/reference/migration/catalogs",
+                  "docs/reference/migration/optimization-goals",
+                  "docs/reference/migration/brand-identity",
+                  "docs/reference/migration/signals",
+                  "docs/reference/migration/audiences",
+                  "docs/reference/migration/attribution"
                 ]
               }
             ]
@@ -159,7 +165,8 @@
                 "group": "Creative Governance",
                 "pages": [
                   "docs/governance/creative/index",
-                  "docs/governance/creative/get_creative_features"
+                  "docs/governance/creative/get_creative_features",
+                  "docs/governance/creative/provenance-verification"
                 ]
               }
             ]
@@ -169,6 +176,21 @@
             "pages": [
               "docs/brand-protocol/index",
               "docs/brand-protocol/brand-json"
+            ]
+          },
+          {
+            "group": "Accounts Protocol",
+            "pages": [
+              "docs/accounts/overview",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage",
+                  "docs/accounts/tasks/get_account_financials"
+                ]
+              }
             ]
           },
           {
@@ -248,7 +270,8 @@
                   "docs/media-buy/product-discovery/index",
                   "docs/media-buy/product-discovery/brief-expectations",
                   "docs/media-buy/product-discovery/example-briefs",
-                  "docs/media-buy/product-discovery/media-products"
+                  "docs/media-buy/product-discovery/media-products",
+                  "docs/media-buy/product-discovery/refinement"
                 ]
               },
               {
@@ -279,8 +302,7 @@
                   "docs/media-buy/advanced-topics/targeting",
                   "docs/media-buy/advanced-topics/agentic-execution-engine",
                   "docs/media-buy/advanced-topics/accounts-and-security",
-                  "docs/media-buy/advanced-topics/sandbox",
-                  "docs/media-buy/advanced-topics/orchestrator-design"
+                  "docs/media-buy/advanced-topics/sandbox"
                 ]
               }
             ]
@@ -299,6 +321,7 @@
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
               "docs/creative/accessibility",
+              "docs/creative/provenance",
               {
                 "group": "Channel Guides",
                 "pages": [
@@ -331,9 +354,335 @@
           {
             "group": "Reference",
             "pages": [
-              "docs/media-buy/quick-reference",
-              "docs/creative/quick-reference",
-              "docs/signals/quick-reference",
+              {
+                "group": "Registry API",
+                "openapi": {
+                  "source": "static/openapi/registry.yaml",
+                  "directory": "docs/registry/api-reference"
+                },
+                "pages": [
+                  "docs/registry/index"
+                ]
+              },
+              "docs/reference/gmsf-reference",
+              "docs/reference/media-channel-taxonomy",
+              "docs/reference/roadmap",
+              "docs/reference/release-notes",
+              "docs/reference/changelog",
+              "docs/reference/implementor-faq",
+              "docs/reference/glossary"
+            ]
+          },
+          {
+            "group": "Community",
+            "pages": [
+              "docs/community/working-group"
+            ]
+          }
+        ]
+      },
+      {
+        "version": "latest",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "docs/intro",
+              "docs/protocol/architecture",
+              "docs/quickstart",
+              {
+                "group": "AdCP 3.0",
+                "pages": [
+                  "docs/reference/whats-new-in-v3",
+                  "docs/reference/migration/channels",
+                  "docs/reference/migration/pricing",
+                  "docs/reference/migration/geo-targeting",
+                  "docs/reference/migration/creatives",
+                  "docs/reference/migration/catalogs",
+                  "docs/reference/migration/optimization-goals",
+                  "docs/reference/migration/brand-identity",
+                  "docs/reference/migration/signals",
+                  "docs/reference/migration/audiences",
+                  "docs/reference/migration/attribution"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Building with AdCP",
+            "pages": [
+              "docs/building/index",
+              {
+                "group": "Understanding AdCP",
+                "pages": [
+                  "docs/building/understanding/index",
+                  "docs/building/understanding/protocol-comparison"
+                ]
+              },
+              "docs/building/schemas-and-sdks",
+              {
+                "group": "Foundations",
+                "pages": [
+                  "docs/building/integration/index",
+                  "docs/building/integration/mcp-guide",
+                  "docs/building/integration/a2a-guide",
+                  "docs/building/integration/a2a-response-format",
+                  "docs/protocol/get_adcp_capabilities",
+                  "docs/building/integration/context-sessions",
+                  "docs/building/integration/authentication",
+                  "docs/building/integration/account-state",
+                  "docs/building/integration/accounts-and-agents"
+                ]
+              },
+              {
+                "group": "Implementation Patterns",
+                "pages": [
+                  "docs/building/implementation/index",
+                  "docs/building/implementation/task-lifecycle",
+                  "docs/building/implementation/async-operations",
+                  "docs/building/implementation/webhooks",
+                  "docs/building/implementation/orchestrator-design",
+                  "docs/building/implementation/error-handling",
+                  "docs/building/implementation/security"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Governance Protocol",
+            "pages": [
+              "docs/governance/overview",
+              {
+                "group": "Property Governance",
+                "pages": [
+                  "docs/governance/property/index",
+                  "docs/governance/property/adagents",
+                  "docs/governance/property/authorized-properties",
+                  "docs/governance/property/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/property/tasks/index",
+                      "docs/governance/property/tasks/property_lists",
+                      "docs/governance/property/tasks/validate_property_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Content Standards",
+                "pages": [
+                  "docs/governance/content-standards/index",
+                  "docs/governance/content-standards/artifacts",
+                  "docs/governance/content-standards/implementation-guide",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/content-standards/tasks/list_content_standards",
+                      "docs/governance/content-standards/tasks/get_content_standards",
+                      "docs/governance/content-standards/tasks/create_content_standards",
+                      "docs/governance/content-standards/tasks/update_content_standards",
+                      "docs/governance/content-standards/tasks/delete_content_standards",
+                      "docs/governance/content-standards/tasks/calibrate_content",
+                      "docs/governance/content-standards/tasks/get_media_buy_artifacts",
+                      "docs/governance/content-standards/tasks/validate_content_delivery"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Creative Governance",
+                "pages": [
+                  "docs/governance/creative/index",
+                  "docs/governance/creative/get_creative_features",
+                  "docs/governance/creative/provenance-verification"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Brand Protocol",
+            "pages": [
+              "docs/brand-protocol/index",
+              "docs/brand-protocol/brand-json"
+            ]
+          },
+          {
+            "group": "Accounts Protocol",
+            "pages": [
+              "docs/accounts/overview",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/accounts/tasks/sync_accounts",
+                  "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/report_usage",
+                  "docs/accounts/tasks/get_account_financials"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Signals Protocol",
+            "pages": [
+              "docs/signals/overview",
+              "docs/signals/specification",
+              "docs/signals/data-providers",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/signals/tasks/get_signals",
+                  "docs/signals/tasks/activate_signal"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Curation Protocol",
+            "pages": [
+              "docs/curation/coming-soon"
+            ]
+          },
+          {
+            "group": "Sponsored Intelligence Protocol",
+            "pages": [
+              "docs/sponsored-intelligence/overview",
+              "docs/sponsored-intelligence/specification",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/sponsored-intelligence/tasks/index",
+                  "docs/sponsored-intelligence/tasks/si_get_offering",
+                  "docs/sponsored-intelligence/tasks/si_initiate_session",
+                  "docs/sponsored-intelligence/tasks/si_send_message",
+                  "docs/sponsored-intelligence/tasks/si_terminate_session"
+                ]
+              },
+              "docs/sponsored-intelligence/implementing-si-agents",
+              "docs/sponsored-intelligence/implementing-si-hosts"
+            ]
+          },
+          {
+            "group": "Media Buy Protocol",
+            "pages": [
+              "docs/media-buy/index",
+              "docs/media-buy/specification",
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "docs/media-buy/task-reference/index",
+                  "docs/media-buy/task-reference/get_products",
+                  "docs/media-buy/task-reference/list_creative_formats",
+                  "docs/media-buy/task-reference/create_media_buy",
+                  "docs/media-buy/task-reference/sync_catalogs",
+                  "docs/media-buy/task-reference/list_creatives",
+                  "docs/media-buy/task-reference/sync_creatives",
+                  "docs/media-buy/task-reference/get_media_buys",
+                  "docs/media-buy/task-reference/get_media_buy_delivery",
+                  "docs/media-buy/task-reference/update_media_buy",
+                  "docs/media-buy/task-reference/provide_performance_feedback",
+                  "docs/media-buy/task-reference/sync_event_sources",
+                  "docs/media-buy/task-reference/log_event",
+                  "docs/media-buy/task-reference/sync_audiences"
+                ]
+              },
+              {
+                "group": "Capability Discovery",
+                "pages": [
+                  "docs/media-buy/capability-discovery/index",
+                  "docs/media-buy/capability-discovery/implementing-standard-formats"
+                ]
+              },
+              {
+                "group": "Product Discovery",
+                "pages": [
+                  "docs/media-buy/product-discovery/index",
+                  "docs/media-buy/product-discovery/brief-expectations",
+                  "docs/media-buy/product-discovery/example-briefs",
+                  "docs/media-buy/product-discovery/media-products",
+                  "docs/media-buy/product-discovery/refinement"
+                ]
+              },
+              {
+                "group": "Media Buys",
+                "pages": [
+                  "docs/media-buy/media-buys/index",
+                  "docs/media-buy/media-buys/optimization-reporting",
+                  "docs/media-buy/media-buys/policy-compliance"
+                ]
+              },
+              {
+                "group": "Creatives",
+                "pages": [
+                  "docs/media-buy/creatives/index"
+                ]
+              },
+              {
+                "group": "Conversion Tracking",
+                "pages": [
+                  "docs/media-buy/conversion-tracking/index"
+                ]
+              },
+              {
+                "group": "Advanced Topics",
+                "pages": [
+                  "docs/media-buy/advanced-topics/index",
+                  "docs/media-buy/advanced-topics/pricing-models",
+                  "docs/media-buy/advanced-topics/targeting",
+                  "docs/media-buy/advanced-topics/agentic-execution-engine",
+                  "docs/media-buy/advanced-topics/accounts-and-security",
+                  "docs/media-buy/advanced-topics/sandbox"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Creative",
+            "pages": [
+              "docs/creative/index",
+              "docs/creative/specification",
+              "docs/creative/formats",
+              "docs/creative/asset-types",
+              "docs/creative/creative-manifests",
+              "docs/creative/universal-macros",
+              "docs/creative/implementing-creative-agents",
+              "docs/creative/generative-creative",
+              "docs/creative/template-format-ids",
+              "docs/creative/catalogs",
+              "docs/creative/accessibility",
+              "docs/creative/provenance",
+              {
+                "group": "Channel Guides",
+                "pages": [
+                  "docs/creative/channels/video",
+                  "docs/creative/channels/display",
+                  "docs/creative/channels/audio",
+                  "docs/creative/channels/dooh",
+                  "docs/creative/channels/carousels"
+                ]
+              },
+              {
+                "group": "Task Reference",
+                "pages": [
+                  "docs/creative/task-reference/build_creative",
+                  "docs/creative/task-reference/preview_creative",
+                  "docs/creative/task-reference/preview_creative-advanced",
+                  "docs/creative/task-reference/list_creative_formats",
+                  "docs/creative/task-reference/get_creative_delivery"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Industry Guides",
+            "pages": [
+              "docs/guides/index",
+              "docs/guides/commerce-media"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
               {
                 "group": "Registry API",
                 "openapi": {
@@ -538,315 +887,6 @@
             ]
           }
         ]
-      },
-      {
-        "version": "latest",
-        "groups": [
-          {
-            "group": "Getting Started",
-            "pages": [
-              "docs/intro",
-              "docs/quickstart",
-              {
-                "group": "AdCP v3",
-                "pages": [
-                  "docs/reference/whats-new-in-v3",
-                  "docs/reference/migration/channels",
-                  "docs/reference/migration/pricing",
-                  "docs/reference/migration/geo-targeting",
-                  "docs/reference/migration/creatives",
-                  "docs/reference/migration/catalogs"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Building with AdCP",
-            "pages": [
-              "docs/building/index",
-              {
-                "group": "Understanding AdCP",
-                "pages": [
-                  "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison"
-                ]
-              },
-              "docs/building/schemas-and-sdks",
-              {
-                "group": "Foundations",
-                "pages": [
-                  "docs/building/integration/index",
-                  "docs/building/integration/mcp-guide",
-                  "docs/building/integration/a2a-guide",
-                  "docs/building/integration/a2a-response-format",
-                  "docs/protocol/get_adcp_capabilities",
-                  "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication",
-                  "docs/building/integration/account-state",
-                  "docs/building/integration/accounts-and-agents"
-                ]
-              },
-              {
-                "group": "Implementation Patterns",
-                "pages": [
-                  "docs/building/implementation/index",
-                  "docs/building/implementation/task-lifecycle",
-                  "docs/building/implementation/async-operations",
-                  "docs/building/implementation/webhooks",
-                  "docs/building/implementation/orchestrator-design",
-                  "docs/building/implementation/error-handling",
-                  "docs/building/implementation/security"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Governance Protocol",
-            "pages": [
-              "docs/governance/overview",
-              {
-                "group": "Property Governance",
-                "pages": [
-                  "docs/governance/property/index",
-                  "docs/governance/property/adagents",
-                  "docs/governance/property/authorized-properties",
-                  "docs/governance/property/specification",
-                  {
-                    "group": "Tasks",
-                    "pages": [
-                      "docs/governance/property/tasks/index",
-                      "docs/governance/property/tasks/property_lists",
-                      "docs/governance/property/tasks/validate_property_delivery"
-                    ]
-                  }
-                ]
-              },
-              {
-                "group": "Content Standards",
-                "pages": [
-                  "docs/governance/content-standards/index",
-                  "docs/governance/content-standards/artifacts",
-                  "docs/governance/content-standards/implementation-guide",
-                  {
-                    "group": "Tasks",
-                    "pages": [
-                      "docs/governance/content-standards/tasks/list_content_standards",
-                      "docs/governance/content-standards/tasks/get_content_standards",
-                      "docs/governance/content-standards/tasks/create_content_standards",
-                      "docs/governance/content-standards/tasks/update_content_standards",
-                      "docs/governance/content-standards/tasks/delete_content_standards",
-                      "docs/governance/content-standards/tasks/calibrate_content",
-                      "docs/governance/content-standards/tasks/get_media_buy_artifacts",
-                      "docs/governance/content-standards/tasks/validate_content_delivery"
-                    ]
-                  }
-                ]
-              },
-              {
-                "group": "Creative Governance",
-                "pages": [
-                  "docs/governance/creative/index",
-                  "docs/governance/creative/get_creative_features"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Brand Protocol",
-            "pages": [
-              "docs/brand-protocol/index",
-              "docs/brand-protocol/brand-json"
-            ]
-          },
-          {
-            "group": "Signals Protocol",
-            "pages": [
-              "docs/signals/overview",
-              "docs/signals/specification",
-              "docs/signals/data-providers",
-              {
-                "group": "Tasks",
-                "pages": [
-                  "docs/signals/tasks/get_signals",
-                  "docs/signals/tasks/activate_signal"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Curation Protocol",
-            "pages": [
-              "docs/curation/coming-soon"
-            ]
-          },
-          {
-            "group": "Sponsored Intelligence Protocol",
-            "pages": [
-              "docs/sponsored-intelligence/overview",
-              "docs/sponsored-intelligence/specification",
-              {
-                "group": "Tasks",
-                "pages": [
-                  "docs/sponsored-intelligence/tasks/index",
-                  "docs/sponsored-intelligence/tasks/si_get_offering",
-                  "docs/sponsored-intelligence/tasks/si_initiate_session",
-                  "docs/sponsored-intelligence/tasks/si_send_message",
-                  "docs/sponsored-intelligence/tasks/si_terminate_session"
-                ]
-              },
-              "docs/sponsored-intelligence/implementing-si-agents",
-              "docs/sponsored-intelligence/implementing-si-hosts"
-            ]
-          },
-          {
-            "group": "Media Buy Protocol",
-            "pages": [
-              "docs/media-buy/index",
-              "docs/media-buy/specification",
-              {
-                "group": "Task Reference",
-                "pages": [
-                  "docs/media-buy/task-reference/index",
-                  "docs/media-buy/task-reference/get_products",
-                  "docs/media-buy/task-reference/list_creative_formats",
-                  "docs/media-buy/task-reference/create_media_buy",
-                  "docs/media-buy/task-reference/sync_catalogs",
-                  "docs/media-buy/task-reference/list_creatives",
-                  "docs/media-buy/task-reference/sync_creatives",
-                  "docs/media-buy/task-reference/get_media_buys",
-                  "docs/media-buy/task-reference/get_media_buy_delivery",
-                  "docs/media-buy/task-reference/update_media_buy",
-                  "docs/media-buy/task-reference/provide_performance_feedback",
-                  "docs/media-buy/task-reference/sync_event_sources",
-                  "docs/media-buy/task-reference/log_event",
-                  "docs/media-buy/task-reference/sync_audiences"
-                ]
-              },
-              {
-                "group": "Capability Discovery",
-                "pages": [
-                  "docs/media-buy/capability-discovery/index",
-                  "docs/media-buy/capability-discovery/implementing-standard-formats"
-                ]
-              },
-              {
-                "group": "Product Discovery",
-                "pages": [
-                  "docs/media-buy/product-discovery/index",
-                  "docs/media-buy/product-discovery/brief-expectations",
-                  "docs/media-buy/product-discovery/example-briefs",
-                  "docs/media-buy/product-discovery/media-products"
-                ]
-              },
-              {
-                "group": "Media Buys",
-                "pages": [
-                  "docs/media-buy/media-buys/index",
-                  "docs/media-buy/media-buys/optimization-reporting",
-                  "docs/media-buy/media-buys/policy-compliance"
-                ]
-              },
-              {
-                "group": "Creatives",
-                "pages": [
-                  "docs/media-buy/creatives/index"
-                ]
-              },
-              {
-                "group": "Conversion Tracking",
-                "pages": [
-                  "docs/media-buy/conversion-tracking/index"
-                ]
-              },
-              {
-                "group": "Advanced Topics",
-                "pages": [
-                  "docs/media-buy/advanced-topics/index",
-                  "docs/media-buy/advanced-topics/pricing-models",
-                  "docs/media-buy/advanced-topics/targeting",
-                  "docs/media-buy/advanced-topics/agentic-execution-engine",
-                  "docs/media-buy/advanced-topics/accounts-and-security",
-                  "docs/media-buy/advanced-topics/sandbox",
-                  "docs/media-buy/advanced-topics/orchestrator-design"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Creative",
-            "pages": [
-              "docs/creative/index",
-              "docs/creative/specification",
-              "docs/creative/formats",
-              "docs/creative/asset-types",
-              "docs/creative/creative-manifests",
-              "docs/creative/universal-macros",
-              "docs/creative/implementing-creative-agents",
-              "docs/creative/generative-creative",
-              "docs/creative/template-format-ids",
-              "docs/creative/catalogs",
-              "docs/creative/accessibility",
-              {
-                "group": "Channel Guides",
-                "pages": [
-                  "docs/creative/channels/video",
-                  "docs/creative/channels/display",
-                  "docs/creative/channels/audio",
-                  "docs/creative/channels/dooh",
-                  "docs/creative/channels/carousels"
-                ]
-              },
-              {
-                "group": "Task Reference",
-                "pages": [
-                  "docs/creative/task-reference/build_creative",
-                  "docs/creative/task-reference/preview_creative",
-                  "docs/creative/task-reference/preview_creative-advanced",
-                  "docs/creative/task-reference/list_creative_formats",
-                  "docs/creative/task-reference/get_creative_delivery"
-                ]
-              }
-            ]
-          },
-          {
-            "group": "Industry Guides",
-            "pages": [
-              "docs/guides/index",
-              "docs/guides/commerce-media"
-            ]
-          },
-          {
-            "group": "Reference",
-            "pages": [
-              "docs/media-buy/quick-reference",
-              "docs/creative/quick-reference",
-              "docs/signals/quick-reference",
-              {
-                "group": "Registry API",
-                "openapi": {
-                  "source": "static/openapi/registry.yaml",
-                  "directory": "docs/registry/api-reference"
-                },
-                "pages": [
-                  "docs/registry/index"
-                ]
-              },
-              "docs/reference/gmsf-reference",
-              "docs/reference/media-channel-taxonomy",
-              "docs/reference/roadmap",
-              "docs/reference/release-notes",
-              "docs/reference/changelog",
-              "docs/reference/implementor-faq",
-              "docs/reference/glossary"
-            ]
-          },
-          {
-            "group": "Community",
-            "pages": [
-              "docs/community/working-group"
-            ]
-          }
-        ]
       }
     ]
   },
@@ -890,6 +930,22 @@
     {
       "source": "/docs/creative/promoted-offerings",
       "destination": "/docs/creative/catalogs"
+    },
+    {
+      "source": "/docs/media-buy/quick-reference",
+      "destination": "/docs/media-buy/task-reference/index"
+    },
+    {
+      "source": "/docs/creative/quick-reference",
+      "destination": "/docs/creative/index"
+    },
+    {
+      "source": "/docs/signals/quick-reference",
+      "destination": "/docs/signals/overview"
+    },
+    {
+      "source": "/docs/media-buy/advanced-topics/orchestrator-design",
+      "destination": "/docs/building/implementation/orchestrator-design"
     }
   ],
   "modeToggle": {

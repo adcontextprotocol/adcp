@@ -95,13 +95,13 @@ We follow [Semantic Versioning](https://semver.org/):
 When you run `npm run version`, these files are automatically updated:
 
 1. **package.json**: The main version number
-2. **Schema Registry** (`static/schemas/v1/index.json`): `adcp_version` field and `lastUpdated` date
+2. **Schema Registry** (`static/schemas/source/index.json`): `adcp_version` field and `lastUpdated` date
 
 **That's it!** Version is maintained in only two places:
 - The npm package version
 - The schema registry (single source of truth for protocol version)
 
-Individual request/response schemas and documentation do not contain version fields. Version is indicated by the schema path (`/schemas/v1/`) and the schema registry.
+Individual request/response schemas and documentation do not contain version fields. Version is indicated by the schema path (`/schemas/latest/`) and the schema registry.
 
 ### Manual Version Updates (Not Recommended)
 

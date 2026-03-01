@@ -415,13 +415,21 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
     "spend": 5625.00,
     "clicks": 250
   },
-  "by_geography": [
+  "by_package": [
     {
-      "city": "New York",
-      "state": "NY",
-      "country": "US",
-      "impressions": 45000,
-      "spend": 2025.00
+      "package_id": "pkg_001",
+      "impressions": 125000,
+      "spend": 5625.00,
+      "by_geo": [
+        {
+          "geo_level": "region",
+          "geo_code": "US-NY",
+          "geo_name": "New York",
+          "impressions": 45000,
+          "spend": 2025.00
+        }
+      ],
+      "by_geo_truncated": false
     }
   ]
 }
@@ -752,9 +760,9 @@ See [Webhooks](/docs/building/implementation/webhooks) for detailed implementati
 
 ### Conversion optimization
 
-Set optimization goals on media buy packages to optimize delivery toward specific conversion outcomes — maximum conversions, target ROAS, or target CPA. This requires configured event sources and conversion event data.
+Set optimization goals on media buy packages to direct delivery toward specific outcomes — target CPC, CPV, ROAS, or CPA. Metric goals (clicks, views) work without event setup. Event goals require configured event sources and conversion data.
 
-See [Conversion Tracking](/docs/media-buy/conversion-tracking/) for the complete setup flow, and [Optimization Goals](/docs/media-buy/conversion-tracking/#optimization-goals) for the `optimization_goal` object reference.
+See [Conversion Tracking](/docs/media-buy/conversion-tracking/) for the complete setup flow, and [Optimization Goals](/docs/media-buy/conversion-tracking/#optimization-goals) for the `optimization_goals` array reference.
 
 ### Budget optimization
 - **Reallocation** between high and low performing packages via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)
@@ -768,7 +776,7 @@ See [Conversion Tracking](/docs/media-buy/conversion-tracking/) for the complete
 
 ### Targeting refinement
 - **Geographic optimization** — adjust `targeting_overlay` based on delivery data by region
-- **Frequency management** — tune `frequency_cap.suppress_minutes` based on performance
+- **Frequency management** — tune `frequency_cap` (suppress cooldown or max_impressions/per/window cap) based on delivery patterns
 
 ## Performance Feedback Loop
 The performance feedback system enables AI-driven optimization by feeding back business outcomes to publishers. See [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for detailed API documentation.
@@ -823,9 +831,21 @@ Publishers can leverage performance indices to:
 - Aggregate performance patterns may be used to improve overall platform performance
 - Individual campaign details remain confidential to the buyer-publisher relationship
 
-### Dimensional Performance (Future)
+### Dimension breakdowns
 
-Future implementations may support dimensional performance feedback, allowing optimization at the intersection of multiple dimensions (e.g., "mobile users in NYC perform 80% above baseline").
+Delivery data can be broken down across multiple dimensions within each package. Buyers request specific breakdowns via the `reporting_dimensions` parameter on `get_media_buy_delivery`. Each breakdown appears as a `by_*` array within `by_package` items, following the same composition pattern as `by_creative`.
+
+| Dimension | Breakdown field | Key fields | Capability flag |
+|-----------|----------------|------------|-----------------|
+| Geography | `by_geo` | `geo_level`, `geo_code`, `geo_name` | `supports_geo_breakdown` (object — declares available levels/systems) |
+| Device type | `by_device_type` | `device_type` | `supports_device_type_breakdown` |
+| Device platform | `by_device_platform` | `device_platform` | `supports_device_platform_breakdown` |
+| Audience | `by_audience` | `audience_id`, `audience_source`, `audience_name` | `supports_audience_breakdown` |
+| Placement | `by_placement` | `placement_id`, `placement_name` | `supports_placement_breakdown` |
+
+Each breakdown entry inherits all fields from `delivery-metrics` (impressions, spend, clicks, conversions, etc.) plus its dimension-specific identifier fields. Every entry requires at minimum its identifier(s), `impressions`, and `spend`.
+
+Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional rows exist beyond the requested `limit`.
 
 ## Targeting Consistency
 Reporting aligns with AdCP's [Targeting](/docs/media-buy/advanced-topics/targeting) approach, enabling:

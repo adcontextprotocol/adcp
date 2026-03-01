@@ -23,7 +23,7 @@ schemas/
 │   │   ├── targeting.json
 │   │   ├── frequency-cap.json
 │   │   ├── format.json
-│   │   ├── measurement.json
+│   │   ├── outcome-measurement.json
 │   │   ├── creative-policy.json
 │   │   ├── error.json
 │   │   └── response.json
@@ -62,11 +62,11 @@ schemas/
 ### Local Development
 
 When running the Docusaurus development server locally (`npm run start`), all schemas are accessible at:
-- **Schema Registry**: `http://localhost:3000/schemas/v1/index.json`
-- **Core Schemas**: `http://localhost:3000/schemas/v1/core/{schema-name}.json`
-- **Task Schemas**: `http://localhost:3000/schemas/v1/media-buy/{task-name}-{request|response}.json`
-- **Signals Schemas**: `http://localhost:3000/schemas/v1/signals/{task-name}-{request|response}.json`
-- **Enum Schemas**: `http://localhost:3000/schemas/v1/enums/{enum-name}.json`
+- **Schema Registry**: `http://localhost:3000/schemas/latest/index.json`
+- **Core Schemas**: `http://localhost:3000/schemas/latest/core/{schema-name}.json`
+- **Task Schemas**: `http://localhost:3000/schemas/latest/media-buy/{task-name}-{request|response}.json`
+- **Signals Schemas**: `http://localhost:3000/schemas/latest/signals/{task-name}-{request|response}.json`
+- **Enum Schemas**: `http://localhost:3000/schemas/latest/enums/{enum-name}.json`
 
 ### Schema Registry
 
@@ -85,7 +85,7 @@ const Ajv = require('ajv');
 const ajv = new Ajv();
 
 // Load and validate a product
-const productSchema = require('./schemas/v1/core/product.json');
+const productSchema = require('./schemas/latest/core/product.json');
 const validateProduct = ajv.compile(productSchema);
 
 const product = {
@@ -110,7 +110,7 @@ import jsonschema
 import json
 
 # Load schema
-with open('schemas/v1/core/product.json') as f:
+with open('schemas/latest/core/product.json') as f:
     schema = json.load(f)
 
 # Validate data
@@ -140,7 +140,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 // Load schema
 ObjectMapper mapper = new ObjectMapper();
-JsonNode schemaNode = mapper.readTree(new File("schemas/v1/core/product.json"));
+JsonNode schemaNode = mapper.readTree(new File("schemas/latest/core/product.json"));
 JsonSchemaFactory factory = JsonSchemaFactory.byDefault();
 JsonSchema schema = factory.getJsonSchema(schemaNode);
 
@@ -161,7 +161,7 @@ All schemas use JSON Schema Draft 07 specification.
 
 Each schema has a unique `$id` following the pattern:
 ```
-https://adcp.dev/schemas/v1/{category}/{name}.json
+https://adcp.dev/schemas/latest/{category}/{name}.json
 ```
 
 ### Cross-References
@@ -208,8 +208,8 @@ All fundamental protocol objects are defined:
 ## Versioning
 
 Schemas are versioned using semantic versioning in the directory structure:
-- `v1/` - Version 1.x schemas
-- `v2/` - Version 2.x schemas (future)
+- `latest/` - Current schemas
+- `{version}/` - Pinned release versions (e.g., `3.0.0/`)
 
 Major version changes indicate breaking changes to the schema structure.
 
@@ -301,8 +301,8 @@ This runs:
 npm run start
 
 # Visit schema URLs in browser:
-# http://localhost:3000/schemas/v1/index.json
-# http://localhost:3000/schemas/v1/core/product.json
+# http://localhost:3000/schemas/latest/index.json
+# http://localhost:3000/schemas/latest/core/product.json
 # etc.
 ```
 
@@ -321,7 +321,7 @@ Common issues and solutions:
 
 #### Schema Reference Errors
 ```
-Error: can't resolve reference /schemas/v1/enums/pacing.json
+Error: can't resolve reference /schemas/latest/enums/pacing.json
 ```
 **Solution**: Ensure all referenced schemas exist and paths are correct.
 

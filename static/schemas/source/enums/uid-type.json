@@ -10,7 +10,6 @@
     "uid2",
     "euid",
     "pairid",
-    "external_id",
     "maid",
     "other"
   ],
@@ -20,7 +19,6 @@
     "uid2": "Unified ID 2.0",
     "euid": "European Unified ID",
     "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
-    "external_id": "Advertiser-assigned first-party user identifier",
     "maid": "Mobile Advertising ID (IDFA/GAID)",
     "other": "Other universal ID type (specify in ext)"
   }

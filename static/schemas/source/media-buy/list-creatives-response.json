@@ -81,20 +81,12 @@
             "format": "date-time",
             "description": "When the creative was last modified"
           },
-          "catalogs": {
-            "type": "array",
-            "description": "Catalogs this creative renders, if any",
-            "items": {
-              "$ref": "/schemas/core/catalog.json"
-            },
-            "minItems": 1
-          },
           "assets": {
             "type": "object",
-            "description": "Assets for this creative, keyed by asset_role",
+            "description": "Assets for this creative, keyed by asset_id",
             "patternProperties": {
-              "^[a-zA-Z0-9_-]+$": {
-                "oneOf": [
+              "^[a-z0-9_]+$": {
+                "anyOf": [
                   {
                     "$ref": "/schemas/core/assets/image-asset.json"
                   },
@@ -105,29 +97,42 @@
                     "$ref": "/schemas/core/assets/audio-asset.json"
                   },
                   {
+                    "$ref": "/schemas/core/assets/vast-asset.json"
+                  },
+                  {
                     "$ref": "/schemas/core/assets/text-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/url-asset.json"
                   },
                   {
                     "$ref": "/schemas/core/assets/html-asset.json"
                   },
                   {
-                    "$ref": "/schemas/core/assets/css-asset.json"
-                  },
-                  {
                     "$ref": "/schemas/core/assets/javascript-asset.json"
                   },
                   {
-                    "$ref": "/schemas/core/assets/vast-asset.json"
+                    "$ref": "/schemas/core/assets/webhook-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/css-asset.json"
                   },
                   {
                     "$ref": "/schemas/core/assets/daast-asset.json"
                   },
                   {
-                    "$ref": "/schemas/core/assets/url-asset.json"
+                    "$ref": "/schemas/core/assets/markdown-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/brief-asset.json"
+                  },
+                  {
+                    "$ref": "/schemas/core/assets/catalog-asset.json"
                   }
                 ]
               }
-            }
+            },
+            "additionalProperties": true
           },
           "tags": {
             "type": "array",
@@ -334,6 +339,7 @@
             "updated_date": "2024-01-15T14:20:00Z",
             "assets": {
               "vast": {
+                "delivery_type": "url",
                 "url": "https://vast.example.com/video/123",
                 "vast_version": "4.1"
               }

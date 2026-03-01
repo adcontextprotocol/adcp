@@ -198,6 +198,11 @@
       color: var(--color-success-700);
     }
 
+    .badge-invite {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
     .event-location {
       display: flex;
       align-items: center;
@@ -446,6 +451,7 @@
               <p class="event-description">${escapeHtml(event.short_description || event.description?.substring(0, 150) || '')}</p>
               <div class="event-meta">
                 <span class="event-badge badge-${event.event_format}">${formatLabel}</span>
+                ${event.visibility === 'invite_listed' ? '<span class="event-badge badge-invite">Invite only</span>' : ''}
                 ${locationText ? `
                   <span class="event-location">
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

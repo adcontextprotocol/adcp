@@ -1,9 +1,9 @@
 ---
-title: AdCP v3
-description: "Overview of AdCP v3: new capabilities, breaking changes, and migration guides"
+title: AdCP 3.0
+description: "Overview of AdCP 3.0: new capabilities, breaking changes, and migration guides"
 ---
 
-AdCP v3 expands the protocol beyond media buying into brand identity, governance, media planning, and conversational brand experiences.
+AdCP 3.0 expands the protocol beyond media buying into brand identity, governance, media planning, and conversational brand experiences.
 
 ## At a glance
 
@@ -13,13 +13,25 @@ AdCP v3 expands the protocol beyond media buying into brand identity, governance
 | **Brand identity** | No standard mechanism | `brand.json` + community brand registry |
 | **Governance** | No brand suitability protocol | Property lists, content standards, and brand calibration |
 | **Sponsored Intelligence** | No conversational brand protocol | Consent-first brand sessions in AI assistants |
-| **Accounts** | No formal account model | `sync_accounts` with billing models and trust levels |
-| **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 12 catalog types |
+| **Accounts Protocol** | No formal account model | Named protocol layer: `sync_accounts`, `list_accounts`, `report_usage`, brand registry-grounded identity |
+| **Catalogs** | `promoted_offerings` creative asset | First-class `sync_catalogs` task with 13 catalog types |
 | **Media planning** | Products only | Proposals with budget allocations + delivery forecasts |
 | **Channel model** | 9 channels | 19 planning-oriented channels |
 | **Capability discovery** | Agent card extensions | Runtime `get_adcp_capabilities` task |
 | **Creative assignment** | Simple ID arrays | Weighted assignments with placement targeting |
 | **Geo targeting** | Implicit US-centric | Explicit named systems (global) |
+| **Keyword targeting** | No keyword support | `keyword_targets` with match types and bid prices |
+| **Optimization** | Single optimization goal | Multi-goal `optimization_goals` array with metric and event types |
+| **Delivery reporting** | Aggregate delivery only | Opt-in dimension breakdowns (geo, device, audience, placement, keyword) |
+| **Signal pricing** | Simple CPM | Structured pricing models (CPM, percent of media, flat fee) |
+| **Device targeting** | No form-factor targeting | `device_type` (desktop, mobile, tablet, ctv, dooh, unknown) distinct from `device_platform` (OS) |
+| **Proximity targeting** | No point-based geo targeting | `geo_proximity` with travel time, radius, and GeoJSON methods |
+| **Refinement** | Free-text with `proposal_id` | Typed change-request array with seller acknowledgment |
+| **Error handling** | Unstructured errors | `recovery` field (transient, correctable, terminal) + 18 standard error codes |
+| **AI provenance** | No provenance model | `provenance` object with IPTC source types, C2PA references, regulatory disclosures |
+| **Creative compliance** | No compliance on briefs | `required_disclosures`, `prohibited_claims`, disclosure positions |
+| **Agent ergonomics** | Full payloads on every call | `fields` projection, opt-in breakdowns, pre-flight capability filtering |
+| **Signal lifecycle** | Activate only | `activate` / `deactivate` action on `activate_signal` |
 
 ---
 
@@ -48,10 +60,10 @@ shoes.novabrands.example.com
   -> Result: { house: "novabrands.example.com", brand_id: "nova_athletics" }
 ```
 
-**Use cases:** creative generation (resolve domain to brand manifest), brand verification (check `authorized_operators`), reporting roll-up (group campaigns by house).
+**Use cases:** creative generation (resolve domain to brand identity), brand verification (check `authorized_operators`), reporting roll-up (group campaigns by house).
 
 <Card title="Brand Protocol" icon="arrow-right" href="/docs/brand-protocol">
-  Full specification including brand.json variants, resolution flow, and brand manifests.
+  Full specification including brand.json variants, resolution flow, and brand identity.
 </Card>
 
 ---
@@ -98,23 +110,23 @@ Formal billing relationships between buyers and sellers via `sync_accounts`.
 | Entity | Question | How identified |
 |--------|----------|----------------|
 | **Brand** | Whose products are advertised? | House domain + brand_id via `brand.json` |
-| **Account** | Who gets billed? | `account_id` from `sync_accounts` |
-| **Operator** | Who operates the seat? | Domain (e.g., `acmeagency.example.com`) |
+| **Account** | Who gets billed? | [Account reference](/docs/building/integration/accounts-and-agents#account-references) — `account_id` from `list_accounts` or natural key |
+| **Operator** | Who operates on the brand's behalf? | Domain (e.g., `acmeagency.example.com`) |
 | **Agent** | What software places buys? | Authenticated session |
 
-**Three billing models:** `brand` (brand invoiced directly), `operator` (agency invoiced), `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
+**Two billing models:** `operator` (operator or brand buying direct is invoiced) and `agent` (agent consolidates billing). **Two trust models:** agent-trusted (default, agent declares brands/operators) and operator-scoped (seller requires operator-level credentials).
 
-**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account_id` -> `create_media_buy` with `account_id`.
+**Workflow:** `get_adcp_capabilities` -> `sync_accounts` -> `get_products` with `account` -> `create_media_buy` with `account`.
 
-<Card title="Accounts and agents" icon="arrow-right" href="/docs/building/integration/accounts-and-agents">
-  Complete documentation including operator authorization via brand.json.
+<Card title="Accounts Protocol" icon="arrow-right" href="/docs/accounts/overview">
+  Accounts Protocol overview: identity verification, billing models, and settlement.
 </Card>
 
 ---
 
 ### Catalogs
 
-First-class catalog lifecycle with `sync_catalogs`. Twelve catalog types: structural (`offering`, `product`, `inventory`, `store`, `promotion`) and industry-vertical (`hotel`, `flight`, `job`, `vehicle`, `real_estate`, `education`, `destination`). Vertical types have canonical item schemas drawn from Google Ads, Meta, LinkedIn, and Microsoft feed specs.
+First-class catalog lifecycle with `sync_catalogs`. Thirteen catalog types: structural (`offering`, `product`, `inventory`, `store`, `promotion`) and industry-vertical (`hotel`, `flight`, `job`, `vehicle`, `real_estate`, `education`, `destination`, `app`). Vertical types have canonical item schemas drawn from Google Ads, Meta, LinkedIn, and Microsoft feed specs.
 
 Formats declare what catalogs they need via `catalog_requirements`. Creatives reference synced catalogs by `catalog_id` instead of embedding items in assets. Catalogs declare `conversion_events` and `content_id_type` for attribution alignment.
 
@@ -143,7 +155,7 @@ Formats declare what catalogs they need via `catalog_requirements`. Creatives re
 
 ### Governance Protocol
 
-Brand suitability and inventory curation. Governance agents manage **property lists** (curated sets of properties for targeting or exclusion) and **content standards** (brand suitability policies with per-category block/allow rules). Buyers pass property lists to `get_products` for filtered inventory discovery, and use `calibrate_content` for collaborative alignment between brand and governance agent.
+Brand suitability and inventory curation. Governance agents manage **property lists** (curated sets of properties for targeting or exclusion) and **content standards** (brand suitability policies with per-category block/allow rules). Buyers pass property lists to `get_products` for filtered inventory discovery, and use `calibrate_content` for collaborative alignment between brand and governance agent. Governance agents can enforce `provenance_required` on creative policy and support third-party AI content verification via the `verification` array on provenance claims.
 
 <Card title="Governance Protocol" icon="arrow-right" href="/docs/governance/overview">
   Full specification including property lists, content standards, and calibration.
@@ -269,8 +281,12 @@ v3 adds several targeting fields beyond geo:
 |-------|-------------|
 | `daypart_targets` | Time-of-day and day-of-week targeting windows |
 | `age_restriction` | Age-gating for restricted content |
-| `device_platform` | Device type targeting (desktop, mobile, tablet, ctv) |
+| `device_platform` | Operating system targeting (iOS, Android, Windows, tvOS, etc.) |
+| `device_type` | Device form factor targeting (desktop, mobile, tablet, ctv, dooh, unknown) |
 | `language` | Content language targeting |
+| `keyword_targets` / `negative_keywords` | Keyword targeting for search and retail media with match types (broad, phrase, exact) and per-keyword bid prices |
+| `device_type_exclude` | Negative device form factor targeting |
+| `geo_proximity` | Point-based proximity targeting via travel time isochrones, radius, or GeoJSON geometry |
 
 These fields are optional additions — they don't replace any v2 fields.
 
@@ -298,6 +314,147 @@ The `promoted_offerings` creative asset type and `promoted_offering` string fiel
 
 ---
 
+### Brand identity unification
+
+Inline `brand_manifest` objects are replaced by brand references (`BrandRef`). Task schemas reference brands by `{ domain, brand_id }` instead of passing manifests inline. Brand data is resolved from `brand.json` or the registry at execution time.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `brand_manifest` (inline object) | `brand` (`{ domain, brand_id }`) |
+
+Affects: `get_products`, `create_media_buy`, `build_creative`, and property list schemas.
+
+<Card title="Brand identity deep dive" icon="arrow-right" href="/docs/reference/migration/brand-identity">
+  BrandRef schema, resolution flow, before/after examples, and migration steps.
+</Card>
+
+---
+
+### Product delivery forecasts
+
+`estimated_exposures` is replaced by a structured `forecast` field using the `DeliveryForecast` type.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `estimated_exposures` (integer) | `forecast` (DeliveryForecast with time periods, metric ranges, methodology) |
+
+---
+
+### Proposal refinement via buying mode
+
+`proposal_id` is removed from the `get_products` request. Refinement now uses `buying_mode: "refine"` with a typed `refine` array of change-requests (see [typed refinement](#typed-refinement-with-seller-acknowledgment)). Session continuity (`context_id` in MCP, `contextId` in A2A) carries conversation history across calls.
+
+Proposal execution via `create_media_buy` with `proposal_id` is unchanged.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `proposal_id` on `get_products` request | Removed — use `buying_mode: "refine"` |
+
+---
+
+### Optimization goals redesign
+
+`optimization_goal` (singular object) is replaced by `optimization_goals` (array). Each goal is a discriminated union on `kind`:
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `optimization_goal` (single object) | `optimization_goals` (array) |
+| Implicit single goal | `priority` field for multi-goal ordering |
+
+Two goal kinds:
+- **`metric`** — Seller-native delivery metrics (clicks, views, reach, engagements, etc.) with `cost_per` or `threshold_rate` targets
+- **`event`** — Conversion tracking with `event_sources` array and optional `value_field`/`value_factor`
+
+<Card title="Optimization goals deep dive" icon="arrow-right" href="/docs/reference/migration/optimization-goals">
+  Goal kinds, reach optimization, multi-goal priority, product capabilities, and migration steps.
+</Card>
+
+---
+
+### Signals pricing restructure
+
+The legacy `pricing: { cpm }` object on signals is replaced by a structured `pricing_options` array with three pricing models.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `pricing.cpm` (number) | `pricing_options[]` (array of pricing model objects) |
+
+Three models: `cpm`, `percent_of_media` (with optional `max_cpm`), `flat_fee`.
+
+<Card title="Signals deep dive" icon="arrow-right" href="/docs/reference/migration/signals">
+  Pricing models, deliver_to flattening, usage reporting, and migration steps.
+</Card>
+
+---
+
+### Signals deliver_to flattening
+
+The nested `deliver_to` object in `get_signals` request is replaced with two top-level fields.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `deliver_to.destinations` | `destinations` (top-level) |
+| `deliver_to.countries` | `countries` (top-level) |
+
+---
+
+### AudienceMember external_id required
+
+`external_id` is promoted from a uid-type enum value to a required top-level field on AudienceMember. Every member must have a buyer-assigned stable identifier plus at least one matchable identifier.
+
+<Card title="Audiences deep dive" icon="arrow-right" href="/docs/reference/migration/audiences">
+  Before/after examples, uid-type changes, sync_audiences usage, and migration steps.
+</Card>
+
+---
+
+### Typed refinement with seller acknowledgment
+
+`refine` is redesigned from a nested object with `overall`/`products`/`proposals` to a flat typed array. Each entry is discriminated by `scope`:
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `refine.overall` (string) | `{ "scope": "request", "ask": "..." }` array entry |
+| `refine.products[].product_id` | `{ "scope": "product", "id": "..." }` |
+| `refine.products[].notes` | `ask` field |
+
+Sellers respond with `refinement_applied` — a positionally-matched array where each entry reports `status` (`applied`, `partial`, `unable`) and optional `notes`.
+
+<Card title="Refinement deep dive" icon="arrow-right" href="/docs/media-buy/product-discovery/refinement">
+  Change-request types, seller acknowledgment, and before/after examples.
+</Card>
+
+---
+
+### Creative assignments restructured
+
+`SyncCreativesRequest.assignments` changed from a `{ creative_id: package_id[] }` map to a typed array with explicit fields.
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `assignments` (object map) | `assignments` (array of `{ creative_id, package_id, weight, placement_ids }`) |
+
+---
+
+### Signals account and field consistency
+
+Two consistency changes to signals schemas:
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `account_id` (string) on `get_signals` and `activate_signal` | `account` (AccountReference object) |
+| `deployments` on `activate_signal` | `destinations` (renamed for consistency with `get_signals`) |
+
+---
+
+### Package catalogs as array
+
+| v2/beta field | v3 rc.1 field |
+|---------------|---------------|
+| `catalog` (single Catalog object) on Package | `catalogs` (array of Catalog refs) |
+
+---
+
 ### Privacy and consent
 
 AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, US Privacy String) should be passed via the brief's `ext` field or through transport-level headers. Sellers that require consent signals should declare this in `get_adcp_capabilities` using the extension mechanism.
@@ -319,6 +476,17 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 | `promoted_offerings` asset type | `catalogs` field on creative manifest |
 | `promoted_offering` on media-buy | Removed — use `brand` + `brief` |
 | `promoted_offering` on creative-manifest | `catalogs` field |
+| `brand_manifest` (inline object) | `brand` ref (`{ domain, brand_id }`) |
+| `estimated_exposures` on Product | `forecast` (DeliveryForecast) |
+| `proposal_id` on `get_products` request | Session continuity (`context_id` / `contextId`) |
+| `refine` object with `overall`/`products`/`proposals` | `refine` array of typed change-requests |
+| `creative_brief` on `build_creative` request | `brief` asset type in manifest `assets` map |
+| `supports_brief` capability | `supports_compliance` |
+| `creative-brief-ref.json` schema | Deleted — briefs are now asset types |
+| `deployments` on `activate_signal` | `destinations` |
+| `account_id` (string) on signals tasks | `account` (AccountReference) |
+| `report_usage.kind` and `report_usage.operator_id` | Removed |
+| `catalog` (singular) on Package | `catalogs` (array) |
 
 ---
 
@@ -340,6 +508,20 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Replace `list_authorized_properties` calls with `get_adcp_capabilities` portfolio
     - [ ] Remove `promoted_offerings` from creative manifest assets and replace with [`catalogs` field](/docs/reference/migration/catalogs)
     - [ ] Remove `promoted_offering` string from media buy and creative manifest objects
+    - [ ] Update `optimization_goal` to [`optimization_goals`](/docs/media-buy/media-buys/optimization-reporting) (array of discriminated union)
+    - [ ] Handle `external_id` as required field on AudienceMember
+    - [ ] Replace `brand_manifest` with `brand` ref (`{ domain, brand_id }`) in all task calls
+    - [ ] Replace `estimated_exposures` reads with `forecast` (DeliveryForecast) on products
+    - [ ] Remove `proposal_id` from `get_products` requests — use session continuity for refinement
+    - [ ] Update `refine` from object to typed array with `scope` discriminator
+    - [ ] Handle `recovery` field on errors for retry/correction logic
+    - [ ] Update `catalog` to `catalogs` (array) on packages
+    - [ ] Update signals `account_id` to `account` (AccountReference)
+    - [ ] Rename signals `deployments` to `destinations`
+    - [ ] Pass `buying_mode` (now required) on `get_products`
+    - [ ] Move `creative_brief` to `brief` asset type in manifest `assets` map
+    - [ ] Handle `report_usage` without `kind` and `operator_id` fields
+    - [ ] Update `SyncCreativesRequest.assignments` from object map to typed array
     - [ ] Validate all requests/responses against v3 schemas
   </Accordion>
 
@@ -352,6 +534,13 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Return proposals with delivery forecasts from `get_products` when applicable
     - [ ] Support property list filtering in `get_products` if integrating with governance agents
     - [ ] Handle catalogs synced via [`sync_catalogs`](/docs/reference/migration/catalogs) with approval workflow
+    - [ ] Declare `metric_optimization` capabilities on products
+    - [ ] Declare `reporting` capabilities in `get_adcp_capabilities` for dimension breakdowns
+    - [ ] Support `reporting_dimensions` parameter on `get_media_buy_delivery`
+    - [ ] Return `refinement_applied` array when processing `refine` requests
+    - [ ] Implement `rejected` status and `rejection_reason` on media buys
+    - [ ] Support `fields` projection parameter on `get_products`
+    - [ ] Declare `supported_pricing_models` in `get_adcp_capabilities`
   </Accordion>
 
   <Accordion title="Buyer agents and orchestrators (DSPs, agencies, brands)">
@@ -366,6 +555,14 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Invoke SI sessions when connecting users with brand agents
     - [ ] Sync catalogs via [`sync_catalogs`](/docs/reference/migration/catalogs) before submitting creatives
     - [ ] Add `conversion_events` to catalogs for attribution tracking
+    - [ ] Update `optimization_goal` to `optimization_goals` array in `create_media_buy`
+    - [ ] Pass `pricing_option_id` when activating signals with pricing options
+    - [ ] Use `reporting_dimensions` for dimension breakdowns in delivery reporting
+    - [ ] Handle `refinement_applied` response for typed refinement feedback
+    - [ ] Use `recovery` field on errors for automated retry/correction
+    - [ ] Use `fields` projection on `get_products` for efficient discovery
+    - [ ] Handle `rejected` status on media buys
+    - [ ] Use `action: "deactivate"` on `activate_signal` for campaign cleanup
   </Accordion>
 
   <Accordion title="Signals agents (data providers, measurement vendors)">
@@ -376,6 +573,13 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Return structured `signal_id` objects in `get_signals` responses
     - [ ] Include `value_type` field in signal responses
     - [ ] Support `signal_ids` parameter in `get_signals` requests for ID-based lookup
+    - [ ] Update from legacy `pricing` to structured `pricing_options` array
+    - [ ] Handle top-level `destinations`/`countries` instead of nested `deliver_to`
+    - [ ] Add `idempotency_key` support to `report_usage`
+    - [ ] Support `action: "deactivate"` on `activate_signal`
+    - [ ] Include `categories` and `range` metadata in signal entries
+    - [ ] Update `account_id` to `account` (AccountReference)
+    - [ ] Rename `deployments` to `destinations`
   </Accordion>
 
   <Accordion title="Data providers (new in v3)">
@@ -389,14 +593,19 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
   </Accordion>
 
   <Accordion title="Creative agents (creative management, DCO providers)">
-    Support new asset discovery and integrate brand manifests. Format `type` field (video, display, audio) is IAB creative classification, not media channels.
+    Support new asset discovery and integrate brand identity. Format `type` field (video, display, audio) is IAB creative classification, not media channels.
 
     - [ ] Support `assets` array with `required` boolean (replaces `assets_required`)
     - [ ] Replace `preview_image` with `format_card` rendering
-    - [ ] Resolve brand manifests via `brand.json` for on-brand creative generation
+    - [ ] Resolve brand identity via `brand.json` for on-brand creative generation
     - [ ] Support `catalog` field on creative manifests (replaces [`promoted_offerings`](/docs/reference/migration/catalogs) asset)
     - [ ] Declare `catalog_requirements` on formats that render catalog items
     - [ ] Update schema references from v2 to v3
+    - [ ] Support `provenance` object on creative manifests and assets
+    - [ ] Support `brief` and `catalog` as asset types in the `assets` map
+    - [ ] Handle `compliance.required_disclosures` on creative briefs
+    - [ ] Check format `supported_disclosure_positions` compatibility
+    - [ ] Declare `supports_compliance` in capabilities (replaces `supports_brief`)
   </Accordion>
 
   <Accordion title="Brands (new in v3)">
@@ -404,7 +613,7 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
 
     - [ ] Host `/.well-known/brand.json` on your domain
     - [ ] Declare brand portfolio, properties, and authorized operators
-    - [ ] Optionally provide brand manifest data (logos, colors, fonts, tone) inline or via brand agent
+    - [ ] Optionally provide brand data (logos, colors, fonts, tone) inline in `brand.json` or via brand agent
     - [ ] Register in the [community brand registry](/docs/registry) if not hosting `brand.json`
   </Accordion>
 
@@ -414,6 +623,8 @@ AdCP does not define its own consent framework. Privacy signals (TCF 2.0, GPP, U
     - [ ] Implement property list tasks (`create_property_list`, `get_property_list`, etc.)
     - [ ] Implement content standards tasks (`create_content_standards`, `calibrate_content`, etc.)
     - [ ] Implement `get_adcp_capabilities` with `governance` in `supported_protocols`
+    - [ ] Implement `provenance_required` enforcement on creative policy
+    - [ ] Support `verification` results from AI detection services
   </Accordion>
 
   <Accordion title="Sponsored Intelligence agents (new in v3)">

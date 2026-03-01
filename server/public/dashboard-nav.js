@@ -535,8 +535,10 @@
   // Create sidebar HTML
   function createSidebarHTML(options = {}) {
     const currentPath = window.location.pathname;
+    const appConfig = window.__APP_CONFIG__;
     const {
       showAdmin = false,
+      showManage = !!(appConfig?.user?.isManage || appConfig?.user?.isAdmin),
       showOrgSwitcher = false,
       currentOrgName = 'Organization',
       isPersonal = false,
@@ -607,9 +609,15 @@
       </div>
     ` : '';
 
+    const manageLinkHTML = (showManage || showAdmin) ? `
+      <a href="/manage" class="dashboard-admin-link">
+        <span>⚡</span> Manage AAO
+      </a>
+    ` : '';
+
     const adminLinkHTML = showAdmin ? `
       <a href="/admin" class="dashboard-admin-link">
-        <span>🔒</span> Admin Panel
+        <span>🔒</span> Admin panel
       </a>
     ` : '';
 
@@ -634,7 +642,7 @@
         <nav class="dashboard-sidebar-nav">
           ${sectionsHTML}
         </nav>
-        ${adminLinkHTML ? `<div class="dashboard-sidebar-footer">${adminLinkHTML}</div>` : ''}
+        ${(manageLinkHTML || adminLinkHTML) ? `<div class="dashboard-sidebar-footer">${manageLinkHTML}${adminLinkHTML}</div>` : ''}
       </aside>
     `;
   }

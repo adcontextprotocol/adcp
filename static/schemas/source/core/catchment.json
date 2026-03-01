@@ -62,6 +62,7 @@
           "description": "GeoJSON geometry type."
         },
         "coordinates": {
+          "type": "array",
           "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
         }
       },

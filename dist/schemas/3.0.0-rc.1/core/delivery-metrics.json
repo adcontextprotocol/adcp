@@ -1,0 +1,315 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/delivery-metrics.json",
+  "title": "Delivery Metrics",
+  "description": "Standard delivery metrics that can be reported at media buy, package, or creative level",
+  "type": "object",
+  "properties": {
+    "impressions": {
+      "type": "number",
+      "description": "Impressions delivered",
+      "minimum": 0
+    },
+    "spend": {
+      "type": "number",
+      "description": "Amount spent",
+      "minimum": 0
+    },
+    "clicks": {
+      "type": "number",
+      "description": "Total clicks",
+      "minimum": 0
+    },
+    "ctr": {
+      "type": "number",
+      "description": "Click-through rate (clicks/impressions)",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "views": {
+      "type": "number",
+      "description": "Views at threshold (for CPV)",
+      "minimum": 0
+    },
+    "completed_views": {
+      "type": "number",
+      "description": "Video/audio completions. When the package has a completed_views optimization goal with view_duration_seconds, completions are counted at that threshold rather than 100% completion.",
+      "minimum": 0
+    },
+    "completion_rate": {
+      "type": "number",
+      "description": "Completion rate (completed_views/impressions)",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "conversions": {
+      "type": "number",
+      "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
+      "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Total monetary value of attributed conversions (in the reporting currency)",
+      "minimum": 0
+    },
+    "roas": {
+      "type": "number",
+      "description": "Return on ad spend (conversion_value / spend)",
+      "minimum": 0
+    },
+    "cost_per_acquisition": {
+      "type": "number",
+      "description": "Cost per conversion (spend / conversions)",
+      "minimum": 0
+    },
+    "new_to_brand_rate": {
+      "type": "number",
+      "description": "Fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "leads": {
+      "type": "number",
+      "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
+      "minimum": 0
+    },
+    "by_event_type": {
+      "type": "array",
+      "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json",
+            "description": "The event type"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of events of this type",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of events of this type",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "event_type",
+          "count"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "grps": {
+      "type": "number",
+      "description": "Gross Rating Points delivered (for CPP)",
+      "minimum": 0
+    },
+    "reach": {
+      "type": "number",
+      "description": "Unique reach - units depend on measurement provider (e.g., individuals, households, devices, cookies). See delivery_measurement.provider for methodology.",
+      "minimum": 0
+    },
+    "frequency": {
+      "type": "number",
+      "description": "Average frequency per individual (typically measured over campaign duration, but can vary by measurement provider)",
+      "minimum": 0
+    },
+    "quartile_data": {
+      "type": "object",
+      "description": "Video quartile completion data",
+      "properties": {
+        "q1_views": {
+          "type": "number",
+          "description": "25% completion views",
+          "minimum": 0
+        },
+        "q2_views": {
+          "type": "number",
+          "description": "50% completion views",
+          "minimum": 0
+        },
+        "q3_views": {
+          "type": "number",
+          "description": "75% completion views",
+          "minimum": 0
+        },
+        "q4_views": {
+          "type": "number",
+          "description": "100% completion views",
+          "minimum": 0
+        }
+      }
+    },
+    "dooh_metrics": {
+      "type": "object",
+      "description": "DOOH-specific metrics (only included for DOOH campaigns)",
+      "properties": {
+        "loop_plays": {
+          "type": "integer",
+          "description": "Number of times ad played in rotation",
+          "minimum": 0
+        },
+        "screens_used": {
+          "type": "integer",
+          "description": "Number of unique screens displaying the ad",
+          "minimum": 0
+        },
+        "screen_time_seconds": {
+          "type": "integer",
+          "description": "Total display time in seconds",
+          "minimum": 0
+        },
+        "sov_achieved": {
+          "type": "number",
+          "description": "Actual share of voice delivered (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calculation_notes": {
+          "type": "string",
+          "description": "Explanation of how DOOH impressions were calculated"
+        },
+        "venue_breakdown": {
+          "type": "array",
+          "description": "Per-venue performance breakdown",
+          "items": {
+            "type": "object",
+            "properties": {
+              "venue_id": {
+                "type": "string",
+                "description": "Venue identifier"
+              },
+              "venue_name": {
+                "type": "string",
+                "description": "Human-readable venue name"
+              },
+              "venue_type": {
+                "type": "string",
+                "description": "Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')"
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Impressions delivered at this venue",
+                "minimum": 0
+              },
+              "loop_plays": {
+                "type": "integer",
+                "description": "Loop plays at this venue",
+                "minimum": 0
+              },
+              "screens_used": {
+                "type": "integer",
+                "description": "Number of screens used at this venue",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "venue_id",
+              "impressions"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "viewability": {
+      "type": "object",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
+      "properties": {
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",
+          "minimum": 0
+        },
+        "viewable_impressions": {
+          "type": "number",
+          "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+          "minimum": 0
+        },
+        "viewable_rate": {
+          "type": "number",
+          "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "standard": {
+          "type": "string",
+          "enum": ["mrc", "groupm"],
+          "description": "Viewability measurement standard. 'mrc': 50% of pixels in view for 1 second (display) or 2 seconds (video), per MRC/IAB guidelines. 'groupm': 100% of pixels in view for the same durations. These are materially different thresholds and should not be compared across standards."
+        }
+      },
+      "additionalProperties": true
+    },
+    "engagements": {
+      "type": "number",
+      "description": "Total engagements — direct interactions with the ad beyond viewing. Includes social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio. Platform-specific; corresponds to the 'engagements' optimization metric.",
+      "minimum": 0
+    },
+    "follows": {
+      "type": "number",
+      "description": "New followers, page likes, artist/podcast/channel subscribes attributed to this delivery.",
+      "minimum": 0
+    },
+    "saves": {
+      "type": "number",
+      "description": "Saves, bookmarks, playlist adds, pins attributed to this delivery.",
+      "minimum": 0
+    },
+    "profile_visits": {
+      "type": "number",
+      "description": "Visits to the brand's in-platform page (profile, artist page, channel, or storefront) attributed to this delivery. Does not include external website clicks.",
+      "minimum": 0
+    },
+    "engagement_rate": {
+      "type": "number",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impressions, but definition varies by platform.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "cost_per_click": {
+      "type": "number",
+      "description": "Cost per click (spend / clicks)",
+      "minimum": 0
+    },
+    "by_action_source": {
+      "type": "array",
+      "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action_source": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/action-source.json",
+            "description": "Where the conversion occurred"
+          },
+          "event_source_id": {
+            "type": "string",
+            "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+          },
+          "count": {
+            "type": "number",
+            "description": "Number of conversions from this action source",
+            "minimum": 0
+          },
+          "value": {
+            "type": "number",
+            "description": "Total monetary value of conversions from this action source",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "action_source",
+          "count"
+        ],
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

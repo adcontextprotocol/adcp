@@ -87,18 +87,20 @@
       if (user) {
         // User is logged in - show account dropdown
         const displayName = user.firstName || user.email.split('@')[0];
+        const manageLink = user.isManage ? `<a href="${authBaseUrl}/manage" class="navbar__dropdown-item">Manage AAO</a>` : '';
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
-              <span class="navbar__account-name">${displayName}</span>
+              <span class="navbar__account-name">${escapeHtml(displayName)}</span>
               <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                 <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
               </svg>
             </button>
             <div class="navbar__dropdown" id="accountDropdown">
-              <div class="navbar__dropdown-header">${user.email}</div>
+              <div class="navbar__dropdown-header">${escapeHtml(user.email)}</div>
               <a href="${authBaseUrl}/dashboard" class="navbar__dropdown-item">Dashboard</a>
+              ${manageLink}
               ${adminLink}
               <a href="${authBaseUrl}/auth/logout" class="navbar__dropdown-item navbar__dropdown-item--danger">Log out</a>
             </div>
@@ -114,7 +116,7 @@
     }
 
     // Registry URLs used in Projects dropdown and mobile menu
-    const agentsUrl = isLocal ? '/registry' : `${aaoBaseUrl}/registry`;
+    const agentsUrl = isLocal ? '/agents' : `${aaoBaseUrl}/agents`;
     const brandsUrl = isLocal ? '/brands' : `${aaoBaseUrl}/brands`;
     const publishersUrl = isLocal ? '/publishers' : `${aaoBaseUrl}/publishers`;
 
@@ -145,7 +147,7 @@
     const isProjectsActive = currentPath === '/adagents' || currentPath.startsWith('/adagents/') ||
                              currentPath === '/brand' || currentPath.startsWith('/brand/') ||
                              currentPath === '/members' || currentPath.startsWith('/members/') ||
-                             currentPath === '/registry' || currentPath === '/brands' || currentPath === '/publishers';
+                             currentPath === '/registry' || currentPath === '/agents' || currentPath === '/brands' || currentPath === '/publishers';
     const projectsDropdown = `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isProjectsActive ? 'active' : ''}">
             Projects
@@ -165,7 +167,7 @@
               <div class="navbar__dropdown-search-results" id="registrySearchResults" role="listbox" aria-label="Search results"></div>
             </div>
             <a href="${membersUrl}" class="navbar__dropdown-item ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
-            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
+            <a href="${agentsUrl}" class="navbar__dropdown-item ${currentPath === '/agents' ? 'active' : ''}">Agents</a>
             <a href="${brandsUrl}" class="navbar__dropdown-item ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
             <a href="${publishersUrl}" class="navbar__dropdown-item ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           </div>
@@ -275,7 +277,7 @@
           <a href="${brandUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brand' ? 'active' : ''}">brand.json</a>
           <span class="navbar__link navbar__link--subheader">Registry</span>
           <a href="${membersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/members' || currentPath.startsWith('/members/') ? 'active' : ''}">Members</a>
-          <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/registry' ? 'active' : ''}">Agents</a>
+          <a href="${agentsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/agents' ? 'active' : ''}">Agents</a>
           <a href="${brandsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/brands' ? 'active' : ''}">Brands</a>
           <a href="${publishersUrl}" class="navbar__link navbar__link--indent ${currentPath === '/publishers' ? 'active' : ''}">Publishers</a>
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">The Latest</span>` : ''}
@@ -1272,7 +1274,7 @@
               <div class="aao-footer__title">Registry</div>
               <ul class="aao-footer__list">
                 <li><a href="/members">Members</a></li>
-                <li><a href="/registry">Agents</a></li>
+                <li><a href="/agents">Agents</a></li>
                 <li><a href="/brands">Brands</a></li>
                 <li><a href="/publishers">Publishers</a></li>
               </ul>

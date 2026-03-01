@@ -32,7 +32,7 @@ const logger = createLogger("member-profile-routes");
  * Validate slug format and check against reserved keywords
  */
 function isValidSlug(slug: string): boolean {
-  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding'];
+  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding', 'agents', 'brands', 'publishers'];
   if (reserved.includes(slug.toLowerCase())) {
     return false;
   }
@@ -71,8 +71,11 @@ async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<Mem
   const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
   if (discovered) {
     const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
-    const logos = manifest?.logos as Array<Record<string, unknown>> | undefined;
-    const colors = manifest?.colors as Record<string, unknown> | undefined;
+    // house_portfolio: logos are in brands[0].logos; fall back to top-level logos for other structures
+    const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+    const primaryBrand = brands?.[0];
+    const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+    const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
     return {
       domain,
       logo_url: logos?.[0]?.url as string | undefined,
@@ -215,7 +218,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (!isValidSlug(slug)) {
         return res.status(400).json({
           error: 'Invalid slug',
-          message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding)',
+          message: 'Slug must contain only lowercase letters, numbers, and hyphens, cannot start or end with a hyphen, and cannot be a reserved keyword (admin, api, auth, dashboard, members, registry, onboarding, agents, brands, publishers)',
         });
       }
 

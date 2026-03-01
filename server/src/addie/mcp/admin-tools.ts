@@ -15,6 +15,7 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
+import { COMMITTEE_TYPE_LABELS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
@@ -38,6 +39,7 @@ import {
   enrichOrganization,
   enrichDomain,
 } from '../../services/enrichment.js';
+import { researchDomain } from '../../services/brand-enrichment.js';
 import {
   getLushaClient,
   isLushaConfigured,
@@ -60,6 +62,7 @@ import {
 import { InsightsDatabase } from '../../db/insights-db.js';
 import {
   createChannel,
+  getSlackChannels,
   setChannelPurpose,
 } from '../../slack/client.js';
 import {
@@ -89,6 +92,9 @@ const wgDb = new WorkingGroupDatabase();
 
 // The slug for the AAO admin working group
 const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
+
+// The slug for the kitchen cabinet management group
+const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
 
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -171,6 +177,40 @@ export function invalidateWebAdminStatusCache(workosUserId?: string): void {
 export function invalidateAllAdminCaches(): void {
   adminStatusCache.clear();
   webAdminStatusCache.clear();
+  webCouncilStatusCache.clear();
+}
+
+// Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
+const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();
+
+/**
+ * Check if a web user is a kitchen cabinet council member.
+ * Results are cached for 30 minutes to reduce DB load.
+ */
+export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean> {
+  const cached = webCouncilStatusCache.get(workosUserId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.isCouncil;
+  }
+
+  try {
+    const group = await wgDb.getWorkingGroupBySlug(KITCHEN_CABINET_SLUG);
+
+    if (!group) {
+      logger.warn('Kitchen Cabinet working group not found');
+      webCouncilStatusCache.set(workosUserId, { isCouncil: false, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return false;
+    }
+
+    const isCouncil = await wgDb.isMember(group.id, workosUserId);
+    webCouncilStatusCache.set(workosUserId, { isCouncil, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
+
+    logger.debug({ workosUserId, isCouncil }, 'Checked web user council status');
+    return isCouncil;
+  } catch (error) {
+    logger.error({ error, workosUserId }, 'Error checking if web user is council member');
+    return false;
+  }
 }
 
 /**
@@ -436,16 +476,35 @@ Returns a list of organizations with open or draft invoices.`,
     },
   },
   {
-    name: 'list_prospects',
+    name: 'research_domain',
     description:
-      'List prospects with optional filtering. Use this to see recent prospects, find ones that need attention, or get an overview.',
+      'Comprehensive domain research: checks brand registry, enriches via Brandfetch + Sonnet classification + Lusha firmographics. Skips sources that already have fresh data (< 30 days). Returns brand identity, corporate hierarchy (house_domain/parent_brand), and firmographics in one call.',
     input_schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Filter by status' },
-        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Filter by company type' },
+        domain: { type: 'string', description: 'Domain to research (e.g., mindshare.com)' },
+        org_id: { type: 'string', description: 'Organization ID to attach Lusha data to (auto-detected from domain if not provided)' },
+        skip_brandfetch: { type: 'boolean', description: 'Skip Brandfetch/Sonnet enrichment' },
+        skip_lusha: { type: 'boolean', description: 'Skip Lusha firmographic enrichment' },
+      },
+      required: ['domain'],
+    },
+  },
+  {
+    name: 'query_prospects',
+    description:
+      'Query prospects across different views. Use `view` to switch perspective: "all" (default), "my_engaged", "my_followups", "unassigned", or "addie_pipeline".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string', enum: ['all', 'my_engaged', 'my_followups', 'unassigned', 'addie_pipeline'], description: 'Which view (default: all)' },
+        status: { type: 'string', enum: ['prospect', 'contacted', 'responded', 'interested', 'negotiating', 'converted', 'declined', 'inactive'], description: 'Filter by status (all/addie_pipeline views)' },
+        company_type: { type: 'string', enum: COMPANY_TYPE_VALUES, description: 'Filter by company type (all view)' },
         limit: { type: 'number', description: 'Max results (default 10)' },
-        sort: { type: 'string', enum: ['recent', 'name', 'activity'], description: 'Sort order' },
+        sort: { type: 'string', enum: ['recent', 'name', 'activity'], description: 'Sort order (all view)' },
+        hot_only: { type: 'boolean', description: 'Only hot prospects with score >= 30 (my_engaged view)' },
+        days_stale: { type: 'number', description: 'Days stale threshold, default 14 (my_followups view)' },
+        min_engagement: { type: 'number', description: 'Min engagement score, default 10 (unassigned view)' },
       },
       required: [],
     },
@@ -744,6 +803,30 @@ Returns a list of organizations with open or draft invoices.`,
   },
 
   // ============================================
+  // COMMITTEE TOOLS
+  // ============================================
+  {
+    name: 'create_committee',
+    description: 'Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.',
+    usage_hints: 'Use when an admin wants to create a new working group, council, or governance body.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Committee name' },
+        committee_type: {
+          type: 'string',
+          enum: ['working_group', 'council', 'governance'],
+          description: 'Type of committee. Default: working_group',
+        },
+        description: { type: 'string', description: 'What the committee is for' },
+        is_private: { type: 'boolean', description: 'Whether the group is private (invite-only). Default: false' },
+        slack_channel_name: { type: 'string', description: 'Existing Slack channel name (without #) to link. Leave blank to skip.' },
+      },
+      required: ['name'],
+    },
+  },
+
+  // ============================================
   // COMMITTEE LEADERSHIP TOOLS
   // ============================================
   {
@@ -892,56 +975,18 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
 
   // ============================================
-  // PROSPECT OWNERSHIP & PIPELINE TOOLS
+  // PROSPECT OWNERSHIP TOOLS
   // ============================================
   {
-    name: 'my_engaged_prospects',
-    description: 'List your most engaged prospects sorted by engagement score.',
-    usage_hints: 'See which of your owned prospects are showing interest.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        limit: { type: 'number', description: 'Max results (default: 10)' },
-        hot_only: { type: 'boolean', description: 'Only hot prospects (score >= 30)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'my_followups_needed',
-    description: 'List your prospects needing follow-up: stale or overdue.',
-    usage_hints: 'Daily check-ins to see what needs attention.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        days_stale: { type: 'number', description: 'Days stale threshold (default: 14)' },
-        limit: { type: 'number', description: 'Max results (default: 10)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'unassigned_prospects',
-    description: 'List high-engagement prospects with no owner assigned.',
-    usage_hints: 'Find prospects worth claiming.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        min_engagement: { type: 'number', description: 'Min engagement (default: 10)' },
-        limit: { type: 'number', description: 'Max results (default: 10)' },
-      },
-      required: [],
-    },
-  },
-  {
     name: 'claim_prospect',
-    description: 'Claim ownership of a prospect organization.',
+    description: 'Claim ownership of a prospect. Use owner_type "self" (default) to assign the current human user, or "addie" to assign Addie as SDR owner.',
     usage_hints: 'Use after finding unassigned prospects.',
     input_schema: {
       type: 'object' as const,
       properties: {
         org_id: { type: 'string', description: 'Organization ID' },
         company_name: { type: 'string', description: 'Company name (if no org_id)' },
+        owner_type: { type: 'string', enum: ['self', 'addie'], description: 'Who to assign: "self" (human user) or "addie" (AI SDR). Default: self' },
         replace_existing: { type: 'boolean', description: 'Replace existing owner (default: false)' },
         notes: { type: 'string', description: 'Notes' },
       },
@@ -1278,6 +1323,32 @@ Examples:
       },
     },
   },
+
+  // ============================================
+  // ADDIE SDR TOOLS
+  // ============================================
+  {
+    name: 'triage_prospect_domain',
+    description: `Assess an email domain as a potential prospect. Addie will research the company, determine fit, and optionally create a prospect record. Use this when someone mentions a company that isn't in the system yet.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        domain: {
+          type: 'string',
+          description: 'Email domain to assess (e.g., "thetradedesk.com")',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name, if known',
+        },
+        create_if_relevant: {
+          type: 'boolean',
+          description: 'If true, create a prospect record automatically when the company is relevant (default: true)',
+        },
+      },
+      required: ['domain'],
+    },
+  },
 ];
 
 /**
@@ -1379,10 +1450,16 @@ function formatPendingInvoice(invoice: PendingInvoice): FormattedInvoice {
 
 function renderPendingInvoiceSection(pendingInvoices: PendingInvoice[]): string {
   if (pendingInvoices.length === 0) return '';
-  let result = `**Pending invoices:** ${pendingInvoices.length}\n`;
+  const pastDueCount = pendingInvoices.filter(inv => inv.is_past_due).length;
+  const header = pastDueCount > 0
+    ? `⚠️ **Unpaid invoices (${pastDueCount} past due):** ${pendingInvoices.length}\n`
+    : `**Pending invoices:** ${pendingInvoices.length}\n`;
+  let result = header;
   for (const inv of pendingInvoices.slice(0, 3)) {
     const formatted = formatPendingInvoice(inv);
-    result += `  - \`${formatted.id}\` — ${formatted.amount} (${formatted.status})`;
+    const statusLabel = inv.is_past_due ? 'past due' : formatted.status;
+    result += `  - \`${formatted.id}\` — ${formatted.amount} (${statusLabel})`;
+    if (formatted.due_date !== 'Not set') result += ` due ${formatted.due_date}`;
     if (formatted.sent_to !== 'Unknown') result += ` → ${formatted.sent_to}`;
     result += '\n';
   }
@@ -1399,6 +1476,7 @@ function formatOpenInvoice(invoice: OpenInvoiceWithCustomer): Record<string, unk
   return {
     id: invoice.id,
     status: invoice.status,
+    is_past_due: invoice.is_past_due,
     amount: formatCurrency(invoice.amount_due, invoice.currency),
     product: invoice.product_name || 'Unknown product',
     customer_name: invoice.customer_name || 'Unknown',
@@ -1663,7 +1741,8 @@ export function createAdminToolHandlers(
         `SELECT o.*,
                 p.name as parent_name
          FROM organizations o
-         LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+         LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+         LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
          WHERE o.is_personal = false
            AND (LOWER(o.name) LIKE LOWER($1) OR LOWER(o.email_domain) LIKE LOWER($1))
          ORDER BY
@@ -1814,7 +1893,11 @@ export function createAdminToolHandlers(
       if (lifecycleStage === 'member' || lifecycleStage === 'churned' || org.subscription_status) {
         response += `### Membership\n`;
         if (org.subscription_status === 'active') {
-          response += `**Status:** Active - ${org.subscription_product_name || 'Subscription'}\n`;
+          const hasPastDueInvoice = pendingInvoices.some(inv => inv.is_past_due);
+          const statusLabel = hasPastDueInvoice
+            ? `Active (⚠️ unpaid invoice overdue) - ${org.subscription_product_name || 'Subscription'}`
+            : `Active - ${org.subscription_product_name || 'Subscription'}`;
+          response += `**Status:** ${statusLabel}\n`;
           if (org.subscription_amount) {
             const amount = formatCurrency(org.subscription_amount);
             const interval = org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '';
@@ -2040,7 +2123,7 @@ export function createAdminToolHandlers(
           VALUES ($1, $2, $3, $4, 'owner', $5)
           ON CONFLICT (organization_id, user_id)
           DO UPDATE SET role = 'owner', updated_at = NOW()
-        `, [org.workos_organization_id, userId, userName, userEmail, `Auto-assigned when created via Addie on ${new Date().toLocaleDateString()}`]);
+        `, [org.workos_organization_id, userId, userName, userEmail, `Auto-assigned when created via Addie on ${new Date().toISOString().split('T')[0]}`]);
         response += `**Owner:** ${userName} (you)\n`;
       } catch (error) {
         logger.warn({ error, orgId: org.workos_organization_id, userId }, 'Failed to auto-claim prospect ownership');
@@ -2222,13 +2305,252 @@ export function createAdminToolHandlers(
     return response;
   });
 
-  // List prospects
-  handlers.set('list_prospects', async (input) => {
+  // Research domain (unified enrichment)
+  handlers.set('research_domain', async (input) => {
+    const domain = (input.domain as string)?.toLowerCase().trim();
+    if (!domain) return 'Please provide a domain to research.';
 
+    const result = await researchDomain(domain, {
+      org_id: input.org_id as string | undefined,
+      skip_brandfetch: input.skip_brandfetch as boolean | undefined,
+      skip_lusha: input.skip_lusha as boolean | undefined,
+    });
+
+    let response = `## Domain Research: ${domain}\n\n`;
+
+    // Brand info
+    if (result.brand) {
+      response += `### Brand identity\n`;
+      response += `**Name:** ${result.brand.brand_name}\n`;
+      if (result.brand.keller_type) response += `**Type:** ${result.brand.keller_type}\n`;
+      if (result.brand.house_domain) response += `**House:** ${result.brand.house_domain}\n`;
+      if (result.brand.parent_brand) response += `**Parent:** ${result.brand.parent_brand}\n`;
+      response += `**Source:** ${result.brand.source_type}`;
+      if (result.brand.classification_confidence) response += ` (${result.brand.classification_confidence} confidence)`;
+      response += `\n\n`;
+    } else {
+      response += `_No brand data found._\n\n`;
+    }
+
+    // Firmographics
+    if (result.firmographics) {
+      response += `### Firmographics\n`;
+      if (result.firmographics.company_name) response += `**Company:** ${result.firmographics.company_name}\n`;
+      if (result.firmographics.industry) response += `**Industry:** ${result.firmographics.industry}\n`;
+      if (result.firmographics.employee_count) response += `**Employees:** ${result.firmographics.employee_count.toLocaleString()}\n`;
+      if (result.firmographics.revenue_range) response += `**Revenue:** ${result.firmographics.revenue_range}\n`;
+      if (result.firmographics.country) response += `**Country:** ${result.firmographics.country}\n`;
+      response += `\n`;
+    }
+
+    // Org info
+    if (result.org) {
+      response += `### Organization\n`;
+      response += `**Name:** ${result.org.name}\n`;
+      response += `**Status:** ${result.org.subscription_status || 'none'}\n`;
+      response += `**ID:** ${result.org.workos_organization_id}\n\n`;
+    }
+
+    // Actions log
+    response += `### Actions\n`;
+    for (const action of result.actions) {
+      const icon = action.action === 'fetched' ? '✅' :
+                   action.action.startsWith('skipped') ? '⏭️' :
+                   action.action === 'failed' ? '❌' : '🔍';
+      response += `${icon} **${action.source}**: ${action.action}`;
+      if (action.detail) response += ` — ${action.detail}`;
+      response += `\n`;
+    }
+
+    return response;
+  });
+
+  // Unified prospect query handler
+  handlers.set('query_prospects', async (input) => {
     const pool = getPool();
+    const view = (input.view as string) || 'all';
+    const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
+
+    // --- View: addie_pipeline ---
+    if (view === 'addie_pipeline') {
+      const statusFilter = input.status as string | undefined;
+      const result = await pool.query(
+        `SELECT workos_organization_id, name, email_domain, company_type,
+                prospect_status, prospect_notes, prospect_next_action,
+                prospect_contact_name, last_activity_at, created_at
+         FROM organizations
+         WHERE prospect_owner = 'addie'
+           AND subscription_status IS NULL
+           AND prospect_status NOT IN ('converted', 'declined', 'disqualified')
+           ${statusFilter ? 'AND prospect_status = $1' : ''}
+         ORDER BY created_at DESC
+         LIMIT ${statusFilter ? '$2' : '$1'}`,
+        statusFilter ? [statusFilter, limit] : [limit]
+      );
+
+      if (result.rows.length === 0) {
+        return 'No prospects in Addie pipeline' + (statusFilter ? ` with status "${statusFilter}"` : '') + '.';
+      }
+
+      const byStatus = new Map<string, typeof result.rows>();
+      for (const row of result.rows) {
+        const list = byStatus.get(row.prospect_status) ?? [];
+        list.push(row);
+        byStatus.set(row.prospect_status, list);
+      }
+
+      let response = `**Addie's prospect pipeline** (${result.rows.length} total):\n\n`;
+      for (const [status, orgs] of byStatus) {
+        response += `### ${status.charAt(0).toUpperCase() + status.slice(1)} (${orgs.length})\n`;
+        for (const org of orgs) {
+          response += `- **${org.name}**`;
+          if (org.email_domain) response += ` (${org.email_domain})`;
+          if (org.prospect_contact_name) response += ` — Contact: ${org.prospect_contact_name}`;
+          if (org.prospect_next_action) response += `\n  Next action: ${org.prospect_next_action}`;
+          response += '\n';
+        }
+        response += '\n';
+      }
+      return response;
+    }
+
+    // --- View: my_engaged ---
+    if (view === 'my_engaged') {
+      const hotOnly = input.hot_only as boolean;
+      const userId = memberContext?.workos_user?.workos_user_id;
+      if (!userId) return '❌ Could not determine your user ID.';
+
+      let query = `
+        SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
+               o.engagement_score, o.prospect_status, o.interest_level, o.company_type,
+               (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
+        FROM organizations o
+        JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+        WHERE os.user_id = $1 AND os.role = 'owner'
+          AND o.is_personal IS NOT TRUE
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
+      `;
+      if (hotOnly) query += ` AND o.engagement_score >= 30`;
+      query += ` ORDER BY o.engagement_score DESC NULLS LAST LIMIT $2`;
+
+      const result = await pool.query(query, [userId, limit]);
+      if (result.rows.length === 0) {
+        return hotOnly
+          ? 'No hot prospects found. Try removing hot_only to see all.'
+          : "You don't own any prospects yet. Use `query_prospects` with view `unassigned` to find some.";
+      }
+
+      let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
+      for (const row of result.rows) {
+        const emoji = (row.engagement_score || 0) >= 30 ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n   Score: ${row.engagement_score || 0}`;
+        if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
+        if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
+        response += '\n';
+        if (row.last_activity) response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        response += '\n';
+      }
+      return response;
+    }
+
+    // --- View: my_followups ---
+    if (view === 'my_followups') {
+      const daysStale = (input.days_stale as number) || 14;
+      const userId = memberContext?.workos_user?.workos_user_id;
+      if (!userId) return '❌ Could not determine your user ID.';
+
+      const result = await pool.query(`
+        WITH prospect_activity AS (
+          SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
+                 o.engagement_score, o.prospect_status,
+                 o.prospect_next_action, o.prospect_next_action_date,
+                 (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
+                 EXTRACT(DAY FROM NOW() - COALESCE(
+                   (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
+                   o.created_at
+                 )) as days_since_activity
+          FROM organizations o
+          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
+          WHERE os.user_id = $1 AND os.role = 'owner'
+            AND o.is_personal IS NOT TRUE
+            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
+        )
+        SELECT *,
+          CASE
+            WHEN prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE THEN 1
+            WHEN days_since_activity >= $2 THEN 2
+            ELSE 3
+          END as urgency
+        FROM prospect_activity
+        WHERE (prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE)
+           OR days_since_activity >= $2
+        ORDER BY urgency, days_since_activity DESC NULLS LAST
+        LIMIT $3
+      `, [userId, daysStale, limit]);
+
+      if (result.rows.length === 0) {
+        return '✅ None of your prospects need immediate follow-up.';
+      }
+
+      let response = `## Prospects Needing Follow-Up\n\n`;
+      for (const row of result.rows) {
+        const isOverdue = row.prospect_next_action_date && new Date(row.prospect_next_action_date) < new Date();
+        if (isOverdue) {
+          response += `⚠️ **${row.name}** - OVERDUE\n`;
+          response += `   Next step: ${row.prospect_next_action || 'Not set'}\n`;
+          response += `   Due: ${new Date(row.prospect_next_action_date).toLocaleDateString()}\n`;
+        } else {
+          response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
+        }
+        if (row.last_activity) response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
+        if (row.engagement_score) response += `   Engagement: ${row.engagement_score}${row.engagement_score >= 30 ? ' 🔥' : ''}\n`;
+        response += '\n';
+      }
+      return response;
+    }
+
+    // --- View: unassigned ---
+    if (view === 'unassigned') {
+      const minEngagement = (input.min_engagement as number) || 10;
+      const result = await pool.query(`
+        SELECT o.workos_organization_id as org_id, o.name, o.email_domain,
+               o.engagement_score, o.prospect_status, o.company_type
+        FROM organizations o
+        WHERE o.is_personal IS NOT TRUE
+          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
+          AND o.engagement_score >= $1
+          AND NOT EXISTS (
+            SELECT 1 FROM org_stakeholders os
+            WHERE os.organization_id = o.workos_organization_id AND os.role = 'owner'
+          )
+        ORDER BY o.engagement_score DESC NULLS LAST
+        LIMIT $2
+      `, [minEngagement, limit]);
+
+      if (result.rows.length === 0) {
+        return minEngagement > 10
+          ? `No unassigned prospects with engagement >= ${minEngagement}. Try lowering min_engagement.`
+          : 'All engaged prospects have owners.';
+      }
+
+      let response = `## Unassigned Prospects (engagement >= ${minEngagement})\n\n`;
+      for (const row of result.rows) {
+        const emoji = (row.engagement_score || 0) >= 30 ? '🔥' : '📊';
+        response += `${emoji} **${row.name}**`;
+        if (row.email_domain) response += ` (${row.email_domain})`;
+        response += `\n   Score: ${row.engagement_score || 0}`;
+        if (row.company_type) response += ` | Type: ${row.company_type}`;
+        response += `\n   ID: ${row.org_id}\n\n`;
+      }
+      response += `---\nUse \`claim_prospect\` to take ownership.`;
+      return response;
+    }
+
+    // --- View: all (default) ---
     const status = input.status as string | undefined;
     const companyType = input.company_type as string | undefined;
-    const limit = Math.min(Math.max((input.limit as number) || 10, 1), 50);
     const sort = (input.sort as string) || 'recent';
 
     const conditions: string[] = ['is_personal = false', "prospect_status IS NOT NULL"];
@@ -3996,6 +4318,83 @@ export function createAdminToolHandlers(
   });
 
   // ============================================
+  // WORKING GROUP HANDLERS
+  // ============================================
+
+  handlers.set('create_committee', async (input) => {
+
+    const name = (input.name as string)?.trim();
+    const committeeType = ((input.committee_type as string) || 'working_group') as 'working_group' | 'council' | 'governance';
+    const description = input.description as string | undefined;
+    const isPrivate = (input.is_private as boolean) ?? false;
+    const slackChannelName = (input.slack_channel_name as string)?.trim();
+    const typeLabel = COMMITTEE_TYPE_LABELS[committeeType];
+
+    if (!name) {
+      return '❌ Please provide a committee name.';
+    }
+
+    // Generate slug from name
+    const slug = name
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 50);
+
+    if (!slug) {
+      return '❌ Committee name must contain at least one letter or number.';
+    }
+
+    try {
+      // Check for duplicate
+      const existing = await wgDb.getWorkingGroupBySlug(slug);
+      if (existing) {
+        return `⚠️ A committee with slug "${slug}" already exists: **${existing.name}**`;
+      }
+
+      let channelId: string | undefined;
+      let channelUrl: string | undefined;
+      let channelMention = '';
+
+      if (slackChannelName) {
+        const allChannels = await getSlackChannels({ types: 'public_channel,private_channel', exclude_archived: true });
+        const normalized = slackChannelName.toLowerCase().replace(/^#/, '');
+        const found = allChannels.find((c) => c.name.toLowerCase() === normalized);
+        if (!found) {
+          return `❌ Could not find a Slack channel named "#${normalized}". Check the channel name and try again.`;
+        }
+        channelId = found.id;
+        channelUrl = `https://app.slack.com/archives/${found.id}`;
+        channelMention = `<#${found.id}>`;
+      }
+
+      const wg = await wgDb.createWorkingGroup({
+        name,
+        slug,
+        description,
+        is_private: isPrivate,
+        committee_type: committeeType,
+        slack_channel_id: channelId,
+        slack_channel_url: channelUrl,
+      });
+
+      logger.info({ wgId: wg.id, name: wg.name, committeeType, isPrivate, channelId }, 'Addie: Created committee');
+
+      let response = `✅ Created **${name}** (${typeLabel})!\n\n`;
+      response += `**Slug:** ${slug}\n`;
+      response += `**Privacy:** ${isPrivate ? 'Private (invite-only)' : 'Public'}\n`;
+      if (channelMention) {
+        response += `**Slack Channel:** ${channelMention}\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, name, committeeType }, 'Error creating committee');
+      return `❌ Failed to create ${typeLabel}. Please try again.`;
+    }
+  });
+
+  // ============================================
   // COMMITTEE LEADERSHIP HANDLERS
   // ============================================
 
@@ -5115,246 +5514,16 @@ Use add_committee_leader to assign a leader.`;
   });
 
   // ============================================
-  // PROSPECT OWNERSHIP & PIPELINE HANDLERS
+  // PROSPECT OWNERSHIP HANDLERS
   // ============================================
 
-  // My engaged prospects - list owned prospects sorted by engagement
-  handlers.set('my_engaged_prospects', async (input) => {
-
-    const pool = getPool();
-    const limit = Math.min((input.limit as number) || 10, 50);
-    const hotOnly = input.hot_only as boolean;
-
-    // Get the admin's user ID from context
-    const userId = memberContext?.workos_user?.workos_user_id;
-    if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
-    }
-
-    try {
-      // Query prospects owned by this user
-      let query = `
-        SELECT
-          o.workos_organization_id as org_id,
-          o.name,
-          o.email_domain,
-          o.engagement_score,
-          o.prospect_status,
-          o.interest_level,
-          o.company_type,
-          (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity
-        FROM organizations o
-        JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
-        WHERE os.user_id = $1
-          AND os.role = 'owner'
-          AND o.is_personal IS NOT TRUE
-          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
-      `;
-
-      if (hotOnly) {
-        query += ` AND o.engagement_score >= 30`;
-      }
-
-      query += `
-        ORDER BY o.engagement_score DESC NULLS LAST
-        LIMIT $2
-      `;
-
-      const result = await pool.query(query, [userId, limit]);
-
-      if (result.rows.length === 0) {
-        return hotOnly
-          ? `No hot prospects found. Try removing the hot_only filter to see all your prospects.`
-          : `You don't own any prospects yet. Use \`unassigned_prospects\` to find prospects to claim.`;
-      }
-
-      let response = `## Your ${hotOnly ? 'Hot ' : ''}Engaged Prospects\n\n`;
-
-      for (const row of result.rows) {
-        const isHot = (row.engagement_score || 0) >= 30;
-        const emoji = isHot ? '🔥' : '📊';
-        response += `${emoji} **${row.name}**`;
-        if (row.email_domain) response += ` (${row.email_domain})`;
-        response += `\n`;
-        response += `   Score: ${row.engagement_score || 0}`;
-        if (row.prospect_status) response += ` | Status: ${row.prospect_status}`;
-        if (row.interest_level) response += ` | Interest: ${row.interest_level}`;
-        response += `\n`;
-        if (row.last_activity) {
-          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
-        }
-        response += `\n`;
-      }
-
-      const hotCount = result.rows.filter(r => (r.engagement_score || 0) >= 30).length;
-      response += `---\n`;
-      response += `Showing ${result.rows.length} prospect(s)`;
-      if (!hotOnly && hotCount > 0) {
-        response += ` (${hotCount} hot)`;
-      }
-
-      return response;
-    } catch (error) {
-      logger.error({ error, userId }, 'Error fetching engaged prospects');
-      return '❌ Failed to fetch your prospects. Please try again.';
-    }
-  });
-
-  // My followups needed - list owned prospects needing attention
-  handlers.set('my_followups_needed', async (input) => {
-
-    const pool = getPool();
-    const limit = Math.min((input.limit as number) || 10, 50);
-    const daysStale = (input.days_stale as number) || 14;
-
-    const userId = memberContext?.workos_user?.workos_user_id;
-    if (!userId) {
-      return '❌ Could not determine your user ID. Please try again.';
-    }
-
-    try {
-      // Query prospects that need follow-up
-      const result = await pool.query(`
-        WITH prospect_activity AS (
-          SELECT
-            o.workos_organization_id as org_id,
-            o.name,
-            o.email_domain,
-            o.engagement_score,
-            o.prospect_status,
-            o.prospect_next_action,
-            o.prospect_next_action_date,
-            (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id) as last_activity,
-            EXTRACT(DAY FROM NOW() - COALESCE(
-              (SELECT MAX(activity_date) FROM org_activities WHERE organization_id = o.workos_organization_id),
-              o.created_at
-            )) as days_since_activity
-          FROM organizations o
-          JOIN org_stakeholders os ON os.organization_id = o.workos_organization_id
-          WHERE os.user_id = $1
-            AND os.role = 'owner'
-            AND o.is_personal IS NOT TRUE
-            AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
-        )
-        SELECT *,
-          CASE
-            WHEN prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE THEN 1
-            WHEN days_since_activity >= $2 THEN 2
-            ELSE 3
-          END as urgency
-        FROM prospect_activity
-        WHERE (prospect_next_action_date IS NOT NULL AND prospect_next_action_date < CURRENT_DATE)
-           OR days_since_activity >= $2
-        ORDER BY urgency, days_since_activity DESC NULLS LAST
-        LIMIT $3
-      `, [userId, daysStale, limit]);
-
-      if (result.rows.length === 0) {
-        return `✅ Great news! None of your prospects need immediate follow-up.`;
-      }
-
-      let response = `## Prospects Needing Follow-Up\n\n`;
-
-      let overdueCount = 0;
-      let staleCount = 0;
-
-      for (const row of result.rows) {
-        const isOverdue = row.prospect_next_action_date && new Date(row.prospect_next_action_date) < new Date();
-        if (isOverdue) {
-          overdueCount++;
-          response += `⚠️ **${row.name}** - OVERDUE\n`;
-          response += `   Next step: ${row.prospect_next_action || 'Not set'}\n`;
-          response += `   Due: ${new Date(row.prospect_next_action_date).toLocaleDateString()}\n`;
-        } else {
-          staleCount++;
-          response += `⏰ **${row.name}** - ${Math.round(row.days_since_activity)} days since activity\n`;
-        }
-        if (row.last_activity) {
-          response += `   Last activity: ${new Date(row.last_activity).toLocaleDateString()}\n`;
-        }
-        if (row.engagement_score) {
-          response += `   Engagement: ${row.engagement_score}${row.engagement_score >= 30 ? ' 🔥' : ''}\n`;
-        }
-        response += `\n`;
-      }
-
-      response += `---\n`;
-      if (overdueCount > 0) response += `⚠️ ${overdueCount} overdue task(s)\n`;
-      if (staleCount > 0) response += `⏰ ${staleCount} stale (>${daysStale} days)\n`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error, userId }, 'Error fetching followups needed');
-      return '❌ Failed to fetch follow-ups. Please try again.';
-    }
-  });
-
-  // Unassigned prospects - list high-engagement prospects without owners
-  handlers.set('unassigned_prospects', async (input) => {
-
-    const pool = getPool();
-    const limit = Math.min((input.limit as number) || 10, 50);
-    const minEngagement = (input.min_engagement as number) || 10;
-
-    try {
-      const result = await pool.query(`
-        SELECT
-          o.workos_organization_id as org_id,
-          o.name,
-          o.email_domain,
-          o.engagement_score,
-          o.prospect_status,
-          o.company_type
-        FROM organizations o
-        WHERE o.is_personal IS NOT TRUE
-          AND (o.subscription_status IS NULL OR o.subscription_status != 'active')
-          AND o.engagement_score >= $1
-          AND NOT EXISTS (
-            SELECT 1 FROM org_stakeholders os
-            WHERE os.organization_id = o.workos_organization_id
-              AND os.role = 'owner'
-          )
-        ORDER BY o.engagement_score DESC NULLS LAST
-        LIMIT $2
-      `, [minEngagement, limit]);
-
-      if (result.rows.length === 0) {
-        return minEngagement > 10
-          ? `No unassigned prospects with engagement >= ${minEngagement}. Try lowering min_engagement.`
-          : `All engaged prospects have owners! Nice work team.`;
-      }
-
-      let response = `## Unassigned Prospects (engagement >= ${minEngagement})\n\n`;
-
-      for (const row of result.rows) {
-        const isHot = (row.engagement_score || 0) >= 30;
-        const emoji = isHot ? '🔥' : '📊';
-        response += `${emoji} **${row.name}**`;
-        if (row.email_domain) response += ` (${row.email_domain})`;
-        response += `\n`;
-        response += `   Score: ${row.engagement_score || 0}`;
-        if (row.company_type) response += ` | Type: ${row.company_type}`;
-        response += `\n`;
-        response += `   ID: ${row.org_id}\n`;
-        response += `\n`;
-      }
-
-      response += `---\n`;
-      response += `Use \`claim_prospect\` to take ownership of any of these.`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error }, 'Error fetching unassigned prospects');
-      return '❌ Failed to fetch unassigned prospects. Please try again.';
-    }
-  });
-
-  // Claim prospect - assign self as owner
+  // Claim prospect - assign self or Addie as owner
   handlers.set('claim_prospect', async (input) => {
 
     const pool = getPool();
     let orgId = input.org_id as string;
     const companyName = input.company_name as string;
+    const ownerType = (input.owner_type as string) || 'self';
     const replaceExisting = input.replace_existing as boolean;
     const notes = input.notes as string;
 
@@ -5362,7 +5531,7 @@ Use add_committee_leader to assign a leader.`;
     const userName = memberContext?.workos_user?.first_name || 'Unknown';
     const userEmail = memberContext?.workos_user?.email;
 
-    if (!userId || !userEmail) {
+    if (ownerType === 'self' && (!userId || !userEmail)) {
       return '❌ Could not determine your user ID. Please try again.';
     }
 
@@ -5373,7 +5542,6 @@ Use add_committee_leader to assign a leader.`;
     try {
       // Look up org by name if no ID provided
       if (!orgId && companyName) {
-        // Escape SQL LIKE wildcard characters to prevent pattern injection
         const escapedName = companyName.replace(/[%_\\]/g, '\\$&');
         const searchResult = await pool.query(`
           SELECT workos_organization_id, name
@@ -5393,7 +5561,44 @@ Use add_committee_leader to assign a leader.`;
         orgId = searchResult.rows[0].workos_organization_id;
       }
 
-      // Check for existing owner
+      // Verify org exists and is a prospect
+      const orgCheck = await pool.query<{ name: string; prospect_notes: string | null; subscription_status: string | null }>(
+        `SELECT name, prospect_notes, subscription_status
+         FROM organizations
+         WHERE workos_organization_id = $1 AND is_personal = false`,
+        [orgId]
+      );
+
+      if (orgCheck.rows.length === 0) {
+        return `❌ Organization \`${orgId}\` not found.`;
+      }
+
+      const org = orgCheck.rows[0];
+
+      if (org.subscription_status) {
+        return `❌ **${org.name}** is an active member, not a prospect.`;
+      }
+
+      // --- Addie ownership path ---
+      if (ownerType === 'addie') {
+        const existingNotes = org.prospect_notes ?? '';
+        const dateStr = new Date().toISOString().split('T')[0];
+        const reason = notes || 'Assigned to Addie as SDR';
+        const updatedNotes = existingNotes
+          ? `${existingNotes}\n\n${dateStr}: ${reason}`
+          : `${dateStr}: ${reason}`;
+
+        await pool.query(
+          `UPDATE organizations
+           SET prospect_owner = 'addie', prospect_notes = $1, updated_at = NOW()
+           WHERE workos_organization_id = $2`,
+          [updatedNotes, orgId]
+        );
+
+        return `✅ Assigned **${org.name}** to Addie's pipeline. Addie will handle outreach.`;
+      }
+
+      // --- Human ownership path ---
       const existingOwner = await pool.query(`
         SELECT user_id, user_name, user_email
         FROM org_stakeholders
@@ -5409,29 +5614,20 @@ Use add_committee_leader to assign a leader.`;
           return `❌ This prospect already has an owner: ${owner.user_name} (${owner.user_email}).\n\nUse \`replace_existing: true\` to take over ownership.`;
         }
 
-        // Remove existing owner
         await pool.query(`
           DELETE FROM org_stakeholders
           WHERE organization_id = $1 AND role = 'owner'
         `, [orgId]);
       }
 
-      // Add self as owner
       await pool.query(`
         INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
         VALUES ($1, $2, $3, $4, 'owner', $5)
         ON CONFLICT (organization_id, user_id)
         DO UPDATE SET role = 'owner', notes = $5, updated_at = NOW()
-      `, [orgId, userId, userName, userEmail, notes || `Claimed via Addie on ${new Date().toLocaleDateString()}`]);
+      `, [orgId, userId, userName, userEmail, notes || `Claimed via Addie on ${new Date().toISOString().split('T')[0]}`]);
 
-      // Get the org name for confirmation
-      const orgResult = await pool.query(`
-        SELECT name FROM organizations WHERE workos_organization_id = $1
-      `, [orgId]);
-
-      const orgName = orgResult.rows[0]?.name || orgId;
-
-      let response = `✅ You are now the owner of **${orgName}**!`;
+      let response = `✅ You are now the owner of **${org.name}**!`;
       if (existingOwner.rows.length > 0) {
         response += `\n\n_Previous owner ${existingOwner.rows[0].user_name} has been removed._`;
       }
@@ -7047,6 +7243,60 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error listing bans');
       return `❌ Failed to list bans.`;
+    }
+  });
+
+  // ============================================
+  // ADDIE SDR HANDLERS
+  // ============================================
+
+  handlers.set('triage_prospect_domain', async (input) => {
+    // Normalize and validate the domain input
+    let domain = (input.domain as string ?? '').trim();
+
+    // Strip protocol prefix if user passed a URL
+    domain = domain.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+
+    // Reject if it looks like a full email address
+    if (domain.includes('@')) {
+      domain = domain.split('@')[1] ?? domain;
+    }
+
+    domain = domain.toLowerCase();
+
+    if (!domain) {
+      return '❌ Please provide a valid email domain (e.g., "thetradedesk.com").';
+    }
+
+    const companyName = input.company_name as string | undefined;
+    const createIfRelevant = input.create_if_relevant !== false; // default true
+
+    try {
+      const { triageEmailDomain, triageAndCreateProspect } = await import('../../services/prospect-triage.js');
+
+      if (createIfRelevant) {
+        const outcome = await triageAndCreateProspect(domain, { name: companyName, source: 'manual' });
+        const { result } = outcome;
+
+        if (result.action === 'skip') {
+          return `Assessed **${domain}**: skipped (${result.reason}).\n\n${result.verdict}`;
+        }
+
+        if (outcome.created) {
+          return `✅ Created prospect for **${result.companyName ?? domain}**.\n\nOwner: ${result.owner === 'addie' ? 'me (Addie)' : 'needs a human'}\nAssessment: ${result.verdict}`;
+        } else {
+          return `**${domain}** is already in the system.\n\n${result.verdict}`;
+        }
+      } else {
+        const result = await triageEmailDomain(domain, { name: companyName });
+        if (result.action === 'skip') {
+          return `Assessment for **${domain}**: not a fit.\n\n${result.verdict}`;
+        }
+        return `Assessment for **${domain}**: relevant prospect.\n\nRecommended owner: ${result.owner}\nCompany type: ${result.companyType ?? 'unknown'}\n\n${result.verdict}\n\n_(Use \`create_if_relevant: true\` to create the prospect.)_`;
+      }
+    } catch (error) {
+      logger.error({ error, domain }, 'Error triaging prospect domain');
+      return `❌ Failed to triage domain "${domain}".`;
     }
   });
 

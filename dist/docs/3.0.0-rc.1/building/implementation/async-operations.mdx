@@ -1,0 +1,335 @@
+---
+title: Async Operations
+description: Handling synchronous, asynchronous, and interactive AdCP operations
+---
+
+AdCP operations can take seconds, hours, or days. This guide covers how to handle each type of operation and design for asynchronous-first workflows.
+
+## Operation Types
+
+AdCP operations fall into three categories:
+
+### 1. Synchronous Operations
+
+Return immediately with `completed` or `failed`:
+
+| Operation | Description |
+|-----------|-------------|
+| `get_adcp_capabilities` | Agent capability discovery |
+| `list_creative_formats` | Format catalog |
+
+These are fast operations that don't require external systems.
+
+### 2. Interactive Operations
+
+May return `input-required` before proceeding:
+
+| Operation | Description |
+|-----------|-------------|
+| `get_products` | When brief is vague or needs clarification |
+| `create_media_buy` | When approval is required |
+
+These operations need user input to proceed.
+
+### 3. Asynchronous Operations
+
+Return `working` or `submitted` and require polling/streaming:
+
+| Operation | Description |
+|-----------|-------------|
+| `create_media_buy` | Creates campaigns with external systems |
+| `sync_creatives` | Uploads and processes creative assets |
+| `get_products` | Complex inventory searches |
+| `activate_signal` | Activates audience segments |
+
+These operations integrate with external systems or require human approval.
+
+## Timeout Configuration
+
+Set reasonable timeouts based on operation type:
+
+```javascript
+const TIMEOUTS = {
+  sync: 30_000,         // 30 seconds for immediate operations
+  interactive: 300_000,  // 5 minutes for human input
+  working: 120_000,      // 2 minutes for working tasks
+  submitted: 86_400_000  // 24 hours for submitted tasks
+};
+
+function getTimeout(status, operationType) {
+  // submitted tasks may take hours or days
+  if (status === 'submitted') {
+    return TIMEOUTS.submitted;
+  }
+
+  // working tasks should complete within 2 minutes
+  if (status === 'working') {
+    return TIMEOUTS.working;
+  }
+
+  // interactive operations wait for human input
+  if (status === 'input-required') {
+    return TIMEOUTS.interactive;
+  }
+
+  return TIMEOUTS.sync;
+}
+```
+
+## Human-in-the-Loop Workflows
+
+### Design Principles
+
+1. **Optional by default** - Approvals are configured per implementation
+2. **Clear messaging** - Users understand what they're approving
+3. **Timeout gracefully** - Don't block forever on human input
+4. **Audit trail** - Track who approved what when
+
+### Approval Patterns
+
+```javascript
+async function handleApprovalWorkflow(response) {
+  if (response.status === 'input-required' && needsApproval(response)) {
+    // Show approval UI with context
+    const approval = await showApprovalUI({
+      title: "Campaign Approval Required",
+      message: response.message,
+      details: response,  // Task fields are at top level
+      approver: getCurrentUser()
+    });
+
+    // Send approval decision
+    const decision = {
+      approved: approval.approved,
+      notes: approval.notes,
+      approver_id: approval.approver_id,
+      timestamp: new Date().toISOString()
+    };
+
+    return sendFollowUp(response.context_id, decision);
+  }
+}
+```
+
+### Common Approval Triggers
+
+- **Budget thresholds**: Campaigns over $100K
+- **New advertisers**: First-time buyers
+- **Policy-sensitive content**: Certain industries or topics
+- **Manual inventory**: Premium placements requiring publisher approval
+
+## Progress Tracking
+
+### Progress Updates
+
+Long-running operations may provide progress information:
+
+```json
+{
+  "status": "working",
+  "message": "Processing creative assets...",
+  "task_id": "task-456",
+  "progress": 45,
+  "step": "transcoding_video",
+  "steps_completed": ["upload", "validation"],
+  "steps_remaining": ["transcoding_video", "thumbnail_generation", "cdn_distribution"]
+}
+```
+
+### Displaying Progress
+
+```javascript
+function displayProgress(response) {
+  if (response.progress !== undefined) {
+    updateProgressBar(response.progress);
+  }
+
+  if (response.step) {
+    updateStatusText(`Step: ${response.step}`);
+  }
+
+  if (response.steps_completed) {
+    updateStepsList(response.steps_completed, response.steps_remaining);
+  }
+
+  // Always show the message
+  updateMessage(response.message);
+}
+```
+
+## Protocol-Agnostic Patterns
+
+These patterns work with both MCP and A2A.
+
+### Product Discovery with Clarification
+
+```javascript
+async function discoverProducts(brief) {
+  let response = await adcp.send({
+    task: 'get_products',
+    brief: brief
+  });
+
+  // Handle clarification loop
+  while (response.status === 'input-required') {
+    const moreInfo = await promptUser(response.message);
+    response = await adcp.send({
+      context_id: response.context_id,
+      additional_info: moreInfo
+    });
+  }
+
+  if (response.status === 'completed') {
+    return response.products;  // Task fields are at top level
+  } else if (response.status === 'failed') {
+    throw new Error(response.message);
+  }
+}
+```
+
+### Campaign Creation with Approval
+
+```javascript
+async function createCampaign(packages, budget) {
+  let response = await adcp.send({
+    task: 'create_media_buy',
+    packages: packages,
+    total_budget: budget
+  });
+
+  // Handle approval if needed
+  if (response.status === 'input-required') {
+    const approved = await getApproval(response.message);
+    if (!approved) {
+      throw new Error('Campaign creation not approved');
+    }
+
+    response = await adcp.send({
+      context_id: response.context_id,
+      approved: true
+    });
+  }
+
+  // Handle async creation
+  if (response.status === 'working') {
+    response = await waitForCompletion(response);
+  }
+
+  if (response.status === 'completed') {
+    return response.media_buy_id;  // Task fields are at top level
+  } else {
+    throw new Error(response.message);
+  }
+}
+```
+
+### Waiting for Completion
+
+```javascript
+async function waitForCompletion(initialResponse, options = {}) {
+  const { maxWait = 120000, pollInterval = 5000 } = options;
+  const startTime = Date.now();
+
+  let response = initialResponse;
+
+  while (response.status === 'working') {
+    if (Date.now() - startTime > maxWait) {
+      throw new Error('Operation timed out');
+    }
+
+    await sleep(pollInterval);
+
+    response = await adcp.call('tasks/get', {
+      task_id: response.task_id,
+      include_result: true
+    });
+  }
+
+  return response;
+}
+```
+
+## Asynchronous-First Design
+
+### Store State Persistently
+
+Don't rely on in-memory state for async operations:
+
+```javascript
+class AsyncOperationTracker {
+  constructor(db) {
+    this.db = db;
+  }
+
+  async startOperation(taskId, operationType, request) {
+    await this.db.operations.insert({
+      task_id: taskId,
+      type: operationType,
+      status: 'submitted',
+      request: request,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  }
+
+  async updateStatus(taskId, status, result = null) {
+    await this.db.operations.update(
+      { task_id: taskId },
+      {
+        status: status,
+        result: result,
+        updated_at: new Date()
+      }
+    );
+  }
+
+  async getPendingOperations() {
+    return this.db.operations.find({
+      status: { $in: ['submitted', 'working', 'input-required'] }
+    });
+  }
+}
+```
+
+### Handle Restarts Gracefully
+
+Resume tracking after orchestrator restarts:
+
+```javascript
+async function onStartup() {
+  const tracker = new AsyncOperationTracker(db);
+  const pending = await tracker.getPendingOperations();
+
+  for (const operation of pending) {
+    // Check current status on server
+    const response = await adcp.call('tasks/get', {
+      task_id: operation.task_id,
+      include_result: true
+    });
+
+    // Update local state
+    await tracker.updateStatus(operation.task_id, response.status, response);
+
+    // Resume polling if still pending
+    if (['submitted', 'working'].includes(response.status)) {
+      startPolling(operation.task_id);
+    }
+  }
+}
+```
+
+## Best Practices
+
+1. **Design async first** - Assume any operation could take time
+2. **Persist state** - Don't rely on in-memory tracking
+3. **Handle restarts** - Resume tracking on startup
+4. **Implement timeouts** - Don't wait forever
+5. **Show progress** - Keep users informed
+6. **Support cancellation** - Let users cancel long operations
+7. **Audit trail** - Log all status transitions
+
+## Next Steps
+
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.0-rc.1/building/implementation/webhooks) for push notifications instead of polling
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.0-rc.1/building/implementation/task-lifecycle) for status handling details
+- **Orchestrator Design**: See [Orchestrator Design](/dist/docs/3.0.0-rc.1/building/implementation/orchestrator-design) for production patterns

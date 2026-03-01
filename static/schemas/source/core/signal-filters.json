@@ -23,8 +23,14 @@
     },
     "max_cpm": {
       "type": "number",
-      "description": "Maximum CPM price filter",
+      "description": "Maximum CPM filter. Applies only to signals with model='cpm'.",
       "minimum": 0
+    },
+    "max_percent": {
+      "type": "number",
+      "description": "Maximum percent-of-media rate filter. Signals where all percent_of_media pricing options exceed this value are excluded. Does not account for max_cpm caps.",
+      "minimum": 0,
+      "maximum": 100
     },
     "min_coverage_percentage": {
       "type": "number",

@@ -160,7 +160,7 @@ const exampleData = {
   },
   
   frequencyCap: {
-    "suppress_minutes": 1440
+    "suppress": { "interval": 1, "unit": "days" }
   },
   
   format: {
@@ -168,7 +168,7 @@ const exampleData = {
     "name": "Standard Video - 30 seconds"
   },
   
-  measurement: {
+  outcome_measurement: {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
     "reporting": "weekly_dashboard"
@@ -276,10 +276,11 @@ const exampleData = {
   // Signals examples
   getSignalsRequest: {
     "signal_spec": "High-income households interested in luxury goods",
-    "deliver_to": {
-      "platforms": ["the-trade-desk", "amazon-dsp"],
-      "countries": ["US"]
-    }
+    "destinations": [
+      { "type": "platform", "platform": "the-trade-desk" },
+      { "type": "platform", "platform": "amazon-dsp" }
+    ],
+    "countries": ["US"]
   },
   
   getSignalsResponse: {
@@ -386,11 +387,11 @@ test('Format example validates against schema', () => {
   );
 });
 
-test('Measurement example validates against schema', () => {
+test('Outcome Measurement example validates against schema', () => {
   return validateAgainstSchema(
-    exampleData.measurement, 
-    '/schemas/source/core/measurement.json', 
-    'Measurement example'
+    exampleData.outcome_measurement,
+    '/schemas/source/core/outcome-measurement.json',
+    'Outcome Measurement example'
   );
 });
 

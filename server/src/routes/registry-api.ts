@@ -29,6 +29,7 @@ import {
   PublisherPropertySelectorSchema,
   PropertyIdentifierSchema,
   ErrorSchema,
+  FindCompanyResultSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -39,6 +40,7 @@ import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
 import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
+import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 
@@ -810,6 +812,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  router.get("/brands/find", async (req, res) => {
+    try {
+      const q = (req.query.q as string | undefined)?.trim();
+      if (!q || q.length < 2) {
+        return res.status(400).json({ error: "q parameter required (min 2 characters)" });
+      }
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, 50) : 10;
+      const results = await brandDb.findCompany(q, { limit });
+      return res.json({ results });
+    } catch (error) {
+      logger.error({ error }, "Failed to find company");
+      return res.status(500).json({ error: "Failed to find company" });
+    }
+  });
+
   router.get("/brands/resolve", async (req, res) => {
     try {
       const domain = req.query.domain as string;
@@ -889,18 +907,51 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.get("/brands/enrich", async (req, res) => {
     try {
-      const domain = req.query.domain as string;
-      if (!domain) {
+      const rawDomain = req.query.domain as string;
+      if (!rawDomain) {
         return res.status(400).json({ error: "domain parameter required" });
       }
 
-      const { fetchBrandData, isBrandfetchConfigured } = await import("../services/brandfetch.js");
+      const domain = rawDomain.replace(/^https?:\/\//, '').replace(/[/?#].*$/, '').replace(/\/$/, '').toLowerCase();
+
+      // Return cached enrichment if still fresh (avoids Brandfetch API cost)
+      const existing = await brandDb.getDiscoveredBrandByDomain(domain);
+      if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
+        const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+        if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+          return res.json({ success: true, domain: existing.domain, cached: true, manifest: existing.brand_manifest });
+        }
+      }
+
       if (!isBrandfetchConfigured()) {
         return res.status(503).json({ error: "Brandfetch not configured" });
       }
 
       const enrichment = await fetchBrandData(domain);
-      return res.json(enrichment);
+
+      if (!enrichment.success) {
+        return res.status(404).json({ error: enrichment.error, domain });
+      }
+
+      if (enrichment.manifest) {
+        brandDb.upsertDiscoveredBrand({
+          domain: enrichment.domain,
+          brand_name: enrichment.manifest.name,
+          brand_manifest: {
+            name: enrichment.manifest.name,
+            url: enrichment.manifest.url,
+            description: enrichment.manifest.description,
+            logos: enrichment.manifest.logos,
+            colors: enrichment.manifest.colors,
+            fonts: enrichment.manifest.fonts,
+            ...(enrichment.company ? { company: enrichment.company } : {}),
+          },
+          has_brand_manifest: true,
+          source_type: 'enriched',
+        }).catch((err) => logger.warn({ err, domain }, 'Failed to save enrichment result'));
+      }
+
+      return res.json({ success: true, domain: enrichment.domain, cached: false, manifest: enrichment.manifest, company: enrichment.company });
     } catch (error) {
       logger.error({ error }, "Failed to enrich brand");
       return res.status(500).json({ error: "Failed to enrich brand" });
@@ -1244,7 +1295,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const adagentsJson: Record<string, unknown> = {
-        $schema: "https://adcontextprotocol.org/schemas/v1/adagents.json",
+        $schema: "https://adcontextprotocol.org/schemas/latest/adagents.json",
         authorized_agents,
         properties: properties || [],
       };

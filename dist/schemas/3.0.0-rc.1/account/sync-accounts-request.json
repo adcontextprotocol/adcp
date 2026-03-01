@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/account/sync-accounts-request.json",
+  "title": "Sync Accounts Request",
+  "description": "Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts accordingly, returning per-account status.",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "description": "Advertiser accounts to sync",
+      "items": {
+        "type": "object",
+        "description": "An advertiser account the agent wants to operate on the seller",
+        "properties": {
+          "brand": {
+            "$ref": "/schemas/3.0.0-rc.1/core/brand-ref.json",
+            "description": "Brand reference identifying the advertiser. Uses the brand's house domain and optional brand_id from brand.json."
+          },
+          "operator": {
+            "type": "string",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json.",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "billing": {
+            "type": "string",
+            "enum": [
+              "operator",
+              "agent"
+            ],
+            "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
+          },
+          "sandbox": {
+            "type": "boolean",
+            "description": "When true, provision this as a sandbox account. No real platform calls or billing. Sandbox accounts are identified by account_id in subsequent requests."
+          }
+        },
+        "required": [
+          "brand",
+          "operator",
+          "billing"
+        ],
+        "additionalProperties": true
+      },
+      "maxItems": 1000
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, accounts previously synced by this agent but not included in this request will be deactivated. Scoped to the authenticated agent — does not affect accounts managed by other agents. Use with caution."
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, preview what would change without applying. Returns what would be created/updated/deactivated."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.0.0-rc.1/core/push-notification-config.json",
+      "description": "Webhook for async notifications when account status changes (e.g., pending_approval transitions to active)."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "accounts"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency syncing multiple advertisers with different billing",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator"
+          },
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
+            "billing": "agent"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Brand buying direct",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "billing": "operator"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Agent consolidating billing for all advertisers",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "billing": "agent"
+          },
+          {
+            "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+            "operator": "pinnacle-media.com",
+            "billing": "agent"
+          }
+        ]
+      }
+    }
+  ]
+}

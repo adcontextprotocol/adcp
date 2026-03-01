@@ -24,8 +24,8 @@ addFormats(ajv);
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
   let relativePath;
-  if (uri.startsWith('/schemas/v1/')) {
-    relativePath = uri.replace('/schemas/v1/', '');
+  if (uri.startsWith('/schemas/latest/')) {
+    relativePath = uri.replace('/schemas/latest/', '');
   } else if (uri.startsWith('/schemas/')) {
     relativePath = uri.replace('/schemas/', '');
   } else {

@@ -13,6 +13,8 @@
     "ca_full",
     "de_plz",
     "fr_code_postal",
-    "au_postcode"
+    "au_postcode",
+    "ch_plz",
+    "at_plz"
   ]
 }

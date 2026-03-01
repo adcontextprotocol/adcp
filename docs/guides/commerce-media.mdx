@@ -7,7 +7,7 @@ keywords: [commerce media, retail media, retail media network, sponsored product
 
 Commerce media — advertising within retail and marketplace environments — lets brands reach shoppers at the point of purchase. AdCP's `retail_media` channel handles the full spectrum: sponsored product listings, on-site display, off-site audience extension, premium placements, and in-store digital.
 
-What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
+What makes commerce media unique is **closed-loop attribution**. Retailers know what people buy. When ads run on retailer platforms, every impression can be tied to actual purchases — online and in-store. AdCP models this through `outcome_measurement`, `conversion_tracking`, and `by_action_source` in delivery reporting.
 
 ## Concept Mapping
 
@@ -20,8 +20,8 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 | Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
 | On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
 | Retailer first-party audience | Brief-based; named segments via `data_provider_signals` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
-| ROAS target / max conversions | `optimization_goal` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
-| Closed-loop measurement | `measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
+| ROAS target / max conversions | `optimization_goals` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
+| Closed-loop measurement | `outcome_measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | Attribution window (14d click, 1d view) | `attribution_window` in delivery response | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | ROAS / attributed revenue | `roas`, `conversion_value` in delivery metrics | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
 | In-store attribution | `by_action_source` with `in_store` | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
@@ -29,7 +29,7 @@ What makes commerce media unique is **closed-loop attribution**. Retailers know 
 | Real-time inventory / in-stock | Inventory catalog via `sync_catalogs` | [Catalogs](/docs/creative/catalogs) |
 | Proximity / catchment targeting | Store catchment areas (isochrone, radius, GeoJSON) | [Catalogs — Catchment areas](/docs/creative/catalogs#catchment-areas) |
 
-Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account_id` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
+Each retailer is a separate sales agent. Their media offerings are modeled as products. The buyer's brand identity carries the product catalog for SKU-level creative rendering. Account relationships between brands and retailers are managed via `list_accounts` and `account` on media buys — see [Accounts & Agents](/docs/building/integration/accounts-and-agents).
 
 ## The Product Spectrum
 
@@ -66,15 +66,15 @@ The simplest commerce media product. The retailer renders the creative from the 
     "provider": "Platform Attribution",
     "notes": "Deterministic purchase attribution via transaction data. 14-day lookback."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
-    "window": "14_days",
+    "window": { "interval": 14, "unit": "days" },
     "reporting": "daily_api"
   },
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
     "platform_managed": true
   },
   "creative_policy": {
@@ -94,7 +94,7 @@ The `catalog_types` field declares what catalog types this product supports. The
 Key characteristics:
 - **CPC pricing** with auction-based bidding
 - **`platform_managed: true`** — the retailer provides always-on purchase attribution
-- **`supported_optimization_strategies`** — tells buyers they can set `target_roas` or `maximize_conversions` on packages via `optimization_goal`
+- **`supported_targets`** — tells buyers which target kinds are available when setting `optimization_goals` on packages
 - **`templates_available: true`** — the retailer renders creatives from catalog data
 - **`action_sources`** includes `in_store` for omnichannel attribution
 
@@ -127,10 +127,10 @@ Display and video ads on retailer properties, targeted using retailer first-part
     "provider": "Retailer ad server with IAS viewability",
     "notes": "Impressions per IAB guidelines. MRC-accredited viewability."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   },
   "creative_policy": {
@@ -174,10 +174,10 @@ The retailer uses first-party purchase data to target audiences on third-party i
     "provider": "Self-reported impressions from proprietary ad server",
     "notes": "Impressions counted per IAB guidelines. Viewability via IAS."
   },
-  "measurement": {
+  "outcome_measurement": {
     "type": "incremental_sales_lift",
     "attribution": "deterministic_purchase",
-    "window": "30_days",
+    "window": { "interval": 30, "unit": "days" },
     "reporting": "weekly_dashboard"
   }
 }
@@ -280,10 +280,10 @@ The buyer provides a brand reference that includes their product catalog feed. T
 
 ```json
 {
-  "name": "Kraft Heinz",
-  "url": "https://kraftheinz.com",
+  "name": "Nova Foods",
+  "url": "https://novafoods.example.com",
   "product_catalog": {
-    "feed_url": "https://kraftheinz.com/products.xml",
+    "feed_url": "https://novafoods.example.com/products.xml",
     "feed_format": "google_merchant_center",
     "categories": ["food/sauces", "food/condiments", "beverages"],
     "update_frequency": "daily"
@@ -299,13 +299,13 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
 
 ```json
 {
-  "account_id": "kraft_grocery_acct_001",
+  "account": { "account_id": "acct_novafoods_grocery_001" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
-      "name": "Kraft Heinz Product Catalog",
+      "name": "Nova Foods Product Catalog",
       "type": "product",
-      "url": "https://kraftheinz.com/products.xml",
+      "url": "https://novafoods.example.com/products.xml",
       "feed_format": "google_merchant_center",
       "update_frequency": "daily"
     },
@@ -313,7 +313,7 @@ Before creating media buys, sync the brand's data feeds to the retailer's accoun
       "catalog_id": "inventory-feed",
       "name": "Store-Level Inventory",
       "type": "inventory",
-      "url": "https://feeds.kraftheinz.com/inventory.json",
+      "url": "https://feeds.novafoods.example.com/inventory.json",
       "feed_format": "custom",
       "update_frequency": "hourly"
     }
@@ -326,10 +326,10 @@ The platform ingests each feed:
 - **Inventory feed** — refreshes stock data hourly so creatives can show "In stock nearby"
 
 <Note>
-**Store locations are seller-provided, not buyer-synced.** In retail media, the retailer owns their store locations — Kraft Heinz doesn't sync Walmart's stores to Walmart. The retailer's store catalog (with catchment areas for proximity targeting) is platform-side data that the buyer can reference in targeting. Buyers who operate their own physical locations (e.g., a DTC brand with retail stores, a restaurant chain) would sync their store catalogs to other platforms via `sync_catalogs`.
+**Store locations are seller-provided, not buyer-synced.** In retail media, the retailer owns their store locations — a CPG brand doesn't sync the retailer's stores to the retailer. The retailer's store catalog (with catchment areas for proximity targeting) is platform-side data that the buyer can reference in targeting. Buyers who operate their own physical locations (e.g., a DTC brand with retail stores, a restaurant chain) would sync their store catalogs to other platforms via `sync_catalogs`.
 </Note>
 
-Formats that require synced catalogs declare this via `catalog_requirements` — the buying agent checks these before submitting creatives. A sponsored product carousel might require both a `product` and `inventory` catalog.
+Formats that require synced catalogs declare `catalog` asset types in their `assets` array — the buying agent checks these before submitting creatives. A sponsored product carousel might require both a `product` and `inventory` catalog.
 
 ### Find Products
 
@@ -339,7 +339,7 @@ Query `get_products` with `channels: ["retail_media"]` to find commerce media pr
 {
   "brief": "Promote our organic ketchup line across grocery retailers. Focus on high-intent shoppers.",
   "brand": {
-    "domain": "kraftheinz.com"
+    "domain": "novafoods.example.com"
   },
   "filters": {
     "channels": ["retail_media"]
@@ -373,10 +373,10 @@ A single media buy can span multiple product types and retailers. Each package t
 
 ```json
 {
-  "buyer_ref": "kraft_ketchup_q2",
-  "account_id": "kraft_grocery_acct_001",
+  "buyer_ref": "nova_ketchup_q2",
+  "account": { "account_id": "acct_novafoods_grocery_001" },
   "brand": {
-    "domain": "kraftheinz.com"
+    "domain": "novafoods.example.com"
   },
   "start_time": "2026-04-01T00:00:00Z",
   "end_time": "2026-04-30T23:59:59Z",
@@ -388,11 +388,14 @@ A single media buy can span multiple product types and retailers. Each package t
       "budget": 15000,
       "bid_price": 1.10,
       "pacing": "even",
-      "optimization_goal": {
-        "event_source_id": "grocery_retailer_purchases",
-        "event_type": "purchase",
-        "target_roas": 3.0
-      }
+      "optimization_goals": [{
+        "kind": "event",
+        "event_sources": [
+          { "event_source_id": "grocery_retailer_purchases", "event_type": "purchase", "value_field": "value" }
+        ],
+        "target": { "kind": "per_ad_spend", "value": 3.0 },
+        "priority": 1
+      }]
     },
     {
       "buyer_ref": "onsite_display",
@@ -411,7 +414,7 @@ A single media buy can span multiple product types and retailers. Each package t
 }
 ```
 
-The `account_id` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goal` to tell the retailer to optimize for purchases at a 3x ROAS target. The display and premium packages use standard creative workflows.
+The `account` identifies the brand's billing relationship with this retailer. The sponsored products package uses catalog selectors (`gtins`, `tags`) to specify which items to promote and `optimization_goals` with a `per_ad_spend` target to tell the retailer to optimize for 3x return on purchase value. The display and premium packages use standard creative workflows.
 
 ### Delivery Reporting
 
@@ -425,14 +428,14 @@ Commerce media delivery reports include attribution metrics that traditional med
   },
   "currency": "USD",
   "attribution_window": {
-    "click_window_days": 14,
-    "view_window_days": 1,
+    "post_click": { "interval": 14, "unit": "days" },
+    "post_view": { "interval": 1, "unit": "days" },
     "model": "last_touch"
   },
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_grocery_001",
-      "buyer_ref": "kraft_ketchup_q2",
+      "buyer_ref": "nova_ketchup_q2",
       "status": "active",
       "totals": {
         "impressions": 850000,
@@ -477,13 +480,13 @@ Commerce media's defining advantage is deterministic purchase attribution. Retai
 
 Products signal closed-loop capability through two fields:
 
-**`measurement`** describes the attribution methodology:
+**`outcome_measurement`** describes the attribution methodology:
 ```json
 {
-  "measurement": {
+  "outcome_measurement": {
     "type": "attributed_sales",
     "attribution": "deterministic_purchase",
-    "window": "14_days",
+    "window": { "interval": 14, "unit": "days" },
     "reporting": "daily_api"
   }
 }
@@ -494,7 +497,7 @@ Products signal closed-loop capability through two fields:
 {
   "conversion_tracking": {
     "action_sources": ["website", "app", "in_store"],
-    "supported_optimization_strategies": ["maximize_conversions", "target_roas"],
+    "supported_targets": ["cost_per", "per_ad_spend"],
     "platform_managed": true
   }
 }
@@ -538,7 +541,7 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 1. **Set up accounts early** — use `list_accounts` to confirm your billing relationship with each retailer before placing buys
 2. **Sync product and inventory feeds early** — product and inventory catalogs should be synced to the account before creating buys. Inventory feeds update hourly; product feeds daily.
 3. **Reference retailer store catalogs in targeting** — the retailer's store locations and catchment areas are platform-side data. Use them for proximity targeting without needing to sync your own store catalog.
-4. **Use `optimization_goal`** — set `target_roas` or `target_cpa` on packages to let the retailer optimize delivery against their purchase data
+4. **Use `optimization_goals`** — set event goals with `cost_per` or `per_ad_spend` targets on packages to let the retailer optimize delivery against their purchase data
 5. **Use catalog selectors strategically** — `gtins` for specific products, `tags` or `category` for broad promotions
 6. **Budget across the funnel** — sponsored products for conversion, on-site display for awareness, off-site for reach extension
 7. **Compare attribution windows** — use `attribution_window` in delivery reports to normalize ROAS across retailers with different lookback windows
@@ -546,8 +549,8 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 ### For Retailers
 
 1. **Model product types separately** — sponsored products, on-site display, off-site, and premium placements should be distinct products with appropriate pricing and formats
-2. **Declare `catalog_requirements`** on formats that need product or inventory data — buying agents check these before syncing catalogs
-3. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_optimization_strategies` so buyers know they can set `optimization_goal` on packages
+2. **Declare `catalog` asset types** on formats that need product or inventory data — buying agents check these before syncing catalogs
+3. **Declare `conversion_tracking`** with `platform_managed: true` and list `supported_targets` so buyers know which target kinds are available on packages
 4. **Include `attribution_window`** in delivery responses — buyers comparing across retailers need to know your lookback windows and model
 5. **Report `by_action_source`** to show omnichannel impact — website, app, and in-store conversions
 6. **Return `catalog_match`** on sponsored product listings so buyers can see which GTINs/SKUs are eligible
@@ -563,6 +566,6 @@ Different retailers use different attribution windows (e.g., 14-day click vs. 7-
 - [Catalogs](/docs/creative/catalogs) — Product, inventory, store, and promotion feeds
 - [Brand identity](/docs/brand-protocol/brand-json) — Product catalog and brand identity
 - [Pricing Models](/docs/media-buy/advanced-topics/pricing-models) — CPC, CPM, flat rate details
-- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goal` and conversion optimization
+- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — `optimization_goals` and conversion optimization
 - [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) — Commerce attribution metrics
 - [Targeting](/docs/media-buy/advanced-topics/targeting) — Brief-based targeting approach

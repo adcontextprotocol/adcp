@@ -82,12 +82,13 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 - **Synchronous responses**: Sales agents MAY return completed results immediately
 - **Asynchronous responses**: Sales agents MAY return `status: "submitted"` or `status: "working"` with a task reference
 - **Human-in-the-loop**: Sales agents MAY require manual approval, indicated by `status: "pending_approval"`
+- **Rejection**: Sales agents MAY decline a media buy after creation, indicated by `status: "rejected"`. Orchestrators MUST treat `rejected` as a terminal state.
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
 
 ## Tasks
 
-The Media Buy Protocol defines twelve tasks. See task reference pages for complete request/response schemas and examples.
+The Media Buy Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
 
 ### get_products
 
@@ -98,12 +99,30 @@ The Media Buy Protocol defines twelve tasks. See task reference pages for comple
 Discover advertising inventory using natural language briefs or explicit wholesale intent.
 
 **Requirements:**
-- Orchestrators MUST set `buying_mode` to either `"brief"` or `"wholesale"`
-- Orchestrators SHOULD include a `brief` describing campaign objectives for curated discovery
-- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"`
+- Orchestrators MUST set `buying_mode` to `"brief"`, `"wholesale"`, or `"refine"`
+- Orchestrators MUST include `brief` when `buying_mode` is `"brief"`
+- Orchestrators MUST NOT include `brief` when `buying_mode` is `"wholesale"` or `"refine"`
+- Orchestrators MUST include `refine` when `buying_mode` is `"refine"`
+- Orchestrators MUST NOT include `refine` when `buying_mode` is `"brief"` or `"wholesale"`
+- Orchestrators MUST provide `scope`, `id`, and `action` for each product and proposal entry in `refine`
+- Orchestrators MUST NOT include multiple entries for the same product ID or proposal ID in a single `refine` array
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+
+**Refinement requirements:**
+
+Each `get_products` request with `buying_mode: "refine"` is self-contained — sales agents MUST NOT depend on transport-level session state. The `refine` array and `filters` on each request fully specify the refinement intent. Sellers maintain their own product and proposal registries; "stateless" means the protocol exchange carries no implicit state between calls. This enables stateless implementations and safe retries.
+
+- Sales agents MUST omit products with `action: "omit"` from the response
+- Sales agents MUST omit proposals with `action: "omit"` from the response
+- Sales agents MUST return products with `action: "include"`, with updated pricing
+- Sales agents SHOULD fulfill the `ask` on product entries with `action: "include"`
+- Sales agents SHOULD return additional products similar to those with `action: "more_like_this"`, plus the original product
+- Sales agents SHOULD consider request-level asks (`scope: "request"`) when composing the response — this MAY result in additional products beyond those explicitly referenced. Per-product actions take precedence over request-level direction.
+- Sales agents SHOULD fulfill the `ask` on proposal entries with `action: "include"`
+- Sales agents SHOULD include `refinement_applied` in the response, with one entry per change request matched by position
+- Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
 ### list_creative_formats
 
@@ -152,7 +171,7 @@ Modify an existing media buy's budget, targeting, or settings.
 
 ### sync_catalogs
 
-**Schema**: [`media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-request.json) / [`media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-catalogs-response.json)
+**Schema**: [`media-buy/sync-catalogs-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-request.json) / [`media-buy/sync-catalogs-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-catalogs-response.json)
 
 **Reference**: [`sync_catalogs` task](/docs/media-buy/task-reference/sync_catalogs)
 
@@ -194,7 +213,7 @@ Upload and synchronize creative assets.
 
 ### get_media_buys
 
-**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buys-response.json)
+**Schema**: [`media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-request.json) / [`media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-response.json)
 
 **Reference**: [`get_media_buys` task](/docs/media-buy/task-reference/get_media_buys)
 
@@ -270,6 +289,23 @@ Send conversion or marketing events for attribution and optimization.
 - Sales agents SHOULD report `partial_failures` for individually failed events
 - Sales agents SHOULD return `match_quality` score when user matching is attempted
 
+### sync_audiences
+
+{/* Using latest because sync-audiences schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json) / [`media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-response.json)
+
+**Reference**: [`sync_audiences` task](/docs/media-buy/task-reference/sync_audiences)
+
+Manage first-party CRM audiences on a seller account. Upload hashed customer lists, check matching status, and reference the resulting audiences in targeting overlays.
+
+**Requirements:**
+- Orchestrators MUST include `account_id`
+- Orchestrators MUST include at least one audience with hashed member data
+- Sales agents MUST return per-audience outcomes with matching status
+- Sales agents SHOULD support `push_notification_config` for async matching completion
+- Sales agents MUST accept SHA-256 hashed identifiers for privacy compliance
+
 ## Error Handling
 
 Sales agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
@@ -315,7 +351,7 @@ All Media Buy Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 A conformant Media Buy Protocol sales agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
-2. Implement all eight tasks per their schemas
+2. Implement all tasks per their schemas
 3. Return required fields as defined in response schemas
 4. Use specified error codes
 5. Handle asynchronous operations appropriately
@@ -350,6 +386,8 @@ Sales agents SHOULD support idempotent operations using `buyer_ref`:
 
 - If a `buyer_ref` has been seen before, sales agents SHOULD return the existing resource
 - This enables safe retries without duplicate creation
+
+For mutation tasks (`update_media_buy`, `sync_creatives`), orchestrators MAY include an `idempotency_key` (8-255 characters) for safe retries. If a request fails without a response, resending with the same `idempotency_key` guarantees at-most-once execution.
 
 ### Human-in-the-Loop
 

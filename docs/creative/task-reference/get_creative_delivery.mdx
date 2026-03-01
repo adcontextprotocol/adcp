@@ -14,7 +14,7 @@ At least one scoping filter (`media_buy_ids`, `media_buy_buyer_refs`, or `creati
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | No | Account context for routing and scoping. Limits results to creatives within this account. |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Limits results to creatives within this account. |
 | `media_buy_ids` | string[] | Yes* | Filter to specific media buys by publisher ID |
 | `media_buy_buyer_refs` | string[] | Yes* | Filter to specific media buys by buyer reference ID |
 | `creative_ids` | string[] | Yes* | Filter to specific creatives by ID |

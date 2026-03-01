@@ -11,7 +11,7 @@
     },
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for this package"
+      "description": "Buyer's reference identifier for this package. Sellers SHOULD deduplicate requests with the same buyer_ref within a media buy, returning the existing package rather than creating a duplicate."
     },
     "product_id": {
       "type": "string",
@@ -39,6 +39,20 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Echoed from the create_media_buy request.",
+      "items": {
+        "$ref": "/schemas/core/catalog.json"
+      }
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Format IDs active for this package. Echoed from the create_media_buy request; omitted means all formats for the product are active.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
@@ -56,8 +70,13 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
-    "optimization_goal": {
-      "$ref": "/schemas/core/optimization-goal.json"
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/core/optimization-goal.json"
+      },
+      "minItems": 1
     },
     "paused": {
       "type": "boolean",

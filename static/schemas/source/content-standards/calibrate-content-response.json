@@ -47,9 +47,11 @@
             "required": ["feature_id", "status"]
           }
         },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["verdict"]
@@ -62,9 +64,11 @@
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
         },
-        "verdict": {
-          "not": {},
-          "description": "Field must not be present in error response"
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
         }
       },
       "required": ["errors"]

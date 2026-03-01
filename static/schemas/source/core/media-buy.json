@@ -11,7 +11,7 @@
     },
     "buyer_ref": {
       "type": "string",
-      "description": "Buyer's reference identifier for this media buy"
+      "description": "Buyer's reference identifier for this media buy. Sellers SHOULD deduplicate requests with the same buyer_ref and account, returning the existing media buy rather than creating a duplicate."
     },
     "buyer_campaign_ref": {
       "type": "string",
@@ -23,6 +23,10 @@
     },
     "status": {
       "$ref": "/schemas/enums/media-buy-status.json"
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
     },
     "total_budget": {
       "type": "number",

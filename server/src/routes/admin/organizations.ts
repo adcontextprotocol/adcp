@@ -1,6 +1,6 @@
 /**
- * Organization detail and management routes
- * Handles org details, activities, stakeholders, and engagement signals
+ * Organization API routes
+ * API endpoints for org details, activities, stakeholders, and engagement signals
  */
 
 import { Router } from "express";
@@ -8,7 +8,6 @@ import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase } from "../../db/organization-db.js";
 import { getPendingInvoices } from "../../billing/stripe-client.js";
 
@@ -20,24 +19,10 @@ interface OrganizationRoutesConfig {
 }
 
 export function setupOrganizationRoutes(
-  pageRouter: Router,
   apiRouter: Router,
   config: OrganizationRoutesConfig
 ): void {
   const { workos } = config;
-
-  // Page route for org detail
-  pageRouter.get(
-    "/organizations/:orgId",
-    requireAuth,
-    requireAdmin,
-    (req, res) => {
-      serveHtmlWithConfig(req, res, "admin-org-detail.html").catch((err) => {
-        logger.error({ err }, "Error serving admin org detail page");
-        res.status(500).send("Internal server error");
-      });
-    }
-  );
 
   // GET /api/admin/organizations/:orgId - Get full org details with engagement data
   apiRouter.get(
@@ -55,9 +40,11 @@ export function setupOrganizationRoutes(
           SELECT
             o.*,
             p.name as parent_name,
-            (SELECT COUNT(*) FROM organizations WHERE parent_organization_id = o.workos_organization_id) as subsidiary_count
+            p.email_domain as parent_domain,
+            (SELECT COUNT(*) FROM organizations child JOIN discovered_brands db_child ON child.email_domain = db_child.domain WHERE db_child.house_domain = o.email_domain) as subsidiary_count
           FROM organizations o
-          LEFT JOIN organizations p ON o.parent_organization_id = p.workos_organization_id
+          LEFT JOIN discovered_brands db_parent ON o.email_domain = db_parent.domain
+          LEFT JOIN organizations p ON db_parent.house_domain = p.email_domain
           WHERE o.workos_organization_id = $1
         `,
           [orgId]

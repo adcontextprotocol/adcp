@@ -171,7 +171,7 @@ export async function enhanceProperty(
   // Build a minimal adagents_json for the pending entry.
   // Metadata goes in the ext field for reference.
   const adagentsJson: Record<string, unknown> = {
-    $schema: 'https://adcontextprotocol.org/schemas/v1/adagents.json',
+    $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
     authorized_agents: [],
     properties: [],
     ext: {

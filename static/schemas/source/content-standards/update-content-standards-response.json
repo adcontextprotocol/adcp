@@ -3,27 +3,58 @@
   "$id": "/schemas/content-standards/update-content-standards-response.json",
   "title": "Update Content Standards Response",
   "description": "Response from updating a content standards configuration",
-  "type": "object",
-  "properties": {
-    "standards_id": {
-      "type": "string",
-      "description": "ID of the updated standards configuration"
+  "oneOf": [
+    {
+      "title": "UpdateContentStandardsSuccess",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true,
+          "description": "Indicates the update was applied successfully"
+        },
+        "standards_id": {
+          "type": "string",
+          "description": "ID of the updated standards configuration"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["success", "standards_id"],
+      "additionalProperties": true
     },
-    "errors": {
-      "type": "array",
-      "items": { "$ref": "/schemas/core/error.json" },
-      "description": "Errors that occurred during the update"
-    },
-    "conflicting_standards_id": {
-      "type": "string",
-      "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
+    {
+      "title": "UpdateContentStandardsError",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": false,
+          "description": "Indicates the update failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" },
+          "description": "Errors that occurred during the update",
+          "minItems": 1
+        },
+        "conflicting_standards_id": {
+          "type": "string",
+          "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["success", "errors"],
+      "additionalProperties": true
     }
-  },
-  "additionalProperties": true
+  ]
 }

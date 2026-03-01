@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/transport-mode.json",
+  "title": "Transport Mode",
+  "description": "Transportation modes for isochrone-based catchment area calculations. Determines how travel time translates to geographic reach.",
+  "type": "string",
+  "enum": [
+    "walking",
+    "cycling",
+    "driving",
+    "public_transport"
+  ],
+  "enumDescriptions": {
+    "walking": "Pedestrian travel on walkable paths and sidewalks",
+    "cycling": "Bicycle travel on roads and cycle paths",
+    "driving": "Motor vehicle travel on road networks",
+    "public_transport": "Public transit including bus, rail, metro, and ferry"
+  }
+}

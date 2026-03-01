@@ -22,7 +22,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncEventSourcesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncEventSources({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   event_sources: [
     {
       event_source_id: "website_pixel",
@@ -61,7 +61,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_event_sources(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         event_sources=[{
             'event_source_id': 'website_pixel',
             'name': 'Main Website Pixel',
@@ -88,7 +88,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Yes | Account to configure event sources for |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `event_sources` | [EventSource](/docs/media-buy/conversion-tracking/#event-source)[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed event sources on the account not in this request are removed (default: false) |
 
@@ -138,7 +138,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncEventSourcesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncEventSources({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
 });
 
 if (!result.success) {
@@ -164,7 +164,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_event_sources(
-        account_id='acct_12345'
+        account={'account_id': 'acct_12345'}
     )
 
     if hasattr(result, 'errors') and result.errors:
@@ -189,7 +189,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncEventSourcesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncEventSources({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   event_sources: [
     {
       event_source_id: "web_pixel",
@@ -228,7 +228,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_event_sources(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         event_sources=[
             {
                 'event_source_id': 'web_pixel',
@@ -299,7 +299,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncEventSourcesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncEventSources({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   delete_missing: true,
   event_sources: [
     {
@@ -336,7 +336,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_event_sources(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         delete_missing=True,
         event_sources=[{
             'event_source_id': 'unified_pixel',
@@ -376,7 +376,7 @@ The response includes setup details for each event source. The `setup` object te
 | `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` from account setup |
 | `INVALID_EVENT_TYPE` | Unrecognized event type | Check seller's `supported_event_types` in `get_adcp_capabilities` |
 | `DUPLICATE_EVENT_SOURCE_ID` | Multiple sources with same ID in request | Use unique `event_source_id` values |
-| `RATE_LIMIT_EXCEEDED` | Too many sync requests | Wait and retry with exponential backoff |
+| `RATE_LIMITED` | Too many sync requests | Wait and retry with exponential backoff |
 
 ## Best Practices
 

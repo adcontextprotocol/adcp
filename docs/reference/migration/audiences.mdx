@@ -1,0 +1,131 @@
+---
+title: "Migrating audiences"
+description: Step-by-step guide to migrating AudienceMember identity from uid-type enum to required external_id field
+testable: true
+---
+
+# Migrating audiences
+
+AdCP 3.0 rc.1 promotes `external_id` from a value in the `uid-type` enum to a required top-level field on `AudienceMember`. Every audience member must now have a buyer-assigned stable identifier plus at least one matchable identifier.
+
+## What changed
+
+| beta.3 | rc.1 | Notes |
+|--------|------|-------|
+| `external_id` in uid-type enum | `external_id` required top-level field | Always present on every member |
+| Optional buyer identifier | Required buyer identifier | Used for deduplication and removal |
+| Single identifier model | Dual requirement: `external_id` + matchable ID | At least one of `hashed_email`, `hashed_phone`, or `uids` |
+
+## AudienceMember schema
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/audience-member.json",
+  "external_id": "crm_user_12345",
+  "hashed_email": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "uids": [
+    { "type": "uid2", "value": "uid2_token_abc123" }
+  ]
+}
+```
+
+Two requirements enforced by the schema:
+1. `external_id` is **required** — buyer-assigned stable identifier (CRM record ID, loyalty ID)
+2. At least one matchable identifier — `hashed_email`, `hashed_phone`, or `uids` array
+
+## Before and after
+
+**beta.3 — external_id as a uid-type entry:**
+```json test=false
+{
+  "uids": [
+    { "type": "external_id", "value": "crm_user_12345" },
+    { "type": "uid2", "value": "uid2_token_abc123" }
+  ]
+}
+```
+
+**rc.1 — external_id as required top-level field:**
+```json test=false
+{
+  "external_id": "crm_user_12345",
+  "uids": [
+    { "type": "uid2", "value": "uid2_token_abc123" }
+  ]
+}
+```
+
+## uid-type enum
+
+The `uid-type` enum no longer includes `external_id`. Current values:
+
+| Value | Description |
+|-------|-------------|
+| `rampid` | LiveRamp RampID |
+| `id5` | ID5 universal ID |
+| `uid2` | Unified ID 2.0 |
+| `euid` | European Unified ID |
+| `pairid` | Publisher Addressable Identity (IAB PAIR) |
+| `maid` | Mobile Advertising ID (IDFA/GAID) |
+| `other` | Other universal ID type (specify in `ext`) |
+
+## Why the change
+
+Separating `external_id` from the uid-type enum makes the buyer's stable identifier explicit. It enables:
+- **Deduplication** — Remove duplicate members across syncs by `external_id`
+- **Targeted removal** — Remove specific members without re-uploading the full list
+- **Cross-referencing** — Correlate audience membership with buyer CRM systems
+
+CDPs that don't natively assign IDs can derive one (e.g., hash of the member's identifiers).
+
+## Sync audiences
+
+`sync_audiences` uses delta operations (`add`/`remove`) per audience. Members are identified by `external_id` for removal:
+
+```json test=false
+{
+  "account": { "account_id": "acct_pinnacle" },
+  "audiences": [
+    {
+      "audience_id": "high_value_customers",
+      "name": "High-Value Customers",
+      "add": [
+        {
+          "external_id": "crm_user_12345",
+          "hashed_email": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+        }
+      ],
+      "remove": [
+        {
+          "external_id": "crm_user_99999",
+          "hashed_email": "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Migration steps
+
+<Steps>
+  <Step title="Extract external_id from uids">
+    Move any `{ "type": "external_id", "value": "..." }` entry from the `uids` array to the top-level `external_id` field.
+  </Step>
+  <Step title="Ensure every member has external_id">
+    If members don't have a buyer-assigned ID, derive one (e.g., hash of identifiers). The schema requires `external_id` on every member.
+  </Step>
+  <Step title="Keep at least one matchable identifier">
+    Every member must also have at least one of `hashed_email`, `hashed_phone`, or `uids`. This is enforced by the schema's `anyOf` constraint.
+  </Step>
+  <Step title="Update removal logic">
+    When removing members via `sync_audiences`, use `external_id` as the stable key. The member still needs a matchable identifier in the `remove` array.
+  </Step>
+  <Step title="Validate against schema">
+    Run member objects against `audience-member.json` schema. It enforces both `external_id` (required) and the matchable identifier constraint.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Brand identity](/docs/reference/migration/brand-identity) | [Optimization goals](/docs/reference/migration/optimization-goals) | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)

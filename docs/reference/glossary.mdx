@@ -90,7 +90,7 @@ The availability status of a signal on specific platforms, including activation 
 Size unit representing unique device identifiers (cookies, mobile IDs) - typically the largest reach metric.
 
 **Device Type** (Media Buy Protocol)
-Targeting dimension for platform types: mobile, desktop, tablet, CTV, audio, DOOH.
+Targeting and reporting dimension for device form factors: desktop, mobile, tablet, ctv, dooh, unknown. Complements device platform (operating system) with hardware classification.
 
 **Decisioning Platform**
 Technical infrastructure that selects which ad to serve at impression time. Receives activated signals and executes campaigns. Examples: DSPs (The Trade Desk), SSPs (Index Exchange, OpenX, PubMatic), ad servers (Google Ad Manager, Kevel).
@@ -183,7 +183,7 @@ The AI capability that allows audience discovery through conversational descript
 ## O
 
 **Optimization Goal**
-A package-level setting that tells the seller what to optimize delivery for. For conversion goals (purchases, leads, ROAS), the buyer specifies an event source and event type, with strategies `maximize_conversions` (default), `target_cpa`, or `target_roas`. Delivery goals (clicks, video completions) are implied by the pricing model — CPC optimizes for clicks, CPCV optimizes for completed views — and do not require an event source.
+A single entry in a package's `optimization_goals` array. Two kinds: `kind: "event"` (optimize for advertiser-tracked conversion events via an `event_sources` array of source-type pairs, with optional `cost_per`, `per_ad_spend`, or `maximize_value` target) and `kind: "metric"` (optimize for a seller-native delivery metric — clicks, views, completed views, engagements, attention, etc. — with optional `cost_per` or `threshold_rate` target). Event goals with `per_ad_spend` or `maximize_value` targets require `value_field` on event source entries. When the seller supports `multi_source_event_dedup` (declared in `get_adcp_capabilities`), they deduplicate by `event_id` across sources; otherwise buyers should use a single event source per goal. When multiple goals are present, `priority` (1 = highest) controls which the seller treats as primary.
 
 **Owned Signal**
 First-party signal data belonging to the advertiser or platform.
@@ -303,7 +303,7 @@ Pricing structure based on duration (hourly, daily, or daypart) rather than impr
 ## U
 
 **UID (Universal ID)**
-An already-resolved, privacy-preserving user token from an identity graph. Used for cross-platform user matching. Distinct from [Hashed Identifiers](#hashed-identifier): UIDs are pre-resolved tokens (not raw PII); hashed identifiers are buyer-normalized PII hashed before sending. AdCP supports: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), `pairid` (IAB Tech Lab PAIR), `maid` (Mobile Advertising ID — IDFA/GAID), and `external_id`. UIDs are accepted in audience uploads (`sync_audiences` → `audience_member.uids`) and event attribution (`log_event` → `user_match.uids`). Supported types vary by seller — check `get_adcp_capabilities` → `audience_targeting.supported_uid_types`.
+An already-resolved, privacy-preserving user token from an identity graph. Used for cross-platform user matching. Distinct from [Hashed Identifiers](#hashed-identifier): UIDs are pre-resolved tokens (not raw PII); hashed identifiers are buyer-normalized PII hashed before sending. AdCP supports: `rampid` (LiveRamp RampID), `id5` (ID5), `uid2` (Unified ID 2.0), `euid` (European Unified ID), `pairid` (IAB Tech Lab PAIR), and `maid` (Mobile Advertising ID — IDFA/GAID). UIDs are accepted in audience uploads (`sync_audiences` → `audience_member.uids`) and event attribution (`log_event` → `user_match.uids`). Supported types vary by seller — check `get_adcp_capabilities` → `audience_targeting.supported_uid_types`.
 
 **Universal Commerce Protocol (UCP)**
 An open standard developed by Google with Shopify, Walmart, Target, and others for commerce in AI assistants. UCP defines primitives for checkout, payments, and fulfillment. Along with ACP (Agentic Commerce Protocol), UCP represents the commerce layer that complements AdCP's advertising layer.
@@ -378,6 +378,6 @@ Common error codes across all AdCP implementations:
 - `BUDGET_EXCEEDED`: Operation would exceed allocated budget
 - `CREATIVE_REJECTED`: Creative asset failed platform review
 - `INVALID_PRICING_MODEL`: Requested pricing model unavailable
-- `RATE_LIMIT_EXCEEDED`: Too many requests in time window
+- `RATE_LIMITED`: Too many requests in time window
 - `AUTHENTICATION_FAILED`: Invalid or expired credentials
 - `VALIDATION_ERROR`: Request format or parameter errors

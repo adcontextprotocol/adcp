@@ -1,0 +1,788 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/protocol/get-adcp-capabilities-response.json",
+  "title": "Get AdCP Capabilities Response",
+  "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each domain protocol has its own capability section.",
+  "type": "object",
+  "properties": {
+    "adcp": {
+      "type": "object",
+      "description": "Core AdCP protocol information",
+      "properties": {
+        "major_versions": {
+          "type": "array",
+          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. When multiple versions are listed, the buyer declares its version during the capabilities handshake or via the adcp_version field on requests.",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "major_versions"
+      ]
+    },
+    "supported_protocols": {
+      "type": "array",
+      "description": "Which AdCP domain protocols this seller supports",
+      "items": {
+        "type": "string",
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative"
+        ]
+      },
+      "minItems": 1
+    },
+    "account": {
+      "type": "object",
+      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "properties": {
+        "account_resolution": {
+          "type": "string",
+          "description": "How the seller resolves account references. explicit_account_id: accounts are managed out-of-band (advertiser portal, sales rep) and discovered via list_accounts. implicit_from_sync: buyer declares intent via sync_accounts and the seller provisions accounts.",
+          "enum": ["explicit_account_id", "implicit_from_sync"],
+          "default": "explicit_account_id"
+        },
+        "require_operator_auth": {
+          "type": "boolean",
+          "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
+          "default": false
+        },
+        "authorization_endpoint": {
+          "type": "string",
+          "format": "uri",
+          "description": "OAuth authorization endpoint for obtaining operator-level credentials. Present when the seller supports OAuth for operator authentication. The agent directs the operator to this URL to authenticate and obtain a bearer token. If absent and require_operator_auth is true, operators obtain credentials out-of-band (e.g., seller portal, API key)."
+        },
+        "supported_billing": {
+          "type": "array",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. The buyer must pass one of these values in sync_accounts.",
+          "items": {
+            "type": "string",
+            "enum": ["operator", "agent"]
+          },
+          "minItems": 1
+        },
+        "required_for_products": {
+          "type": "boolean",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "default": false
+        },
+        "account_financials": {
+          "type": "boolean",
+          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
+          "default": false
+        }
+      },
+      "required": ["supported_billing"]
+    },
+    "media_buy": {
+      "type": "object",
+      "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",
+      "properties": {
+        "supported_pricing_models": {
+          "type": "array",
+          "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/pricing-model.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reporting": {
+          "type": "object",
+          "description": "Seller-level reporting capabilities. Summarizes what reporting features are available across the seller's product portfolio. Individual products may vary — check product-level reporting_capabilities for specifics.",
+          "properties": {
+            "supports_date_range": {
+              "type": "boolean",
+              "description": "Whether any products support date range filtering (date_range_support: 'date_range'). When false, all products return lifetime-only data."
+            },
+            "supports_daily_breakdown": {
+              "type": "boolean",
+              "description": "Whether delivery reporting includes daily_breakdown at the media buy and/or package level."
+            },
+            "supports_webhooks": {
+              "type": "boolean",
+              "description": "Whether any products support webhook-based reporting notifications."
+            },
+            "available_dimensions": {
+              "type": "array",
+              "description": "Reporting dimensions available across the seller's portfolio. Individual products may support a subset. Dimensions geo, device_type, device_platform, audience, and placement are opt-in via reporting_dimensions on the delivery request. Dimensions creative, keyword, and catalog_item are included automatically when the seller supports them (not controlled by reporting_dimensions).",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "device_type",
+                  "device_platform",
+                  "audience",
+                  "placement",
+                  "creative",
+                  "keyword",
+                  "catalog_item"
+                ]
+              },
+              "uniqueItems": true
+            }
+          }
+        },
+        "features": {
+          "$ref": "/schemas/3.0.0-rc.1/core/media-buy-features.json"
+        },
+        "execution": {
+          "type": "object",
+          "description": "Technical execution capabilities for media buying",
+          "properties": {
+            "axe_integrations": {
+              "type": "array",
+              "description": "Agentic ad exchange (AXE) integrations supported. URLs are canonical identifiers for exchanges this seller can execute through.",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "creative_specs": {
+              "type": "object",
+              "description": "Creative specification support",
+              "properties": {
+                "vast_versions": {
+                  "type": "array",
+                  "description": "VAST versions supported for video creatives",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  }
+                },
+                "mraid_versions": {
+                  "type": "array",
+                  "description": "MRAID versions supported for rich media mobile creatives",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  }
+                },
+                "vpaid": {
+                  "type": "boolean",
+                  "description": "VPAID support for interactive video ads"
+                },
+                "simid": {
+                  "type": "boolean",
+                  "description": "SIMID support for interactive video ads"
+                }
+              }
+            },
+            "targeting": {
+              "type": "object",
+              "description": "Targeting capabilities. If declared true/supported, buyer can use these targeting parameters and seller MUST honor them.",
+              "properties": {
+                "geo_countries": {
+                  "type": "boolean",
+                  "description": "Supports country-level geo targeting using ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE')"
+                },
+                "geo_regions": {
+                  "type": "boolean",
+                  "description": "Supports region/state-level geo targeting using ISO 3166-2 subdivision codes (e.g., 'US-NY', 'GB-SCT', 'DE-BY')"
+                },
+                "geo_metros": {
+                  "type": "object",
+                  "description": "Metro area targeting support. Specifies which classification systems are supported.",
+                  "properties": {
+                    "nielsen_dma": {
+                      "type": "boolean",
+                      "description": "Supports Nielsen DMA codes (US market, e.g., '501' for NYC)"
+                    },
+                    "uk_itl1": {
+                      "type": "boolean",
+                      "description": "Supports UK ITL Level 1 regions"
+                    },
+                    "uk_itl2": {
+                      "type": "boolean",
+                      "description": "Supports UK ITL Level 2 regions"
+                    },
+                    "eurostat_nuts2": {
+                      "type": "boolean",
+                      "description": "Supports Eurostat NUTS Level 2 regions (EU)"
+                    }
+                  }
+                },
+                "geo_postal_areas": {
+                  "type": "object",
+                  "description": "Postal area targeting support. Specifies which postal code systems are supported. System names encode country and precision.",
+                  "properties": {
+                    "us_zip": {
+                      "type": "boolean",
+                      "description": "US 5-digit ZIP codes (e.g., '10001')"
+                    },
+                    "us_zip_plus_four": {
+                      "type": "boolean",
+                      "description": "US 9-digit ZIP+4 codes (e.g., '10001-1234')"
+                    },
+                    "gb_outward": {
+                      "type": "boolean",
+                      "description": "UK postcode district / outward code (e.g., 'SW1', 'EC1')"
+                    },
+                    "gb_full": {
+                      "type": "boolean",
+                      "description": "UK full postcode (e.g., 'SW1A 1AA')"
+                    },
+                    "ca_fsa": {
+                      "type": "boolean",
+                      "description": "Canadian Forward Sortation Area (e.g., 'K1A')"
+                    },
+                    "ca_full": {
+                      "type": "boolean",
+                      "description": "Canadian full postal code (e.g., 'K1A 0B1')"
+                    },
+                    "de_plz": {
+                      "type": "boolean",
+                      "description": "German Postleitzahl, 5 digits (e.g., '10115')"
+                    },
+                    "fr_code_postal": {
+                      "type": "boolean",
+                      "description": "French code postal, 5 digits (e.g., '75001')"
+                    },
+                    "au_postcode": {
+                      "type": "boolean",
+                      "description": "Australian postcode, 4 digits (e.g., '2000')"
+                    },
+                    "ch_plz": {
+                      "type": "boolean",
+                      "description": "Swiss Postleitzahl, 4 digits (e.g., '8000')"
+                    },
+                    "at_plz": {
+                      "type": "boolean",
+                      "description": "Austrian Postleitzahl, 4 digits (e.g., '1010')"
+                    }
+                  }
+                },
+                "age_restriction": {
+                  "type": "object",
+                  "description": "Age restriction capabilities for compliance (alcohol, gambling)",
+                  "properties": {
+                    "supported": {
+                      "type": "boolean",
+                      "description": "Whether seller supports age restrictions"
+                    },
+                    "verification_methods": {
+                      "type": "array",
+                      "description": "Age verification methods this seller supports",
+                      "items": {
+                        "$ref": "/schemas/3.0.0-rc.1/enums/age-verification-method.json"
+                      }
+                    }
+                  }
+                },
+                "device_platform": {
+                  "type": "boolean",
+                  "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
+                },
+                "device_type": {
+                  "type": "boolean",
+                  "description": "Whether seller supports device type targeting (form factor: desktop, mobile, tablet, ctv, dooh, unknown). When true, seller supports both device_type (include) and device_type_exclude (exclude) in targeting overlays."
+                },
+                "language": {
+                  "type": "boolean",
+                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
+                },
+                "audience_include": {
+                  "type": "boolean",
+                  "description": "Whether seller supports audience_include in targeting overlays (requires features.audience_targeting)"
+                },
+                "audience_exclude": {
+                  "type": "boolean",
+                  "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
+                },
+                "keyword_targets": {
+                  "type": "object",
+                  "description": "Keyword targeting capabilities. Presence indicates support for targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for keyword targets. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
+                },
+                "negative_keywords": {
+                  "type": "object",
+                  "description": "Negative keyword capabilities. Presence indicates support for targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for negative keywords. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
+                },
+                "geo_proximity": {
+                  "type": "object",
+                  "description": "Proximity targeting capabilities from arbitrary coordinates via targeting_overlay.geo_proximity.",
+                  "properties": {
+                    "radius": {
+                      "type": "boolean",
+                      "description": "Whether seller supports simple radius targeting (distance circle from a point)"
+                    },
+                    "travel_time": {
+                      "type": "boolean",
+                      "description": "Whether seller supports travel time isochrone targeting (requires a routing engine)"
+                    },
+                    "geometry": {
+                      "type": "boolean",
+                      "description": "Whether seller supports pre-computed GeoJSON geometry (buyer provides the polygon)"
+                    },
+                    "transport_modes": {
+                      "type": "array",
+                      "description": "Transport modes supported for travel_time isochrones. Only relevant when travel_time is true.",
+                      "items": {
+                        "$ref": "/schemas/3.0.0-rc.1/enums/transport-mode.json"
+                      },
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "audience_targeting": {
+          "type": "object",
+          "description": "Audience targeting capabilities. Only present when features.audience_targeting is true.",
+          "properties": {
+            "supported_identifier_types": {
+              "type": "array",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": ["hashed_email", "hashed_phone"]
+              },
+              "minItems": 1
+            },
+            "supports_platform_customer_id": {
+              "type": "boolean",
+              "description": "Whether the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). When true, buyers can include platform_customer_id values in AudienceMember.identifiers for matching against the seller's identity graph. Reporting on matched platform_customer_ids typically requires a clean room or the seller's own reporting surface."
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending uids with type: maid.",
+              "items": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/uid-type.json"
+              },
+              "minItems": 1
+            },
+            "minimum_audience_size": {
+              "type": "integer",
+              "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
+              "minimum": 1
+            },
+            "matching_latency_hours": {
+              "type": "object",
+              "description": "Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring push_notification_config.",
+              "properties": {
+                "min": { "type": "integer", "minimum": 0 },
+                "max": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["supported_identifier_types", "minimum_audience_size"],
+          "additionalProperties": true
+        },
+        "conversion_tracking": {
+          "type": "object",
+          "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
+          "properties": {
+            "multi_source_event_dedup": {
+              "type": "boolean",
+              "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
+            },
+            "supported_event_types": {
+              "type": "array",
+              "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
+              "items": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_uid_types": {
+              "type": "array",
+              "description": "Universal ID types accepted for user matching",
+              "items": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/uid-type.json"
+              },
+              "minItems": 1
+            },
+            "supported_hashed_identifiers": {
+              "type": "array",
+              "description": "Hashed PII types accepted for user matching. Buyers must hash before sending (SHA-256, normalized).",
+              "items": {
+                "type": "string",
+                "enum": ["hashed_email", "hashed_phone"]
+              },
+              "minItems": 1
+            },
+            "supported_action_sources": {
+              "type": "array",
+              "description": "Action sources this seller accepts events from",
+              "items": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/action-source.json"
+              },
+              "minItems": 1
+            },
+            "attribution_windows": {
+              "type": "array",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via attribution_window on optimization goals.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json",
+                    "description": "Event type this window applies to, or omit for default window"
+                  },
+                  "post_click": {
+                    "type": "array",
+                    "description": "Available post-click attribution windows (e.g. [{\"interval\": 7, \"unit\": \"days\"}])",
+                    "items": {
+                      "$ref": "/schemas/3.0.0-rc.1/core/duration.json"
+                    },
+                    "minItems": 1
+                  },
+                  "post_view": {
+                    "type": "array",
+                    "description": "Available post-view attribution windows (e.g. [{\"interval\": 1, \"unit\": \"days\"}])",
+                    "items": {
+                      "$ref": "/schemas/3.0.0-rc.1/core/duration.json"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "post_click"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "portfolio": {
+          "type": "object",
+          "description": "Information about the seller's media inventory portfolio",
+          "properties": {
+            "publisher_domains": {
+              "type": "array",
+              "description": "Publisher domains this seller is authorized to represent. Buyers should fetch each publisher's adagents.json for property definitions.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "minItems": 1
+            },
+            "primary_channels": {
+              "type": "array",
+              "description": "Primary advertising channels in this portfolio",
+              "items": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/channels.json"
+              }
+            },
+            "primary_countries": {
+              "type": "array",
+              "description": "Primary countries (ISO 3166-1 alpha-2) where inventory is concentrated",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              }
+            },
+            "description": {
+              "type": "string",
+              "description": "Markdown-formatted description of the inventory portfolio",
+              "maxLength": 5000
+            },
+            "advertising_policies": {
+              "type": "string",
+              "description": "Advertising content policies, restrictions, and guidelines",
+              "maxLength": 10000
+            }
+          },
+          "required": [
+            "publisher_domains"
+          ]
+        }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "Signals protocol capabilities. Only present if signals is in supported_protocols.",
+      "properties": {
+        "data_provider_domains": {
+          "type": "array",
+          "description": "Data provider domains this signals agent is authorized to resell. Buyers should fetch each data provider's adagents.json for signal catalog definitions and to verify authorization.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1
+        },
+        "features": {
+          "type": "object",
+          "description": "Optional signals features supported",
+          "properties": {
+            "catalog_signals": {
+              "type": "boolean",
+              "description": "Supports signals from data provider catalogs with structured signal_id references"
+            }
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
+      "properties": {
+        "property_features": {
+          "type": "array",
+          "description": "Property features this governance agent can evaluate. Each feature describes a score, rating, or certification the agent can provide for properties.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Unique identifier for this feature (e.g., 'consent_quality', 'coppa_certified', 'carbon_score')"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
+                "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
+              },
+              "range": {
+                "type": "object",
+                "description": "For quantitative features, the valid range",
+                "properties": {
+                  "min": {
+                    "type": "number",
+                    "description": "Minimum value"
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximum value"
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ]
+              },
+              "categories": {
+                "type": "array",
+                "description": "For categorical features, the valid values",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this feature measures"
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to documentation explaining how this feature is calculated or measured. Helps buyers understand and compare methodologies across vendors."
+              }
+            },
+            "required": [
+              "feature_id",
+              "type"
+            ]
+          }
+        },
+        "creative_features": {
+          "type": "array",
+          "description": "Creative features this governance agent can evaluate. Each feature describes a score, rating, or assessment the agent can provide for creatives (e.g., security scanning, creative quality, content categorization).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "feature_id": {
+                "type": "string",
+                "description": "Unique identifier for this feature (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "binary",
+                  "quantitative",
+                  "categorical"
+                ],
+                "description": "Data type: 'binary' for yes/no, 'quantitative' for numeric scores, 'categorical' for enum values"
+              },
+              "range": {
+                "type": "object",
+                "description": "For quantitative features, the valid range",
+                "properties": {
+                  "min": {
+                    "type": "number",
+                    "description": "Minimum value"
+                  },
+                  "max": {
+                    "type": "number",
+                    "description": "Maximum value"
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ]
+              },
+              "categories": {
+                "type": "array",
+                "description": "For categorical features, the valid values",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this feature measures"
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to documentation explaining how this feature is calculated or measured."
+              }
+            },
+            "required": [
+              "feature_id",
+              "type"
+            ]
+          }
+        }
+      }
+    },
+    "sponsored_intelligence": {
+      "type": "object",
+      "description": "Sponsored Intelligence protocol capabilities. Only present if sponsored_intelligence is in supported_protocols. SI agents handle conversational brand experiences.",
+      "properties": {
+        "endpoint": {
+          "type": "object",
+          "description": "SI agent endpoint configuration",
+          "properties": {
+            "transports": {
+              "type": "array",
+              "description": "Available protocol transports. Hosts select based on their capabilities.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "mcp",
+                      "a2a"
+                    ],
+                    "description": "Protocol transport type"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Agent endpoint URL for this transport"
+                  }
+                },
+                "required": [
+                  "type",
+                  "url"
+                ],
+                "additionalProperties": true
+              },
+              "minItems": 1
+            },
+            "preferred": {
+              "type": "string",
+              "enum": [
+                "mcp",
+                "a2a"
+              ],
+              "description": "Preferred transport when host supports multiple"
+            }
+          },
+          "required": [
+            "transports"
+          ]
+        },
+        "capabilities": {
+          "$ref": "/schemas/3.0.0-rc.1/sponsored-intelligence/si-capabilities.json",
+          "description": "Modalities, components, and commerce capabilities"
+        },
+        "brand_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to brand.json with colors, fonts, logos, tone"
+        }
+      },
+      "required": [
+        "endpoint",
+        "capabilities"
+      ]
+    },
+    "creative": {
+      "type": "object",
+      "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
+      "properties": {
+        "supports_compliance": {
+          "type": "boolean",
+          "description": "When true, this creative agent can process briefs with compliance requirements (required_disclosures, prohibited_claims) and will validate that disclosures can be satisfied by the target format."
+        }
+      },
+      "additionalProperties": true
+    },
+    "extensions_supported": {
+      "type": "array",
+      "description": "Extension namespaces this agent supports. Buyers can expect meaningful data in ext.{namespace} fields on responses from this agent. Extension schemas are published in the AdCP extension registry.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "description": "Extension namespace (lowercase alphanumeric with underscores, e.g., 'scope3', 'garm', 'iab_tcf')"
+      },
+      "uniqueItems": true
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when capabilities were last updated. Buyers can use this for cache invalidation."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "adcp",
+    "supported_protocols"
+  ],
+  "additionalProperties": true
+}

@@ -13,10 +13,6 @@
           "type": "string",
           "description": "Unique identifier for the created standards configuration"
         },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -37,10 +33,6 @@
         "conflicting_standards_id": {
           "type": "string",
           "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
-        },
-        "standards_id": {
-          "not": {},
-          "description": "Field must not be present in error response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

@@ -10,10 +10,11 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 **Purpose**:
 - **AdCP discovery** - Does this agent support AdCP? Which versions?
 - **Protocol support** - Which domain protocols (media_buy, signals, governance, sponsored_intelligence, creative)?
+- **Auth model** - Does this seller trust the agent directly, or must each operator authenticate independently?
 - **Detailed capabilities** - Features, AXE integrations, geo targeting, portfolio
 
-**Request Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-request.json)
-**Response Schema**: [`/schemas/v1/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v1/protocol/get-adcp-capabilities-response.json)
+**Request Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-request.json)
+**Response Schema**: [`/schemas/v3/protocol/get-adcp-capabilities-response.json`](https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json)
 
 ## Tool-Based Discovery
 
@@ -62,6 +63,27 @@ Array of domain protocols this seller supports:
 }
 ```
 
+### account
+
+Account and authentication capabilities. Optional — sellers that don't manage accounts through AdCP may omit it. When present, buyers should read it before calling `sync_accounts` or any authenticated task.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
+| `require_operator_auth` | boolean | Default: `false`. Determines who authenticates to the seller (see below). |
+| `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
+| `account_resolution` | string | How this seller resolves account references in requests. Either `explicit_account_id` (seller-assigned identifier) or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. Default: `explicit_account_id`. |
+| `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
+| `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+
+#### Auth models
+
+**Agent-trusted** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential.
+
+**Operator-scoped** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and calls `sync_accounts` within each session to declare brands. The operator's credential authorizes all calls in that session.
+
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
+
 ### media_buy
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`.
@@ -103,8 +125,26 @@ Technical execution capabilities:
 | `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
+| `device_platform` | boolean | Device platform targeting (Sec-CH-UA-Platform values) |
+| `device_type` | boolean | Device form factor targeting (desktop, mobile, tablet, ctv, dooh) |
+| `language` | boolean | Language targeting (ISO 639-1 codes) |
+| `audience_include` | boolean | Audience inclusion targeting (requires `features.audience_targeting`) |
+| `audience_exclude` | boolean | Audience exclusion targeting (requires `features.audience_targeting`) |
+| `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
+| `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
+| `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. If a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+
+**geo_proximity** specifies which proximity targeting methods are supported:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `radius` | boolean | Simple radius targeting (distance circle from a point) |
+| `travel_time` | boolean | Travel time isochrone targeting (requires a routing engine) |
+| `geometry` | boolean | Pre-computed GeoJSON geometry (buyer provides the polygon) |
+| `transport_modes` | string[] | Transport modes supported for isochrones: `driving`, `walking`, `cycling`, `public_transport` |
 
 **geo_metros** specifies which metro classification systems are supported:
 
@@ -128,6 +168,21 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 | `de_plz` | German Postleitzahl (e.g., `10115`) |
 | `fr_code_postal` | French code postal (e.g., `75001`) |
 | `au_postcode` | Australian postcode (e.g., `2000`) |
+| `ch_plz` | Swiss Postleitzahl (e.g., `8000`) |
+| `at_plz` | Austrian Postleitzahl (e.g., `1010`) |
+
+#### conversion_tracking
+
+Seller-level conversion tracking capabilities. Declares what the seller supports for `kind: "event"` optimization goals.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `multi_source_event_dedup` | boolean | Whether the seller can deduplicate events across multiple event sources within a single goal. When `true`, the same `event_id` from multiple sources counts once. When `false` or absent, buyers should use a single event source per goal. |
+| `supported_event_types` | string[] | Event types this seller can track. If omitted, all standard event types are supported. |
+| `supported_uid_types` | string[] | Universal ID types accepted for user matching. |
+| `supported_hashed_identifiers` | string[] | Hashed PII types accepted (`hashed_email`, `hashed_phone`). Buyers must hash before sending (SHA-256, normalized). |
+| `supported_action_sources` | string[] | Action sources this seller accepts events from. |
+| `attribution_windows` | object[] | Available attribution windows. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via `attribution_window` on optimization goals. |
 
 #### portfolio
 
@@ -144,6 +199,14 @@ Inventory portfolio information:
 ### signals
 
 Signals protocol capabilities. Only present if `signals` is in `supported_protocols`. Reserved for future use.
+
+### creative
+
+Creative protocol capabilities. Only present if `creative` is in `supported_protocols`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
 
 ### governance
 
@@ -425,6 +488,10 @@ const buy = await client.createMediaBuy({
     "major_versions": [1]
   },
   "supported_protocols": ["media_buy"],
+  "account": {
+    "require_operator_auth": false,
+    "supported_billing": ["operator", "agent"]
+  },
   "media_buy": {
     "features": {
       "inline_creative_management": true,
@@ -453,8 +520,27 @@ const buy = await client.createMediaBuy({
           "gb_outward": true,
           "gb_full": false,
           "ca_fsa": true
+        },
+        "device_platform": true,
+        "device_type": true,
+        "language": true,
+        "audience_include": true,
+        "audience_exclude": true,
+        "keyword_targets": {
+          "supported_match_types": ["broad", "phrase", "exact"]
+        },
+        "negative_keywords": {
+          "supported_match_types": ["broad", "exact"]
         }
       }
+    },
+    "conversion_tracking": {
+      "multi_source_event_dedup": false,
+      "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
+      "supported_action_sources": ["website", "app"],
+      "attribution_windows": [
+        { "post_click": [{ "interval": 7, "unit": "days" }, { "interval": 28, "unit": "days" }], "post_view": [{ "interval": 1, "unit": "days" }, { "interval": 7, "unit": "days" }] }
+      ]
     },
     "portfolio": {
       "publisher_domains": ["example.com", "news.example.com"],
@@ -470,10 +556,13 @@ const buy = await client.createMediaBuy({
 This tells buyers:
 - **AdCP versions**: Version 1
 - **Protocols**: Media-buy only (signals not supported)
+- **Auth model**: Agent-trusted (`require_operator_auth: false`) — authenticate once, declare brands via `sync_accounts`
+- **Billing**: Operator or agent billing; default is operator
 - **Country targeting**: Available (ISO 3166-1 alpha-2: `US`, `GB`, etc.)
 - **Region targeting**: Available (ISO 3166-2: `US-NY`, `GB-SCT`, etc.)
 - **Metro targeting**: Nielsen DMA only (US market)
 - **Postal targeting**: US ZIP, UK outward codes, Canadian FSA
+- **Conversion tracking**: Accepts purchase, lead, add_to_cart, view_content events from website/app; no multi-source dedup
 - **Extensions**: Scope3 sustainability data in `ext.scope3`
 
 ### Geo Standards Reference
@@ -533,19 +622,24 @@ Don't send postal areas for a system the seller doesn't support. Don't request f
 **4. Fail Fast on Incompatibility**
 If a seller doesn't support required capabilities, skip them early rather than discovering failures later.
 
-**5. Use Protocol Version for Routing**
+**5. Read the Auth Model Before Proceeding**
+Check `account.require_operator_auth` immediately after discovery. Agent-trusted and operator-scoped flows diverge significantly: the former uses a single credential for all brands and operators, the latter requires per-operator credentials and sessions.
+
+**6. Use Protocol Version for Routing**
 Route requests to appropriate API versions based on `adcp.major_versions`.
 
 ## Next Steps
 
 After discovering capabilities:
 
-1. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
-2. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
-3. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
+1. **Set up accounts**: Follow the auth model from `account.require_operator_auth` — see [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare)
+2. **Filter products**: Use [`get_products`](/docs/media-buy/task-reference/get_products) with capability-aware filters
+3. **Validate properties**: Fetch publisher `adagents.json` files for property definitions
+4. **Create buys**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with supported features
 
 ## Learn More
 
+- [Accounts and Agents](/docs/building/integration/accounts-and-agents) - Auth models, account setup, billing
 - [adagents.json Specification](/docs/governance/property/adagents) - Publisher authorization files
 - [Product Filters](/docs/media-buy/task-reference/get_products#filters) - Capability-aware filtering
 - [Content Standards](/docs/governance/content-standards) - Brand safety configuration

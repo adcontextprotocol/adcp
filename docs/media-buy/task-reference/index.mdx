@@ -12,7 +12,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
-| [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory using natural language briefs | ~60s | Discovery |
+| [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
 | [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
@@ -24,6 +24,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Submit performance signals for optimization | ~1s | Optimization |
 | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Configure event sources for conversion tracking | ~1s | Conversion Tracking |
 | [`log_event`](/docs/media-buy/task-reference/log_event) | Send marketing events for attribution | ~1s | Conversion Tracking |
+| [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) | Upload and manage first-party CRM audiences | Minutes-Days | Audiences |
 
 ## Response Time Categories
 
@@ -38,9 +39,9 @@ AdCP tasks fall into four response time categories:
 - [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) - Event source configuration
 - [`log_event`](/docs/media-buy/task-reference/log_event) - Event ingestion
 
-### 🟡 Processing (~60 seconds)  
+### 🟡 Processing (~60 seconds)
 **AI/LLM inference with backend systems**
-- [`get_products`](/docs/media-buy/task-reference/get_products) - Natural language product discovery
+- [`get_products`](/docs/media-buy/task-reference/get_products) - Natural language product discovery and refinement
 - [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Performance data aggregation
 
 ### 🟠 Asynchronous (Minutes to Days)
@@ -49,8 +50,15 @@ AdCP tasks fall into four response time categories:
 - [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) - Campaign modifications
 - [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) - Catalog feed processing and review
 - [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) - Creative asset processing
+- [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) - Audience matching and processing
 
 ## Task Categories by Workflow
+
+### Account Management
+Before placing media buys, establish a commercial relationship with the seller. These tasks are shared across all vendor protocols and live in the Commerce Protocol section:
+
+- **[`sync_accounts`](/docs/accounts/tasks/sync_accounts)** - Declare brand/operator pairs and billing; seller provisions accounts
+- **[`list_accounts`](/docs/accounts/tasks/list_accounts)** - Check account status and retrieve active `account_id` values
 
 ### Discovery & Planning
 Start here to understand what's available and plan your campaign.
@@ -88,6 +96,11 @@ Configure event sources and send marketing events for attribution.
 
 - **[`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources)** - Configure event sources on seller accounts
 - **[`log_event`](/docs/media-buy/task-reference/log_event)** - Send marketing events for attribution
+
+### Audience Management
+Upload and manage first-party CRM audiences for targeting.
+
+- **[`sync_audiences`](/docs/media-buy/task-reference/sync_audiences)** - Upload hashed customer lists and check matching status
 
 ## Schema Reference
 
@@ -134,12 +147,13 @@ Long-running tasks provide:
 
 1. **Discover Capabilities**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to understand what the agent supports
 2. **Find Inventory**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
-3. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
-4. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
-5. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
-6. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
-7. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
-8. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+3. **Refine Products**: Re-call [`get_products`](/docs/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
+4. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
+5. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
+6. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
+7. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
+8. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
+9. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 
 For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
 

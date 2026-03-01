@@ -1,0 +1,660 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/media-buy/get-media-buy-delivery-response.json",
+  "title": "Get Media Buy Delivery Response",
+  "description": "Response payload for get_media_buy_delivery task",
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted"
+      ],
+      "description": "Type of webhook notification (only present in webhook deliveries): scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data"
+    },
+    "partial_data": {
+      "type": "boolean",
+      "description": "Indicates if any media buys in this webhook have missing/delayed data (only present in webhook deliveries)"
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media buys with reporting_delayed or failed status (only present in webhook deliveries when partial_data is true)"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sequential notification number (only present in webhook deliveries, starts at 1)"
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for next expected notification (only present in webhook deliveries when notification_type is not 'final')"
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "Date range for the report. All periods use UTC timezone.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 start timestamp in UTC (e.g., 2024-02-05T00:00:00Z)"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 end timestamp in UTC (e.g., 2024-02-05T23:59:59Z)"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "attribution_window": {
+      "$ref": "/schemas/3.0.0-rc.1/core/attribution-window.json",
+      "description": "Attribution methodology and lookback windows used for conversion metrics in this response. All media buys from a single seller share the same attribution methodology. Enables cross-platform comparison (e.g., Amazon 14-day click vs. Criteo 30-day click)."
+    },
+    "aggregated_totals": {
+      "type": "object",
+      "description": "Combined metrics across all returned media buys. Only included in API responses (get_media_buy_delivery), not in webhook notifications.",
+      "properties": {
+        "impressions": {
+          "type": "number",
+          "description": "Total impressions delivered across all media buys",
+          "minimum": 0
+        },
+        "spend": {
+          "type": "number",
+          "description": "Total amount spent across all media buys",
+          "minimum": 0
+        },
+        "clicks": {
+          "type": "number",
+          "description": "Total clicks across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "video_completions": {
+          "type": "number",
+          "description": "Total video completions across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "conversions": {
+          "type": "number",
+          "description": "Total conversions across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "conversion_value": {
+          "type": "number",
+          "description": "Total conversion value across all media buys (if applicable)",
+          "minimum": 0
+        },
+        "roas": {
+          "type": "number",
+          "description": "Aggregate return on ad spend across all media buys (total conversion_value / total spend)",
+          "minimum": 0
+        },
+        "new_to_brand_rate": {
+          "type": "number",
+          "description": "Fraction of total conversions across all media buys from first-time brand buyers (weighted by conversion volume, not a simple average of per-buy rates)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_per_acquisition": {
+          "type": "number",
+          "description": "Aggregate cost per conversion across all media buys (total spend / total conversions)",
+          "minimum": 0
+        },
+        "media_buy_count": {
+          "type": "integer",
+          "description": "Number of media buys included in the response",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "impressions",
+        "spend",
+        "media_buy_count"
+      ],
+      "additionalProperties": true
+    },
+    "media_buy_deliveries": {
+      "type": "array",
+      "description": "Array of delivery data for media buys. When used in webhook notifications, may contain multiple media buys aggregated by publisher. When used in get_media_buy_delivery API responses, typically contains requested media buys.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Publisher's media buy identifier"
+          },
+          "buyer_ref": {
+            "type": "string",
+            "description": "Buyer's reference identifier for this media buy"
+          },
+          "buyer_campaign_ref": {
+            "type": "string",
+            "description": "Buyer's campaign reference label from create_media_buy.buyer_campaign_ref. Groups related operations under a single campaign for CRM and ad server correlation; may be absent when not provided at creation time."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_activation`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_activation.",
+            "enum": [
+              "pending_activation",
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled",
+              "failed",
+              "reporting_delayed"
+            ]
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When delayed data is expected to be available (only present when status is reporting_delayed)"
+          },
+          "is_adjusted": {
+            "type": "boolean",
+            "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
+          },
+          "pricing_model": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/pricing-model.json",
+            "description": "Pricing model used for this media buy"
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+              },
+              {
+                "type": "object",
+                "description": "Aggregate metrics for this media buy across all packages",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "description": "Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm', actual cost per completed view for 'cpcv', actual cost per point for 'cpp')",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "spend"
+                ]
+              }
+            ]
+          },
+          "by_package": {
+            "type": "array",
+            "description": "Metrics broken down by package",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Publisher's package identifier"
+                    },
+                    "buyer_ref": {
+                      "type": "string",
+                      "description": "Buyer's reference identifier for this package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
+                      "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "/schemas/3.0.0-rc.1/enums/pricing-model.json",
+                      "description": "The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how the package is billed and which metrics are most relevant for optimization."
+                    },
+                    "rate": {
+                      "type": "number",
+                      "description": "The pricing rate for this package in the specified currency. For fixed-rate pricing, this is the agreed rate (e.g., CPM rate of 12.50 means $12.50 per 1,000 impressions). For auction-based pricing, this represents the effective rate based on actual delivery.",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicates the currency in which the rate and spend values are denominated. Different packages can use different currencies when supported by the publisher.",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "type": "string",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control.",
+                      "enum": [
+                        "delivering",
+                        "completed",
+                        "budget_exhausted",
+                        "flight_ended",
+                        "goal_met"
+                      ]
+                    },
+                    "paused": {
+                      "type": "boolean",
+                      "description": "Whether this package is currently paused by the buyer"
+                    },
+                    "by_catalog_item": {
+                      "type": "array",
+                      "description": "Delivery by catalog item within this package. Available for catalog-driven packages when the seller supports item-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "content_id": {
+                                "type": "string",
+                                "description": "Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)"
+                              },
+                              "content_id_type": {
+                                "$ref": "/schemas/3.0.0-rc.1/enums/content-id-type.json",
+                                "description": "Identifier type for this content_id"
+                              }
+                            },
+                            "required": [
+                              "content_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_creative": {
+                      "type": "array",
+                      "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "creative_id": {
+                                "type": "string",
+                                "description": "Creative identifier matching the creative assignment"
+                              },
+                              "weight": {
+                                "type": "number",
+                                "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
+                                "minimum": 0,
+                                "maximum": 100
+                              }
+                            },
+                            "required": [
+                              "creative_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_keyword": {
+                      "type": "array",
+                      "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "keyword": {
+                                "type": "string",
+                                "description": "The targeted keyword"
+                              },
+                              "match_type": {
+                                "type": "string",
+                                "enum": ["broad", "phrase", "exact"],
+                                "description": "Match type for this keyword"
+                              }
+                            },
+                            "required": [
+                              "keyword",
+                              "match_type",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_geo": {
+                      "type": "array",
+                      "description": "Delivery by geographic area within this package. Available when the buyer requests geo breakdown via reporting_dimensions and the seller supports it. Each dimension's rows are independent slices that should sum to the package total.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "geo_level": {
+                                "$ref": "/schemas/3.0.0-rc.1/enums/geo-level.json",
+                                "description": "Geographic level of this entry (country, region, metro, postal_area)"
+                              },
+                              "system": {
+                                "type": "string",
+                                "description": "Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_zip'). Present when geo_level is 'metro' or 'postal_area'."
+                              },
+                              "geo_code": {
+                                "type": "string",
+                                "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+                              },
+                              "geo_name": {
+                                "type": "string",
+                                "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')"
+                              }
+                            },
+                            "required": [
+                              "geo_level",
+                              "geo_code",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_geo_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_geo is present (false means the list is complete)."
+                    },
+                    "by_device_type": {
+                      "type": "array",
+                      "description": "Delivery by device form factor within this package. Available when the buyer requests device_type breakdown via reporting_dimensions and the seller supports it.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "device_type": {
+                                "$ref": "/schemas/3.0.0-rc.1/enums/device-type.json",
+                                "description": "Device form factor (desktop, mobile, tablet, ctv, dooh, unknown)"
+                              }
+                            },
+                            "required": [
+                              "device_type",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_device_type_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_device_type was truncated. Sellers MUST return this flag whenever by_device_type is present (false means the list is complete)."
+                    },
+                    "by_device_platform": {
+                      "type": "array",
+                      "description": "Delivery by operating system within this package. Available when the buyer requests device_platform breakdown via reporting_dimensions and the seller supports it. Useful for CTV campaigns where tvOS vs Roku OS vs Fire OS matters.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "device_platform": {
+                                "$ref": "/schemas/3.0.0-rc.1/enums/device-platform.json",
+                                "description": "Operating system platform"
+                              }
+                            },
+                            "required": [
+                              "device_platform",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_device_platform_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_device_platform was truncated. Sellers MUST return this flag whenever by_device_platform is present (false means the list is complete)."
+                    },
+                    "by_audience": {
+                      "type": "array",
+                      "description": "Delivery by audience segment within this package. Available when the buyer requests audience breakdown via reporting_dimensions and the seller supports it. Only 'synced' audiences are directly targetable via the targeting overlay; other sources are informational.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "audience_id": {
+                                "type": "string",
+                                "description": "Audience segment identifier. For 'synced' source, matches audience_id from sync_audiences. For other sources, seller-defined."
+                              },
+                              "audience_source": {
+                                "$ref": "/schemas/3.0.0-rc.1/enums/audience-source.json",
+                                "description": "Origin of the audience segment (synced, platform, third_party, lookalike, retargeting, unknown)"
+                              },
+                              "audience_name": {
+                                "type": "string",
+                                "description": "Human-readable audience segment name"
+                              }
+                            },
+                            "required": [
+                              "audience_id",
+                              "audience_source",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_audience_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
+                    },
+                    "by_placement": {
+                      "type": "array",
+                      "description": "Delivery by placement within this package. Available when the buyer requests placement breakdown via reporting_dimensions and the seller supports it. Placement IDs reference the product's placements array.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/3.0.0-rc.1/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "placement_id": {
+                                "type": "string",
+                                "description": "Placement identifier from the product's placements array"
+                              },
+                              "placement_name": {
+                                "type": "string",
+                                "description": "Human-readable placement name"
+                              }
+                            },
+                            "required": [
+                              "placement_id",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_placement_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
+                    },
+                    "daily_breakdown": {
+                      "type": "array",
+                      "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string",
+                            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                            "description": "Date (YYYY-MM-DD)"
+                          },
+                          "impressions": {
+                            "type": "number",
+                            "description": "Daily impressions for this package",
+                            "minimum": 0
+                          },
+                          "spend": {
+                            "type": "number",
+                            "description": "Daily spend for this package",
+                            "minimum": 0
+                          },
+                          "conversions": {
+                            "type": "number",
+                            "description": "Daily conversions for this package",
+                            "minimum": 0
+                          },
+                          "conversion_value": {
+                            "type": "number",
+                            "description": "Daily conversion value for this package",
+                            "minimum": 0
+                          },
+                          "roas": {
+                            "type": "number",
+                            "description": "Daily return on ad spend (conversion_value / spend)",
+                            "minimum": 0
+                          },
+                          "new_to_brand_rate": {
+                            "type": "number",
+                            "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+                            "minimum": 0,
+                            "maximum": 1
+                          }
+                        },
+                        "required": [
+                          "date",
+                          "impressions",
+                          "spend"
+                        ],
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "required": [
+                    "package_id",
+                    "spend",
+                    "pricing_model",
+                    "rate",
+                    "currency"
+                  ]
+                }
+              ]
+            }
+          },
+          "daily_breakdown": {
+            "type": "array",
+            "description": "Day-by-day delivery",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "description": "Date (YYYY-MM-DD)"
+                },
+                "impressions": {
+                  "type": "number",
+                  "description": "Daily impressions",
+                  "minimum": 0
+                },
+                "spend": {
+                  "type": "number",
+                  "description": "Daily spend",
+                  "minimum": 0
+                },
+                "conversions": {
+                  "type": "number",
+                  "description": "Daily conversions",
+                  "minimum": 0
+                },
+                "conversion_value": {
+                  "type": "number",
+                  "description": "Daily conversion value",
+                  "minimum": 0
+                },
+                "roas": {
+                  "type": "number",
+                  "description": "Daily return on ad spend (conversion_value / spend)",
+                  "minimum": 0
+                },
+                "new_to_brand_rate": {
+                  "type": "number",
+                  "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "date",
+                "impressions",
+                "spend"
+              ],
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., missing delivery data, reporting platform issues)",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "reporting_period",
+    "currency",
+    "media_buy_deliveries"
+  ],
+  "additionalProperties": true
+}

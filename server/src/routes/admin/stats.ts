@@ -13,7 +13,7 @@
 import { Router } from "express";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-db.js";
 import { MemberDatabase } from "../../db/member-db.js";
 import {
@@ -628,7 +628,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
 
   // GET /api/admin/membership-metrics - Get membership metrics by company_type × revenue_tier
   // Returns current snapshot using existing category dimensions
-  apiRouter.get("/membership-metrics", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/membership-metrics", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
 

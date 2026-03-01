@@ -21,7 +21,7 @@ describe('BrandManager caching', () => {
   describe('validateDomain caching', () => {
     it('caches successful validation results', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'acme.com',
@@ -74,7 +74,7 @@ describe('BrandManager caching', () => {
 
     it('bypasses cache with skipCache option', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'fresh.com',
@@ -107,7 +107,7 @@ describe('BrandManager caching', () => {
   describe('UTF-8 encoding', () => {
     it('preserves non-ASCII characters from brand.json', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'marabou.se',
@@ -142,7 +142,7 @@ describe('BrandManager caching', () => {
   describe('resolveBrand caching', () => {
     it('caches brand resolution results', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'example.com',
@@ -197,7 +197,7 @@ describe('BrandManager caching', () => {
 
     it('bypasses cache with skipCache option', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'bypass.com',
@@ -231,7 +231,7 @@ describe('BrandManager caching', () => {
   describe('cache management', () => {
     it('getCacheStats returns correct counts', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'stats.com',
@@ -270,7 +270,7 @@ describe('BrandManager caching', () => {
 
     it('clearCache clears all caches', async () => {
       const mockBrandJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v1/brand.json',
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
         version: '1.0',
         house: {
           domain: 'clear.com',

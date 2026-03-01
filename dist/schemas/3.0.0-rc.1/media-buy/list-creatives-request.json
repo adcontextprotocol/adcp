@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/media-buy/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
+  "type": "object",
+  "properties": {
+    "filters": {
+      "$ref": "/schemas/3.0.0-rc.1/core/creative-filters.json"
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "$ref": "/schemas/3.0.0-rc.1/enums/creative-sort-field.json",
+          "default": "created_date",
+          "description": "Field to sort by"
+        },
+        "direction": {
+          "$ref": "/schemas/3.0.0-rc.1/enums/sort-direction.json",
+          "default": "desc",
+          "description": "Sort direction"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.1/core/pagination-request.json"
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_performance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include aggregated performance metrics in response"
+    },
+    "include_sub_assets": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include sub-assets (for carousel/native formats) in response"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields)",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "performance",
+          "sub_assets"
+        ]
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved video creatives",
+      "data": {
+        "filters": {
+          "format": "video",
+          "status": "approved"
+        }
+      }
+    },
+    {
+      "description": "Search for Nike creatives with performance data",
+      "data": {
+        "filters": {
+          "name_contains": "nike",
+          "has_performance_data": true
+        },
+        "include_performance": true
+      }
+    },
+    {
+      "description": "Get unassigned creatives for assignment",
+      "data": {
+        "filters": {
+          "unassigned": true
+        },
+        "sort": {
+          "field": "created_date",
+          "direction": "desc"
+        },
+        "pagination": {
+          "max_results": 20
+        }
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    }
+  ]
+}

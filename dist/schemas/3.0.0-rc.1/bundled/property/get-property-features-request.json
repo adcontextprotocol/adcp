@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/property/get-property-features-request.json",
+  "title": "Get Property Features Request",
+  "description": "Request payload for get_property_features task. Retrieves feature values for properties from a governance agent. Supports two modes: explicit property list OR publisher-based discovery.",
+  "type": "object",
+  "properties": {
+    "properties": {
+      "type": "array",
+      "description": "Explicit list of properties to get features for. Can be domain strings or structured property references. Use this when you know exactly which properties you want.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Domain string (e.g., 'example.com')"
+          },
+          {
+            "title": "Property ID",
+            "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "examples": [
+              "cnn_ctv_app",
+              "homepage",
+              "mobile_ios",
+              "instagram"
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "publisher_domain": {
+      "type": "string",
+      "description": "Publisher domain to discover properties for. Use this to get features for all properties belonging to a publisher. Can be combined with property_types and property_tags for filtering."
+    },
+    "property_types": {
+      "type": "array",
+      "description": "Filter to specific property types (e.g., 'website', 'mobile_app', 'ctv_app'). Only applies when using publisher_domain.",
+      "items": {
+        "title": "Property Type",
+        "description": "Types of addressable advertising properties with verifiable ownership. Property types are a subset of media channels - they represent inventory surfaces that can be validated via adagents.json.",
+        "type": "string",
+        "enum": [
+          "website",
+          "mobile_app",
+          "ctv_app",
+          "desktop_app",
+          "dooh",
+          "podcast",
+          "radio",
+          "streaming_audio"
+        ],
+        "enumDescriptions": {
+          "website": "Web properties accessible via browser, identified by domain",
+          "mobile_app": "Native mobile applications, identified by app store IDs or bundle identifiers",
+          "ctv_app": "Connected TV applications, identified by platform-specific store IDs",
+          "desktop_app": "Desktop applications (Electron, native, Chromium wrappers), identified by application bundle IDs",
+          "dooh": "Digital out-of-home screen networks, identified by network/venue IDs",
+          "podcast": "Podcast feeds and episodes, identified by RSS feed URLs or podcast IDs",
+          "radio": "Radio station properties, identified by call signs or station IDs",
+          "streaming_audio": "Digital audio streaming properties, identified by platform-specific IDs"
+        }
+      },
+      "minItems": 1
+    },
+    "property_tags": {
+      "type": "array",
+      "description": "Filter to properties with these tags. Only applies when using publisher_domain.",
+      "items": {
+        "title": "Property Tag",
+        "description": "Tag for categorizing publisher properties. Must be lowercase alphanumeric with underscores only.",
+        "type": "string",
+        "pattern": "^[a-z0-9_]+$",
+        "examples": [
+          "ctv",
+          "premium",
+          "news",
+          "sports",
+          "meta_network",
+          "social_media"
+        ]
+      },
+      "minItems": 1
+    },
+    "feature_ids": {
+      "type": "array",
+      "description": "Optional filter to specific features. If omitted, returns all available features.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "properties"
+      ],
+      "description": "Explicit property list mode"
+    },
+    {
+      "required": [
+        "publisher_domain"
+      ],
+      "description": "Publisher discovery mode"
+    }
+  ],
+  "additionalProperties": false,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.691Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both to refine previous results (signal_ids anchor the starting set, signal_spec guides adjustments).",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.1/core/account-ref.json",
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's campaign reference. Used to correlate signal discovery with subsequent report_usage calls."
+    },
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's catalog. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/signal-id.json"
+      },
+      "minItems": 1
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, no geographic filter is applied.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.0-rc.1/core/signal-filters.json"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.1/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "signal_spec"
+      ]
+    },
+    {
+      "required": [
+        "signal_ids"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

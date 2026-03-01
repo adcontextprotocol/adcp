@@ -37,7 +37,7 @@ export const COMPANY_TYPES = {
   other: {
     value: 'other',
     label: 'Other',
-    description: 'Other industry participants',
+    description: 'Commerce media, retail media, consulting, CTV/streaming platforms, and other digital advertising ecosystem participants',
   },
 } as const;
 

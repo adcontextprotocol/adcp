@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/get-creative-features-response.json",
   "title": "Get Creative Features Response",
-  "description": "Response payload for get_creative_features task. Returns feature values for the evaluated creative.",
+  "description": "Response payload for the get_creative_features task. Returns scored feature values from the governance agent's evaluation of the submitted creative manifest.",
   "type": "object",
   "oneOf": [
     {
@@ -21,10 +21,6 @@
           "format": "uri",
           "description": "URL to the vendor's full assessment report. The vendor controls what information is disclosed and access control."
         },
-        "errors": {
-          "not": {},
-          "description": "Field must not be present in success response"
-        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -41,10 +37,6 @@
         "errors": {
           "type": "array",
           "items": { "$ref": "/schemas/core/error.json" }
-        },
-        "results": {
-          "not": {},
-          "description": "Field must not be present in error response"
         },
         "context": {
           "$ref": "/schemas/core/context.json"

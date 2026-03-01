@@ -5,9 +5,9 @@
   "description": "Request parameters for managing CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends new members, remove drops existing ones. Recommend no more than 100,000 members per call; for larger lists, chunk and call incrementally using add/remove deltas. When delete_missing is true, buyer-managed audiences on the account not in this request are removed — do not combine with omitted audiences or all buyer-managed audiences will be deleted. When audiences is omitted, the call is discovery-only: it returns all audiences on the account without modification.",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Account to manage audiences for"
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account to manage audiences for."
     },
     "audiences": {
       "type": "array",
@@ -23,6 +23,24 @@
           "name": {
             "type": "string",
             "description": "Human-readable name for this audience"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of this audience's composition or purpose (e.g., 'High-value customers who purchased in the last 90 days')."
+          },
+          "audience_type": {
+            "type": "string",
+            "enum": ["crm", "suppression", "lookalike_seed"],
+            "description": "Intended use for this audience. 'crm': target these users. 'suppression': exclude these users from delivery. 'lookalike_seed': use as a seed for the seller's lookalike modeling. Sellers may handle audiences differently based on type (e.g., suppression lists bypass minimum size requirements on some platforms)."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Buyer-defined tags for organizing and filtering audiences (e.g., 'holiday_2026', 'high_ltv'). Tags are stored by the seller and returned in discovery-only calls.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
           },
           "add": {
             "type": "array",
@@ -45,8 +63,7 @@
             "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
           },
           "consent_basis": {
-            "type": "string",
-            "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"],
+            "$ref": "/schemas/enums/consent-basis.json",
             "description": "GDPR lawful basis for processing this audience list. Informational — not validated by the protocol, but required by some sellers operating in regulated markets (e.g. EU). When omitted, the buyer asserts they have a lawful basis appropriate to their jurisdiction."
           }
         },
@@ -66,14 +83,13 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["account_id"],
+  "required": ["account"],
   "if": {
     "properties": { "delete_missing": { "const": true } },
     "required": ["delete_missing"]
   },
   "then": {
-    "required": ["audiences"],
-    "errorMessage": "audiences is required when delete_missing is true — omitting it would delete all buyer-managed audiences on the account"
+    "required": ["audiences"]
   },
   "additionalProperties": true
 }

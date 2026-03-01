@@ -10,8 +10,8 @@ Audiences are distinct from [signals](/docs/signals/): signals are third-party d
 
 **Response Time**: Upload accepted in ~1–2s. The task remains active until matching completes (1–48 hours depending on the seller). Configure `push_notification_config` to receive a webhook when the audience is ready.
 
-**Request Schema**: [`/schemas/v2/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-request.json)
-**Response Schema**: [`/schemas/v2/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-audiences-response.json)
+**Request Schema**: [`/schemas/latest/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-response.json)
 
 ## Quick Start
 
@@ -31,14 +31,14 @@ const hashPhone = (e164Phone) =>
   createHash("sha256").update(e164Phone).digest("hex");
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "existing_customers",
       name: "Existing customers",
       add: [
-        { hashed_email: hashEmail("alice@example.com") },
-        { hashed_email: hashEmail("bob@example.com"), hashed_phone: hashPhone("+12065551234") },
+        { external_id: "crm_1001", hashed_email: hashEmail("alice@example.com") },
+        { external_id: "crm_1002", hashed_email: hashEmail("bob@example.com"), hashed_phone: hashPhone("+12065551234") },
       ],
     },
   ],
@@ -77,13 +77,13 @@ def hash_phone(e164_phone: str) -> str:
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'existing_customers',
             'name': 'Existing customers',
             'add': [
-                {'hashed_email': hash_email('alice@example.com')},
-                {'hashed_email': hash_email('bob@example.com'), 'hashed_phone': hash_phone('+12065551234')},
+                {'external_id': 'crm_1001', 'hashed_email': hash_email('alice@example.com')},
+                {'external_id': 'crm_1002', 'hashed_email': hash_email('bob@example.com'), 'hashed_phone': hash_phone('+12065551234')},
             ]
         }]
     )
@@ -106,7 +106,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account_id` | string | Yes | Account to manage audiences for |
+| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
 
@@ -123,10 +123,11 @@ asyncio.run(main())
 
 ### Audience Member
 
-At least one identifier is required. Hash all values with SHA-256 before sending — normalize emails to lowercase+trim, phone numbers to E.164 format (e.g. `+12065551234`).
+Every member requires an `external_id` (buyer-assigned stable identifier) plus at least one matchable identifier. Hash all values with SHA-256 before sending — normalize emails to lowercase+trim, phone numbers to E.164 format (e.g. `+12065551234`).
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `external_id` | string | **Required.** Buyer-assigned stable identifier for this member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. |
 | `hashed_email` | string | SHA-256 hash of lowercase, trimmed email (64-char hex) |
 | `hashed_phone` | string | SHA-256 hash of E.164-formatted phone number (64-char hex) |
 | `uids` | UID[] | Universal IDs: `type` (rampid, uid2, maid, etc.) + `value` |
@@ -176,7 +177,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAudiencesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
 });
 
 if (!result.success) {
@@ -201,7 +202,7 @@ import asyncio
 from adcp.testing import test_agent
 
 async def main():
-    result = await test_agent.simple.sync_audiences(account_id='acct_12345')
+    result = await test_agent.simple.sync_audiences(account={'account_id': 'acct_12345'})
 
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Operation failed: {result.errors}")
@@ -236,7 +237,7 @@ const existingCustomers = [
 ];
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "existing_customers",
@@ -278,7 +279,7 @@ async def main():
     ]
 
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'existing_customers',
             'name': 'Existing customers — suppression',
@@ -313,7 +314,7 @@ const hashEmail = (email) =>
   createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     {
       audience_id: "lapsed_subscribers",
@@ -351,7 +352,7 @@ def hash_email(email: str) -> str:
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{
             'audience_id': 'lapsed_subscribers',
             'name': 'Lapsed subscribers',
@@ -382,7 +383,7 @@ import { testAgent } from "@adcp/client/testing";
 import { SyncAudiencesResponseSchema } from "@adcp/client";
 
 const result = await testAgent.syncAudiences({
-  account_id: "acct_12345",
+  account: { account_id: "acct_12345" },
   audiences: [
     { audience_id: "old_campaign_list", delete: true },
   ],
@@ -406,7 +407,7 @@ from adcp.testing import test_agent
 
 async def main():
     result = await test_agent.simple.sync_audiences(
-        account_id='acct_12345',
+        account={'account_id': 'acct_12345'},
         audiences=[{'audience_id': 'old_campaign_list', 'delete': True}]
     )
 
@@ -501,7 +502,7 @@ All PII is hashed by the buyer before transmission — the protocol never carrie
 | `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` |
 | `AUDIENCE_NOT_FOUND` | Audience to remove from doesn't exist | Check `audience_id` or omit `remove` |
 | `INVALID_HASH_FORMAT` | Identifier doesn't match expected hash format | Verify SHA-256 hex encoding (64 chars, lowercase) |
-| `RATE_LIMIT_EXCEEDED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
+| `RATE_LIMITED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
 
 ## Next Steps
 

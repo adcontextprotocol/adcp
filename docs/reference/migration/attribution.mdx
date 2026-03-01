@@ -1,0 +1,99 @@
+---
+title: "Migrating attribution windows"
+description: Step-by-step guide to migrating attribution window fields from v2 integer-based windows to v3 structured Duration objects
+testable: true
+---
+
+# Migrating attribution windows
+
+AdCP 3.0 renames attribution window fields and replaces integer day counts with structured `Duration` objects. An attribution `model` field is now required.
+
+## What changed
+
+| v2 field | v3 field | Change type |
+|----------|----------|-------------|
+| `click_window_days` (integer) | `post_click` (Duration) | Renamed + type changed |
+| `view_window_days` (integer) | `post_view` (Duration) | Renamed + type changed |
+| `model` (required) | `model` (required) | Unchanged |
+
+---
+
+## Attribution window object
+
+### Before (v2)
+
+```json
+{
+  "attribution_window": {
+    "click_window_days": 7,
+    "view_window_days": 1,
+    "model": "last_touch"
+  }
+}
+```
+
+### After (v3)
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/attribution-window.json",
+  "post_click": {
+    "interval": 7,
+    "unit": "days"
+  },
+  "post_view": {
+    "interval": 1,
+    "unit": "days"
+  },
+  "model": "last_touch"
+}
+```
+
+Key differences:
+
+- **Field renames** — `click_window_days` → `post_click`, `view_window_days` → `post_view`. The new names describe the user action that starts the lookback window.
+- **Structured Duration** — Time windows are `{ interval, unit }` objects instead of integer day counts. This enables sub-day granularity (`minutes`, `hours`) and campaign-scoped windows.
+- **Attribution model** — Required in both v2 and v3. No change needed.
+
+---
+
+## Duration object
+
+The `Duration` type is shared across frequency caps, attribution windows, and other time-based settings.
+
+```json
+{
+  "interval": 30,
+  "unit": "minutes"
+}
+```
+
+| Unit | Meaning |
+|------|---------|
+| `minutes` | Clock minutes |
+| `hours` | Clock hours |
+| `days` | Calendar days |
+| `campaign` | Full campaign flight (interval must be `1`) |
+
+---
+
+## Migration steps
+
+<Steps>
+  <Step title="Rename attribution fields">
+    Replace `click_window_days` with `post_click` and `view_window_days` with `post_view` in all attribution window objects.
+  </Step>
+  <Step title="Convert integer days to Duration objects">
+    Replace integer day counts (e.g., `7`) with structured Duration objects (e.g., `{ "interval": 7, "unit": "days" }`).
+  </Step>
+  <Step title="Update frequency cap windows">
+    Frequency caps have a similar migration. v2 used `suppress_minutes` (integer). v3 uses `suppress` (Duration object) and adds `max_impressions` with a `window` (Duration). Convert `suppress_minutes: 30` to `suppress: { "interval": 30, "unit": "minutes" }`.
+  </Step>
+  <Step title="Validate against v3 schemas">
+    Ensure attribution window objects validate against the `attribution-window.json` schema.
+  </Step>
+</Steps>
+
+---
+
+**Related:** [Channels](/docs/reference/migration/channels) | [Pricing](/docs/reference/migration/pricing) | [Geo targeting](/docs/reference/migration/geo-targeting) | [Creatives](/docs/reference/migration/creatives) | [Catalogs](/docs/reference/migration/catalogs) | [AdCP 3.0 overview](/docs/reference/whats-new-in-v3)

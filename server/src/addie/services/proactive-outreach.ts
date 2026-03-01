@@ -189,14 +189,16 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
   // Get company info and membership status if user is mapped
   let company: PlannerContext['company'] | undefined;
   let isMember = false;
+  let isAddieProspect = false;
   if (candidate.workos_user_id) {
     const orgResult = await query<{
       name: string;
       company_types: string[] | null;
       subscription_status: string | null;
       persona: string | null;
+      prospect_owner: string | null;
     }>(
-      `SELECT o.name, o.company_types, o.subscription_status, o.persona
+      `SELECT o.name, o.company_types, o.subscription_status, o.persona, o.prospect_owner
        FROM organization_memberships om
        JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
        WHERE om.workos_user_id = $1
@@ -214,6 +216,39 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
         persona: org.persona ?? undefined,
       };
       isMember = org.subscription_status === 'active';
+      isAddieProspect = org.prospect_owner === 'addie';
+    }
+  }
+
+  // For unmapped users, check if their email domain matches an Addie-owned prospect
+  if (!company && candidate.slack_email) {
+    const domain = candidate.slack_email.split('@')[1];
+    if (domain) {
+      const prospectResult = await query<{
+        name: string;
+        company_types: string[] | null;
+        prospect_owner: string | null;
+        persona: string | null;
+      }>(
+        `SELECT o.name, o.company_types, o.prospect_owner, o.persona
+         FROM organizations o
+         WHERE (o.email_domain = $1 OR o.workos_organization_id IN (
+           SELECT workos_organization_id FROM organization_domains WHERE domain = $1
+         ))
+         AND o.subscription_status IS NULL
+         LIMIT 1`,
+        [domain]
+      );
+      if (prospectResult.rows[0]) {
+        const org = prospectResult.rows[0];
+        company = {
+          name: org.name,
+          type: org.company_types?.[0] ?? 'unknown',
+          is_personal_workspace: false,
+          persona: org.persona ?? undefined,
+        };
+        isAddieProspect = org.prospect_owner === 'addie';
+      }
     }
   }
 
@@ -236,7 +271,7 @@ async function buildPlannerContext(candidate: OutreachCandidate): Promise<Planne
         confidence: i.confidence,
       })),
     },
-    company,
+    company: company ? { ...company, is_addie_prospect: isAddieProspect } : undefined,
     capabilities,
     history,
     contact_eligibility: {

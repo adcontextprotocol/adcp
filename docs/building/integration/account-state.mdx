@@ -46,14 +46,13 @@ flowchart LR
 
 ### 1. Establish the account
 
-`sync_accounts` declares who the buyer is and how they pay. The seller returns an `account_id` and billing terms.
+`sync_accounts` declares who the buyer is and how they pay. The seller acknowledges the relationship and returns status and billing terms.
 
 ```json
 {
   "accounts": [{
-    "house": "acmecorp.com",
-    "brand_id": "tide",
-    "operator": "agency.com",
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "pinnacle-media.com",
     "billing": "operator"
   }]
 }
@@ -61,11 +60,11 @@ flowchart LR
 
 ### 2. Sync catalogs
 
-`sync_catalogs` makes product data available on the account. Formats declare what catalog types they need via `catalog_requirements`, so the buyer syncs the right feeds before submitting creatives.
+`sync_catalogs` makes product data available on the account. Formats declare what catalog types they need via `catalog` asset types in their `assets` array, so the buyer syncs the right feeds before submitting creatives.
 
 ```json
 {
-  "account_id": "acct_001",
+  "account": { "account_id": "acct_001" },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -93,7 +92,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 
 ```json
 {
-  "account_id": "acct_001",
+  "account": { "account_id": "acct_001" },
   "event_sources": [{
     "event_source_id": "web-pixel",
     "name": "Website Conversions",
@@ -109,7 +108,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 
 ```json
 {
-  "account_id": "acct_001",
+  "account": { "account_id": "acct_001" },
   "creatives": [{
     "creative_id": "product-carousel",
     "format_id": {
@@ -138,7 +137,7 @@ The platform fetches and validates each feed. Items may be approved, rejected, o
 
 ```json
 {
-  "account_id": "acct_001",
+  "account": { "account_id": "acct_001" },
   "audiences": [{
     "audience_id": "high-value-customers",
     "name": "High Value Customers",
@@ -156,7 +155,7 @@ With all state in place, `create_media_buy` activates a campaign that references
 
 ```json
 {
-  "account_id": "acct_001",
+  "account": { "account_id": "acct_001" },
   "name": "Summer Product Launch",
   "packages": [{
     "product_id": "sponsored-products",
@@ -174,7 +173,7 @@ Every sync task supports **discovery mode**: call the task without an items arra
 
 ```json
 // What catalogs does this account have?
-{ "account_id": "acct_001" }
+{ "account": { "account_id": "acct_001" } }
 
 // Response: catalogs already on the account
 {

@@ -22,10 +22,10 @@ addFormats(ajv);
 
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
-  // Handle both /schemas/v1/ and /schemas/ patterns
+  // Handle both /schemas/latest/ and /schemas/ patterns
   let relativePath;
-  if (uri.startsWith('/schemas/v1/')) {
-    relativePath = uri.replace('/schemas/v1/', '');
+  if (uri.startsWith('/schemas/latest/')) {
+    relativePath = uri.replace('/schemas/latest/', '');
   } else if (uri.startsWith('/schemas/')) {
     relativePath = uri.replace('/schemas/', '');
   } else {
@@ -375,7 +375,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -465,7 +465,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -495,7 +495,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'
@@ -524,7 +524,7 @@ async function runTests() {
 
     const request = {
       buyer_ref: 'buyer_ref_123',
-      account_id: 'acc_test_001',
+      account: { account_id: 'acc_test_001' },
       packages: [{ buyer_ref: 'pkg_1', product_id: 'prod_1', budget: 1000, pricing_option_id: 'cpm_fixed' }],
       brand: {
         domain: 'acmecorp.com'

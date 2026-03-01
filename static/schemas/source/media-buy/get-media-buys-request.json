@@ -5,9 +5,9 @@
   "description": "Request parameters for retrieving media buy status, creative approval state, and optional delivery snapshots",
   "type": "object",
   "properties": {
-    "account_id": {
-      "type": "string",
-      "description": "Filter to a specific account. When omitted, returns media buys across all accessible accounts. Optional if the agent has a single account."
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account to retrieve media buys for. When omitted, returns data across all accessible accounts."
     },
     "media_buy_ids": {
       "type": "array",

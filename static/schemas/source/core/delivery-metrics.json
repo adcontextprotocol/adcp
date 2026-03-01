@@ -33,7 +33,7 @@
     },
     "completed_views": {
       "type": "number",
-      "description": "100% completions (for CPCV)",
+      "description": "Video/audio completions. When the package has a completed_views optimization goal with view_duration_seconds, completions are counted at that threshold rather than 100% completion.",
       "minimum": 0
     },
     "completion_rate": {
@@ -247,9 +247,29 @@
       },
       "additionalProperties": true
     },
+    "engagements": {
+      "type": "number",
+      "description": "Total engagements — direct interactions with the ad beyond viewing. Includes social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio. Platform-specific; corresponds to the 'engagements' optimization metric.",
+      "minimum": 0
+    },
+    "follows": {
+      "type": "number",
+      "description": "New followers, page likes, artist/podcast/channel subscribes attributed to this delivery.",
+      "minimum": 0
+    },
+    "saves": {
+      "type": "number",
+      "description": "Saves, bookmarks, playlist adds, pins attributed to this delivery.",
+      "minimum": 0
+    },
+    "profile_visits": {
+      "type": "number",
+      "description": "Visits to the brand's in-platform page (profile, artist page, channel, or storefront) attributed to this delivery. Does not include external website clicks.",
+      "minimum": 0
+    },
     "engagement_rate": {
       "type": "number",
-      "description": "Platform-specific engagement rate (0.0 to 1.0). Definition varies by platform (e.g., likes+comments+shares/impressions on social, interactions/impressions on rich media).",
+      "description": "Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impressions, but definition varies by platform.",
       "minimum": 0,
       "maximum": 1
     },

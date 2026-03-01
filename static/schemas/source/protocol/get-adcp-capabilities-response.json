@@ -11,7 +11,7 @@
       "properties": {
         "major_versions": {
           "type": "array",
-          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes.",
+          "description": "AdCP major versions supported by this seller. Major versions indicate breaking changes. When multiple versions are listed, the buyer declares its version during the capabilities handshake or via the adcp_version field on requests.",
           "items": {
             "type": "integer",
             "minimum": 1
@@ -42,6 +42,12 @@
       "type": "object",
       "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
+        "account_resolution": {
+          "type": "string",
+          "description": "How the seller resolves account references. explicit_account_id: accounts are managed out-of-band (advertiser portal, sales rep) and discovered via list_accounts. implicit_from_sync: buyer declares intent via sync_accounts and the seller provisions accounts.",
+          "enum": ["explicit_account_id", "implicit_from_sync"],
+          "default": "explicit_account_id"
+        },
         "require_operator_auth": {
           "type": "boolean",
           "description": "Whether the seller requires operator-level credentials. When false (default), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts. When true, each operator must authenticate independently with the seller, and the agent opens a per-operator session using the operator's credential.",
@@ -54,21 +60,21 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. brand: seller invoices the brand directly. operator: seller invoices the operator (agency). agent: agent consolidates billing.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. The buyer must pass one of these values in sync_accounts.",
           "items": {
             "type": "string",
-            "enum": ["brand", "operator", "agent"]
+            "enum": ["operator", "agent"]
           },
           "minItems": 1
         },
-        "default_billing": {
-          "type": "string",
-          "enum": ["brand", "operator", "agent"],
-          "description": "The billing model applied when the agent omits billing from a sync_accounts request. Must be one of the values in supported_billing."
-        },
         "required_for_products": {
           "type": "boolean",
-          "description": "Whether an active account is required to call get_products. When true, the agent must establish an account via sync_accounts before browsing products. When false, get_products works without an account (account_id is optional for rate-card-specific pricing).",
+          "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
+          "default": false
+        },
+        "account_financials": {
+          "type": "boolean",
+          "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
           "default": false
         }
       },
@@ -78,6 +84,51 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Only present if media_buy is in supported_protocols.",
       "properties": {
+        "supported_pricing_models": {
+          "type": "array",
+          "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
+          "items": {
+            "$ref": "/schemas/enums/pricing-model.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reporting": {
+          "type": "object",
+          "description": "Seller-level reporting capabilities. Summarizes what reporting features are available across the seller's product portfolio. Individual products may vary — check product-level reporting_capabilities for specifics.",
+          "properties": {
+            "supports_date_range": {
+              "type": "boolean",
+              "description": "Whether any products support date range filtering (date_range_support: 'date_range'). When false, all products return lifetime-only data."
+            },
+            "supports_daily_breakdown": {
+              "type": "boolean",
+              "description": "Whether delivery reporting includes daily_breakdown at the media buy and/or package level."
+            },
+            "supports_webhooks": {
+              "type": "boolean",
+              "description": "Whether any products support webhook-based reporting notifications."
+            },
+            "available_dimensions": {
+              "type": "array",
+              "description": "Reporting dimensions available across the seller's portfolio. Individual products may support a subset. Dimensions geo, device_type, device_platform, audience, and placement are opt-in via reporting_dimensions on the delivery request. Dimensions creative, keyword, and catalog_item are included automatically when the seller supports them (not controlled by reporting_dimensions).",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "geo",
+                  "device_type",
+                  "device_platform",
+                  "audience",
+                  "placement",
+                  "creative",
+                  "keyword",
+                  "catalog_item"
+                ]
+              },
+              "uniqueItems": true
+            }
+          }
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
@@ -196,6 +247,14 @@
                     "au_postcode": {
                       "type": "boolean",
                       "description": "Australian postcode, 4 digits (e.g., '2000')"
+                    },
+                    "ch_plz": {
+                      "type": "boolean",
+                      "description": "Swiss Postleitzahl, 4 digits (e.g., '8000')"
+                    },
+                    "at_plz": {
+                      "type": "boolean",
+                      "description": "Austrian Postleitzahl, 4 digits (e.g., '1010')"
                     }
                   }
                 },
@@ -220,6 +279,10 @@
                   "type": "boolean",
                   "description": "Whether seller supports device platform targeting (Sec-CH-UA-Platform values)"
                 },
+                "device_type": {
+                  "type": "boolean",
+                  "description": "Whether seller supports device type targeting (form factor: desktop, mobile, tablet, ctv, dooh, unknown). When true, seller supports both device_type (include) and device_type_exclude (exclude) in targeting overlays."
+                },
                 "language": {
                   "type": "boolean",
                   "description": "Whether seller supports language targeting (ISO 639-1 codes)"
@@ -231,6 +294,64 @@
                 "audience_exclude": {
                   "type": "boolean",
                   "description": "Whether seller supports audience_exclude in targeting overlays (requires features.audience_targeting)"
+                },
+                "keyword_targets": {
+                  "type": "object",
+                  "description": "Keyword targeting capabilities. Presence indicates support for targeting_overlay.keyword_targets and keyword_targets_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for keyword targets. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
+                },
+                "negative_keywords": {
+                  "type": "object",
+                  "description": "Negative keyword capabilities. Presence indicates support for targeting_overlay.negative_keywords and negative_keywords_add/remove in update_media_buy.",
+                  "properties": {
+                    "supported_match_types": {
+                      "type": "array",
+                      "description": "Match types this seller supports for negative keywords. Sellers must reject goals with unsupported match types.",
+                      "items": {
+                        "type": "string",
+                        "enum": ["broad", "phrase", "exact"]
+                      },
+                      "minItems": 1
+                    }
+                  },
+                  "required": ["supported_match_types"]
+                },
+                "geo_proximity": {
+                  "type": "object",
+                  "description": "Proximity targeting capabilities from arbitrary coordinates via targeting_overlay.geo_proximity.",
+                  "properties": {
+                    "radius": {
+                      "type": "boolean",
+                      "description": "Whether seller supports simple radius targeting (distance circle from a point)"
+                    },
+                    "travel_time": {
+                      "type": "boolean",
+                      "description": "Whether seller supports travel time isochrone targeting (requires a routing engine)"
+                    },
+                    "geometry": {
+                      "type": "boolean",
+                      "description": "Whether seller supports pre-computed GeoJSON geometry (buyer provides the polygon)"
+                    },
+                    "transport_modes": {
+                      "type": "array",
+                      "description": "Transport modes supported for travel_time isochrones. Only relevant when travel_time is true.",
+                      "items": {
+                        "$ref": "/schemas/enums/transport-mode.json"
+                      },
+                      "minItems": 1
+                    }
+                  }
                 }
               }
             }
@@ -242,12 +363,16 @@
           "properties": {
             "supported_identifier_types": {
               "type": "array",
-              "description": "Hashed PII types accepted for audience matching. Buyers should only send identifiers the seller supports.",
+              "description": "PII-derived identifier types accepted for audience matching. Buyers should only send identifiers the seller supports.",
               "items": {
                 "type": "string",
                 "enum": ["hashed_email", "hashed_phone"]
               },
               "minItems": 1
+            },
+            "supports_platform_customer_id": {
+              "type": "boolean",
+              "description": "Whether the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). When true, buyers can include platform_customer_id values in AudienceMember.identifiers for matching against the seller's identity graph. Reporting on matched platform_customer_ids typically requires a clean room or the seller's own reporting surface."
             },
             "supported_uid_types": {
               "type": "array",
@@ -279,6 +404,10 @@
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Only present when features.conversion_tracking is true.",
           "properties": {
+            "multi_source_event_dedup": {
+              "type": "boolean",
+              "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
+            },
             "supported_event_types": {
               "type": "array",
               "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
@@ -314,7 +443,7 @@
             },
             "attribution_windows": {
               "type": "array",
-              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via optimization_goal.attribution_window on packages.",
+              "description": "Attribution windows available from this seller. Single-element arrays indicate fixed windows; multi-element arrays indicate configurable options the buyer can choose from via attribution_window on optimization goals.",
               "items": {
                 "type": "object",
                 "properties": {
@@ -322,25 +451,25 @@
                     "$ref": "/schemas/enums/event-type.json",
                     "description": "Event type this window applies to, or omit for default window"
                   },
-                  "click_through": {
+                  "post_click": {
                     "type": "array",
-                    "description": "Available click-through attribution windows (e.g. [\"7d\"], [\"7d\", \"14d\", \"30d\"])",
+                    "description": "Available post-click attribution windows (e.g. [{\"interval\": 7, \"unit\": \"days\"}])",
                     "items": {
-                      "type": "string"
+                      "$ref": "/schemas/core/duration.json"
                     },
                     "minItems": 1
                   },
-                  "view_through": {
+                  "post_view": {
                     "type": "array",
-                    "description": "Available view-through attribution windows (e.g. [\"1d\"], [\"1d\", \"7d\", \"14d\"])",
+                    "description": "Available post-view attribution windows (e.g. [{\"interval\": 1, \"unit\": \"days\"}])",
                     "items": {
-                      "type": "string"
+                      "$ref": "/schemas/core/duration.json"
                     },
                     "minItems": 1
                   }
                 },
                 "required": [
-                  "click_through"
+                  "post_click"
                 ],
                 "additionalProperties": true
               }
@@ -615,9 +744,9 @@
       "type": "object",
       "description": "Creative protocol capabilities. Only present if creative is in supported_protocols.",
       "properties": {
-        "supports_brief": {
+        "supports_compliance": {
           "type": "boolean",
-          "description": "Whether this creative agent accepts creative_brief in build_creative requests for structured campaign-level creative direction"
+          "description": "When true, this creative agent can process briefs with compliance requirements (required_disclosures, prohibited_claims) and will validate that disclosures can be satisfied by the target format."
         }
       },
       "additionalProperties": true
