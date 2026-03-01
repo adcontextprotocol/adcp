@@ -655,8 +655,7 @@ export class BrandManager {
           const authData = data as AuthoritativeLocationVariant;
           try {
             const url = new URL(authData.authoritative_location);
-            // Use hostname only — validateDomain will append /.well-known/brand.json
-            currentDomain = url.hostname;
+            currentDomain = url.hostname + url.pathname;
             redirectCount++;
             continue;
           } catch {

@@ -248,7 +248,6 @@ export async function proposeContentForUser(
   // Get author info for display
   const userInfo = await getUserInfo(user.id);
   const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
-  const authorTitle = undefined;
 
   // Insert the content
   const result = await pool.query(
@@ -264,7 +263,7 @@ export async function proposeContentForUser(
     [
       slug, content_type, title, content, excerpt,
       external_url, external_site_name, category, tags,
-      authorName, authorTitle, user.id,
+      authorName, null, user.id,
       user.id, proposedAt,
       committeeId, status, publishedAt,
     ]
@@ -285,7 +284,7 @@ export async function proposeContentForUser(
   // Create content_authors records
   const authorsToCreate = authors && authors.length > 0
     ? authors
-    : [{ user_id: user.id, display_name: authorName, display_title: authorTitle, display_order: 0 }];
+    : [{ user_id: user.id, display_name: authorName, display_title: null, display_order: 0 }];
 
   for (const author of authorsToCreate) {
     await pool.query(
