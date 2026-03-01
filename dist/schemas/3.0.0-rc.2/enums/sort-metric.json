@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/enums/sort-metric.json",
+  "title": "Sort Metric",
+  "description": "Numeric delivery metrics available for sorting breakdown rows. Subset of delivery-metrics fields that are flat numeric values (excludes nested objects like quartile_data, dooh_metrics, viewability, by_event_type, by_action_source).",
+  "type": "string",
+  "enum": [
+    "impressions",
+    "spend",
+    "clicks",
+    "ctr",
+    "views",
+    "completed_views",
+    "completion_rate",
+    "conversions",
+    "conversion_value",
+    "roas",
+    "cost_per_acquisition",
+    "new_to_brand_rate",
+    "leads",
+    "grps",
+    "reach",
+    "frequency",
+    "engagements",
+    "follows",
+    "saves",
+    "profile_visits",
+    "engagement_rate",
+    "cost_per_click"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/bundled/sponsored-intelligence/si-send-message-request.json",
+  "title": "SI Send Message Request",
+  "description": "Send a message to the brand agent within an active session",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Active session identifier"
+    },
+    "message": {
+      "type": "string",
+      "description": "User's message to the brand agent"
+    },
+    "action_response": {
+      "type": "object",
+      "description": "Response to a previous action_button (e.g., user clicked checkout)",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "The action that was triggered"
+        },
+        "payload": {
+          "type": "object",
+          "description": "Action-specific response data"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "message"
+      ]
+    },
+    {
+      "required": [
+        "action_response"
+      ]
+    }
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T20:14:16.681Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

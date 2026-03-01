@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/creative-manifest.json",
+  "title": "Creative Manifest",
+  "description": "Complete specification of a creative: format_id + assets. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map, declared by the format. Each asset is typed according to its asset_type from the format specification.",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+      "description": "Format identifier this manifest is for. Can be a template format (id only) or a deterministic format (id + dimensions/duration). For dimension-specific creatives, include width/height/unit in the format_id to create a unique identifier (e.g., {id: 'display_static', width: 300, height: 250, unit: 'px'})."
+    },
+    "assets": {
+      "type": "object",
+      "description": "Map of asset IDs to actual asset content. Each key MUST match an asset_id from the format's assets array (e.g., 'banner_image', 'clickthrough_url', 'video_file', 'vast_tag'). The asset_id is the technical identifier used to match assets to format requirements.\n\nIMPORTANT: Full validation requires format context. The format defines what type each asset_id should be. Standalone schema validation only checks structural conformance — each asset must match at least one valid asset type schema.",
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "anyOf": [
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/image-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/video-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/audio-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/vast-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/text-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/url-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/html-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/javascript-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/webhook-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/css-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/daast-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/markdown-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/brief-asset.json"
+            },
+            {
+              "$ref": "/schemas/3.0.0-rc.2/core/assets/catalog-asset.json"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.0-rc.2/core/provenance.json",
+      "description": "Provenance metadata for this creative manifest. Serves as the default provenance for all assets in this manifest. An asset with its own provenance replaces this object entirely (no field-level merging)."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "format_id",
+    "assets"
+  ],
+  "additionalProperties": true
+}

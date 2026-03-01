@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/log-event-request.json",
+  "title": "Log Event Request",
+  "description": "Request parameters for logging marketing events",
+  "type": "object",
+  "properties": {
+    "event_source_id": {
+      "type": "string",
+      "description": "Event source configured on the account via sync_event_sources"
+    },
+    "test_event_code": {
+      "type": "string",
+      "description": "Test event code for validation without affecting production data. Events with this code appear in the platform's test events UI."
+    },
+    "events": {
+      "type": "array",
+      "description": "Events to log",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/event.json"
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "event_source_id",
+    "events"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/reference-asset.json",
+  "title": "Reference Asset",
+  "description": "A reference asset that provides creative context. Carries visual materials (mood boards, product shots, example creatives) with semantic roles that tell creative agents how to use them.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the reference asset (image, video, or document)"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "style_reference",
+        "product_shot",
+        "mood_board",
+        "example_creative",
+        "logo",
+        "strategy_doc"
+      ],
+      "description": "How the creative agent should use this asset. style_reference: match the visual style; product_shot: include this product; mood_board: overall look and feel; example_creative: example of a similar execution; logo: logo to use; strategy_doc: strategy or planning document for context"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the asset and how it should inform creative generation"
+    }
+  },
+  "required": ["url", "role"],
+  "additionalProperties": true
+}

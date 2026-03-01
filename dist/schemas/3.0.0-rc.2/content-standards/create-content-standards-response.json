@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/content-standards/create-content-standards-response.json",
+  "title": "Create Content Standards Response",
+  "description": "Response payload for creating a content standards configuration",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Success response - returns the created standards identifier",
+      "properties": {
+        "standards_id": {
+          "type": "string",
+          "description": "Unique identifier for the created standards configuration"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+        }
+      },
+      "required": ["standards_id"]
+    },
+    {
+      "type": "object",
+      "description": "Error response",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-rc.2/core/error.json" }
+        },
+        "conflicting_standards_id": {
+          "type": "string",
+          "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+        }
+      },
+      "required": ["errors"]
+    }
+  ]
+}

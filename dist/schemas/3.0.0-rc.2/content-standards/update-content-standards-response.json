@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/content-standards/update-content-standards-response.json",
+  "title": "Update Content Standards Response",
+  "description": "Response from updating a content standards configuration",
+  "oneOf": [
+    {
+      "title": "UpdateContentStandardsSuccess",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true,
+          "description": "Indicates the update was applied successfully"
+        },
+        "standards_id": {
+          "type": "string",
+          "description": "ID of the updated standards configuration"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+        }
+      },
+      "required": ["success", "standards_id"],
+      "additionalProperties": true
+    },
+    {
+      "title": "UpdateContentStandardsError",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": false,
+          "description": "Indicates the update failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/3.0.0-rc.2/core/error.json" },
+          "description": "Errors that occurred during the update",
+          "minItems": 1
+        },
+        "conflicting_standards_id": {
+          "type": "string",
+          "description": "If scope change conflicts with another configuration, the ID of the conflicting standards"
+        },
+        "context": {
+          "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+        }
+      },
+      "required": ["success", "errors"],
+      "additionalProperties": true
+    }
+  ]
+}

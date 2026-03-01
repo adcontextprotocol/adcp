@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/account/list-accounts-response.json",
+  "title": "List Accounts Response",
+  "description": "Response payload for list_accounts task",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "description": "Array of accounts accessible to the authenticated agent",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/account.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.2/core/pagination-response.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["accounts"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Agency with multiple client accounts",
+      "data": {
+        "accounts": [
+          {
+            "account_id": "acc_acme_pinnacle",
+            "name": "Acme c/o Pinnacle",
+            "advertiser": "Acme Corp",
+            "billing_proxy": "Pinnacle Media",
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator_brand",
+            "status": "active"
+          },
+          {
+            "account_id": "acc_nova_pinnacle",
+            "name": "Nova c/o Pinnacle",
+            "advertiser": "Nova Brands",
+            "billing_proxy": "Pinnacle Media",
+            "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator_brand",
+            "status": "active"
+          },
+          {
+            "account_id": "acc_pinnacle",
+            "name": "Pinnacle",
+            "advertiser": "Pinnacle Media",
+            "brand": { "domain": "pinnacle-media.com" },
+            "operator": "pinnacle-media.com",
+            "billing": "operator",
+            "account_scope": "operator",
+            "status": "active"
+          }
+        ],
+        "pagination": {
+          "has_more": false,
+          "total_count": 3
+        }
+      }
+    },
+    {
+      "description": "Direct advertiser with single account",
+      "data": {
+        "accounts": [
+          {
+            "account_id": "acc_acme_direct",
+            "name": "Acme",
+            "advertiser": "Acme Corp",
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "billing": "operator",
+            "account_scope": "brand",
+            "status": "active",
+            "rate_card": "acme_vip_2024"
+          }
+        ]
+      }
+    }
+  ]
+}

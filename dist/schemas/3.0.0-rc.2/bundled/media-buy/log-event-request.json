@@ -1,0 +1,372 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/bundled/media-buy/log-event-request.json",
+  "title": "Log Event Request",
+  "description": "Request parameters for logging marketing events",
+  "type": "object",
+  "properties": {
+    "event_source_id": {
+      "type": "string",
+      "description": "Event source configured on the account via sync_event_sources"
+    },
+    "test_event_code": {
+      "type": "string",
+      "description": "Test event code for validation without affecting production data. Events with this code appear in the platform's test events UI."
+    },
+    "events": {
+      "type": "array",
+      "description": "Events to log",
+      "items": {
+        "title": "Event",
+        "description": "A marketing event (conversion, engagement, or custom) for attribution and optimization",
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "Unique identifier for deduplication (scoped to event_type + event_source_id)",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "event_type": {
+            "title": "Event Type",
+            "description": "Standard event type",
+            "type": "string",
+            "enum": [
+              "page_view",
+              "view_content",
+              "select_content",
+              "select_item",
+              "search",
+              "share",
+              "add_to_cart",
+              "remove_from_cart",
+              "viewed_cart",
+              "add_to_wishlist",
+              "initiate_checkout",
+              "add_payment_info",
+              "purchase",
+              "refund",
+              "lead",
+              "qualify_lead",
+              "close_convert_lead",
+              "disqualify_lead",
+              "complete_registration",
+              "subscribe",
+              "start_trial",
+              "app_install",
+              "app_launch",
+              "contact",
+              "schedule",
+              "donate",
+              "submit_application",
+              "custom"
+            ],
+            "enumDescriptions": {
+              "page_view": "User viewed a page",
+              "view_content": "User viewed specific content (product, article, etc.)",
+              "select_content": "User selected or clicked on content (article, video, etc.)",
+              "select_item": "User selected a specific product or item from a list",
+              "search": "User performed a search",
+              "share": "User shared content via social or messaging",
+              "add_to_cart": "User added an item to cart",
+              "remove_from_cart": "User removed an item from cart",
+              "viewed_cart": "User viewed their shopping cart",
+              "add_to_wishlist": "User added an item to a wishlist",
+              "initiate_checkout": "User started checkout process",
+              "add_payment_info": "User added payment information",
+              "purchase": "User completed a purchase",
+              "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+              "lead": "User expressed interest (form submission, signup, etc.)",
+              "qualify_lead": "Lead qualified by sales or scoring criteria",
+              "close_convert_lead": "Lead converted to a customer or closed deal",
+              "disqualify_lead": "Lead disqualified or marked as not viable",
+              "complete_registration": "User completed account registration",
+              "subscribe": "User subscribed to a service or newsletter",
+              "start_trial": "User started a free trial",
+              "app_install": "User installed an application",
+              "app_launch": "User launched an application",
+              "contact": "User initiated contact (call, message, etc.)",
+              "schedule": "User scheduled an appointment or event",
+              "donate": "User made a donation",
+              "submit_application": "User submitted an application (loan, job, etc.)",
+              "custom": "Custom event type (specify in custom_event_name)"
+            }
+          },
+          "event_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the event occurred"
+          },
+          "user_match": {
+            "title": "User Match",
+            "description": "User identifiers for attribution matching",
+            "type": "object",
+            "properties": {
+              "uids": {
+                "type": "array",
+                "description": "Universal ID values for user matching",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "title": "UID Type",
+                      "description": "Universal ID type",
+                      "type": "string",
+                      "enum": [
+                        "rampid",
+                        "id5",
+                        "uid2",
+                        "euid",
+                        "pairid",
+                        "maid",
+                        "other"
+                      ],
+                      "enumDescriptions": {
+                        "rampid": "LiveRamp RampID",
+                        "id5": "ID5 universal ID",
+                        "uid2": "Unified ID 2.0",
+                        "euid": "European Unified ID",
+                        "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR protocol",
+                        "maid": "Mobile Advertising ID (IDFA/GAID)",
+                        "other": "Other universal ID type (specify in ext)"
+                      }
+                    },
+                    "value": {
+                      "type": "string",
+                      "description": "Universal ID value"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "value"
+                  ],
+                  "additionalProperties": true
+                },
+                "minItems": 1
+              },
+              "hashed_email": {
+                "type": "string",
+                "description": "SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before hashing: lowercase, trim whitespace.",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "hashed_phone": {
+                "type": "string",
+                "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must normalize to E.164 before hashing.",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "click_id": {
+                "type": "string",
+                "description": "Platform click identifier (fbclid, gclid, ttclid, ScCid, etc.)"
+              },
+              "click_id_type": {
+                "type": "string",
+                "description": "Type of click identifier (e.g. fbclid, gclid, ttclid, msclkid, ScCid)"
+              },
+              "client_ip": {
+                "type": "string",
+                "description": "Client IP address for probabilistic matching"
+              },
+              "client_user_agent": {
+                "type": "string",
+                "description": "Client user agent string for probabilistic matching"
+              },
+              "ext": {
+                "title": "Extension Object",
+                "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "uids"
+                ]
+              },
+              {
+                "required": [
+                  "hashed_email"
+                ]
+              },
+              {
+                "required": [
+                  "hashed_phone"
+                ]
+              },
+              {
+                "required": [
+                  "click_id"
+                ]
+              },
+              {
+                "required": [
+                  "client_ip",
+                  "client_user_agent"
+                ]
+              }
+            ],
+            "additionalProperties": true
+          },
+          "custom_data": {
+            "title": "Event Custom Data",
+            "description": "Event-specific data (value, currency, items, etc.)",
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "number",
+                "description": "Monetary value of the event (should be accompanied by currency)",
+                "minimum": 0
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$",
+                "description": "ISO 4217 currency code"
+              },
+              "order_id": {
+                "type": "string",
+                "description": "Unique order or transaction identifier"
+              },
+              "content_ids": {
+                "type": "array",
+                "description": "Item identifiers for catalog attribution. Values are matched against catalog items using the identifier type declared by the catalog's content_id_type field (e.g., SKUs, GTINs, or vertical-specific IDs like job_id).",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "content_type": {
+                "type": "string",
+                "description": "Category of content associated with the event (e.g., 'product', 'job', 'hotel'). Corresponds to the catalog type when used for catalog attribution."
+              },
+              "content_name": {
+                "type": "string",
+                "description": "Name of the product or content"
+              },
+              "content_category": {
+                "type": "string",
+                "description": "Category of the product or content"
+              },
+              "num_items": {
+                "type": "integer",
+                "description": "Number of items in the event",
+                "minimum": 0
+              },
+              "search_string": {
+                "type": "string",
+                "description": "Search query for search events"
+              },
+              "contents": {
+                "type": "array",
+                "description": "Per-item details for e-commerce events",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Product or content identifier"
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "description": "Quantity of this item",
+                      "minimum": 1
+                    },
+                    "price": {
+                      "type": "number",
+                      "description": "Price per unit of this item",
+                      "minimum": 0
+                    },
+                    "brand": {
+                      "type": "string",
+                      "description": "Brand name of this item"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "ext": {
+                "title": "Extension Object",
+                "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          },
+          "action_source": {
+            "title": "Action Source",
+            "description": "Where the event originated",
+            "type": "string",
+            "enum": [
+              "website",
+              "app",
+              "offline",
+              "phone_call",
+              "chat",
+              "email",
+              "in_store",
+              "system_generated",
+              "other"
+            ],
+            "enumDescriptions": {
+              "website": "Event occurred on a website",
+              "app": "Event occurred in a mobile or desktop app",
+              "offline": "Event occurred offline (imported data)",
+              "phone_call": "Event originated from a phone call",
+              "chat": "Event originated from a chat conversation",
+              "email": "Event originated from an email interaction",
+              "in_store": "Event occurred at a physical retail location",
+              "system_generated": "Event generated by an automated system",
+              "other": "Other source (specify in ext)"
+            }
+          },
+          "event_source_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL where the event occurred (required when action_source is 'website')"
+          },
+          "custom_event_name": {
+            "type": "string",
+            "description": "Name for custom events (used when event_type is 'custom')"
+          },
+          "ext": {
+            "title": "Extension Object",
+            "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "event_time"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "event_source_id",
+    "events"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T20:14:16.648Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

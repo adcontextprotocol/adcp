@@ -1,0 +1,437 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/targeting.json",
+  "title": "Targeting Overlay",
+  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance, proximity targeting), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
+  "type": "object",
+  "properties": {
+    "geo_countries": {
+      "type": "array",
+      "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "geo_countries_exclude": {
+      "type": "array",
+      "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "geo_regions": {
+      "type": "array",
+      "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      },
+      "minItems": 1
+    },
+    "geo_regions_exclude": {
+      "type": "array",
+      "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      },
+      "minItems": 1
+    },
+    "geo_metros": {
+      "type": "array",
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_metros_exclude": {
+      "type": "array",
+      "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes to exclude within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_postal_areas": {
+      "type": "array",
+      "description": "Restrict delivery to specific postal areas. Each entry specifies the postal system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_postal_areas_exclude": {
+      "type": "array",
+      "description": "Exclude specific postal areas from delivery. Each entry specifies the postal system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/postal-system.json",
+            "description": "Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country and precision."
+          },
+          "values": {
+            "type": "array",
+            "description": "Postal codes to exclude within the system (e.g., ['10001', '10002'] for us_zip)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["system", "values"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
+    "axe_include_segment": {
+      "type": "string",
+      "description": "AXE segment ID to include for targeting"
+    },
+    "axe_exclude_segment": {
+      "type": "string",
+      "description": "AXE segment ID to exclude from targeting"
+    },
+    "audience_include": {
+      "type": "array",
+      "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "audience_exclude": {
+      "type": "array",
+      "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "frequency_cap": {
+      "$ref": "/schemas/3.0.0-rc.2/core/frequency-cap.json"
+    },
+    "property_list": {
+      "$ref": "/schemas/3.0.0-rc.2/core/property-list-ref.json",
+      "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+    },
+    "age_restriction": {
+      "type": "object",
+      "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 13,
+          "maximum": 99,
+          "description": "Minimum age required"
+        },
+        "verification_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether verified age (not inferred) is required for compliance"
+        },
+        "accepted_methods": {
+          "type": "array",
+          "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/age-verification-method.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["min"],
+      "additionalProperties": false
+    },
+    "device_platform": {
+      "type": "array",
+      "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
+    "device_type": {
+      "type": "array",
+      "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/device-type.json"
+      },
+      "minItems": 1
+    },
+    "device_type_exclude": {
+      "type": "array",
+      "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns).",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/device-type.json"
+      },
+      "minItems": 1
+    },
+    "store_catchments": {
+      "type": "array",
+      "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "catalog_id": {
+            "type": "string",
+            "description": "Synced store-type catalog ID from sync_catalogs."
+          },
+          "store_ids": {
+            "type": "array",
+            "description": "Filter to specific stores within the catalog. Omit to target all stores.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "catchment_ids": {
+            "type": "array",
+            "description": "Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchment zones.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["catalog_id"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "geo_proximity": {
+      "type": "array",
+      "description": "Target users within travel time, distance, or a custom boundary around arbitrary geographic points. Multiple entries use OR semantics — a user within range of any listed point is eligible. For campaigns targeting 10+ locations, consider using store_catchments with a location catalog instead. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Latitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Longitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Primary trade area')."
+          },
+          "travel_time": {
+            "type": "object",
+            "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Travel time limit."
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["min", "hr"],
+                "description": "Time unit."
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "transport_mode": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/transport-mode.json",
+            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+          },
+          "radius": {
+            "type": "object",
+            "description": "Simple radius from the point. The platform draws a circle of this distance around the coordinates.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Radius distance."
+              },
+              "unit": {
+                "$ref": "/schemas/3.0.0-rc.2/enums/distance-unit.json",
+                "description": "Distance unit."
+              }
+            },
+            "required": ["value", "unit"],
+            "additionalProperties": false
+          },
+          "geometry": {
+            "type": "object",
+            "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom boundaries. When geometry is provided, lat/lng are not required.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["Polygon", "MultiPolygon"],
+                "description": "GeoJSON geometry type."
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
+              }
+            },
+            "required": ["type", "coordinates"],
+            "additionalProperties": false
+          },
+          "ext": {
+            "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "not": {
+              "anyOf": [
+                { "required": ["radius"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["lat", "lng", "radius"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["geometry"] }
+              ]
+            }
+          },
+          {
+            "required": ["geometry"],
+            "not": {
+              "anyOf": [
+                { "required": ["travel_time"] },
+                { "required": ["radius"] }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "language": {
+      "type": "array",
+      "description": "Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en', 'es', 'fr').",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]{2}$"
+      },
+      "minItems": 1
+    },
+    "keyword_targets": {
+      "type": "array",
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type: broad matches related queries, phrase matches queries containing the keyword phrase, exact matches the query exactly"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords": {
+      "type": "array",
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "type": "string",
+            "enum": ["broad", "phrase", "exact"],
+            "description": "Match type for exclusion"
+          }
+        },
+        "required": ["keyword", "match_type"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": true
+}

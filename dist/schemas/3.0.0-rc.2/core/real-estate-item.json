@@ -1,0 +1,199 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/real-estate-item.json",
+  "title": "Real Estate Item",
+  "description": "A property listing within a real-estate-type catalog. Carries the address, pricing, and specification data that platforms use for real estate ads and dynamic remarketing. Maps to Google DynamicRealEstateAsset, Meta home listing catalogs, and similar formats.",
+  "type": "object",
+  "properties": {
+    "listing_id": {
+      "type": "string",
+      "description": "Unique identifier for this property listing."
+    },
+    "title": {
+      "type": "string",
+      "description": "Listing title (e.g., 'Spacious 3BR Apartment in Jordaan')."
+    },
+    "address": {
+      "type": "object",
+      "description": "Property address.",
+      "properties": {
+        "street": {
+          "type": "string",
+          "description": "Street address."
+        },
+        "city": {
+          "type": "string",
+          "description": "City name."
+        },
+        "region": {
+          "type": "string",
+          "description": "State, province, or region."
+        },
+        "postal_code": {
+          "type": "string",
+          "description": "Postal or ZIP code."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code."
+        }
+      },
+      "additionalProperties": false
+    },
+    "price": {
+      "$ref": "/schemas/3.0.0-rc.2/core/price.json",
+      "description": "Property price or rental rate. Use period 'month' for rentals."
+    },
+    "property_type": {
+      "type": "string",
+      "enum": ["house", "apartment", "condo", "townhouse", "land", "commercial"],
+      "description": "Type of property."
+    },
+    "listing_type": {
+      "type": "string",
+      "enum": ["for_sale", "for_rent"],
+      "description": "Whether the property is for sale or rent."
+    },
+    "bedrooms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of bedrooms."
+    },
+    "bathrooms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Number of bathrooms (e.g., 2.5 for two full and one half bath)."
+    },
+    "area": {
+      "type": "object",
+      "description": "Property size.",
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Area value."
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["sqft", "sqm"],
+          "description": "Area unit."
+        }
+      },
+      "required": ["value", "unit"],
+      "additionalProperties": false
+    },
+    "description": {
+      "type": "string",
+      "description": "Property description."
+    },
+    "location": {
+      "type": "object",
+      "description": "Geographic coordinates of the property.",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees (WGS 84)."
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees (WGS 84)."
+        }
+      },
+      "required": ["lat", "lng"],
+      "additionalProperties": false
+    },
+    "image_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Primary property image URL."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Listing page URL."
+    },
+    "neighborhood": {
+      "type": "string",
+      "description": "Neighborhood or area name."
+    },
+    "year_built": {
+      "type": "integer",
+      "description": "Year the property was built."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Tags for filtering (e.g., 'garden', 'parking', 'renovated', 'waterfront').",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "assets": {
+      "type": "array",
+      "description": "Typed creative asset pools for this property listing. Uses the same OfferingAssetGroup structure as offering-type catalogs. Standard group IDs: 'images_landscape' (exterior/interior hero), 'images_vertical' (9:16 for Stories), 'images_square' (1:1). Enables formats to declare typed image requirements that map unambiguously to the right asset regardless of platform.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/offering-asset-group.json"
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["listing_id", "title", "address"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "City apartment for sale",
+      "data": {
+        "listing_id": "ams-jordaan-3br",
+        "title": "Spacious 3BR Apartment in Jordaan",
+        "address": {
+          "street": "Prinsengracht 450",
+          "city": "Amsterdam",
+          "region": "NL-NH",
+          "postal_code": "1017 KE",
+          "country": "NL"
+        },
+        "price": { "amount": 650000, "currency": "EUR" },
+        "property_type": "apartment",
+        "listing_type": "for_sale",
+        "bedrooms": 3,
+        "bathrooms": 1,
+        "area": { "value": 95, "unit": "sqm" },
+        "location": { "lat": 52.3667, "lng": 4.8833 },
+        "image_url": "https://images.acmerealty.com/jordaan-3br/hero.jpg",
+        "url": "https://acmerealty.com/listings/ams-jordaan-3br",
+        "neighborhood": "Jordaan",
+        "year_built": 1920,
+        "tags": ["canal-view", "renovated"]
+      }
+    },
+    {
+      "description": "Suburban rental",
+      "data": {
+        "listing_id": "bklyn-2br-rental",
+        "title": "Modern 2BR in Brooklyn Heights",
+        "address": {
+          "street": "100 Atlantic Ave",
+          "city": "Brooklyn",
+          "region": "US-NY",
+          "postal_code": "11201",
+          "country": "US"
+        },
+        "price": { "amount": 3200, "currency": "USD", "period": "month" },
+        "property_type": "apartment",
+        "listing_type": "for_rent",
+        "bedrooms": 2,
+        "bathrooms": 1,
+        "url": "https://acmerealty.com/listings/bklyn-2br-rental",
+        "tags": ["doorman", "laundry"]
+      }
+    }
+  ]
+}

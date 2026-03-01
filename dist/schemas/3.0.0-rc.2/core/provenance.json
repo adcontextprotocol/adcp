@@ -1,0 +1,175 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/provenance.json",
+  "title": "Provenance",
+  "description": "Declares how content was produced, whether AI was involved, and what disclosure obligations apply. Attaches to creative manifests, individual assets, or content-standards artifacts. When present at multiple levels, the most specific provenance object replaces the inherited one entirely (no field-level merging). Provenance is a claim by the declaring party — receiving parties should verify claims independently via their own detection tools.",
+  "type": "object",
+  "properties": {
+    "digital_source_type": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/digital-source-type.json",
+      "description": "IPTC-aligned classification of AI involvement in producing this content"
+    },
+    "ai_tool": {
+      "type": "object",
+      "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    },
+    "human_oversight": {
+      "type": "string",
+      "description": "Level of human involvement in the AI-assisted creation process",
+      "enum": [
+        "none",
+        "prompt_only",
+        "selected",
+        "edited",
+        "directed"
+      ],
+      "enumDescriptions": {
+        "none": "Fully automated with no human involvement in generation",
+        "prompt_only": "Human provided the prompt or instructions but did not review outputs",
+        "selected": "Human selected from multiple AI-generated candidates",
+        "edited": "Human edited or refined AI-generated output",
+        "directed": "Human directed the creative process with AI as an assistive tool"
+      }
+    },
+    "declared_by": {
+      "type": "object",
+      "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the agent or service that declared this provenance"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["creator", "advertiser", "agency", "platform", "tool"],
+          "description": "Role of the declaring party in the supply chain",
+          "enumDescriptions": {
+            "creator": "The party that created or generated the content",
+            "advertiser": "The brand or advertiser that owns the content",
+            "agency": "Agency acting on behalf of the advertiser",
+            "platform": "Ad platform or publisher that processed the content",
+            "tool": "Automated tool or service that attached provenance metadata"
+          }
+        }
+      },
+      "required": ["role"],
+      "additionalProperties": true
+    },
+    "created_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this content was created or generated (ISO 8601)"
+    },
+    "c2pa": {
+      "type": "object",
+      "description": "C2PA Content Credentials reference. Links to the cryptographic provenance manifest for this content. Because file-level C2PA bindings break during ad-tech transcoding, this URL reference preserves the chain of provenance through the supply chain.",
+      "properties": {
+        "manifest_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the C2PA manifest store for this content"
+        }
+      },
+      "required": ["manifest_url"],
+      "additionalProperties": true
+    },
+    "disclosure": {
+      "type": "object",
+      "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "Whether AI disclosure is required for this content based on applicable regulations"
+        },
+        "jurisdictions": {
+          "type": "array",
+          "description": "Jurisdictions where disclosure obligations apply",
+          "items": {
+            "type": "object",
+            "properties": {
+              "country": {
+                "type": "string",
+                "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+              },
+              "region": {
+                "type": "string",
+                "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+              },
+              "regulation": {
+                "type": "string",
+                "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+              },
+              "label_text": {
+                "type": "string",
+                "description": "Required disclosure label text for this jurisdiction, in the local language"
+              }
+            },
+            "required": ["country", "regulation"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["required"],
+      "additionalProperties": true
+    },
+    "verification": {
+      "type": "array",
+      "description": "Third-party verification or detection results for this content. Multiple services may independently evaluate the same content. Provenance is a claim — verification results attached by the declaring party are supplementary. The enforcing party (e.g., seller/publisher) should run its own verification via get_creative_features or calibrate_content.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "verified_by": {
+            "type": "string",
+            "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+          },
+          "verified_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the verification was performed (ISO 8601)"
+          },
+          "result": {
+            "type": "string",
+            "enum": ["authentic", "ai_generated", "ai_modified", "inconclusive"],
+            "description": "Verification outcome"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score of the verification result (0.0 to 1.0)"
+          },
+          "details_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to the full verification report"
+          }
+        },
+        "required": ["verified_by", "result"],
+        "additionalProperties": true
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

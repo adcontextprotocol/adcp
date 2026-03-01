@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/requirements/image-asset-requirements.json",
+  "title": "Image Asset Requirements",
+  "description": "Requirements for image creative assets. These define the technical constraints for image files.",
+  "type": "object",
+  "properties": {
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum width in pixels. For exact dimensions, set min_width = max_width."
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum width in pixels. For exact dimensions, set min_width = max_width."
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum height in pixels. For exact dimensions, set min_height = max_height."
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum height in pixels. For exact dimensions, set min_height = max_height."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$",
+      "description": "Required aspect ratio (e.g., '16:9', '1:1', '1.91:1')"
+    },
+    "formats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif"]
+      },
+      "description": "Accepted image file formats"
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes"
+    },
+    "transparency_required": {
+      "type": "boolean",
+      "description": "Whether the image must support transparency (requires PNG, WebP, or GIF)"
+    },
+    "animation_allowed": {
+      "type": "boolean",
+      "description": "Whether animated images (GIF, animated WebP) are accepted"
+    },
+    "max_animation_duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum animation duration in milliseconds (if animation_allowed is true)"
+    }
+  },
+  "additionalProperties": true
+}

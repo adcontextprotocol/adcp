@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/signals/activate-signal-request.json",
+  "title": "Activate Signal Request",
+  "description": "Request parameters for activating or deactivating a signal on deployment targets",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["activate", "deactivate"],
+      "default": "activate",
+      "description": "Whether to activate or deactivate the signal. Deactivating removes the segment from downstream platforms, required when campaigns end to comply with data governance policies (GDPR, CCPA). Defaults to 'activate' when omitted."
+    },
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "The universal identifier for the signal to activate"
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Target destination(s) for activation. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time; pass this same value in report_usage for billing verification."
+    },
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.2/core/account-ref.json",
+      "description": "Account for this activation. Associates with a commercial relationship established via sync_accounts."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's campaign reference for this activation. Enables the signals agent to correlate activations with subsequent report_usage calls."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "signal_agent_segment_id",
+    "destinations"
+  ],
+  "additionalProperties": true
+}
