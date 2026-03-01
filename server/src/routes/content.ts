@@ -119,10 +119,10 @@ async function isCommitteeLead(committeeId: string, userId: string): Promise<boo
 /**
  * Get user info for author display
  */
-async function getUserInfo(userId: string): Promise<{ name: string; title?: string } | null> {
+async function getUserInfo(userId: string): Promise<{ name: string } | null> {
   const pool = getPool();
   const result = await pool.query(
-    `SELECT first_name, last_name, title, email FROM users WHERE workos_user_id = $1`,
+    `SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1`,
     [userId]
   );
   if (result.rows.length === 0) return null;
@@ -130,7 +130,7 @@ async function getUserInfo(userId: string): Promise<{ name: string; title?: stri
   const name = user.first_name && user.last_name
     ? `${user.first_name} ${user.last_name}`
     : user.email?.split('@')[0] || 'Unknown';
-  return { name, title: user.title };
+  return { name };
 }
 
 /**
@@ -248,7 +248,7 @@ export async function proposeContentForUser(
   // Get author info for display
   const userInfo = await getUserInfo(user.id);
   const authorName = userInfo?.name || user.email?.split('@')[0] || 'Unknown';
-  const authorTitle = userInfo?.title;
+  const authorTitle = undefined;
 
   // Insert the content
   const result = await pool.query(
