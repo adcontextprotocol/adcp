@@ -1147,14 +1147,14 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
   {
     name: 'list_paying_members',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB). Defaults to corporate members only.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, or membership revenue by tier.',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, or listing members for events/outreach.',
     input_schema: {
       type: 'object' as const,
       properties: {
         include_individual: {
           type: 'boolean',
-          description: 'Include individual (personal) memberships (default: false, corporate only)',
+          description: 'Include individual (personal) memberships (default: true)',
         },
         limit: {
           type: 'number',
@@ -6573,7 +6573,7 @@ Use add_committee_leader to assign a leader.`;
   handlers.set('list_paying_members', async (input) => {
     try {
       const pool = getPool();
-      const includeIndividual = (input.include_individual as boolean) || false;
+      const includeIndividual = input.include_individual !== false;
       const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
 
       const result = await pool.query(
