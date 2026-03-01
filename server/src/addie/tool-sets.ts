@@ -374,9 +374,9 @@ export function buildUnavailableSetsHint(selectedSets: string[], isAAOAdmin: boo
   });
 
   return `
-## Tool Sets Not Currently Loaded
+## Capabilities Not Available in This Conversation
 
-Based on the user's request, the following tool categories were not loaded. If the user's request actually needs these capabilities, suggest they clarify their intent:
+The following capabilities are not available right now. If the user asks for something in these areas, explain what you can't help with in plain, natural language and suggest an alternative (e.g., direct them to the right person, page, or channel). Do NOT use technical terms like "tool sets", "not loaded", or "tool categories" — describe capabilities naturally (e.g., "I don't have access to scheduling features right now" rather than "meeting tools aren't loaded").
 
 ${hints.join('\n')}
 `;
