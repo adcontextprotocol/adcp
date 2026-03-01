@@ -221,14 +221,25 @@ export async function runMoltbookPosterJob(options: { limit?: number } = {}): Pr
       return result;
     }
 
-    // Record the post in our database
-    await recordPost({
+    // Record the post in our database.
+    // Returns null if another instance already recorded the same article (concurrent run).
+    const recorded = await recordPost({
       moltbookPostId: postResult.post?.id,
       knowledgeId: parseInt(article.id, 10),
       title: article.title,
       content,
+      submolt,
       url: postResult.post?.permalink,
     });
+
+    if (!recorded) {
+      // Another concurrent instance already recorded this post.
+      // The post exists on Moltbook exactly once (guaranteed by the unique constraint),
+      // but we must not record activity or send a Slack notification again.
+      logger.info({ articleId: article.id }, 'Article already recorded by concurrent run, skipping notification');
+      result.skipped = 1;
+      return result;
+    }
 
     // Record the activity
     await recordActivity('post', postResult.post?.id, undefined, article.title);
