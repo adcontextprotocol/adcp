@@ -8,7 +8,7 @@ app = "adcp-test-agent"
 primary_region = "iad"
 
 [build]
-  image = "ghcr.io/adcontextprotocol/salesagent:latest"
+  image = "docker.io/prebid/salesagent:latest"
 
 [http_service]
   internal_port = 8000

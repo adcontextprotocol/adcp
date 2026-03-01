@@ -6844,7 +6844,7 @@ Disallow: /api/admin/
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
-            const result = await client.getProducts({ brief: '' });
+            const result = await client.getProducts({ buying_mode: 'wholesale' });
             if (result.data?.products) {
               stats.product_count = result.data.products.length;
             }
