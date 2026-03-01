@@ -1,0 +1,1468 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/media-buy/get-products-request.json",
+  "title": "Get Products Request",
+  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, or 'refine' to iterate on known products and proposals.",
+  "type": "object",
+  "properties": {
+    "buying_mode": {
+      "type": "string",
+      "enum": [
+        "brief",
+        "wholesale",
+        "refine"
+      ],
+      "description": "Declares buyer intent for this request. 'brief': publisher curates product recommendations from the provided brief. 'wholesale': buyer requests raw inventory to apply their own audiences — brief must not be provided, and proposals are omitted. 'refine': iterate on products and proposals from a previous get_products response using the refine array of change requests. v3 clients MUST include buying_mode. Sellers receiving requests from pre-v3 clients without buying_mode SHOULD default to 'brief'."
+    },
+    "brief": {
+      "type": "string",
+      "description": "Natural language description of campaign requirements. Required when buying_mode is 'brief'. Must not be provided when buying_mode is 'wholesale' or 'refine'."
+    },
+    "refine": {
+      "type": "array",
+      "description": "Array of change requests for iterating on products and proposals from a previous get_products response. Each entry declares a scope (request, product, or proposal) and what the buyer is asking for. Only valid when buying_mode is 'refine'. The seller responds to each entry via refinement_applied in the response, matched by position.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "request",
+                "description": "Change scoped to the overall request — direction for the selection as a whole."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for at the request level (e.g., 'more video options and less display', 'suggest how to combine these products')."
+              }
+            },
+            "required": [
+              "scope",
+              "ask"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "product",
+                "description": "Change scoped to a specific product."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product ID from a previous get_products response."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "include",
+                  "omit",
+                  "more_like_this"
+                ],
+                "description": "'include': return this product with updated pricing and data. 'omit': exclude this product from the response. 'more_like_this': find additional products similar to this one (the original is also returned)."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for on this product. For 'include': specific changes to request (e.g., 'add 16:9 format'). For 'more_like_this': what 'similar' means (e.g., 'same audience but video format'). Ignored when action is 'omit'."
+              }
+            },
+            "required": [
+              "scope",
+              "id",
+              "action"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "proposal",
+                "description": "Change scoped to a specific proposal."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Proposal ID from a previous get_products response."
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "include",
+                  "omit"
+                ],
+                "description": "'include': return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response."
+              },
+              "ask": {
+                "type": "string",
+                "minLength": 1,
+                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+              }
+            },
+            "required": [
+              "scope",
+              "id",
+              "action"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "brand": {
+      "title": "Brand Reference",
+      "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "title": "Brand ID",
+          "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "examples": [
+            "tide",
+            "cheerios",
+            "air_jordan",
+            "nike",
+            "pampers"
+          ]
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "glow"
+        },
+        {
+          "domain": "acme-corp.com"
+        }
+      ]
+    },
+    "catalog": {
+      "title": "Catalog",
+      "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items.",
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string",
+          "description": "Buyer's identifier for this catalog. Required when syncing via sync_catalogs. When used in creatives, references a previously synced catalog on the account."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam Store Locations')."
+        },
+        "type": {
+          "title": "Catalog Type",
+          "description": "Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (ecommerce entries), 'inventory' (stock per location), 'store' (physical locations), 'promotion' (deals and pricing). Vertical types: 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination', 'app' — each with an industry-specific item schema.",
+          "type": "string",
+          "enum": [
+            "offering",
+            "product",
+            "inventory",
+            "store",
+            "promotion",
+            "hotel",
+            "flight",
+            "job",
+            "vehicle",
+            "real_estate",
+            "education",
+            "destination",
+            "app"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to an external catalog feed. The platform fetches and resolves items from this URL. For offering-type catalogs, the feed contains an array of Offering objects. For other types, the feed format is determined by feed_format. When omitted with type 'product', the platform uses its synced copy of the brand's product catalog."
+        },
+        "feed_format": {
+          "title": "Feed Format",
+          "description": "Format of the external feed at url. Required when url points to a non-AdCP feed (e.g., Google Merchant Center XML, Meta Product Catalog). Omit for offering-type catalogs where the feed is native AdCP JSON.",
+          "type": "string",
+          "enum": [
+            "google_merchant_center",
+            "facebook_catalog",
+            "shopify",
+            "linkedin_jobs",
+            "custom"
+          ]
+        },
+        "update_frequency": {
+          "title": "Update Frequency",
+          "description": "How often the platform should re-fetch the feed from url. Only applicable when url is provided. Platforms may use this as a hint for polling schedules.",
+          "type": "string",
+          "enum": [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "description": "Inline catalog data. The item schema depends on the catalog type: Offering objects for 'offering', StoreItem for 'store', HotelItem for 'hotel', FlightItem for 'flight', JobItem for 'job', VehicleItem for 'vehicle', RealEstateItem for 'real_estate', EducationItem for 'education', DestinationItem for 'destination', AppItem for 'app', or freeform objects for 'product', 'inventory', and 'promotion'. Mutually exclusive with url — provide one or the other, not both. Implementations should validate items against the type-specific schema.",
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1
+        },
+        "ids": {
+          "type": "array",
+          "description": "Filter catalog to specific item IDs. For offering-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "gtins": {
+          "type": "array",
+          "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{8,14}$"
+          },
+          "minItems": 1
+        },
+        "tags": {
+          "type": "array",
+          "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "category": {
+          "type": "string",
+          "description": "Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-positions')."
+        },
+        "query": {
+          "type": "string",
+          "description": "Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'amsterdam vacancies')."
+        },
+        "conversion_events": {
+          "type": "array",
+          "description": "Event types that represent conversions for items in this catalog. Declares what events the platform should attribute to catalog items — e.g., a job catalog converts via submit_application, a product catalog via purchase. The event's content_ids field carries the item IDs that connect back to catalog items. Use content_id_type to declare what identifier type content_ids values represent.",
+          "items": {
+            "title": "Event Type",
+            "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+            "type": "string",
+            "enum": [
+              "page_view",
+              "view_content",
+              "select_content",
+              "select_item",
+              "search",
+              "share",
+              "add_to_cart",
+              "remove_from_cart",
+              "viewed_cart",
+              "add_to_wishlist",
+              "initiate_checkout",
+              "add_payment_info",
+              "purchase",
+              "refund",
+              "lead",
+              "qualify_lead",
+              "close_convert_lead",
+              "disqualify_lead",
+              "complete_registration",
+              "subscribe",
+              "start_trial",
+              "app_install",
+              "app_launch",
+              "contact",
+              "schedule",
+              "donate",
+              "submit_application",
+              "custom"
+            ],
+            "enumDescriptions": {
+              "page_view": "User viewed a page",
+              "view_content": "User viewed specific content (product, article, etc.)",
+              "select_content": "User selected or clicked on content (article, video, etc.)",
+              "select_item": "User selected a specific product or item from a list",
+              "search": "User performed a search",
+              "share": "User shared content via social or messaging",
+              "add_to_cart": "User added an item to cart",
+              "remove_from_cart": "User removed an item from cart",
+              "viewed_cart": "User viewed their shopping cart",
+              "add_to_wishlist": "User added an item to a wishlist",
+              "initiate_checkout": "User started checkout process",
+              "add_payment_info": "User added payment information",
+              "purchase": "User completed a purchase",
+              "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+              "lead": "User expressed interest (form submission, signup, etc.)",
+              "qualify_lead": "Lead qualified by sales or scoring criteria",
+              "close_convert_lead": "Lead converted to a customer or closed deal",
+              "disqualify_lead": "Lead disqualified or marked as not viable",
+              "complete_registration": "User completed account registration",
+              "subscribe": "User subscribed to a service or newsletter",
+              "start_trial": "User started a free trial",
+              "app_install": "User installed an application",
+              "app_launch": "User launched an application",
+              "contact": "User initiated contact (call, message, etc.)",
+              "schedule": "User scheduled an appointment or event",
+              "donate": "User made a donation",
+              "submit_application": "User submitted an application (loan, job, etc.)",
+              "custom": "Custom event type (specify in custom_event_name)"
+            }
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "content_id_type": {
+          "title": "Content ID Type",
+          "description": "Identifier type that the event's content_ids field should be matched against for items in this catalog. For example, 'gtin' means content_ids values are Global Trade Item Numbers, 'sku' means retailer SKUs. Omit when using a custom identifier scheme not listed in the enum.",
+          "type": "string",
+          "enum": [
+            "sku",
+            "gtin",
+            "offering_id",
+            "job_id",
+            "hotel_id",
+            "flight_id",
+            "vehicle_id",
+            "listing_id",
+            "store_id",
+            "program_id",
+            "destination_id",
+            "app_id"
+          ]
+        },
+        "feed_field_mappings": {
+          "type": "array",
+          "description": "Declarative normalization rules for external feeds. Maps non-standard feed field names, date formats, price encodings, and image URLs to the AdCP catalog item schema. Applied during sync_catalogs ingestion. Supports field renames, named transforms (date, divide, boolean, split), static literal injection, and assignment of image URLs to typed asset pools.",
+          "items": {
+            "title": "Catalog Field Mapping",
+            "description": "Declares how a field in an external feed maps to the AdCP catalog item schema. Used in sync_catalogs feed_field_mappings to normalize non-AdCP feeds (Google Merchant Center, LinkedIn Jobs XML, hotel XML, etc.) to the standard catalog item schema without requiring the buyer to preprocess every feed. Multiple mappings can assemble a nested object via dot notation (e.g., separate mappings for price.amount and price.currency).",
+            "type": "object",
+            "properties": {
+              "feed_field": {
+                "type": "string",
+                "description": "Field name in the external feed record. Omit when injecting a static literal value (use the value property instead)."
+              },
+              "catalog_field": {
+                "type": "string",
+                "description": "Target field on the catalog item schema, using dot notation for nested fields (e.g., 'name', 'price.amount', 'location.city'). Mutually exclusive with asset_group_id."
+              },
+              "asset_group_id": {
+                "type": "string",
+                "description": "Places the feed field value (a URL) into a typed asset pool on the catalog item's assets array. The value is wrapped as an image or video asset in a group with this ID. Use standard group IDs: 'images_landscape', 'images_vertical', 'images_square', 'logo', 'video'. Mutually exclusive with catalog_field."
+              },
+              "value": {
+                "description": "Static literal value to inject into catalog_field for every item, regardless of what the feed contains. Mutually exclusive with feed_field. Useful for fields the feed omits (e.g., currency when price is always USD, or a constant category value)."
+              },
+              "transform": {
+                "type": "string",
+                "description": "Named transform to apply to the feed field value before writing to the catalog schema. See transform-specific parameters (format, timezone, by, separator).",
+                "enum": [
+                  "date",
+                  "divide",
+                  "boolean",
+                  "split"
+                ]
+              },
+              "format": {
+                "type": "string",
+                "description": "For transform 'date': the input date format string (e.g., 'YYYYMMDD', 'MM/DD/YYYY', 'DD-MM-YYYY'). Output is always ISO 8601 (e.g., '2025-03-01'). Uses Unicode date pattern tokens."
+              },
+              "timezone": {
+                "type": "string",
+                "description": "For transform 'date': the timezone of the input value. IANA timezone identifier (e.g., 'UTC', 'America/New_York', 'Europe/Amsterdam'). Defaults to UTC when omitted."
+              },
+              "by": {
+                "type": "number",
+                "description": "For transform 'divide': the divisor to apply (e.g., 100 to convert integer cents to decimal dollars).",
+                "exclusiveMinimum": 0
+              },
+              "separator": {
+                "type": "string",
+                "description": "For transform 'split': the separator character or string to split on. Defaults to ','.",
+                "default": ","
+              },
+              "default": {
+                "description": "Fallback value to use when feed_field is absent, null, or empty. Applied after any transform would have been applied. Allows optional feed fields to have a guaranteed baseline value."
+              },
+              "ext": {
+                "title": "Extension Object",
+                "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "feed_field",
+                    "value"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "catalog_field",
+                    "asset_group_id"
+                  ]
+                }
+              }
+            ],
+            "additionalProperties": true,
+            "examples": [
+              {
+                "description": "Simple field rename",
+                "data": {
+                  "feed_field": "hotel_name",
+                  "catalog_field": "name"
+                }
+              },
+              {
+                "description": "Date format transform — YYYYMMDD to ISO 8601",
+                "data": {
+                  "feed_field": "available_from",
+                  "catalog_field": "valid_from",
+                  "transform": "date",
+                  "format": "YYYYMMDD",
+                  "timezone": "UTC"
+                }
+              },
+              {
+                "description": "Divide cents to dollars",
+                "data": {
+                  "feed_field": "price_cents",
+                  "catalog_field": "price.amount",
+                  "transform": "divide",
+                  "by": 100
+                }
+              },
+              {
+                "description": "Static literal injection — currency not in feed",
+                "data": {
+                  "catalog_field": "price.currency",
+                  "value": "USD"
+                }
+              },
+              {
+                "description": "Image URL assigned to typed asset pool",
+                "data": {
+                  "feed_field": "primary_photo_url",
+                  "asset_group_id": "images_landscape"
+                }
+              },
+              {
+                "description": "Vertical photo URL assigned to vertical pool",
+                "data": {
+                  "feed_field": "portrait_photo_url",
+                  "asset_group_id": "images_vertical"
+                }
+              },
+              {
+                "description": "Split comma-separated tags to array",
+                "data": {
+                  "feed_field": "amenity_list",
+                  "catalog_field": "amenities",
+                  "transform": "split",
+                  "separator": ","
+                }
+              },
+              {
+                "description": "Boolean coercion with default",
+                "data": {
+                  "feed_field": "is_available",
+                  "catalog_field": "available",
+                  "transform": "boolean",
+                  "default": false
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true,
+      "examples": [
+        {
+          "description": "Synced product catalog from Google Merchant Center",
+          "data": {
+            "catalog_id": "gmc-primary",
+            "name": "Primary Product Feed",
+            "type": "product",
+            "url": "https://feeds.acmecorp.com/products.xml",
+            "feed_format": "google_merchant_center",
+            "update_frequency": "daily"
+          }
+        },
+        {
+          "description": "Inventory feed for store-level stock data",
+          "data": {
+            "catalog_id": "store-inventory",
+            "name": "Store Inventory",
+            "type": "inventory",
+            "url": "https://feeds.acmecorp.com/inventory.json",
+            "feed_format": "custom",
+            "update_frequency": "hourly"
+          }
+        },
+        {
+          "description": "Store locator feed",
+          "data": {
+            "catalog_id": "retail-locations",
+            "name": "Retail Locations",
+            "type": "store",
+            "url": "https://feeds.acmecorp.com/stores.json",
+            "feed_format": "custom",
+            "update_frequency": "weekly"
+          }
+        },
+        {
+          "description": "Promotional pricing feed",
+          "data": {
+            "catalog_id": "summer-sale",
+            "name": "Summer Sale Promotions",
+            "type": "promotion",
+            "url": "https://feeds.acmecorp.com/promotions.json",
+            "feed_format": "google_merchant_center",
+            "update_frequency": "daily"
+          }
+        },
+        {
+          "description": "Inline offering catalog (no sync needed)",
+          "data": {
+            "type": "offering",
+            "items": [
+              {
+                "offering_id": "summer-sale",
+                "name": "Summer Sale",
+                "landing_url": "https://acme.com/summer"
+              }
+            ]
+          }
+        },
+        {
+          "description": "Reference to a previously synced catalog by ID",
+          "data": {
+            "catalog_id": "gmc-primary",
+            "type": "product",
+            "ids": [
+              "SKU-12345",
+              "SKU-67890"
+            ]
+          }
+        },
+        {
+          "description": "Product catalog with GTIN cross-retailer matching and attribution",
+          "data": {
+            "type": "product",
+            "gtins": [
+              "00013000006040",
+              "00013000006057"
+            ],
+            "content_id_type": "gtin",
+            "conversion_events": [
+              "purchase",
+              "add_to_cart"
+            ]
+          }
+        },
+        {
+          "description": "Inline store catalog with catchment areas",
+          "data": {
+            "catalog_id": "retail-locations",
+            "name": "Retail Locations",
+            "type": "store",
+            "items": [
+              {
+                "store_id": "amsterdam-flagship",
+                "name": "Amsterdam Flagship",
+                "location": {
+                  "lat": 52.3676,
+                  "lng": 4.9041
+                },
+                "catchments": [
+                  {
+                    "catchment_id": "walk",
+                    "travel_time": {
+                      "value": 10,
+                      "unit": "min"
+                    },
+                    "transport_mode": "walking"
+                  },
+                  {
+                    "catchment_id": "drive",
+                    "travel_time": {
+                      "value": 15,
+                      "unit": "min"
+                    },
+                    "transport_mode": "driving"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "account": {
+      "title": "Account Reference",
+      "description": "Account for product lookup. Returns products with pricing specific to this account's rate card.",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Reference",
+              "description": "Brand reference identifying the advertiser",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ]
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "glow"
+                },
+                {
+                  "domain": "acme-corp.com"
+                }
+              ]
+            },
+            "operator": {
+              "type": "string",
+              "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_acme_001"
+        },
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com"
+        },
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
+          "operator": "pinnacle-media.com"
+        }
+      ]
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference label. Groups related discovery and buy operations under a single campaign for CRM and ad server correlation (e.g., 'NovaDrink_Meals_Q2')."
+    },
+    "filters": {
+      "title": "Product Filters",
+      "description": "Structured filters for product discovery",
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "title": "Delivery Type",
+          "description": "Type of inventory delivery",
+          "type": "string",
+          "enum": [
+            "guaranteed",
+            "non_guaranteed"
+          ],
+          "enumDescriptions": {
+            "guaranteed": "Reserved inventory with guaranteed delivery",
+            "non_guaranteed": "Auction-based inventory without delivery guarantees"
+          }
+        },
+        "is_fixed_price": {
+          "type": "boolean",
+          "description": "Filter by pricing availability: true = products offering fixed pricing (at least one option with fixed_price), false = products offering auction pricing (at least one option without fixed_price). Products with both fixed and auction options match both true and false."
+        },
+        "format_types": {
+          "type": "array",
+          "description": "Filter by format types",
+          "items": {
+            "title": "Format Category",
+            "description": "DEPRECATED: High-level categories for creative formats. These categories are lossy abstractions that don't scale well to emerging ad formats. Use the assets array in Format objects to understand creative requirements instead - it provides precise information about what asset types are needed (video, image, text, etc.).",
+            "type": "string",
+            "enum": [
+              "audio",
+              "video",
+              "display",
+              "native",
+              "dooh",
+              "rich_media",
+              "universal"
+            ]
+          },
+          "minItems": 1
+        },
+        "format_ids": {
+          "type": "array",
+          "description": "Filter by specific format IDs",
+          "items": {
+            "title": "Format ID",
+            "description": "Structured format identifier with agent URL and format name. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + dimensions/duration). Template formats accept parameters in format_id while concrete formats have fixed dimensions in their definition. Parameterized format IDs create unique, specific format variants.",
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the agent that defines this format (e.g., 'https://creatives.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats)"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+              },
+              "duration_ms": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+              }
+            },
+            "required": [
+              "agent_url",
+              "id"
+            ],
+            "additionalProperties": true,
+            "dependencies": {
+              "width": [
+                "height"
+              ],
+              "height": [
+                "width"
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "standard_formats_only": {
+          "type": "boolean",
+          "description": "Only return products accepting IAB standard formats"
+        },
+        "min_exposures": {
+          "type": "integer",
+          "description": "Minimum exposures/impressions needed for measurement validity",
+          "minimum": 1
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
+        },
+        "budget_range": {
+          "type": "object",
+          "description": "Budget range to filter appropriate products",
+          "properties": {
+            "min": {
+              "type": "number",
+              "description": "Minimum budget amount",
+              "minimum": 0
+            },
+            "max": {
+              "type": "number",
+              "description": "Maximum budget amount",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "currency"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "min"
+              ]
+            },
+            {
+              "required": [
+                "max"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        "countries": {
+          "type": "array",
+          "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Works for all inventory types.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "regions": {
+          "type": "array",
+          "description": "Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-SCT']). Use for locally-bound inventory (regional OOH, local TV) where products have region-specific coverage.",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
+          },
+          "minItems": 1
+        },
+        "metros": {
+          "type": "array",
+          "description": "Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Use when products have DMA/metro-specific coverage. For digital inventory where products have broad coverage, use required_geo_targeting instead to filter by seller capability.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "title": "Metro Area System",
+                "description": "Metro classification system",
+                "type": "string",
+                "enum": [
+                  "nielsen_dma",
+                  "uk_itl1",
+                  "uk_itl2",
+                  "eurostat_nuts2",
+                  "custom"
+                ]
+              },
+              "code": {
+                "type": "string",
+                "description": "Metro code within the system (e.g., '501' for NYC DMA)"
+              }
+            },
+            "required": [
+              "system",
+              "code"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "channels": {
+          "type": "array",
+          "description": "Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])",
+          "items": {
+            "title": "Media Channel",
+            "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+            "type": "string",
+            "enum": [
+              "display",
+              "olv",
+              "social",
+              "search",
+              "ctv",
+              "linear_tv",
+              "radio",
+              "streaming_audio",
+              "podcast",
+              "dooh",
+              "ooh",
+              "print",
+              "cinema",
+              "email",
+              "gaming",
+              "retail_media",
+              "influencer",
+              "affiliate",
+              "product_placement"
+            ],
+            "enumDescriptions": {
+              "display": "Digital display advertising (banners, native, rich media) across web and app",
+              "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+              "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+              "search": "Search engine advertising and search networks",
+              "ctv": "Connected TV and streaming on television screens",
+              "linear_tv": "Traditional broadcast and cable television",
+              "radio": "Traditional AM/FM radio broadcast",
+              "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+              "podcast": "Podcast advertising (host-read or dynamically inserted)",
+              "dooh": "Digital out-of-home screens in public spaces",
+              "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+              "print": "Newspapers, magazines, and other print publications",
+              "cinema": "Movie theater advertising",
+              "email": "Email advertising and sponsored newsletter content",
+              "gaming": "In-game advertising across platforms",
+              "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+              "influencer": "Creator and influencer marketing partnerships",
+              "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+              "product_placement": "Product placement, branded content, and sponsorship integrations"
+            }
+          },
+          "minItems": 1
+        },
+        "required_axe_integrations": {
+          "type": "array",
+          "description": "Filter to products executable through specific agentic ad exchanges. URLs are canonical identifiers.",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "minItems": 1
+        },
+        "required_features": {
+          "title": "Media Buy Features",
+          "description": "Filter to products from sellers supporting specific protocol features. Only features set to true are used for filtering.",
+          "type": "object",
+          "properties": {
+            "inline_creative_management": {
+              "type": "boolean",
+              "description": "Supports creatives provided inline in create_media_buy requests"
+            },
+            "property_list_filtering": {
+              "type": "boolean",
+              "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
+            },
+            "content_standards": {
+              "type": "boolean",
+              "description": "Full support for content_standards configuration including sampling rates and category filtering"
+            },
+            "conversion_tracking": {
+              "type": "boolean",
+              "description": "Supports sync_event_sources and log_event tasks for conversion event tracking"
+            },
+            "audience_targeting": {
+              "type": "boolean",
+              "description": "Supports sync_audiences task and audience_include/audience_exclude in targeting overlays for first-party CRM audience management"
+            },
+            "catalog_management": {
+              "type": "boolean",
+              "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+            },
+            "sandbox": {
+              "type": "boolean",
+              "description": "Supports sandbox mode for operations without real platform calls or spend"
+            }
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "required_geo_targeting": {
+          "type": "array",
+          "description": "Filter to products from sellers supporting specific geo targeting capabilities. Each entry specifies a targeting level (country, region, metro, postal_area) and optionally a system for levels that have multiple classification systems.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "title": "Geographic Targeting Level",
+                "description": "Geographic targeting level (country, region, metro, postal_area)",
+                "type": "string",
+                "enum": [
+                  "country",
+                  "region",
+                  "metro",
+                  "postal_area"
+                ]
+              },
+              "system": {
+                "type": "string",
+                "description": "Classification system within the level. Required for metro (e.g., 'nielsen_dma') and postal_area (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
+              }
+            },
+            "required": [
+              "level"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "signal_targeting": {
+          "type": "array",
+          "description": "Filter to products supporting specific signals from data provider catalogs. Products must have the requested signals in their data_provider_signals and signal_targeting_allowed must be true (or all signals requested).",
+          "items": {
+            "title": "Signal Targeting",
+            "description": "Targeting constraint for a specific signal. Uses value_type as discriminator to determine the targeting expression format.",
+            "discriminator": {
+              "propertyName": "value_type"
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "Binary signal targeting - user either matches or doesn't",
+                "properties": {
+                  "signal_id": {
+                    "title": "Signal ID",
+                    "description": "The signal to target",
+                    "discriminator": {
+                      "propertyName": "source"
+                    },
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "catalog",
+                            "description": "Discriminator indicating this signal is from a data provider's published catalog"
+                          },
+                          "data_provider_domain": {
+                            "type": "string",
+                            "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+                            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "data_provider_domain",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "description": "Agent signal - references a signal native to the signals agent. Not externally verifiable; buyer trusts the agent's claim about the signal.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "agent",
+                            "description": "Discriminator indicating this signal is native to the agent (not from a data provider catalog)"
+                          },
+                          "agent_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL of the signals agent that provides this signal (e.g., 'https://liveramp.com/.well-known/adcp/signals')"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "agent_url",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  "value_type": {
+                    "type": "string",
+                    "const": "binary",
+                    "description": "Discriminator for binary signals"
+                  },
+                  "value": {
+                    "type": "boolean",
+                    "description": "Whether to include (true) or exclude (false) users matching this signal"
+                  }
+                },
+                "required": [
+                  "signal_id",
+                  "value_type",
+                  "value"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "description": "Categorical signal targeting - target users with specific values",
+                "properties": {
+                  "signal_id": {
+                    "title": "Signal ID",
+                    "description": "The signal to target",
+                    "discriminator": {
+                      "propertyName": "source"
+                    },
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "catalog",
+                            "description": "Discriminator indicating this signal is from a data provider's published catalog"
+                          },
+                          "data_provider_domain": {
+                            "type": "string",
+                            "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+                            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "data_provider_domain",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "description": "Agent signal - references a signal native to the signals agent. Not externally verifiable; buyer trusts the agent's claim about the signal.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "agent",
+                            "description": "Discriminator indicating this signal is native to the agent (not from a data provider catalog)"
+                          },
+                          "agent_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL of the signals agent that provides this signal (e.g., 'https://liveramp.com/.well-known/adcp/signals')"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "agent_url",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  "value_type": {
+                    "type": "string",
+                    "const": "categorical",
+                    "description": "Discriminator for categorical signals"
+                  },
+                  "values": {
+                    "type": "array",
+                    "description": "Values to target. Users with any of these values will be included.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "signal_id",
+                  "value_type",
+                  "values"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "object",
+                "description": "Numeric signal targeting - target users within a value range. If min_value is provided, it must be <= max_value. Values should be within the signal's defined range (see signal definition).",
+                "properties": {
+                  "signal_id": {
+                    "title": "Signal ID",
+                    "description": "The signal to target",
+                    "discriminator": {
+                      "propertyName": "source"
+                    },
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "catalog",
+                            "description": "Discriminator indicating this signal is from a data provider's published catalog"
+                          },
+                          "data_provider_domain": {
+                            "type": "string",
+                            "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+                            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "data_provider_domain",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      },
+                      {
+                        "type": "object",
+                        "description": "Agent signal - references a signal native to the signals agent. Not externally verifiable; buyer trusts the agent's claim about the signal.",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "const": "agent",
+                            "description": "Discriminator indicating this signal is native to the agent (not from a data provider catalog)"
+                          },
+                          "agent_url": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "URL of the signals agent that provides this signal (e.g., 'https://liveramp.com/.well-known/adcp/signals')"
+                          },
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]+$",
+                            "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "agent_url",
+                          "id"
+                        ],
+                        "additionalProperties": true
+                      }
+                    ]
+                  },
+                  "value_type": {
+                    "type": "string",
+                    "const": "numeric",
+                    "description": "Discriminator for numeric signals"
+                  },
+                  "min_value": {
+                    "type": "number",
+                    "description": "Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both are provided. Should be >= signal's range.min if defined."
+                  },
+                  "max_value": {
+                    "type": "number",
+                    "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided. Should be <= signal's range.max if defined."
+                  }
+                },
+                "required": [
+                  "signal_id",
+                  "value_type"
+                ],
+                "additionalProperties": true
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "property_list": {
+      "title": "Property List Reference",
+      "description": "[AdCP 3.0] Reference to an externally managed property list. When provided, the sales agent should filter products to only those available on properties in the list.",
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the agent managing the property list"
+        },
+        "list_id": {
+          "type": "string",
+          "description": "Identifier for the property list within the agent",
+          "minLength": 1
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "JWT or other authorization token for accessing the list. Optional if the list is public or caller has implicit access."
+        }
+      },
+      "required": [
+        "agent_url",
+        "list_id"
+      ],
+      "additionalProperties": false
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "product_id",
+          "name",
+          "description",
+          "publisher_properties",
+          "channels",
+          "format_ids",
+          "placements",
+          "delivery_type",
+          "pricing_options",
+          "forecast",
+          "outcome_measurement",
+          "delivery_measurement",
+          "reporting_capabilities",
+          "creative_policy",
+          "catalog_types",
+          "metric_optimization",
+          "conversion_tracking",
+          "data_provider_signals",
+          "max_optimization_goals",
+          "catalog_match",
+          "brief_relevance",
+          "expires_at",
+          "product_card",
+          "product_card_detailed"
+        ]
+      }
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "buying_mode"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "brief"
+        },
+        "refine": false
+      },
+      "required": [
+        "buying_mode",
+        "brief"
+      ]
+    },
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "wholesale"
+        },
+        "brief": false,
+        "refine": false
+      },
+      "required": [
+        "buying_mode"
+      ]
+    },
+    {
+      "properties": {
+        "buying_mode": {
+          "const": "refine"
+        },
+        "brief": false
+      },
+      "required": [
+        "buying_mode",
+        "refine"
+      ]
+    }
+  ],
+  "dependencies": {
+    "catalog": [
+      "brand"
+    ]
+  },
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.651Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

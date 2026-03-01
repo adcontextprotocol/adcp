@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/digital-source-type.json",
+  "title": "Digital Source Type",
+  "description": "Classification of AI involvement in content creation, aligned with IPTC digitalsourcetype vocabulary. Used in provenance metadata to declare how a creative asset, artifact, or individual asset was produced.",
+  "type": "string",
+  "enum": [
+    "digital_capture",
+    "digital_creation",
+    "trained_algorithmic_media",
+    "composite_with_trained_algorithmic_media",
+    "algorithmic_media",
+    "composite_capture",
+    "composite_synthetic",
+    "human_edits",
+    "data_driven_media"
+  ],
+  "enumDescriptions": {
+    "digital_capture": "Captured by a digital device (camera, scanner, screen recording) with no AI involvement",
+    "digital_creation": "Created by a human using digital tools (Photoshop, Illustrator, After Effects) without AI generation",
+    "trained_algorithmic_media": "Generated entirely by a trained AI model (DALL-E, Midjourney, Stable Diffusion, Sora)",
+    "composite_with_trained_algorithmic_media": "Human-created content combined with AI-generated elements (e.g., photo with AI background)",
+    "algorithmic_media": "Produced by deterministic algorithms without machine learning (procedural generation, rule-based systems)",
+    "composite_capture": "Multiple digital captures composited together without AI",
+    "composite_synthetic": "Composite of multiple elements where at least one is AI-generated (e.g., stock photo composited with AI-generated background)",
+    "human_edits": "Content augmented, corrected, or enhanced by humans using non-generative tools",
+    "data_driven_media": "Assembled from structured data feeds (DCO templates, product catalogs, weather-triggered variants)"
+  }
+}

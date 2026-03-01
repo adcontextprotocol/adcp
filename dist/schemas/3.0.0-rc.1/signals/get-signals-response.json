@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/signals/get-signals-response.json",
+  "title": "Get Signals Response",
+  "description": "Response payload for get_signals task",
+  "type": "object",
+  "properties": {
+    "signals": {
+      "type": "array",
+      "description": "Array of matching signals",
+      "items": {
+        "type": "object",
+        "properties": {
+          "signal_id": {
+            "$ref": "/schemas/3.0.0-rc.1/core/signal-id.json",
+            "description": "Universal signal identifier referencing the data provider's catalog. Use this to verify authorization and look up signal definitions."
+          },
+          "signal_agent_segment_id": {
+            "type": "string",
+            "description": "Opaque identifier used for activation. This is the signals agent's internal segment ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable signal name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed signal description"
+          },
+          "value_type": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/signal-value-type.json",
+            "description": "The data type of this signal's values (binary, categorical, numeric)"
+          },
+          "categories": {
+            "type": "array",
+            "description": "Valid values for categorical signals. Present when value_type is 'categorical'. Buyers must use one of these values in SignalTargeting.values.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "range": {
+            "type": "object",
+            "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
+            "properties": {
+              "min": {
+                "type": "number",
+                "description": "Minimum value (inclusive)"
+              },
+              "max": {
+                "type": "number",
+                "description": "Maximum value (inclusive)"
+              }
+            },
+            "required": ["min", "max"],
+            "additionalProperties": false
+          },
+          "signal_type": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/signal-catalog-type.json",
+            "description": "Catalog type of signal (marketplace, custom, owned)"
+          },
+          "data_provider": {
+            "type": "string",
+            "description": "Human-readable name of the data provider"
+          },
+          "coverage_percentage": {
+            "type": "number",
+            "description": "Percentage of audience coverage",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "deployments": {
+            "type": "array",
+            "description": "Array of deployment targets",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.1/core/deployment.json"
+            }
+          },
+          "pricing_options": {
+            "type": "array",
+            "description": "Pricing options available for this signal. The buyer selects one and passes its pricing_option_id in report_usage for billing verification.",
+            "items": {
+              "$ref": "/schemas/3.0.0-rc.1/core/signal-pricing-option.json"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing_options"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., signal discovery or pricing issues)",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.1/core/pagination-response.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "signals"
+  ],
+  "additionalProperties": true
+}

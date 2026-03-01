@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/catalog-field-mapping.json",
+  "title": "Catalog Field Mapping",
+  "description": "Declares how a field in an external feed maps to the AdCP catalog item schema. Used in sync_catalogs feed_field_mappings to normalize non-AdCP feeds (Google Merchant Center, LinkedIn Jobs XML, hotel XML, etc.) to the standard catalog item schema without requiring the buyer to preprocess every feed. Multiple mappings can assemble a nested object via dot notation (e.g., separate mappings for price.amount and price.currency).",
+  "type": "object",
+  "properties": {
+    "feed_field": {
+      "type": "string",
+      "description": "Field name in the external feed record. Omit when injecting a static literal value (use the value property instead)."
+    },
+    "catalog_field": {
+      "type": "string",
+      "description": "Target field on the catalog item schema, using dot notation for nested fields (e.g., 'name', 'price.amount', 'location.city'). Mutually exclusive with asset_group_id."
+    },
+    "asset_group_id": {
+      "type": "string",
+      "description": "Places the feed field value (a URL) into a typed asset pool on the catalog item's assets array. The value is wrapped as an image or video asset in a group with this ID. Use standard group IDs: 'images_landscape', 'images_vertical', 'images_square', 'logo', 'video'. Mutually exclusive with catalog_field."
+    },
+    "value": {
+      "description": "Static literal value to inject into catalog_field for every item, regardless of what the feed contains. Mutually exclusive with feed_field. Useful for fields the feed omits (e.g., currency when price is always USD, or a constant category value)."
+    },
+    "transform": {
+      "type": "string",
+      "description": "Named transform to apply to the feed field value before writing to the catalog schema. See transform-specific parameters (format, timezone, by, separator).",
+      "enum": ["date", "divide", "boolean", "split"]
+    },
+    "format": {
+      "type": "string",
+      "description": "For transform 'date': the input date format string (e.g., 'YYYYMMDD', 'MM/DD/YYYY', 'DD-MM-YYYY'). Output is always ISO 8601 (e.g., '2025-03-01'). Uses Unicode date pattern tokens."
+    },
+    "timezone": {
+      "type": "string",
+      "description": "For transform 'date': the timezone of the input value. IANA timezone identifier (e.g., 'UTC', 'America/New_York', 'Europe/Amsterdam'). Defaults to UTC when omitted."
+    },
+    "by": {
+      "type": "number",
+      "description": "For transform 'divide': the divisor to apply (e.g., 100 to convert integer cents to decimal dollars).",
+      "exclusiveMinimum": 0
+    },
+    "separator": {
+      "type": "string",
+      "description": "For transform 'split': the separator character or string to split on. Defaults to ','.",
+      "default": ","
+    },
+    "default": {
+      "description": "Fallback value to use when feed_field is absent, null, or empty. Applied after any transform would have been applied. Allows optional feed fields to have a guaranteed baseline value."
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "allOf": [
+    { "not": { "required": ["feed_field", "value"] } },
+    { "not": { "required": ["catalog_field", "asset_group_id"] } }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Simple field rename",
+      "data": {
+        "feed_field": "hotel_name",
+        "catalog_field": "name"
+      }
+    },
+    {
+      "description": "Date format transform — YYYYMMDD to ISO 8601",
+      "data": {
+        "feed_field": "available_from",
+        "catalog_field": "valid_from",
+        "transform": "date",
+        "format": "YYYYMMDD",
+        "timezone": "UTC"
+      }
+    },
+    {
+      "description": "Divide cents to dollars",
+      "data": {
+        "feed_field": "price_cents",
+        "catalog_field": "price.amount",
+        "transform": "divide",
+        "by": 100
+      }
+    },
+    {
+      "description": "Static literal injection — currency not in feed",
+      "data": {
+        "catalog_field": "price.currency",
+        "value": "USD"
+      }
+    },
+    {
+      "description": "Image URL assigned to typed asset pool",
+      "data": {
+        "feed_field": "primary_photo_url",
+        "asset_group_id": "images_landscape"
+      }
+    },
+    {
+      "description": "Vertical photo URL assigned to vertical pool",
+      "data": {
+        "feed_field": "portrait_photo_url",
+        "asset_group_id": "images_vertical"
+      }
+    },
+    {
+      "description": "Split comma-separated tags to array",
+      "data": {
+        "feed_field": "amenity_list",
+        "catalog_field": "amenities",
+        "transform": "split",
+        "separator": ","
+      }
+    },
+    {
+      "description": "Boolean coercion with default",
+      "data": {
+        "feed_field": "is_available",
+        "catalog_field": "available",
+        "transform": "boolean",
+        "default": false
+      }
+    }
+  ]
+}

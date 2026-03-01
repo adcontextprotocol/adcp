@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/creative/get-creative-delivery-request.json",
+  "title": "Get Creative Delivery Request",
+  "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids, media_buy_buyer_refs, or creative_ids) is required.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.1/core/account-ref.json",
+      "description": "Account for routing and scoping. Limits results to creatives within this account."
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Filter to specific media buys by publisher ID. If omitted, returns creative delivery across all matching media buys.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "media_buy_buyer_refs": {
+      "type": "array",
+      "description": "Filter to specific media buys by buyer reference ID. Alternative to media_buy_ids when the buyer doesn't have the publisher's identifiers.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "creative_ids": {
+      "type": "array",
+      "description": "Filter to specific creatives by ID. If omitted, returns delivery for all creatives matching the other filters.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "start_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Start date for delivery period (YYYY-MM-DD). Interpreted in the platform's reporting timezone."
+    },
+    "end_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "End date for delivery period (YYYY-MM-DD). Interpreted in the platform's reporting timezone."
+    },
+    "max_variants": {
+      "type": "integer",
+      "description": "Maximum number of variants to return per creative. When omitted, the agent returns all variants. Use this to limit response size for generative creatives that may produce large numbers of variants.",
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.1/core/pagination-request.json",
+      "description": "Pagination parameters for the creatives array in the response. Uses cursor-based pagination consistent with other list operations."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "anyOf": [
+    { "required": ["media_buy_ids"] },
+    { "required": ["media_buy_buyer_refs"] },
+    { "required": ["creative_ids"] }
+  ],
+  "additionalProperties": true
+}

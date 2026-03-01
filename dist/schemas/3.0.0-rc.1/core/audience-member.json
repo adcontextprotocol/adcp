@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/audience-member.json",
+  "title": "Audience Member",
+  "description": "A CRM audience member identified by a buyer-assigned external_id and at least one matchable identifier. All identifiers must be normalized before hashing: emails to lowercase+trim, phone numbers to E.164 format (e.g. +12065551234). Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip for Google Customer Match) are not yet standardized — use the ext field for platform-specific extensions.",
+  "type": "object",
+  "properties": {
+    "external_id": {
+      "type": "string",
+      "description": "Buyer-assigned stable identifier for this audience member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. Adapters for CDPs that don't natively assign IDs can derive one (e.g. hash of the member's identifiers)."
+    },
+    "hashed_email": {
+      "type": "string",
+      "description": "SHA-256 hash of lowercase, trimmed email address.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "hashed_phone": {
+      "type": "string",
+      "description": "SHA-256 hash of E.164-formatted phone number (e.g. +12065551234).",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "uids": {
+      "type": "array",
+      "description": "Universal ID values (MAIDs, RampID, UID2, etc.) for user matching.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "/schemas/3.0.0-rc.1/enums/uid-type.json",
+            "description": "Universal ID type"
+          },
+          "value": {
+            "type": "string",
+            "description": "Universal ID value"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": ["external_id"],
+  "anyOf": [
+    { "required": ["hashed_email"] },
+    { "required": ["hashed_phone"] },
+    { "required": ["uids"] }
+  ],
+  "additionalProperties": true
+}

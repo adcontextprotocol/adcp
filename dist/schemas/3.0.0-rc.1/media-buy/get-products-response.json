@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/media-buy/get-products-response.json",
+  "title": "Get Products Response",
+  "description": "Response payload for get_products task",
+  "type": "object",
+  "properties": {
+    "products": {
+      "type": "array",
+      "description": "Array of matching products",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/product.json"
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "description": "Optional array of proposed media plans with budget allocations across products. Publishers include proposals when they can provide strategic guidance based on the brief. Proposals are actionable - buyers can refine them via follow-up get_products calls within the same session, or execute them directly via create_media_buy.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/proposal.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., product filtering issues)",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/error.json"
+      }
+    },
+    "property_list_applied": {
+      "type": "boolean",
+      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
+    },
+    "catalog_applied": {
+      "type": "boolean",
+      "description": "Whether the seller filtered results based on the provided catalog. True if the seller matched catalog items against its inventory. Absent or false if no catalog was provided or the seller does not support catalog matching."
+    },
+    "refinement_applied": {
+      "type": "array",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["request", "product", "proposal"],
+            "description": "Echoes the scope from the corresponding refine entry. Allows orchestrators to cross-validate alignment."
+          },
+          "id": {
+            "type": "string",
+            "description": "Echoes the id from the corresponding refine entry (for product and proposal scopes)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["applied", "partial", "unable"],
+            "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+          }
+        },
+        "required": ["status"],
+        "additionalProperties": false
+      }
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.0-rc.1/core/pagination-response.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.1/core/ext.json"
+    }
+  },
+  "required": [
+    "products"
+  ],
+  "additionalProperties": true
+}

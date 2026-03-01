@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/requirements/catalog-requirements.json",
+  "title": "Catalog Requirements",
+  "description": "Format-level declaration of what catalog feeds a creative needs. Formats that render product listings, store locators, or promotional content declare which catalog types must be synced and what fields each catalog must provide. Buyers use this to ensure the right catalogs are synced before submitting creatives.",
+  "type": "object",
+  "properties": {
+    "catalog_type": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/catalog-type.json",
+      "description": "The catalog type this requirement applies to"
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this catalog type must be present. When true, creatives using this format must reference a synced catalog of this type.",
+      "default": true
+    },
+    "min_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum number of items the catalog must contain for this format to render properly (e.g., a carousel might require at least 3 products)"
+    },
+    "max_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of items the format can render. Items beyond this limit are ignored. Useful for fixed-slot layouts (e.g., a 3-product card) or feed-size constraints."
+    },
+    "required_fields": {
+      "type": "array",
+      "description": "Fields that must be present and non-empty on every item in the catalog. Field names are catalog-type-specific (e.g., 'title', 'price', 'image_url' for product catalogs; 'store_id', 'quantity' for inventory feeds).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "feed_formats": {
+      "type": "array",
+      "description": "Accepted feed formats for this catalog type. When specified, the synced catalog must use one of these formats. When omitted, any format is accepted.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/enums/feed-format.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "offering_asset_constraints": {
+      "type": "array",
+      "description": "Per-item creative asset requirements. Declares what asset groups (headlines, images, videos) each catalog item must provide in its assets array, along with count bounds and per-asset technical constraints. Applicable to 'offering' and all vertical catalog types (hotel, flight, job, etc.) whose items carry typed assets.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/requirements/offering-asset-constraint.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "field_bindings": {
+      "type": "array",
+      "description": "Explicit mappings from format template slots to catalog item fields or typed asset pools. Optional — creative agents can infer mappings without them, but bindings make the relationship self-describing and enable validation. Covers scalar fields (asset_id → catalog_field), asset pools (asset_id → asset_group_id on the catalog item), and repeatable groups that iterate over catalog items.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/requirements/catalog-field-binding.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": ["catalog_type"],
+  "additionalProperties": true
+}

@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/creative-brief.json",
+  "title": "Creative Brief",
+  "description": "Campaign-level creative context for AI-powered creative generation. Provides the layer between brand identity (stable across campaigns) and individual creative execution (per-request). A brand has one identity (defined in brand.json) but different creative briefs for each campaign or flight.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Campaign or flight name for identification"
+    },
+    "objective": {
+      "type": "string",
+      "enum": ["awareness", "consideration", "conversion", "retention", "engagement"],
+      "description": "Campaign objective that guides creative tone and call-to-action strategy"
+    },
+    "tone": {
+      "type": "string",
+      "description": "Desired tone for this campaign, modulating the brand's base tone (e.g., 'playful and festive', 'premium and aspirational')"
+    },
+    "audience": {
+      "type": "string",
+      "description": "Target audience description for this campaign"
+    },
+    "territory": {
+      "type": "string",
+      "description": "Creative territory or positioning the campaign should occupy"
+    },
+    "messaging": {
+      "type": "object",
+      "description": "Messaging framework for the campaign",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "description": "Primary headline"
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Supporting tagline or sub-headline"
+        },
+        "cta": {
+          "type": "string",
+          "description": "Call-to-action text"
+        },
+        "key_messages": {
+          "type": "array",
+          "description": "Key messages to communicate in priority order",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "reference_assets": {
+      "type": "array",
+      "description": "Visual and strategic reference materials such as mood boards, product shots, example creatives, and strategy documents",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.1/core/reference-asset.json"
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "description": "Regulatory and legal compliance requirements for this campaign. Campaign-specific, regional, and product-based — distinct from brand-level disclaimers in brand.json.",
+      "properties": {
+        "required_disclosures": {
+          "type": "array",
+          "description": "Disclosures that must appear in creatives for this campaign. Each disclosure specifies the text, where it should appear, and which jurisdictions require it.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The disclosure text that must appear in the creative"
+              },
+              "position": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/disclosure-position.json",
+                "description": "Where the disclosure should appear within the creative. prominent: clearly visible in the main creative area; footer: at the bottom of visual creatives; audio: spoken in audio/video creatives; subtitle: displayed in the subtitle or closed-caption track; overlay: superimposed on video content; end_card: displayed on video end card; pre_roll: spoken or displayed before main content; companion: in companion ad unit alongside primary creative"
+              },
+              "jurisdictions": {
+                "type": "array",
+                "description": "Jurisdictions where this disclosure is required. ISO 3166-1 alpha-2 country codes or ISO 3166-2 subdivision codes (e.g., 'US', 'GB', 'US-NJ', 'CA-QC'). If omitted, the disclosure applies to all jurisdictions in the campaign.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$"
+                },
+                "minItems": 1
+              },
+              "regulation": {
+                "type": "string",
+                "description": "The regulation or legal authority requiring this disclosure (e.g., 'SEC Rule 156', 'FCA COBS 4.5', 'FDA 21 CFR 202')"
+              },
+              "min_duration_ms": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Minimum display duration in milliseconds. For video/audio disclosures, how long the disclosure must be visible or audible. For static formats, how long the disclosure must remain on screen before any auto-advance."
+              },
+              "language": {
+                "type": "string",
+                "description": "Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA', 'es'). When omitted, the disclosure is assumed to match the creative's language."
+              }
+            },
+            "required": ["text"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "prohibited_claims": {
+          "type": "array",
+          "description": "Claims that must not appear in creatives for this campaign. Creative agents should ensure generated content avoids these claims.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": true
+}

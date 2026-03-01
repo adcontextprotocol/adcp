@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/datetime-range.json",
+  "title": "Datetime Range",
+  "description": "A datetime range with inclusive start and end timestamps (ISO 8601 with timezone). Used for measurement windows, reporting periods, and other sub-day precision boundaries.",
+  "type": "object",
+  "properties": {
+    "start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start timestamp (inclusive), ISO 8601"
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End timestamp (inclusive), ISO 8601"
+    }
+  },
+  "required": ["start", "end"],
+  "additionalProperties": true
+}

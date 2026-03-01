@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/assets/javascript-asset.json",
+  "title": "JavaScript Asset",
+  "description": "JavaScript code asset",
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "JavaScript content"
+    },
+    "module_type": {
+      "$ref": "/schemas/3.0.0-rc.1/enums/javascript-module-type.json",
+      "description": "JavaScript module type"
+    },
+    "accessibility": {
+      "type": "object",
+      "description": "Self-declared accessibility properties for this opaque creative",
+      "x-accessibility": true,
+      "properties": {
+        "alt_text": {
+          "type": "string",
+          "description": "Text alternative describing the creative content"
+        },
+        "keyboard_navigable": {
+          "type": "boolean",
+          "description": "Whether the creative can be fully operated via keyboard"
+        },
+        "motion_control": {
+          "type": "boolean",
+          "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+        },
+        "screen_reader_tested": {
+          "type": "boolean",
+          "description": "Whether the creative has been tested with screen readers"
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.0-rc.1/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "content"
+  ],
+  "additionalProperties": true
+}

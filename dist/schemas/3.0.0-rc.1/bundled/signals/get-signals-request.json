@@ -1,0 +1,344 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/bundled/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both to refine previous results (signal_ids anchor the starting set, signal_spec guides adjustments).",
+  "type": "object",
+  "properties": {
+    "account": {
+      "title": "Account Reference",
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured.",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "description": "Seller-assigned account identifier (from sync_accounts or list_accounts)"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Reference",
+              "description": "Brand reference identifying the advertiser",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand identifier within the house portfolio. Optional for single-brand domains.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ]
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "spark"
+                },
+                {
+                  "domain": "nova-brands.com",
+                  "brand_id": "glow"
+                },
+                {
+                  "domain": "acme-corp.com"
+                }
+              ]
+            },
+            "operator": {
+              "type": "string",
+              "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_acme_001"
+        },
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com"
+        },
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
+          "operator": "pinnacle-media.com"
+        }
+      ]
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "The buyer's campaign reference. Used to correlate signal discovery with subsequent report_usage calls."
+    },
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's catalog. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments.",
+      "items": {
+        "title": "Signal ID",
+        "description": "Universal signal identifier. Uses 'source' as discriminator: 'catalog' for signals from a data provider's published catalog (verifiable), 'agent' for agent-native signals (not externally verifiable).",
+        "discriminator": {
+          "propertyName": "source"
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Catalog signal - references a signal from a data provider's published catalog. Buyers can verify authorization by checking the data provider's adagents.json.",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "catalog",
+                "description": "Discriminator indicating this signal is from a data provider's published catalog"
+              },
+              "data_provider_domain": {
+                "type": "string",
+                "description": "Domain of the data provider that owns this signal (e.g., 'polk.com', 'experian.com'). The signal definition is published at this domain's /.well-known/adagents.json",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Signal identifier within the data provider's catalog (e.g., 'likely_tesla_buyers', 'income_100k_plus')"
+              }
+            },
+            "required": [
+              "source",
+              "data_provider_domain",
+              "id"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "description": "Agent signal - references a signal native to the signals agent. Not externally verifiable; buyer trusts the agent's claim about the signal.",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "agent",
+                "description": "Discriminator indicating this signal is native to the agent (not from a data provider catalog)"
+              },
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the signals agent that provides this signal (e.g., 'https://liveramp.com/.well-known/adcp/signals')"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+              }
+            },
+            "required": [
+              "source",
+              "agent_url",
+              "id"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "title": "Destination",
+        "description": "A deployment target where signals can be activated (DSP, sales agent, etc.)",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "platform",
+                "description": "Discriminator indicating this is a platform-based deployment"
+              },
+              "platform": {
+                "type": "string",
+                "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp')"
+              },
+              "account": {
+                "type": "string",
+                "description": "Optional account identifier on the platform"
+              }
+            },
+            "required": [
+              "type",
+              "platform"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "const": "agent",
+                "description": "Discriminator indicating this is an agent URL-based deployment"
+              },
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL identifying the deployment agent (for sales agents, etc.)"
+              },
+              "account": {
+                "type": "string",
+                "description": "Optional account identifier on the agent"
+              }
+            },
+            "required": [
+              "type",
+              "agent_url"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, no geographic filter is applied.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "title": "Signal Filters",
+      "description": "Filters to refine signal discovery results",
+      "type": "object",
+      "properties": {
+        "catalog_types": {
+          "type": "array",
+          "description": "Filter by catalog type",
+          "items": {
+            "title": "Signal Catalog Type",
+            "description": "Types of signal catalogs available for audience targeting",
+            "type": "string",
+            "enum": [
+              "marketplace",
+              "custom",
+              "owned"
+            ]
+          },
+          "minItems": 1
+        },
+        "data_providers": {
+          "type": "array",
+          "description": "Filter by specific data providers",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "max_cpm": {
+          "type": "number",
+          "description": "Maximum CPM filter. Applies only to signals with model='cpm'.",
+          "minimum": 0
+        },
+        "max_percent": {
+          "type": "number",
+          "description": "Maximum percent-of-media rate filter. Signals where all percent_of_media pricing options exceed this value are excluded. Does not account for max_cpm caps.",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "min_coverage_percentage": {
+          "type": "number",
+          "description": "Minimum coverage requirement",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": true
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Maximum number of results to return",
+      "minimum": 1
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "signal_spec"
+      ]
+    },
+    {
+      "required": [
+        "signal_ids"
+      ]
+    }
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-03-01T12:28:36.697Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

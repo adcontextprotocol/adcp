@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/enums/forecast-range-unit.json",
+  "title": "Forecast Range Unit",
+  "description": "Describes how to interpret the points array in a DeliveryForecast — what axis the curve represents",
+  "type": "string",
+  "enum": ["spend", "reach_freq", "weekly", "daily", "clicks", "conversions"],
+  "enumDescriptions": {
+    "spend": "Points at ascending budget levels. Standard budget curve showing how delivery metrics scale with spend. Default when field is omitted.",
+    "reach_freq": "Points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.",
+    "weekly": "Metrics are per-week values. Budget refers to total campaign spend. Frequency of 3.2 means 3.2 exposures per week.",
+    "daily": "Metrics are per-day values. Budget refers to total campaign spend.",
+    "clicks": "Points at ascending click targets. Used in performance campaigns where the buyer specifies click goals.",
+    "conversions": "Points at ascending conversion targets. Used in goal-based planning (e.g., Meta-style 'tell me your goal, I'll tell you the budget')."
+  }
+}

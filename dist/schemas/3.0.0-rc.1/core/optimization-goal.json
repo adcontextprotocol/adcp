@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.1/core/optimization-goal.json",
+  "title": "Optimization Goal",
+  "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Optimize for a seller-tracked delivery metric. No event source required — the seller tracks these natively.",
+      "properties": {
+        "kind": { "type": "string", "const": "metric" },
+        "metric": {
+          "type": "string",
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
+          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression), attention_seconds (attention time per impression), attention_score (vendor-specific attention score). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks')."
+        },
+        "reach_unit": {
+          "allOf": [{ "$ref": "/schemas/3.0.0-rc.1/enums/reach-unit.json" }],
+          "description": "Unit for reach measurement. Required when metric is 'reach'. Must be a value declared in the product's metric_optimization.supported_reach_units."
+        },
+        "target_frequency": {
+          "type": "object",
+          "description": "Target frequency band for reach optimization. Only applicable when metric is 'reach'. Frames frequency as an optimization signal: the seller should treat impressions toward entities already within the [min, max] band as lower-value, and impressions toward unreached entities as higher-value. This shifts budget toward fresh reach rather than re-reaching known users. When omitted, the seller maximizes unique reach without a frequency constraint. A hard cap can still be layered via targeting_overlay.frequency_cap if a ceiling is needed.",
+          "properties": {
+            "min": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Minimum frequency for an entity to be considered meaningfully reached within the window. Impressions that would bring an entity below this threshold are treated as high-value (growing reach). When omitted, the seller uses their platform default (typically 1)."
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
+            },
+            "window": {
+              "allOf": [{ "$ref": "/schemas/3.0.0-rc.1/core/duration.json" }],
+              "description": "Time window over which frequency is measured (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
+            }
+          },
+          "required": ["window"],
+          "anyOf": [
+            { "required": ["min"] },
+            { "required": ["max"] }
+          ],
+          "additionalProperties": true
+        },
+        "view_duration_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Minimum video view duration in seconds that qualifies as a completed_view for this goal. Only applicable when metric is 'completed_views'. When omitted, the seller uses their platform default (typically 2–15 seconds). Common values: 2 (Snap/LinkedIn default), 6 (TikTok), 15 (Snap 15-second views, Meta ThruPlay). Sellers declare which durations they support in metric_optimization.supported_view_durations. Sellers must reject goals with unsupported values — silent rounding would create measurement discrepancies."
+        },
+        "target": {
+          "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Target cost per unit of the metric (e.g., cost per click, cost per completed view).",
+              "properties": {
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Minimum per-impression rate for this metric. The metric defines the units: proportions for count metrics (e.g., 0.001 for 0.1% CTR, 0.70 for 70% viewability), seconds for duration metrics (e.g., 3.0 for 3s in view), or score for score metrics.",
+              "properties": {
+                "kind": { "type": "string", "const": "threshold_rate" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views), seconds (viewed_seconds, attention_seconds), or score (attention_score)." }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
+        }
+      },
+      "required": ["kind", "metric"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Optimize for advertiser-tracked conversion events. Requires event sources registered via sync_event_sources.",
+      "properties": {
+        "kind": { "type": "string", "const": "event" },
+        "event_sources": {
+          "type": "array",
+          "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. When the seller supports multi_source_event_dedup (declared in get_adcp_capabilities), they deduplicate by event_id across all entries — the same business event from multiple sources counts once, using value_field and value_factor from the first matching entry. When multi_source_event_dedup is false or absent, buyers should use a single entry per goal; the seller will use only the first entry. All event sources must be configured via sync_event_sources.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_source_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Event source to include (must be configured on this account via sync_event_sources)"
+              },
+              "event_type": {
+                "$ref": "/schemas/3.0.0-rc.1/enums/event-type.json",
+                "description": "Event type to include from this source (e.g., purchase, lead, app_install, refund)"
+              },
+              "custom_event_name": {
+                "type": "string",
+                "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
+              },
+              "value_field": {
+                "type": "string",
+                "description": "Which field in the event's custom_data carries the monetary value. The seller must use this field for value extraction and aggregation when computing ROAS and conversion value metrics. Required on at least one entry when target.kind is 'per_ad_spend' or 'maximize_value'. Common values: 'value', 'order_total', 'profit_margin'. This is not passed as a parameter to underlying platform APIs — the seller maps it to their platform's value ingestion mechanism."
+              },
+              "value_factor": {
+                "type": "number",
+                "default": 1,
+                "description": "Multiplier the seller must apply to value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1. This is not passed as a parameter to underlying platform APIs — the seller applies it when computing aggregated value metrics."
+              }
+            },
+            "required": ["event_source_id", "event_type"],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "target": {
+          "description": "Target cost or return for this event goal. When omitted, the seller optimizes for maximum conversions within budget.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Target cost per conversion event (after deduplication across event_sources).",
+              "properties": {
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per event in the buy currency" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Target return per unit of ad spend, calculated as sum(value_field * value_factor) / spend across all deduplicated events. Requires value_field on at least one event_sources entry.",
+              "properties": {
+                "kind": { "type": "string", "const": "per_ad_spend" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)" }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Maximize total conversion value within budget, without a specific return ratio target. Steers spend toward higher-value conversions rather than maximizing conversion count. Requires value_field on at least one event_sources entry.",
+              "properties": {
+                "kind": { "type": "string", "const": "maximize_value" }
+              },
+              "required": ["kind"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "attribution_window": {
+          "type": "object",
+          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
+          "properties": {
+            "post_click": {
+              "allOf": [{ "$ref": "/schemas/3.0.0-rc.1/core/duration.json" }],
+              "description": "Post-click attribution window. Conversions within this duration after a click are attributed to the ad (e.g. {\"interval\": 7, \"unit\": \"days\"})."
+            },
+            "post_view": {
+              "allOf": [{ "$ref": "/schemas/3.0.0-rc.1/core/duration.json" }],
+              "description": "Post-view attribution window. Conversions within this duration after an ad impression (without click) are attributed to the ad (e.g. {\"interval\": 1, \"unit\": \"days\"})."
+            }
+          },
+          "required": ["post_click"],
+          "additionalProperties": true
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
+        }
+      },
+      "required": ["kind", "event_sources"],
+      "additionalProperties": true
+    }
+  ]
+}
