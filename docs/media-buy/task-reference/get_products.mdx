@@ -18,7 +18,7 @@ Discover products with a natural language brief:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 import { GetProductsResponseSchema } from '@adcp/client';
 
@@ -45,7 +45,7 @@ for (const product of validated.products) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -62,7 +62,7 @@ async def discover_products():
 asyncio.run(discover_products())
 ```
 
-```bash CLI test=false
+```bash CLI
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
@@ -78,10 +78,11 @@ You can also use structured filters instead of (or in addition to) a brief:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -97,12 +98,13 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -240,7 +242,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // wholesale mode: buyer applies their own audiences, no publisher curation
@@ -259,7 +261,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -285,7 +287,7 @@ asyncio.run(discover_standard_catalog())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products supporting both video and display
@@ -305,7 +307,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -332,7 +334,7 @@ asyncio.run(discover_multi_format())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products within budget and date range for specific countries and channels
@@ -361,7 +363,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -397,7 +399,7 @@ asyncio.run(discover_with_budget_and_dates())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Get products with property tags
@@ -419,7 +421,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -448,7 +450,7 @@ asyncio.run(discover_property_tags())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find guaranteed delivery products for measurement
@@ -469,7 +471,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -497,11 +499,12 @@ asyncio.run(discover_guaranteed())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products that only accept IAB standard formats
 const result = await testAgent.getProducts({
+  buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
   },
@@ -515,13 +518,14 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
 async def discover_standard_formats():
     # Find products that only accept IAB standard formats
     result = await test_agent.simple.get_products(
+        buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
         },
@@ -542,7 +546,7 @@ Use `catalog` with a brand to discover advertising products that can promote you
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Discover retail media products for specific catalog items
@@ -569,7 +573,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -596,7 +600,7 @@ async def discover_commerce_products():
 asyncio.run(discover_commerce_products())
 ```
 
-```bash CLI test=false
+```bash CLI
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
@@ -645,7 +649,7 @@ Filter products to only those available on properties in your approved list:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Filter products by property list from governance agent
@@ -672,7 +676,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -732,7 +736,7 @@ See the difference between authenticated and unauthenticated access:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
 
 // WITH authentication - full catalog with pricing
@@ -768,7 +772,7 @@ console.log(`Without auth: ${publicCatalog.data.products.length} products`);
 console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent, test_agent_no_auth
 

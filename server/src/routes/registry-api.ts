@@ -1855,7 +1855,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {
-          const result = await client.getProducts({ brief: "" });
+          const result = await client.getProducts({ buying_mode: 'wholesale' });
           if (result.data?.products) {
             stats.product_count = result.data.products.length;
           }
@@ -1890,17 +1890,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       return res.json({
         success: true,
         formats: formats.map((format) => {
-          const formatWithAssets = format as typeof format & { assets?: unknown };
           return {
             format_id: format.format_id,
             name: format.name,
             type: format.type,
             description: format.description,
-            preview_image: format.preview_image,
             example_url: format.example_url,
             renders: format.renders,
-            assets_required: format.assets_required,
-            assets: formatWithAssets.assets,
+            assets: format.assets,
             output_format_ids: format.output_format_ids,
             agent_url: format.agent_url,
           };
@@ -1932,7 +1929,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         protocol: "mcp",
       });
 
-      const result = await client.getProducts({ brief: "" });
+      const result = await client.getProducts({ buying_mode: 'wholesale' });
       const products = result.data?.products || [];
 
       return res.json({
