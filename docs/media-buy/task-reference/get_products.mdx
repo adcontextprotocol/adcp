@@ -125,7 +125,7 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. |
+| `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw inventory for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
 | `brand` | BrandRef | No | Brand reference (domain + optional brand_id). Resolved to full identity at execution time. |
