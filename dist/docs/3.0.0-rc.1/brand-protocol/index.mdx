@@ -1,0 +1,245 @@
+---
+title: Brand Protocol
+sidebarTitle: Overview
+---
+
+The Brand Protocol enables brands to claim their identity and establish a verifiable source of truth through a standardized discovery mechanism. By hosting a `brand.json` file at a well-known location, brands can declare their identity, brand hierarchy, and optionally designate official brand agents.
+
+## Purpose
+
+The Brand Protocol addresses buy-side identity in advertising, providing the same clarity that the Property Protocol provides for the sell-side:
+
+| Sell Side | Buy Side | Description |
+|-----------|----------|-------------|
+| Publisher | **House** | Corporate entity (Nike, Inc., P&G) |
+| Property | **Brand** | Advertising identity (Nike, Air Jordan) |
+| Inventory | **Destination** | Landing pages, apps |
+
+This parallel structure makes brands first-class citizens in AdCP.
+
+## How it works
+
+Brands host a `brand.json` file at `/.well-known/brand.json` on their domain. The file can take one of four forms:
+
+1. **Brand Agent**: Points to an MCP agent that provides brand information
+2. **House Portfolio**: Contains full brand hierarchy with all brands and properties
+3. **House Redirect**: Points to a house domain that contains the portfolio
+4. **Authoritative Location**: Points to a hosted brand.json URL
+
+```mermaid
+sequenceDiagram
+    participant Agent as Buyer Agent
+    participant Domain as Brand Domain
+    participant House as House Domain
+    participant BrandAgent as Brand Agent (MCP)
+
+    Agent->>Domain: GET /.well-known/brand.json
+    alt House Redirect
+        Domain-->>Agent: { "house": "nikeinc.com" }
+        Agent->>House: GET /.well-known/brand.json
+        House-->>Agent: Full portfolio (house + brands)
+    else Brand Agent
+        Domain-->>Agent: { "brand_agent": { "url": "..." } }
+        Agent->>BrandAgent: MCP: get brand identity
+        BrandAgent-->>Agent: Brand identity data
+    else House Portfolio
+        Domain-->>Agent: Full portfolio (house + brands)
+    end
+```
+
+## Brand architecture
+
+The protocol supports Keller's brand architecture models:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `master` | Primary brand of house | Nike for Nike, Inc. |
+| `sub_brand` | Carries parent name | Nike SB |
+| `endorsed` | Independent identity, backed by parent | Air Jordan "by Nike" |
+| `independent` | Operates separately | Converse under Nike, Inc. |
+
+## Example: house portfolio
+
+A house domain with multiple brands:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "nikeinc.com",
+    "name": "Nike, Inc.",
+    "architecture": "hybrid"
+  },
+  "brands": [
+    {
+      "id": "nike",
+      "names": [{"en": "Nike"}, {"zh": "耐克"}],
+      "keller_type": "master",
+      "properties": [
+        {"type": "website", "identifier": "nike.com", "primary": true},
+        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+      ]
+    },
+    {
+      "id": "air_jordan",
+      "names": [{"en": "Air Jordan"}, {"en": "Jordan"}],
+      "keller_type": "endorsed",
+      "parent_brand": "nike",
+      "properties": [
+        {"type": "website", "identifier": "jordan.com"},
+        {"type": "website", "identifier": "jumpman23.com"}
+      ]
+    }
+  ]
+}
+```
+
+## Example: brand agent
+
+A brand with an MCP agent that provides brand information:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "brand_agent": {
+    "url": "https://agent.acme.com/mcp",
+    "id": "acme_brand_agent"
+  }
+}
+```
+
+The agent provides brand identity data (logos, colors, tone) on behalf of the brand.
+
+## Example: house redirect
+
+A brand domain pointing to its house:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": "nikeinc.com"
+}
+```
+
+## Resolution flow
+
+Given any domain, the protocol resolves to a canonical brand:
+
+```
+jumpman23.com
+  -> fetch /.well-known/brand.json
+  -> { "house": "nikeinc.com" }
+  -> fetch nikeinc.com/.well-known/brand.json
+  -> search brands[] for property matching "jumpman23.com"
+  -> found in Air Jordan brand's properties
+  -> Result: { house: "nikeinc.com", brand_id: "air_jordan" }
+```
+
+## Brand resolution sources
+
+There are three ways to resolve brand identity, each returning the same data structure:
+
+| Source | How it works | When to use |
+|--------|-------------|-------------|
+| [`resolve_brand`](#mcp-tools) | Fetches `/.well-known/brand.json`, extracts brand identity | Brand publishes a `brand.json` file |
+| [Brand enrichment](/dist/docs/3.0.0-rc.1/registry/index#brand-resolution) | Fetches from Brandfetch, saves identity to registry | No `brand.json` available, need enrichment |
+| [Registry lookup](/dist/docs/3.0.0-rc.1/registry/index#brand-resolution) | Returns community or enriched identity from the registry | Brand already registered |
+
+Regardless of source, the result is a brand identity that can be referenced by any AdCP task via a brand reference (`{ "domain": "...", "brand_id": "..." }`).
+
+## Use cases
+
+### Creative generation
+
+When a creative agent needs brand assets:
+
+1. Resolve domain to canonical brand via brand.json
+2. Get brand identity data (from brand.json, agent, or registry)
+3. Generate on-brand creatives
+
+### Brand verification
+
+When verifying brand claims:
+
+1. Fetch brand.json from claimed domain
+2. Follow redirects to house if needed
+3. Verify brand exists in portfolio
+
+### Reporting roll-up
+
+When aggregating brand performance:
+
+1. Resolve all brand domains to canonical IDs
+2. Group by house for corporate-level reporting
+3. Optionally include/exclude sub-brands
+
+## Brand context in requests
+
+AdCP tasks accept a `brand` reference that identifies the brand by domain and optional brand_id. The system resolves this reference to the full brand identity at execution time.
+
+```json
+{
+  "brand": {
+    "domain": "acmecorp.com",
+    "brand_id": "tide"
+  }
+}
+```
+
+For single-brand domains, `brand_id` is optional:
+
+```json
+{
+  "brand": {
+    "domain": "acmecorp.com"
+  }
+}
+```
+
+Brand identity data is resolved from `brand.json` or the registry — never passed inline.
+
+## Caching
+
+Brand information changes infrequently (logo updates, guideline refreshes). Recommended caching:
+
+- **HTTP headers**: Use standard `ETag`, `Last-Modified`, and `Cache-Control` headers
+- **Default TTL**: 24 hours for validated brand.json files
+- **Failed lookups**: Cache for 1 hour before retrying
+- **last_updated field**: Informational timestamp in brand.json for staleness checks
+
+Agents should respect HTTP caching headers when fetching brand.json files.
+
+## Future considerations
+
+### Digital asset management (DAM)
+
+For brands requiring fine-grained control over asset usage, the `brand_agent` variant provides a natural integration point for DAM systems. Agents can:
+- Enforce access control per asset
+- Track usage and licensing
+- Provide assets with usage terms
+- Log access for compliance
+
+This is optional—brands publishing static brand.json files grant implied permission for compliant creative use. DAM integration is for enterprises with complex licensing requirements.
+
+## MCP tools
+
+The Brand Protocol provides MCP tools for programmatic access:
+
+| Tool | Description |
+|------|-------------|
+| `resolve_brand` | Resolve domain to canonical brand identity |
+| `validate_brand_json` | Validate a domain's brand.json |
+| `validate_brand_agent` | Test brand agent reachability |
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="brand.json spec" icon="code" href="/dist/docs/3.0.0-rc.1/brand-protocol/brand-json">
+    Complete technical specification for the brand.json file format.
+  </Card>
+  <Card title="Registry API" icon="database" href="/dist/docs/3.0.0-rc.1/registry/index">
+    Look up brands, resolve domains, and discover agents.
+  </Card>
+</CardGroup>

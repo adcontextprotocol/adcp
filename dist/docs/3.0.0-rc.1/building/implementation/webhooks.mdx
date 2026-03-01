@@ -1,0 +1,323 @@
+---
+title: Push Notifications
+description: How AdCP delivers async task updates to your webhook endpoint
+---
+
+Push notifications let publishers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the publisher POSTs status changes to that URL as the task progresses.
+
+## How it works
+
+1. A unique operation ID is generated per task invocation
+2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
+3. `push_notification_config` is injected into the task request body with that URL and HMAC credentials
+4. The publisher POSTs webhook notifications to your URL as the task status changes
+5. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
+
+```
+create_media_buy request
+  └── push_notification_config
+        ├── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
+        └── authentication: { schemes: ["HMAC-SHA256"], credentials: "..." }
+
+              ↓ publisher processes task ↓
+
+POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
+  {
+    "task_id": "task_456",
+    "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",   ← echoed from your URL
+    "status": "completed",
+    "result": { ... }
+  }
+```
+
+If you're using the `@adcp/client` library, this entire flow is handled automatically — configure `webhookUrlTemplate` and `webhookSecret` once on the client and `push_notification_config` is injected into every outgoing task call.
+
+## Naming: snake_case vs camelCase
+
+This trips people up. There are two naming conventions in play:
+
+| Context | Field name | Example |
+|---------|-----------|---------|
+| **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ... } }` |
+| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ... } }` |
+
+The AdCP field name is always **`push_notification_config`** (snake_case). It goes in the task request body alongside your other task parameters.
+
+For A2A, the A2A protocol wraps it in a `configuration` envelope using camelCase — but the object's contents are identical.
+
+## Adding push_notification_config to a request
+
+### MCP
+
+Include `push_notification_config` as a task argument, merged with the rest of your task parameters:
+
+```json
+{
+  "buyer_ref": "campaign_q1",
+  "brand": { "brand_id": "acme" },
+  "start_time": { "type": "date", "date": "2025-03-01" },
+  "end_time": "2025-06-30T23:59:59Z",
+  "packages": [...],
+  "push_notification_config": {
+    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
+    "authentication": {
+      "schemes": ["HMAC-SHA256"],
+      "credentials": "your_shared_secret_min_32_chars"
+    }
+  }
+}
+```
+
+### A2A
+
+For A2A, skill parameters stay in `message.parts[].data.parameters`. The push notification config goes in the top-level `configuration` object:
+
+```json
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "buyer_ref": "campaign_q1",
+          "packages": [...]
+        }
+      }
+    }]
+  },
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123",
+      "authentication": {
+        "schemes": ["HMAC-SHA256"],
+        "credentials": "your_shared_secret_min_32_chars"
+      }
+    }
+  }
+}
+```
+
+## Operation IDs and URL templates
+
+Operation IDs let you route incoming webhooks to the right handler. The typical pattern:
+
+1. Generate a unique ID per task call
+2. Embed it in the webhook URL path
+3. The publisher echoes `operation_id` in the payload — no URL parsing needed
+
+**URL template pattern:**
+```
+https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
+```
+
+**Example (client library handles this automatically):**
+```typescript
+import { randomUUID } from 'crypto';
+
+const operationId = randomUUID(); // e.g. "cd51e063-2b79-4a6d-afac-ed7789c3a443"
+const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${operationId}`;
+
+// pass webhookUrl in push_notification_config.url
+```
+
+The publisher's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+
+## When webhooks fire
+
+Webhooks are sent for each status change after the initial response, as long as `push_notification_config` is in the request.
+
+If the task completes synchronously (initial response is already `completed` or `failed`), no webhook is sent — you already have the result.
+
+**Status changes that trigger webhooks:**
+
+| Status | Meaning |
+|--------|---------|
+| `working` | Task is processing — may include progress info |
+| `input-required` | Waiting for human approval or clarification |
+| `completed` | Final result available |
+| `failed` | Task failed with error details |
+| `canceled` | Task was canceled |
+
+## Webhook payload formats
+
+### MCP
+
+```json
+{
+  "task_id": "task_456",
+  "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",
+  "task_type": "create_media_buy",
+  "domain": "media-buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Media buy created successfully",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "buyer_ref": "campaign_q1",
+    "packages": [
+      { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
+    ]
+  }
+}
+```
+
+### A2A
+
+A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). The AdCP result data is in `status.message.parts[].data`:
+
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "message": {
+      "role": "agent",
+      "parts": [
+        { "kind": "text", "text": "Media buy created successfully" },
+        {
+          "kind": "data",
+          "data": {
+            "media_buy_id": "mb_12345",
+            "buyer_ref": "campaign_q1",
+            "packages": [
+              { "package_id": "pkg_001", "buyer_ref": "ctv_package" }
+            ]
+          }
+        }
+      ]
+    },
+    "timestamp": "2025-01-22T10:30:00Z"
+  }
+}
+```
+
+### Protocol comparison
+
+| | MCP | A2A |
+|---|---|---|
+| **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
+| **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
+| **Result location** | `result` field | `status.message.parts[].data` |
+| **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
+
+### Status-specific result data
+
+| Status | `result` / `data` contains |
+|--------|---------------------------|
+| `completed` / `failed` | Full task response |
+| `working` | Progress: `percentage`, `current_step`, `total_steps` |
+| `input-required` | Reason and any validation errors |
+| `submitted` | Minimal acknowledgment |
+
+## Authentication
+
+### Bearer token
+
+Simple token auth — the publisher sends your token in the `Authorization` header.
+
+**Configuration:**
+```json
+{
+  "authentication": {
+    "schemes": ["Bearer"],
+    "credentials": "your_bearer_token_min_32_chars"
+  }
+}
+```
+
+**Verifying on your server:**
+```javascript
+app.post('/webhooks/adcp', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) {
+    return res.status(401).end();
+  }
+  processWebhook(req.body);
+  res.status(200).end();
+});
+```
+
+### HMAC-SHA256 (recommended for production)
+
+The publisher signs each request with a shared secret. You verify the signature on receipt.
+
+**Configuration:**
+```json
+{
+  "authentication": {
+    "schemes": ["HMAC-SHA256"],
+    "credentials": "your_shared_secret_min_32_chars"
+  }
+}
+```
+
+**Publisher sends:**
+```
+X-ADCP-Signature: <hex digest>
+```
+
+Signature is computed as: `HMAC-SHA256(secret, rawBody)`
+
+**Verifying on your server:**
+```typescript
+import { createHmac } from 'crypto';
+
+function verifyWebhook(payload: string, signature: string, secret: string): boolean {
+  const expected = createHmac('sha256', secret).update(payload).digest('hex');
+  return expected === signature;
+}
+
+app.post('/webhooks/adcp', (req, res) => {
+  const sig = req.headers['x-adcp-signature'] as string;
+  if (!sig || !verifyWebhook(req.rawBody, sig, process.env.ADCP_WEBHOOK_SECRET)) {
+    return res.status(401).end();
+  }
+  processWebhook(req.body);
+  res.status(200).end();
+});
+```
+
+## Reliability
+
+Webhooks use **at-least-once delivery** — you may receive the same event more than once, and events may arrive out of order.
+
+Use `task_id` + `status` + `timestamp` to handle this:
+
+```javascript
+async function processWebhook(payload) {
+  const { task_id, status, timestamp, result } = payload;
+
+  const task = await db.getTask(task_id);
+
+  // Skip if we've already processed a newer status
+  if (task?.updated_at >= timestamp) return;
+
+  await db.updateTask(task_id, { status, updated_at: timestamp, result });
+  await triggerBusinessLogic(task_id, status);
+}
+```
+
+**Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
+
+## Best practices
+
+1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
+2. **Handle duplicates** — use `task_id` + `timestamp` to skip already-processed or out-of-order events
+3. **Verify signatures** — always validate `X-ADCP-Signature` before processing
+4. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid publisher timeouts and unnecessary retries
+5. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+6. **Use HMAC-SHA256 in production** — Bearer tokens are simpler but don't protect against payload tampering
+
+## Reporting webhooks
+
+Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
+
+See [Task Reference](/dist/docs/3.0.0-rc.1/media-buy/task-reference) for details on `reporting_webhook`.
+
+## Next steps
+
+- [Task Lifecycle](/dist/docs/3.0.0-rc.1/building/implementation/task-lifecycle) — status values and transitions
+- [Async Operations](/dist/docs/3.0.0-rc.1/building/implementation/async-operations) — handling long-running tasks
+- [Error Handling](/dist/docs/3.0.0-rc.1/building/implementation/error-handling) — webhook error patterns

@@ -1,0 +1,511 @@
+---
+title: sync_audiences
+testable: false
+---
+
+
+Manage first-party CRM audiences on a seller account. Upload hashed customer lists, check matching status, and reference the resulting audiences in `create_media_buy` targeting overlays for explicit retargeting or suppression.
+
+Audiences are distinct from [signals](/dist/docs/3.0.0-rc.1/signals/): signals are third-party data products you discover and activate; audiences are data you own and upload. Use `audience_include` to target only members of an uploaded list. `audience_include` is a hard constraint — only users on the list are eligible. To find new users *similar to* an audience (lookalike expansion), describe that intent in your campaign brief — the seller handles expansion strategy. Note: lookalike intent expressed in the brief cannot be verified through the protocol; confirm via seller-side reporting.
+
+**Response Time**: Upload accepted in ~1–2s. The task remains active until matching completes (1–48 hours depending on the seller). Configure `push_notification_config` to receive a webhook when the audience is ready.
+
+**Request Schema**: [`/schemas/latest/media-buy/sync-audiences-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/sync-audiences-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-audiences-response.json)
+
+## Quick Start
+
+Upload a customer list and check its status:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { createHash } from "crypto";
+
+const hashEmail = (email) =>
+  createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
+
+const hashPhone = (e164Phone) =>
+  createHash("sha256").update(e164Phone).digest("hex");
+
+const result = await testAgent.syncAudiences({
+  account: { account_id: "acct_12345" },
+  audiences: [
+    {
+      audience_id: "existing_customers",
+      name: "Existing customers",
+      add: [
+        { external_id: "crm_1001", hashed_email: hashEmail("alice@example.com") },
+        { external_id: "crm_1002", hashed_email: hashEmail("bob@example.com"), hashed_phone: hashPhone("+12065551234") },
+      ],
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("audiences" in validated) {
+  for (const audience of validated.audiences) {
+    console.log(`${audience.audience_id}: ${audience.action} (${audience.status ?? "n/a"})`);
+    if (audience.status === "ready") {
+      console.log(`  Matched ${audience.matched_count} of ${audience.uploaded_count} members (this sync)`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+import hashlib
+from adcp.testing import test_agent
+
+def hash_email(email: str) -> str:
+    return hashlib.sha256(email.lower().strip().encode()).hexdigest()
+
+def hash_phone(e164_phone: str) -> str:
+    return hashlib.sha256(e164_phone.encode()).hexdigest()
+
+async def main():
+    result = await test_agent.simple.sync_audiences(
+        account={'account_id': 'acct_12345'},
+        audiences=[{
+            'audience_id': 'existing_customers',
+            'name': 'Existing customers',
+            'add': [
+                {'external_id': 'crm_1001', 'hashed_email': hash_email('alice@example.com')},
+                {'external_id': 'crm_1002', 'hashed_email': hash_email('bob@example.com'), 'hashed_phone': hash_phone('+12065551234')},
+            ]
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for audience in result.audiences:
+        status = getattr(audience, 'status', 'n/a')
+        print(f"{audience.audience_id}: {audience.action} ({status})")
+        if status == 'ready':
+            print(f"  Matched {audience.matched_count} of {audience.uploaded_count} members (this sync)")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | [account-ref](/dist/docs/3.0.0-rc.1/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
+| `audiences` | [Audience](#audience-object)[] | No | Audiences to sync. When omitted, the call is discovery-only and returns all existing audiences without modification. |
+| `delete_missing` | boolean | No | When true, buyer-managed audiences on the account not in this request are removed (default: false). Does not affect seller-managed audiences. Do not combine with an omitted `audiences` array or all buyer-managed audiences will be deleted. |
+
+### Audience Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `audience_id` | string | Yes | Buyer's identifier for this audience. Used to reference the audience in targeting overlays. |
+| `name` | string | No | Human-readable name |
+| `delete` | boolean | No | When true, delete this audience from the account entirely. All other fields are ignored. |
+| `add` | [AudienceMember](#audience-member)[] | No | Members to add to this audience |
+| `remove` | [AudienceMember](#audience-member)[] | No | Members to remove from this audience. If the same identifier appears in both `add` and `remove`, remove takes precedence. |
+| `consent_basis` | string | No | GDPR lawful basis: `consent`, `legitimate_interest`, `contract`, or `legal_obligation`. Required by some sellers in regulated markets. |
+
+### Audience Member
+
+Every member requires an `external_id` (buyer-assigned stable identifier) plus at least one matchable identifier. Hash all values with SHA-256 before sending — normalize emails to lowercase+trim, phone numbers to E.164 format (e.g. `+12065551234`).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `external_id` | string | **Required.** Buyer-assigned stable identifier for this member (e.g. CRM record ID, loyalty ID). Used for deduplication, removal, and cross-referencing with buyer systems. |
+| `hashed_email` | string | SHA-256 hash of lowercase, trimmed email (64-char hex) |
+| `hashed_phone` | string | SHA-256 hash of E.164-formatted phone number (64-char hex) |
+| `uids` | UID[] | Universal IDs: `type` (rampid, uid2, maid, etc.) + `value` |
+
+Providing multiple identifiers for the same person improves match rates. Composite identifiers (e.g. hashed first name + last name + zip) are not yet standardized — use `ext` for platform-specific extensions.
+
+**Identifier support varies by seller**: Check `get_adcp_capabilities` → `audience_targeting.supported_identifier_types` and `supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `matching_latency_hours` range and `minimum_audience_size` in capabilities are also seller-specific.
+
+**Size limit**: Send no more than 100,000 members per call. For larger lists, chunk into sequential calls using `add` deltas.
+
+## Response
+
+**Success Response:**
+
+- `audiences` — Results for each audience on the account, including audiences not in this request
+
+**Error Response:**
+
+- `errors` — Array of operation-level errors (auth failure, account not found)
+
+**Note:** Responses use discriminated unions — you get either success fields OR errors, never both.
+
+**Each audience in success response includes:**
+
+| Field | Description |
+|-------|-------------|
+| `audience_id` | Echoed from request (buyer's identifier) |
+| `seller_id` | Seller-assigned ID in their ad platform |
+| `action` | `created`, `updated`, `unchanged`, `deleted`, or `failed` |
+| `status` | `processing`, `ready`, or `too_small`. Present when action is `created`, `updated`, or `unchanged`; absent when action is `deleted` or `failed`. |
+| `uploaded_count` | Members submitted in this sync operation (delta, not cumulative). 0 for discovery-only calls. |
+| `matched_count` | Total members matched to platform users across all syncs (cumulative). Populated when `status: "ready"`. |
+| `last_synced_at` | ISO 8601 timestamp of the most recent sync. Omitted if the seller does not track this. |
+| `minimum_size` | Minimum matched audience size for targeting on this platform. Populated when `status: "too_small"`. |
+| `errors` | Per-audience errors (only when `action: "failed"`) |
+
+## Common Scenarios
+
+### Discovery Only
+
+Check status of all existing audiences without making changes. The response includes all audiences on the account — filter by `audience_id` to find the one you care about:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAudiences({
+  account: { account_id: "acct_12345" },
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("audiences" in validated) {
+  for (const audience of validated.audiences) {
+    console.log(`${audience.audience_id}: ${audience.status ?? "n/a"}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_audiences(account={'account_id': 'acct_12345'})
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for audience in result.audiences:
+        status = getattr(audience, 'status', 'n/a')
+        print(f"{audience.audience_id}: {status}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Suppression List
+
+Upload a list of existing customers to suppress from acquisition campaigns:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { createHash } from "crypto";
+
+const hashEmail = (email) =>
+  createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
+
+// Hashed customer emails from CRM export
+const existingCustomers = [
+  { hashed_email: hashEmail("customer1@example.com") },
+  { hashed_email: hashEmail("customer2@example.com") },
+];
+
+const result = await testAgent.syncAudiences({
+  account: { account_id: "acct_12345" },
+  audiences: [
+    {
+      audience_id: "existing_customers",
+      name: "Existing customers — suppression",
+      add: existingCustomers,
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("audiences" in validated) {
+  const audience = validated.audiences[0];
+  console.log(`Status: ${audience.status}`);
+  // When ready, reference audience_id in create_media_buy targeting_overlay.audience_exclude
+}
+```
+
+```python Python
+import asyncio
+import hashlib
+from adcp.testing import test_agent
+
+def hash_email(email: str) -> str:
+    return hashlib.sha256(email.lower().strip().encode()).hexdigest()
+
+async def main():
+    existing_customers = [
+        {'hashed_email': hash_email('customer1@example.com')},
+        {'hashed_email': hash_email('customer2@example.com')},
+    ]
+
+    result = await test_agent.simple.sync_audiences(
+        account={'account_id': 'acct_12345'},
+        audiences=[{
+            'audience_id': 'existing_customers',
+            'name': 'Existing customers — suppression',
+            'add': existing_customers
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    audience = result.audiences[0]
+    print(f"Status: {audience.status}")
+    # When ready, reference audience_id in create_media_buy targeting_overlay.audience_exclude
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Removing Members
+
+Update an audience incrementally — add new members and remove ones that no longer qualify:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { createHash } from "crypto";
+
+const hashEmail = (email) =>
+  createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
+
+const result = await testAgent.syncAudiences({
+  account: { account_id: "acct_12345" },
+  audiences: [
+    {
+      audience_id: "lapsed_subscribers",
+      name: "Lapsed subscribers",
+      add: [{ hashed_email: hashEmail("newlapse@example.com") }],
+      remove: [{ hashed_email: hashEmail("reactivated@example.com") }],
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("audiences" in validated) {
+  for (const audience of validated.audiences) {
+    console.log(`${audience.audience_id}: ${audience.action}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+import hashlib
+from adcp.testing import test_agent
+
+def hash_email(email: str) -> str:
+    return hashlib.sha256(email.lower().strip().encode()).hexdigest()
+
+async def main():
+    result = await test_agent.simple.sync_audiences(
+        account={'account_id': 'acct_12345'},
+        audiences=[{
+            'audience_id': 'lapsed_subscribers',
+            'name': 'Lapsed subscribers',
+            'add': [{'hashed_email': hash_email('newlapse@example.com')}],
+            'remove': [{'hashed_email': hash_email('reactivated@example.com')}]
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for audience in result.audiences:
+        print(f"{audience.audience_id}: {audience.action}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Deleting an Audience
+
+Remove a specific audience from the account without affecting others. Set `delete: true` on the audience object:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/client/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/client";
+
+const result = await testAgent.syncAudiences({
+  account: { account_id: "acct_12345" },
+  audiences: [
+    { audience_id: "old_campaign_list", delete: true },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAudiencesResponseSchema.parse(result.data);
+
+if ("audiences" in validated) {
+  const audience = validated.audiences.find(a => a.audience_id === "old_campaign_list");
+  console.log(`${audience.audience_id}: ${audience.action}`); // "deleted"
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_audiences(
+        account={'account_id': 'acct_12345'},
+        audiences=[{'audience_id': 'old_campaign_list', 'delete': True}]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    audience = next(a for a in result.audiences if a.audience_id == 'old_campaign_list')
+    print(f"{audience.audience_id}: {audience.action}")  # "deleted"
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+To delete multiple audiences in one call, include each with `delete: true`. To delete all buyer-managed audiences at once, use `delete_missing: true` with an empty `audiences` array — but be careful, this removes everything.
+
+### Using Audiences in a Media Buy
+
+Once an audience is `ready`, reference it by `audience_id` in `create_media_buy` targeting overlays. Audience IDs are scoped to the seller account — they cannot be used across sellers.
+
+```json test=false
+{
+  "buyer_ref": "camp_q1_acquisition",
+  "brand": { "house_domain": "acme.com", "brand_id": "main" },
+  "start_time": "asap",
+  "end_time": "2026-03-31T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "pkg_social_retargeting",
+      "product_id": "prod_sponsored_content",
+      "pricing_option_id": "cpm_standard",
+      "budget": 10000,
+      "targeting_overlay": {
+        "audience_include": ["high_value_prospects"],
+        "audience_exclude": ["existing_customers"]
+      }
+    }
+  ]
+}
+```
+
+## Audience Status
+
+Platform matching is asynchronous. The `status` field reflects the current state:
+
+| Status | Meaning |
+|--------|---------|
+| `processing` | Platform is matching uploaded members against its user base. Poll again later — do not create campaigns yet. |
+| `ready` | Audience is available for targeting. `matched_count` is populated. |
+| `too_small` | Matched audience is below the platform's minimum size. `minimum_size` in the response tells you the threshold. Add more members and re-sync. |
+
+`status` is present when `action` is `created`, `updated`, or `unchanged`. It is absent when `action` is `deleted` or `failed`.
+
+**Webhook (recommended)**: Configure `push_notification_config` at the protocol level before uploading. The task stays active while the seller's platform matches members. When matching completes, the task completes and the webhook fires with the final result — `status: "ready"` or `status: "too_small"`. Check `get_adcp_capabilities` → `audience_targeting.matching_latency_hours` to set realistic expectations (typically 1–48 hours).
+
+**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. Use `tasks/get` with the `task_id` to check task status — the task will be `submitted` while matching is in progress and `completed` when the audience is ready or too small.
+
+**Agent workflow**: Upload with `push_notification_config` set. Externalize the `audience_id` and `account_id` before the session ends. When the webhook fires with `status: "ready"`, resume and proceed to `create_media_buy`.
+
+## Hashing Requirements
+
+Hash all identifiers with SHA-256 before sending. Normalize first:
+
+| Identifier | Normalization | Example |
+|------------|--------------|---------|
+| Email | Lowercase, trim whitespace | `alice@example.com` → hash |
+| Phone | E.164 format | `+12065551234` → hash |
+| MAID | No normalization needed | As-is |
+
+```javascript test=false
+import { createHash } from "crypto";
+
+const hashEmail = (email) =>
+  createHash("sha256").update(email.toLowerCase().trim()).digest("hex");
+
+const hashPhone = (e164Phone) =>
+  createHash("sha256").update(e164Phone).digest("hex");
+```
+
+## Privacy Considerations
+
+All PII is hashed by the buyer before transmission — the protocol never carries cleartext personal data. SHA-256 hashes are one-way and cannot be reversed to recover the original email or phone number. The seller matches by independently hashing its own user data with the same algorithm.
+
+**Buyer obligations**: The buyer is responsible for having a lawful basis to process and share audience data, regardless of jurisdiction. Include `consent_basis` on each audience to communicate the GDPR lawful basis to sellers operating in regulated markets — some sellers require this field for EU audiences.
+
+**Data handling**: Once uploaded, data processing and retention are governed by your agreement with the seller. Review the seller's data processing terms before uploading audience data.
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` |
+| `AUDIENCE_NOT_FOUND` | Audience to remove from doesn't exist | Check `audience_id` or omit `remove` |
+| `INVALID_HASH_FORMAT` | Identifier doesn't match expected hash format | Verify SHA-256 hex encoding (64 chars, lowercase) |
+| `RATE_LIMITED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
+
+## Next Steps
+
+- [Targeting](/dist/docs/3.0.0-rc.1/media-buy/advanced-topics/targeting) — Reference audiences in `targeting_overlay.audience_include` and `audience_exclude`
+- [create_media_buy](/dist/docs/3.0.0-rc.1/media-buy/task-reference/create_media_buy) — Apply audience targeting to packages
+- [Conversion Tracking](/dist/docs/3.0.0-rc.1/media-buy/conversion-tracking/) — Track outcomes from audience-targeted campaigns
