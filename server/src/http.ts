@@ -68,6 +68,7 @@ import { createReferralsRouter } from "./routes/referrals.js";
 import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
+import { createDigestRouter } from "./routes/digest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
@@ -1002,6 +1003,9 @@ export class HTTPServer {
     const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
     this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
     this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
+
+    // Mount weekly digest routes (public web view)
+    this.app.use('/digest', createDigestRouter());
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();

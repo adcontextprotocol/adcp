@@ -28,6 +28,7 @@ import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
+import { runWeeklyDigestJob } from './weekly-digest.js';
 import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
@@ -264,6 +265,16 @@ export function registerAllJobs(): void {
     businessHours: { startHour: 9, endHour: 18, skipWeekends: true },
     shouldLogResult: (r) => r.escalated > 0,
   });
+
+  // Weekly digest - generates and sends Tuesday digest after Editorial approval
+  jobScheduler.register({
+    name: 'weekly-digest',
+    description: 'Weekly digest',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 6, unit: 'minutes' },
+    runner: runWeeklyDigestJob,
+    shouldLogResult: (r) => r.generated || r.sent > 0,
+  });
 }
 
 /**
@@ -287,4 +298,5 @@ export const JOB_NAMES = {
   KNOWLEDGE_STALENESS: 'knowledge-staleness',
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
+  WEEKLY_DIGEST: 'weekly-digest',
 } as const;
