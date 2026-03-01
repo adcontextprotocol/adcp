@@ -6431,8 +6431,8 @@ Disallow: /api/admin/
               const bj = hosted.brand_json as Record<string, unknown>;
               const brands = bj.brands as Array<Record<string, unknown>> | undefined;
               const primaryBrand = brands?.[0];
-              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
             }
           }
@@ -6461,8 +6461,8 @@ Disallow: /api/admin/
               const bj = hosted.brand_json as Record<string, unknown>;
               const brands = bj.brands as Array<Record<string, unknown>> | undefined;
               const primaryBrand = brands?.[0];
-              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
             }
           }
@@ -6571,8 +6571,8 @@ Disallow: /api/admin/
             const bj = hostedBrand.brand_json as Record<string, unknown>;
             const brands = bj.brands as Array<Record<string, unknown>> | undefined;
             const primaryBrand = brands?.[0];
-            const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-            const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+            const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+            const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
             profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
           }
         }

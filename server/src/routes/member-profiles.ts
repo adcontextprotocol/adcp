@@ -55,11 +55,11 @@ async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<Mem
   const hosted = await brandDb.getHostedBrandByDomain(domain);
   if (hosted) {
     const bj = hosted.brand_json as Record<string, unknown>;
-    // house_portfolio: read from brands[0]
+    // house_portfolio: read from brands[0]; fall back to top-level logos for simple brand.json
     const brands = bj.brands as Array<Record<string, unknown>> | undefined;
     const primaryBrand = brands?.[0];
-    const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-    const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+    const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+    const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
     return {
       domain,
       logo_url: logos?.[0]?.url as string | undefined,
