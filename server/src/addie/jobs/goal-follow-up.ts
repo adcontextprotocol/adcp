@@ -16,6 +16,7 @@ import { query } from '../../db/client.js';
 import * as outboundDb from '../../db/outbound-db.js';
 import { InsightsDatabase } from '../../db/insights-db.js';
 import type { OutreachGoal } from '../types.js';
+import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 
 const insightsDb = new InsightsDatabase();
 
@@ -105,7 +106,7 @@ async function sendFollowUp(pending: PendingFollowUp): Promise<boolean> {
   }
 
   // Skip time-sensitive goals past their deadline
-  if (pending.goal_name === 'Founding Member Deadline' && new Date() >= new Date('2026-04-01')) {
+  if (pending.goal_name === 'Founding Member Deadline' && new Date() >= FOUNDING_DEADLINE) {
     return false;
   }
 
@@ -134,7 +135,7 @@ async function sendFollowUp(pending: PendingFollowUp): Promise<boolean> {
   }
 
   // Dynamic countdown for time-sensitive goals (founding member deadline)
-  const daysRemaining = Math.max(0, Math.ceil((new Date('2026-04-01T00:00:00Z').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  const daysRemaining = Math.max(0, Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
   message = message.replace(/\{\{days_remaining\}\}/g, String(daysRemaining));
 
   // Open DM channel and send

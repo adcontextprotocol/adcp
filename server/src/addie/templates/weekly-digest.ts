@@ -1,5 +1,6 @@
 import type { DigestContent } from '../../db/digest-db.js';
 import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
+import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
@@ -345,8 +346,6 @@ export function renderDigestWebPage(content: DigestContent, editionDate: string)
 }
 
 // ─── Founding member deadline banner (expires April 1 2026) ─────────────
-
-const FOUNDING_DEADLINE = new Date('2026-04-01T00:00:00Z');
 
 function getFoundingDaysRemaining(): number | null {
   const days = Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24));

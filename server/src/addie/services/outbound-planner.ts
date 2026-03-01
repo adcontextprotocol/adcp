@@ -24,6 +24,7 @@ import type {
   PlannerDecisionMethod,
   GoalOutcome,
 } from '../types.js';
+import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 
 /**
  * Outbound Planner - decides what goal to pursue with each user
@@ -308,7 +309,7 @@ export class OutboundPlanner {
     }
 
     // PRIORITY 3.5: Founding member deadline (time-sensitive, expires April 1 2026)
-    if (new Date() < new Date('2026-04-01') && !ctx.user.is_member && !ctx.company?.is_personal_workspace) {
+    if (new Date() < FOUNDING_DEADLINE && !ctx.user.is_member && !ctx.company?.is_personal_workspace) {
       const deadlineGoal = goals.find(g => g.name === 'Founding Member Deadline');
       if (deadlineGoal) {
         return {
@@ -610,7 +611,7 @@ Respond ONLY with valid JSON (no markdown code blocks):
     message = message.replace(/\{\{link_url\}\}/g, linkUrl ?? '');
 
     // Dynamic countdown for time-sensitive goals (founding member deadline)
-    const daysRemaining = Math.max(0, Math.ceil((new Date('2026-04-01T00:00:00Z').getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+    const daysRemaining = Math.max(0, Math.ceil((FOUNDING_DEADLINE.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
     message = message.replace(/\{\{days_remaining\}\}/g, String(daysRemaining));
 
     return message;
