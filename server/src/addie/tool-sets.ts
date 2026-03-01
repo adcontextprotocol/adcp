@@ -291,6 +291,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'get_insight_summary',
       'get_member_search_analytics',
       'list_organizations_by_users',
+      'list_users_by_engagement',
       'list_slack_users_by_org',
       'list_paying_members',
       'tag_insight',
