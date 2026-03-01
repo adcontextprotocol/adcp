@@ -1,4 +1,4 @@
--- Migration: 255_founding_deadline_goal.sql
+-- Migration: 257_founding_deadline_goal.sql
 -- Time-sensitive outreach goal for the founding member enrollment deadline (March 31, 2026).
 -- Addie uses this to notify non-members about locked founding pricing before it expires.
 

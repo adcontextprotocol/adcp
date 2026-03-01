@@ -1,4 +1,4 @@
--- Migration: 256_claim_unowned_prospects.sql
+-- Migration: 258_claim_unowned_prospects.sql
 -- Auto-assign unowned, non-subscribed organizations to Addie for outreach.
 -- These orgs have no prospect_owner and no subscription, meaning nobody is
 -- responsible for converting them. Assigning to Addie lets the outbound
