@@ -470,7 +470,8 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
   }
 
   // Build the message from the goal template
-  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
+  const basePath = plannedAction.goal.category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
   const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
 
   // Send message, continuing existing thread if one exists
@@ -733,7 +734,8 @@ export async function manualOutreachWithGoal(
   const ctx = await buildPlannerContext(candidate);
 
   // Build the message from the goal template
-  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+  const basePath = goal.category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(slackUserId)}`;
   const message = planner.buildMessage(goal, ctx, linkUrl);
 
   // Send message, continuing existing thread if one exists
