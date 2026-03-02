@@ -871,6 +871,14 @@
               <option value="other">Other</option>
             </select>
           </div>
+          <div class="filter-group">
+            <label>Sort</label>
+            <select id="filterSort" onchange="applyFilters()">
+              <option value="">Default</option>
+              <option value="name_asc">Account A–Z</option>
+              <option value="name_desc">Account Z–A</option>
+            </select>
+          </div>
         </div>
 
         <div id="prospectsCount" style="color: var(--color-text-secondary); margin-bottom: var(--space-2.5); font-size: var(--text-sm);">
@@ -881,7 +889,7 @@
         <table class="prospects-table">
           <thead id="tableHeader">
             <tr>
-              <th class="col-company">Company</th>
+              <th class="col-company">Account</th>
               <th>🔥</th>
               <th class="col-domain">Domain</th>
               <th class="col-users">Users</th>
@@ -1605,7 +1613,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // My Accounts view — includes a Role column showing the current user's stakeholder role
         header.innerHTML = `
           <tr>
-            <th class="col-company">Company</th>
+            <th class="col-company">Account</th>
             <th>🔥</th>
             <th class="col-domain">Domain</th>
             <th class="col-users">Users</th>
@@ -1619,7 +1627,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         // Default prospects view
         header.innerHTML = `
           <tr>
-            <th class="col-company">Company</th>
+            <th class="col-company">Account</th>
             <th>🔥</th>
             <th class="col-domain">Domain</th>
             <th class="col-users">Users</th>
@@ -2961,6 +2969,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const typeFilter = document.getElementById('filterType').value;
       const searchFilter = document.getElementById('filterSearch').value.toLowerCase().trim();
       const accountTypeFilter = document.getElementById('filterAccountType').value;
+      const sortFilter = document.getElementById('filterSort').value;
 
       filteredProspects = allProspects.filter(prospect => {
         // Account type filter (Individual vs Company)
@@ -2992,6 +3001,12 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
         }
         return true;
       });
+
+      if (sortFilter === 'name_asc') {
+        filteredProspects.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      } else if (sortFilter === 'name_desc') {
+        filteredProspects.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+      }
 
       renderProspects();
     }

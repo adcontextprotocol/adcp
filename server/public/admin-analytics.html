@@ -214,7 +214,6 @@
     }
 
     .table-container {
-      max-height: 400px;
       overflow-y: auto;
     }
 
@@ -288,7 +287,6 @@
           <thead>
             <tr>
               <th>Month</th>
-              <th>Gross Revenue</th>
               <th>Refunds</th>
               <th>Net Revenue</th>
               <th>Paying Customers</th>
@@ -456,17 +454,25 @@
         // Populate revenue by month table
         const revenueTable = document.getElementById('revenue-table').querySelector('tbody');
         if (data.revenue_by_month && data.revenue_by_month.length > 0) {
-          revenueTable.innerHTML = data.revenue_by_month.map(row => `
+          revenueTable.innerHTML = data.revenue_by_month.map(row => {
+            const customerNames = row.paying_customer_names || [];
+            const customerTooltip = customerNames.length > 0
+              ? customerNames.join('\n')
+              : '';
+            const customerCell = customerNames.length > 0
+              ? `<td title="${escapeHtml(customerTooltip).replace(/"/g, '&quot;')}" style="cursor: default; text-decoration: underline dotted;">${row.paying_customers || 0}</td>`
+              : `<td>${row.paying_customers || 0}</td>`;
+            return `
             <tr>
               <td>${formatMonth(row.month)}</td>
-              <td>${formatCurrency(row.gross_revenue)}</td>
               <td>${formatCurrency(row.refunds)}</td>
               <td>${formatCurrency(row.net_revenue)}</td>
-              <td>${row.paying_customers || 0}</td>
+              ${customerCell}
             </tr>
-          `).join('');
+          `;
+          }).join('');
         } else {
-          revenueTable.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--color-text-secondary);">No revenue data yet</td></tr>';
+          revenueTable.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--color-text-secondary);">No revenue data yet</td></tr>';
         }
 
         // Populate product revenue table
@@ -474,7 +480,7 @@
         if (data.product_revenue && data.product_revenue.length > 0) {
           productTable.innerHTML = data.product_revenue.map(row => `
             <tr>
-              <td>${escapeHtml(row.product_name || 'N/A')}</td>
+              <td>${escapeHtml(row.product_name || 'Membership')}</td>
               <td>${formatCurrency(row.total_revenue)}</td>
               <td>${row.customer_count || 0}</td>
               <td>${formatCurrency(row.avg_revenue_per_customer)}</td>

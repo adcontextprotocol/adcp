@@ -4248,7 +4248,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         // Query all analytics views
-        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups] = await Promise.all([
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups, payingCustomersByMonth] = await Promise.all([
           pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
           pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
           pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
@@ -4281,12 +4281,37 @@ export class HTTPServer {
             ORDER BY created_at DESC
             LIMIT 20
           `),
+          pool.query(`
+            SELECT
+              TO_CHAR(DATE_TRUNC('month', re.paid_at), 'YYYY-MM') AS month,
+              array_agg(DISTINCT o.name ORDER BY o.name) AS customer_names
+            FROM revenue_events re
+            JOIN organizations o ON o.workos_organization_id = re.workos_organization_id
+            WHERE re.amount_paid > 0
+              AND re.paid_at IS NOT NULL
+              AND re.paid_at >= NOW() - INTERVAL '12 months'
+            GROUP BY DATE_TRUNC('month', re.paid_at)
+          `),
         ]);
 
         const metrics = subscriptionMetrics.rows[0] || {};
         const outstandingRow = outstandingSummary.rows[0] || {};
+        const customerNamesByMonth = new Map(
+          payingCustomersByMonth.rows.map((r: any) => [r.month as string, r.customer_names as string[]])
+        );
+        const toMonthKey = (month: string | Date): string => {
+          if (!month) return '';
+          if (typeof month === 'string') return month.slice(0, 7);
+          // Use UTC components to match PostgreSQL's TO_CHAR output (assumes UTC Postgres, standard for production)
+          const year = month.getUTCFullYear();
+          const m = String(month.getUTCMonth() + 1).padStart(2, '0');
+          return `${year}-${m}`;
+        };
         res.json({
-          revenue_by_month: revenueByMonth.rows,
+          revenue_by_month: revenueByMonth.rows.map((row: any) => ({
+            ...row,
+            paying_customer_names: customerNamesByMonth.get(toMonthKey(row.month)) || [],
+          })),
           customer_health: customerHealth.rows,
           subscription_metrics: {
             ...metrics,
