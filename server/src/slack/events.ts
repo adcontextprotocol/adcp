@@ -15,7 +15,7 @@ import { getSlackUser, getChannelInfo } from './client.js';
 import { syncUserToChaptersFromSlackChannels } from './sync.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
-import { invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
+import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import {
   isAddieReady,
   handleAssistantThreadStarted,
@@ -155,8 +155,8 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
       slack_tz_offset: user.tz_offset ?? null,
     });
 
-    // Auto-map by email if they have a web account
-    if (email) {
+    // Auto-map by email if they have a web account (skip bots)
+    if (email && !user.is_bot) {
       await tryAutoMapByEmail(user.id, email);
     }
 
@@ -283,6 +283,7 @@ async function tryAutoMapByEmail(slackUserId: string, email: string): Promise<vo
     }
 
     // Invalidate caches
+    invalidateAdminStatusCache(slackUserId);
     invalidateUnifiedUsersCache();
     invalidateMemberContextCache(slackUserId);
   } catch (error) {
