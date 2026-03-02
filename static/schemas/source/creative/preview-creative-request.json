@@ -59,6 +59,11 @@
           "default": "url",
           "description": "Output format for previews. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML for direct embedding). Default: 'url' for backward compatibility."
         },
+        "item_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of catalog items to render in the preview. For catalog-driven generative formats, caps how many items are rendered per preview variant. Ignored when the manifest contains no catalog assets. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -132,6 +137,11 @@
                 "$ref": "/schemas/enums/preview-output-format.json",
                 "default": "url",
                 "description": "Output format for this preview. 'url' returns preview_url, 'html' returns preview_html."
+              },
+              "item_limit": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Maximum number of catalog items to render in this preview."
               }
             },
             "required": ["creative_manifest"],

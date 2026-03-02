@@ -18,6 +18,11 @@
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
         },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -69,6 +74,11 @@
           {
             "required": [
               "sandbox"
+            ]
+          },
+          {
+            "required": [
+              "expires_at"
             ]
           }
         ]

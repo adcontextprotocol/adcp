@@ -21,6 +21,15 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for creative generation. Resolved to full brand identity (colors, logos, tone) at execution time."
     },
+    "quality": {
+      "$ref": "/schemas/enums/creative-quality.json",
+      "description": "Quality tier for generation. 'draft' produces fast, lower-fidelity output for iteration and review. 'production' produces full-quality output for final delivery. If omitted, the creative agent uses its own default. For non-generative transforms (e.g., format resizing), creative agents MAY ignore this field."
+    },
+    "item_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. Ignored when the manifest contains no catalog assets. Distinct from the format-level max_items in catalog requirements, which is a hard cap on what the format can render."
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },

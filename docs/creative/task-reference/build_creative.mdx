@@ -17,8 +17,18 @@ For information about format IDs and how to reference formats, see [Creative For
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
+| `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
+| `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
+
+### Generation controls
+
+For generative formats, two optional parameters control the generation process:
+
+- **`quality`**: Controls the fidelity-cost tradeoff. Use `"draft"` for rapid iteration (reviewing layouts, copy, composition) and `"production"` for final renders. Draft outputs may use lower-resolution images, simplified effects, or placeholder elements. To produce a production version of a draft you like, pass the draft's output manifest back as `creative_manifest` with `quality: "production"`.
+
+- **`item_limit`**: For catalog-driven formats, caps how many catalog items are used during generation. A catalog might contain 1,000 products but you only need 4 hero images. The creative agent selects top items based on relevance or catalog ordering. If omitted, the creative agent decides based on catalog size and format requirements.
 
 ## Use Cases
 
@@ -152,6 +162,7 @@ The response contains the transformed or generated creative manifest:
 - **creative_manifest**: The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
 - **format_id**: The target format (matches `target_format_id` from request)
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
+- **expires_at**: Optional ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs. Not present when the manifest contains no expiring URLs (e.g., pure text generation or assembly-only transforms).
 
 ### Compliance Errors
 
@@ -605,6 +616,86 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
 ```
 
 The brief and product catalog travel together in the manifest's `assets` map. The format declares both a `brief` and `catalog` asset type — the buying agent discovers this via `list_creative_formats` and syncs the required catalog before submitting.
+
+### Example 7: Draft Generation with Item Limit
+
+Generate a draft-quality creative from a large catalog, capping the number of items:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Create hero images for our top sale items",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "sponsored_product_carousel"
+  },
+  "brand": {
+    "domain": "novabrands.com"
+  },
+  "quality": "draft",
+  "item_limit": 4,
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "sponsored_product_carousel"
+    },
+    "assets": {
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "spring_sale_2026"
+      }
+    }
+  }
+}
+```
+
+The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4 hero images are generated. `quality: "draft"` produces fast, lower-fidelity output for review.
+
+**Response**:
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "sponsored_product_carousel"
+    },
+    "assets": {
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "spring_sale_2026"
+      },
+      "card_1_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/draft/card1_abc123.jpg",
+        "width": 400,
+        "height": 400
+      },
+      "card_2_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/draft/card2_def456.jpg",
+        "width": 400,
+        "height": 400
+      },
+      "card_3_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/draft/card3_ghi789.jpg",
+        "width": 400,
+        "height": 400
+      },
+      "card_4_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/draft/card4_jkl012.jpg",
+        "width": 400,
+        "height": 400
+      }
+    }
+  },
+  "expires_at": "2026-03-02T06:00:00Z"
+}
+```
+
+The `expires_at` field signals when the generated CDN URLs expire. Re-build after this time to get fresh URLs. Once the direction is approved, re-submit the output manifest with `quality: "production"` for final renders.
 
 ## Key Concepts
 
