@@ -28,7 +28,7 @@ For generative formats, two optional parameters control the generation process:
 
 - **`quality`**: Controls the fidelity-cost tradeoff. Use `"draft"` for rapid iteration (reviewing layouts, copy, composition) and `"production"` for final renders. Draft outputs may use lower-resolution images, simplified effects, or placeholder elements. To produce a production version of a draft you like, pass the draft's output manifest back as `creative_manifest` with `quality: "production"`.
 
-- **`item_limit`**: For catalog-driven formats, caps how many catalog items are used during generation. A catalog might contain 1,000 products but you only need 4 hero images. The creative agent selects top items based on relevance or catalog ordering. If omitted, the creative agent decides based on catalog size and format requirements.
+- **`item_limit`**: For catalog-driven formats, caps how many catalog items are used during generation. A catalog might contain 1,000 products but you only need 4 hero images. The creative agent selects top items based on relevance or catalog ordering. When `item_limit` exceeds the format's `max_items` (from catalog requirements), the creative agent should use the lesser of the two. If omitted, the creative agent decides based on catalog size and format requirements.
 
 ## Use Cases
 

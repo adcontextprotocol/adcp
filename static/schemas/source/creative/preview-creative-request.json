@@ -62,7 +62,7 @@
         "item_limit": {
           "type": "integer",
           "minimum": 1,
-          "description": "Maximum number of catalog items to render in the preview. For catalog-driven generative formats, caps how many items are rendered per preview variant. Ignored when the manifest contains no catalog assets. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large."
+          "description": "Maximum number of catalog items to render in the preview. For catalog-driven generative formats, caps how many items are rendered per preview variant. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
