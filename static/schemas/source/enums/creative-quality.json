@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/creative-quality.json",
+  "title": "Creative Quality",
+  "description": "Quality tier for creative generation, controlling the fidelity and cost tradeoff",
+  "type": "string",
+  "enum": [
+    "draft",
+    "production"
+  ]
+}
