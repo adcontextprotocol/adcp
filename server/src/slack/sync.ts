@@ -14,6 +14,9 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
 import { invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
+import { getPool } from '../db/client.js';
+import { workos } from '../auth/workos-client.js';
+import { isFreeEmailDomain } from '../utils/email-domain.js';
 import type { SyncSlackUsersResult } from './types.js';
 
 const slackDb = new SlackDatabase();
@@ -534,4 +537,191 @@ export async function tryAutoLinkWebsiteUserToSlack(
     logger.error({ error, workosUserId, email }, 'Failed to auto-link website user to Slack');
     return { linked: false, reason: 'error' };
   }
+}
+
+/**
+ * Build a map of AAO member emails to WorkOS user IDs.
+ * Uses the local organization_memberships table (synced from WorkOS via webhooks).
+ */
+export async function buildAaoEmailToUserIdMap(): Promise<Map<string, string>> {
+  const pool = getPool();
+  const aaoEmailToUserId = new Map<string, string>();
+  const result = await pool.query<{ email: string; workos_user_id: string }>(`
+    SELECT DISTINCT email, workos_user_id
+    FROM organization_memberships
+    WHERE email IS NOT NULL
+  `);
+  for (const row of result.rows) {
+    aaoEmailToUserId.set(row.email.toLowerCase(), row.workos_user_id);
+  }
+  return aaoEmailToUserId;
+}
+
+/**
+ * Check if a user should be assigned to an organization based on their email domain.
+ * If the user is in a personal workspace and their email domain matches a registered
+ * organization domain, adds them to that organization.
+ */
+export async function checkAndAssignOrganizationByDomain(
+  workosUserId: string
+): Promise<{
+  assigned: boolean;
+  organizationId?: string;
+  organizationName?: string;
+  previousOrgId?: string;
+  previousOrgName?: string;
+  error?: string;
+} | null> {
+  const pool = getPool();
+
+  try {
+    const membershipResult = await pool.query<{
+      email: string;
+      workos_organization_id: string;
+      org_name: string;
+      is_personal: boolean;
+    }>(`
+      SELECT om.email, om.workos_organization_id, o.name as org_name, o.is_personal
+      FROM organization_memberships om
+      JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+      WHERE om.workos_user_id = $1
+      LIMIT 1
+    `, [workosUserId]);
+
+    if (membershipResult.rows.length === 0) {
+      return null;
+    }
+
+    const { email, workos_organization_id: currentOrgId, org_name: currentOrgName, is_personal: isPersonal } = membershipResult.rows[0];
+
+    if (!isPersonal) {
+      return null;
+    }
+
+    const domain = email.split('@')[1]?.toLowerCase();
+    if (!domain || isFreeEmailDomain(domain)) {
+      return null;
+    }
+
+    const domainResult = await pool.query<{
+      workos_organization_id: string;
+      org_name: string;
+    }>(`
+      SELECT od.workos_organization_id, o.name as org_name
+      FROM organization_domains od
+      JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+      WHERE LOWER(od.domain) = $1
+        AND o.is_personal = false
+      LIMIT 1
+    `, [domain]);
+
+    if (domainResult.rows.length === 0) {
+      return null;
+    }
+
+    const { workos_organization_id: targetOrgId, org_name: targetOrgName } = domainResult.rows[0];
+
+    const existingMembership = await pool.query(`
+      SELECT 1 FROM organization_memberships
+      WHERE workos_user_id = $1 AND workos_organization_id = $2
+      LIMIT 1
+    `, [workosUserId, targetOrgId]);
+
+    if (existingMembership.rows.length > 0) {
+      return null;
+    }
+
+    logger.info(
+      { workosUserId, email, domain, targetOrgId, targetOrgName, currentOrgId, currentOrgName },
+      'Adding user to organization based on email domain'
+    );
+
+    await workos.userManagement.createOrganizationMembership({
+      userId: workosUserId,
+      organizationId: targetOrgId,
+      roleSlug: 'member',
+    });
+
+    await pool.query(`
+      INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, created_at, updated_at, synced_at)
+      SELECT $1, $2, email, NOW(), NOW(), NOW()
+      FROM organization_memberships
+      WHERE workos_user_id = $1
+      LIMIT 1
+      ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
+    `, [workosUserId, targetOrgId]);
+
+    return {
+      assigned: true,
+      organizationId: targetOrgId,
+      organizationName: targetOrgName,
+      previousOrgId: currentOrgId,
+      previousOrgName: currentOrgName,
+    };
+  } catch (error) {
+    logger.error({ err: error, workosUserId }, 'Error checking/assigning organization by domain');
+    return {
+      assigned: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Bulk auto-link unmapped Slack users to website accounts by email match.
+ * Used by both the admin endpoint and the daily background job.
+ */
+export async function autoLinkUnmappedSlackUsers(): Promise<{
+  linked: number;
+  chapters_joined: number;
+  organizations_assigned: number;
+  errors: number;
+}> {
+  // excludeOptedOut: false — opt-out applies to nudge notifications, not account linking.
+  // Linking is a system operation; it doesn't send any messages.
+  const unmappedSlack = await slackDb.getUnmappedUsers({
+    excludeOptedOut: false,
+    excludeRecentlyNudged: false,
+  });
+
+  const aaoEmailToUserId = await buildAaoEmailToUserIdMap();
+  const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
+
+  let linked = 0;
+  let chaptersJoined = 0;
+  let orgsAssigned = 0;
+  let errors = 0;
+
+  for (const slackUser of unmappedSlack) {
+    if (!slackUser.slack_email) continue;
+
+    const workosUserId = aaoEmailToUserId.get(slackUser.slack_email.toLowerCase());
+    if (!workosUserId || mappedWorkosUserIds.has(workosUserId)) continue;
+
+    try {
+      await slackDb.mapUser({
+        slack_user_id: slackUser.slack_user_id,
+        workos_user_id: workosUserId,
+        mapping_source: 'email_auto',
+      });
+      linked++;
+      mappedWorkosUserIds.add(workosUserId);
+
+      const chapterResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
+      chaptersJoined += chapterResult.chapters_joined;
+
+      const orgResult = await checkAndAssignOrganizationByDomain(workosUserId);
+      if (orgResult?.assigned) orgsAssigned++;
+    } catch (err) {
+      logger.error({ err, slackUserId: slackUser.slack_user_id, email: slackUser.slack_email }, 'Failed to auto-link user');
+      errors++;
+    }
+  }
+
+  if (linked > 0) {
+    invalidateUnifiedUsersCache();
+    invalidateMemberContextCache();
+  }
+
+  return { linked, chapters_joined: chaptersJoined, organizations_assigned: orgsAssigned, errors };
 }

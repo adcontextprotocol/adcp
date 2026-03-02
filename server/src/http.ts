@@ -7044,6 +7044,7 @@ Disallow: /api/admin/
     jobScheduler.start(JOB_NAMES.TASK_REMINDER);
     jobScheduler.start(JOB_NAMES.ENGAGEMENT_SCORING);
     jobScheduler.start(JOB_NAMES.GOAL_FOLLOW_UP);
+    jobScheduler.start(JOB_NAMES.SLACK_AUTO_LINK);
 
     // Start Moltbook jobs only if API key is configured
     if (process.env.MOLTBOOK_API_KEY) {

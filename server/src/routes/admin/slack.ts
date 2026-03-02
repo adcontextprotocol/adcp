@@ -12,177 +12,15 @@ import { Router } from 'express';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
-import { getPool } from '../../db/client.js';
 import { isSlackConfigured, testSlackConnection } from '../../slack/client.js';
-import { syncSlackUsers, getSyncStatus, syncUserToChaptersFromSlackChannels } from '../../slack/sync.js';
+import { syncSlackUsers, getSyncStatus, syncUserToChaptersFromSlackChannels, buildAaoEmailToUserIdMap, checkAndAssignOrganizationByDomain, autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
 import { invalidateUnifiedUsersCache } from '../../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
-import { workos } from '../../auth/workos-client.js';
-import { isFreeEmailDomain } from '../../utils/email-domain.js';
 
 const logger = createLogger('admin-slack-routes');
 
 const slackDb = new SlackDatabase();
 
-/**
- * Check if a user should be assigned to an organization based on their email domain.
- * If the user is in a personal workspace and their email domain matches a registered
- * organization domain, adds them to that organization.
- *
- * @returns Object with organization assignment details, or null if no assignment needed
- */
-async function checkAndAssignOrganizationByDomain(
-  workosUserId: string
-): Promise<{
-  assigned: boolean;
-  organizationId?: string;
-  organizationName?: string;
-  previousOrgId?: string;
-  previousOrgName?: string;
-  error?: string;
-} | null> {
-  const pool = getPool();
-
-  try {
-    // Get the user's email and current organization from organization_memberships
-    const membershipResult = await pool.query<{
-      email: string;
-      workos_organization_id: string;
-      org_name: string;
-      is_personal: boolean;
-    }>(`
-      SELECT om.email, om.workos_organization_id, o.name as org_name, o.is_personal
-      FROM organization_memberships om
-      JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-      WHERE om.workos_user_id = $1
-      LIMIT 1
-    `, [workosUserId]);
-
-    if (membershipResult.rows.length === 0) {
-      logger.debug({ workosUserId }, 'No membership found for user, skipping org assignment');
-      return null;
-    }
-
-    const { email, workos_organization_id: currentOrgId, org_name: currentOrgName, is_personal: isPersonal } = membershipResult.rows[0];
-
-    // Only proceed if user is in a personal workspace
-    if (!isPersonal) {
-      logger.debug({ workosUserId, currentOrgId, currentOrgName }, 'User is already in a company workspace');
-      return null;
-    }
-
-    // Extract domain from email
-    const domain = email.split('@')[1]?.toLowerCase();
-    if (!domain) {
-      logger.warn({ workosUserId, email }, 'Could not extract domain from email');
-      return null;
-    }
-
-    // Skip free email providers (gmail, yahoo, etc.)
-    if (isFreeEmailDomain(domain)) {
-      logger.debug({ workosUserId, domain }, 'Skipping free email domain');
-      return null;
-    }
-
-    // Check if there's an organization with this domain registered
-    // Note: domain is already lowercased above
-    const domainResult = await pool.query<{
-      workos_organization_id: string;
-      org_name: string;
-    }>(`
-      SELECT od.workos_organization_id, o.name as org_name
-      FROM organization_domains od
-      JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
-      WHERE LOWER(od.domain) = $1
-        AND o.is_personal = false
-      LIMIT 1
-    `, [domain]);
-
-    if (domainResult.rows.length === 0) {
-      logger.debug({ workosUserId, domain }, 'No organization found for domain');
-      return null;
-    }
-
-    const { workos_organization_id: targetOrgId, org_name: targetOrgName } = domainResult.rows[0];
-
-    // Check if user is already a member of the target organization
-    const existingMembershipResult = await pool.query(`
-      SELECT 1 FROM organization_memberships
-      WHERE workos_user_id = $1 AND workos_organization_id = $2
-      LIMIT 1
-    `, [workosUserId, targetOrgId]);
-
-    if (existingMembershipResult.rows.length > 0) {
-      logger.debug({ workosUserId, targetOrgId, targetOrgName }, 'User is already a member of the target organization');
-      return null;
-    }
-
-    // Add user to the organization via WorkOS
-    logger.info(
-      { workosUserId, email, domain, targetOrgId, targetOrgName, currentOrgId, currentOrgName },
-      'Adding user to organization based on email domain'
-    );
-
-    await workos.userManagement.createOrganizationMembership({
-      userId: workosUserId,
-      organizationId: targetOrgId,
-      roleSlug: 'member',
-    });
-
-    // Update our local organization_memberships table
-    // (This will also be updated by the webhook, but we do it here for immediate consistency)
-    await pool.query(`
-      INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, created_at, updated_at, synced_at)
-      SELECT $1, $2, email, NOW(), NOW(), NOW()
-      FROM organization_memberships
-      WHERE workos_user_id = $1
-      LIMIT 1
-      ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-    `, [workosUserId, targetOrgId]);
-
-    logger.info(
-      { workosUserId, targetOrgId, targetOrgName },
-      'User successfully added to organization based on email domain'
-    );
-
-    return {
-      assigned: true,
-      organizationId: targetOrgId,
-      organizationName: targetOrgName,
-      previousOrgId: currentOrgId,
-      previousOrgName: currentOrgName,
-    };
-  } catch (error) {
-    logger.error({ err: error, workosUserId }, 'Error checking/assigning organization by domain');
-    return {
-      assigned: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Build a map of AAO user emails to WorkOS user IDs
- * Uses local organization_memberships table (synced from WorkOS via webhooks)
- * Used by both GET and POST auto-link-suggested endpoints
- */
-async function buildAaoEmailToUserIdMap(): Promise<Map<string, string>> {
-  const pool = getPool();
-  const aaoEmailToUserId = new Map<string, string>();
-
-  // Query local organization_memberships table instead of calling WorkOS API
-  const result = await pool.query<{ email: string; workos_user_id: string }>(`
-    SELECT DISTINCT email, workos_user_id
-    FROM organization_memberships
-    WHERE email IS NOT NULL
-  `);
-
-  for (const row of result.rows) {
-    aaoEmailToUserId.set(row.email.toLowerCase(), row.workos_user_id);
-  }
-
-  return aaoEmailToUserId;
-}
 
 /**
  * Create admin Slack routes
@@ -459,74 +297,10 @@ export function createAdminSlackRouter(): Router {
   });
 
   // POST /api/admin/slack/auto-link-suggested - Auto-link all suggested email matches
-  router.post('/auto-link-suggested', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
     try {
-      const adminUser = (req as any).user;
-
-      const unmappedSlack = await slackDb.getUnmappedUsers({
-        excludeOptedOut: false,
-        excludeRecentlyNudged: false,
-      });
-
-      const aaoEmailToUserId = await buildAaoEmailToUserIdMap();
-      const mappedWorkosUserIds = await slackDb.getMappedWorkosUserIds();
-
-      let linked = 0;
-      const errors: string[] = [];
-
-      let chaptersJoined = 0;
-      let orgsAssigned = 0;
-
-      for (const slackUser of unmappedSlack) {
-        if (!slackUser.slack_email) continue;
-
-        const workosUserId = aaoEmailToUserId.get(slackUser.slack_email.toLowerCase());
-        if (!workosUserId) continue;
-
-        if (mappedWorkosUserIds.has(workosUserId)) continue;
-
-        try {
-          await slackDb.mapUser({
-            slack_user_id: slackUser.slack_user_id,
-            workos_user_id: workosUserId,
-            mapping_source: 'email_auto',
-            mapped_by_user_id: adminUser?.id,
-          });
-          linked++;
-          mappedWorkosUserIds.add(workosUserId);
-
-          // Sync user to chapters based on their Slack channel memberships
-          const chapterSyncResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
-          chaptersJoined += chapterSyncResult.chapters_joined;
-
-          // Check if user should be assigned to an organization based on their email domain
-          const orgAssignment = await checkAndAssignOrganizationByDomain(workosUserId);
-          if (orgAssignment?.assigned) {
-            orgsAssigned++;
-          } else if (orgAssignment?.error) {
-            logger.warn(
-              { workosUserId, error: orgAssignment.error },
-              'Failed to assign organization by domain'
-            );
-          }
-        } catch (err) {
-          errors.push(`Failed to link ${slackUser.slack_email}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        }
-      }
-
-      logger.info({ linked, chaptersJoined, orgsAssigned, errors: errors.length, adminUserId: adminUser?.id }, 'Auto-linked suggested matches');
-
-      if (linked > 0) {
-        invalidateUnifiedUsersCache();
-        invalidateMemberContextCache(); // Clear all - bulk operation affects many users
-      }
-
-      res.json({
-        linked,
-        chapters_joined: chaptersJoined,
-        organizations_assigned: orgsAssigned,
-        errors,
-      });
+      const result = await autoLinkUnmappedSlackUsers();
+      res.json({ ...result, errors: result.errors > 0 ? [`${result.errors} users failed to link`] : [] });
     } catch (error) {
       logger.error({ err: error }, 'Auto-link suggested error');
       res.status(500).json({

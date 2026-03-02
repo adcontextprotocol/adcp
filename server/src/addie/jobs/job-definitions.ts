@@ -29,6 +29,7 @@ import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
+import { autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
 import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
@@ -275,6 +276,15 @@ export function registerAllJobs(): void {
     runner: runWeeklyDigestJob,
     shouldLogResult: (r) => r.generated || r.sent > 0,
   });
+
+  jobScheduler.register({
+    name: 'slack-auto-link',
+    description: 'Reconcile unmapped Slack users to website accounts by email',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 2, unit: 'minutes' },
+    runner: autoLinkUnmappedSlackUsers,
+    shouldLogResult: (r) => r.linked > 0 || r.errors > 0,
+  });
 }
 
 /**
@@ -299,4 +309,5 @@ export const JOB_NAMES = {
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
+  SLACK_AUTO_LINK: 'slack-auto-link',
 } as const;
