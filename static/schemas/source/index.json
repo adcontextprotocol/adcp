@@ -420,6 +420,10 @@
           "$ref": "/schemas/enums/creative-approval-status.json",
           "description": "Approval state of a creative on a specific package"
         },
+        "creative-quality": {
+          "$ref": "/schemas/enums/creative-quality.json",
+          "description": "Quality tier for creative generation (draft, production)"
+        },
         "pacing": {
           "$ref": "/schemas/enums/pacing.json",
           "description": "Budget pacing strategy"
