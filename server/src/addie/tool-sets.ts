@@ -250,7 +250,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   admin: {
     name: 'admin',
-    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, insights (admin only)',
+    description: 'Administrative operations - manage prospects, organizations, feeds, escalations, user roles, member insights and engagement analytics, community-wide engagement ranking (admin only)',
     tools: [
       'list_pending_invoices',
       'get_account',
