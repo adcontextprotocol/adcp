@@ -1472,380 +1472,51 @@ export function createAdcpToolHandlers(
     }
   }
 
-  // Media Buy handlers
-  handlers.set('get_products', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      brief: input.brief,
-    };
-    if (input.brand) params.brand = input.brand;
-    if (input.filters) params.filters = input.filters;
+  // Fields that are Addie routing concerns, not protocol parameters
+  const ADDIE_FIELDS = new Set(['agent_url', 'debug']);
 
-    return executeTask(agentUrl, 'get_products', params, debug);
-  });
+  // Pre-call validation for tools with mutual exclusivity constraints
+  const PRE_VALIDATION: Record<string, (input: Record<string, unknown>) => string | null> = {
+    update_media_buy: (input) => {
+      if (!input.media_buy_id && !input.buyer_ref) {
+        return 'Either media_buy_id or buyer_ref must be provided to identify the media buy to update.';
+      }
+      return null;
+    },
+    si_send_message: (input) => {
+      if (!input.message && !input.action_response) {
+        return 'Either message or action_response must be provided.';
+      }
+      return null;
+    },
+  };
 
-  handlers.set('create_media_buy', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      buyer_ref: input.buyer_ref,
-      brand: input.brand,
-      packages: input.packages,
-      start_time: input.start_time,
-      end_time: input.end_time,
-    };
+  // Register a generic passthrough handler for every AdCP tool.
+  // Strips Addie-specific fields (agent_url, debug) and forwards
+  // all protocol parameters to the SDK's executeTask unchanged.
+  for (const tool of ADCP_TOOLS) {
+    handlers.set(tool.name, async (input: Record<string, unknown>) => {
+      const agentUrl = input.agent_url as string;
+      const debug = input.debug as boolean | undefined;
 
-    return executeTask(agentUrl, 'create_media_buy', params, debug);
-  });
+      const validator = PRE_VALIDATION[tool.name];
+      if (validator) {
+        const error = validator(input);
+        if (error) return `**Error:** ${error}`;
+      }
 
-  handlers.set('sync_creatives', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      creatives: input.creatives,
-    };
-    if (input.assignments) params.assignments = input.assignments;
-    if (input.dry_run !== undefined) params.dry_run = input.dry_run;
+      // Forward all defined values including null/false/0/"" —
+      // schema validation is the remote agent's responsibility.
+      const params: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(input)) {
+        if (!ADDIE_FIELDS.has(key) && value !== undefined) {
+          params[key] = value;
+        }
+      }
 
-    return executeTask(agentUrl, 'sync_creatives', params, debug);
-  });
-
-  handlers.set('list_creative_formats', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {};
-    if (input.format_types) params.format_types = input.format_types;
-
-    return executeTask(agentUrl, 'list_creative_formats', params, debug);
-  });
-
-  handlers.set('list_authorized_properties', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'list_authorized_properties', {}, debug);
-  });
-
-  handlers.set('get_media_buy_delivery', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      media_buy_id: input.media_buy_id,
-    };
-    if (input.granularity) params.granularity = input.granularity;
-    if (input.date_range) params.date_range = input.date_range;
-
-    return executeTask(agentUrl, 'get_media_buy_delivery', params, debug);
-  });
-
-  // Creative handlers
-  handlers.set('build_creative', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      target_format_id: input.target_format_id,
-    };
-    if (input.message) params.message = input.message;
-    if (input.creative_manifest) params.creative_manifest = input.creative_manifest;
-
-    return executeTask(agentUrl, 'build_creative', params, debug);
-  });
-
-  handlers.set('preview_creative', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      request_type: input.request_type,
-    };
-    if (input.format_id) params.format_id = input.format_id;
-    if (input.creative_manifest) params.creative_manifest = input.creative_manifest;
-    if (input.requests) params.requests = input.requests;
-    if (input.output_format) params.output_format = input.output_format;
-
-    return executeTask(agentUrl, 'preview_creative', params, debug);
-  });
-
-  // Signals handlers
-  handlers.set('get_signals', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {};
-    if (input.signal_spec) params.signal_spec = input.signal_spec;
-    if (input.signal_ids) params.signal_ids = input.signal_ids;
-    if (input.destinations) params.destinations = input.destinations;
-    if (input.countries) params.countries = input.countries;
-    if (input.filters) params.filters = input.filters;
-    if (input.max_results) params.max_results = input.max_results;
-
-    return executeTask(agentUrl, 'get_signals', params, debug);
-  });
-
-  handlers.set('activate_signal', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      signal_agent_segment_id: input.signal_agent_segment_id,
-      deployments: input.deployments,
-    };
-
-    return executeTask(agentUrl, 'activate_signal', params, debug);
-  });
-
-  // Additional Media Buy handlers
-  handlers.set('update_media_buy', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-
-    if (!input.media_buy_id && !input.buyer_ref) {
-      return '**Error:** Either media_buy_id or buyer_ref must be provided to identify the media buy to update.';
-    }
-
-    const params: Record<string, unknown> = {};
-    if (input.media_buy_id) params.media_buy_id = input.media_buy_id;
-    if (input.buyer_ref) params.buyer_ref = input.buyer_ref;
-    if (input.start_time) params.start_time = input.start_time;
-    if (input.end_time) params.end_time = input.end_time;
-    if (input.paused !== undefined) params.paused = input.paused;
-    if (input.packages) params.packages = input.packages;
-
-    return executeTask(agentUrl, 'update_media_buy', params, debug);
-  });
-
-  handlers.set('list_creatives', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {};
-    if (input.filters) params.filters = input.filters;
-    if (input.sort) params.sort = input.sort;
-    if (input.pagination) params.pagination = input.pagination;
-    if (input.include_assignments !== undefined) params.include_assignments = input.include_assignments;
-    if (input.include_performance !== undefined) params.include_performance = input.include_performance;
-
-    return executeTask(agentUrl, 'list_creatives', params, debug);
-  });
-
-  handlers.set('provide_performance_feedback', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      media_buy_id: input.media_buy_id,
-      measurement_period: input.measurement_period,
-      performance_index: input.performance_index,
-    };
-    if (input.package_id) params.package_id = input.package_id;
-    if (input.creative_id) params.creative_id = input.creative_id;
-    if (input.metric_type) params.metric_type = input.metric_type;
-    if (input.feedback_source) params.feedback_source = input.feedback_source;
-
-    return executeTask(agentUrl, 'provide_performance_feedback', params, debug);
-  });
-
-  // Governance Property List handlers
-  handlers.set('create_property_list', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      name: input.name,
-    };
-    if (input.description) params.description = input.description;
-    if (input.base_properties) params.base_properties = input.base_properties;
-    if (input.filters) params.filters = input.filters;
-    if (input.brand) params.brand = input.brand;
-
-    return executeTask(agentUrl, 'create_property_list', params, debug);
-  });
-
-  handlers.set('update_property_list', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      list_id: input.list_id,
-    };
-    if (input.name) params.name = input.name;
-    if (input.description) params.description = input.description;
-    if (input.base_properties) params.base_properties = input.base_properties;
-    if (input.filters) params.filters = input.filters;
-
-    return executeTask(agentUrl, 'update_property_list', params, debug);
-  });
-
-  handlers.set('get_property_list', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      list_id: input.list_id,
-    };
-    if (input.resolve !== undefined) params.resolve = input.resolve;
-    if (input.max_results) params.max_results = input.max_results;
-
-    return executeTask(agentUrl, 'get_property_list', params, debug);
-  });
-
-  handlers.set('list_property_lists', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {};
-    if (input.name_contains) params.name_contains = input.name_contains;
-    if (input.max_results) params.max_results = input.max_results;
-
-    return executeTask(agentUrl, 'list_property_lists', params, debug);
-  });
-
-  handlers.set('delete_property_list', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'delete_property_list', { list_id: input.list_id }, debug);
-  });
-
-  // Governance Content Standards handlers
-  handlers.set('create_content_standards', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      name: input.name,
-    };
-    if (input.description) params.description = input.description;
-    if (input.rules) params.rules = input.rules;
-    if (input.brand) params.brand = input.brand;
-
-    return executeTask(agentUrl, 'create_content_standards', params, debug);
-  });
-
-  handlers.set('get_content_standards', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'get_content_standards', { standards_id: input.standards_id }, debug);
-  });
-
-  handlers.set('update_content_standards', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      standards_id: input.standards_id,
-    };
-    if (input.name) params.name = input.name;
-    if (input.description) params.description = input.description;
-    if (input.rules) params.rules = input.rules;
-
-    return executeTask(agentUrl, 'update_content_standards', params, debug);
-  });
-
-  handlers.set('list_content_standards', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {};
-    if (input.name_contains) params.name_contains = input.name_contains;
-    if (input.max_results) params.max_results = input.max_results;
-
-    return executeTask(agentUrl, 'list_content_standards', params, debug);
-  });
-
-  handlers.set('delete_content_standards', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'delete_content_standards', { standards_id: input.standards_id }, debug);
-  });
-
-  handlers.set('calibrate_content', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      standards_id: input.standards_id,
-      samples: input.samples,
-    };
-
-    return executeTask(agentUrl, 'calibrate_content', params, debug);
-  });
-
-  handlers.set('get_media_buy_artifacts', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      media_buy_id: input.media_buy_id,
-      sales_agent_url: input.sales_agent_url,
-    };
-
-    return executeTask(agentUrl, 'get_media_buy_artifacts', params, debug);
-  });
-
-  handlers.set('validate_content_delivery', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      standards_id: input.standards_id,
-      media_buy_id: input.media_buy_id,
-      sales_agent_url: input.sales_agent_url,
-    };
-    if (input.date_range) params.date_range = input.date_range;
-
-    return executeTask(agentUrl, 'validate_content_delivery', params, debug);
-  });
-
-  // Sponsored Intelligence (SI) handlers
-  handlers.set('si_initiate_session', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      context: input.context,
-      identity: input.identity,
-    };
-    if (input.media_buy_id) params.media_buy_id = input.media_buy_id;
-    if (input.placement) params.placement = input.placement;
-    if (input.offering_id) params.offering_id = input.offering_id;
-    if (input.offering_token) params.offering_token = input.offering_token;
-    if (input.supported_capabilities) params.supported_capabilities = input.supported_capabilities;
-
-    return executeTask(agentUrl, 'si_initiate_session', params, debug);
-  });
-
-  handlers.set('si_send_message', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-
-    if (!input.message && !input.action_response) {
-      return '**Error:** Either message or action_response must be provided.';
-    }
-
-    const params: Record<string, unknown> = {
-      session_id: input.session_id,
-    };
-    if (input.message) params.message = input.message;
-    if (input.action_response) params.action_response = input.action_response;
-
-    return executeTask(agentUrl, 'si_send_message', params, debug);
-  });
-
-  handlers.set('si_get_offering', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      offering_id: input.offering_id,
-    };
-    if (input.context) params.context = input.context;
-    if (input.include_products !== undefined) params.include_products = input.include_products;
-    if (input.product_limit) params.product_limit = input.product_limit;
-
-    return executeTask(agentUrl, 'si_get_offering', params, debug);
-  });
-
-  handlers.set('si_terminate_session', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    const params: Record<string, unknown> = {
-      session_id: input.session_id,
-      reason: input.reason,
-    };
-    if (input.termination_context) params.termination_context = input.termination_context;
-
-    return executeTask(agentUrl, 'si_terminate_session', params, debug);
-  });
-
-  // Protocol handlers
-  handlers.set('get_adcp_capabilities', async (input: Record<string, unknown>) => {
-    const agentUrl = input.agent_url as string;
-    const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'get_adcp_capabilities', {}, debug);
-  });
+      return executeTask(agentUrl, tool.name, params, debug);
+    });
+  }
 
   return handlers;
 }
