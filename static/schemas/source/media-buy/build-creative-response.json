@@ -33,12 +33,7 @@
       "required": [
         "creative_manifest"
       ],
-      "additionalProperties": true,
-      "not": {
-        "required": [
-          "errors"
-        ]
-      }
+      "additionalProperties": true
     },
     {
       "title": "BuildCreativeError",
@@ -63,26 +58,7 @@
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          {
-            "required": [
-              "creative_manifest"
-            ]
-          },
-          {
-            "required": [
-              "sandbox"
-            ]
-          },
-          {
-            "required": [
-              "expires_at"
-            ]
-          }
-        ]
-      }
+      "additionalProperties": true
     }
   ]
 }
