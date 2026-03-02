@@ -13,7 +13,7 @@ import { SlackDatabase } from '../db/slack-db.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
-import { invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
+import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
 import { getPool } from '../db/client.js';
 import { workos } from '../auth/workos-client.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
@@ -677,6 +677,13 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
   organizations_assigned: number;
   errors: number;
 }> {
+  // Ensure all current workspace members have rows before attempting to link.
+  // Users who joined before the team_join listener was active have no row otherwise.
+  const syncResult = await syncSlackUsers();
+  if (syncResult.errors.length > 0) {
+    logger.warn({ errors: syncResult.errors }, 'Slack user sync had errors; auto-link results may be incomplete');
+  }
+
   // excludeOptedOut: false — opt-out applies to nudge notifications, not account linking.
   // Linking is a system operation; it doesn't send any messages.
   const unmappedSlack = await slackDb.getUnmappedUsers({
@@ -706,6 +713,8 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
       });
       linked++;
       mappedWorkosUserIds.add(workosUserId);
+      // Clear cached admin status so Addie recognizes newly linked admins immediately.
+      invalidateAdminStatusCache(slackUser.slack_user_id);
 
       const chapterResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
       chaptersJoined += chapterResult.chapters_joined;

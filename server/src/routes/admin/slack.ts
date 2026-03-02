@@ -297,6 +297,8 @@ export function createAdminSlackRouter(): Router {
   });
 
   // POST /api/admin/slack/auto-link-suggested - Auto-link all suggested email matches
+  // Note: this internally calls syncSlackUsers() first, which fetches all workspace members
+  // from the Slack API before running the link pass.
   router.post('/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
     try {
       const result = await autoLinkUnmappedSlackUsers();
