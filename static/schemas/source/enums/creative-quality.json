@@ -7,5 +7,9 @@
   "enum": [
     "draft",
     "production"
-  ]
+  ],
+  "enumDescriptions": {
+    "draft": "Fast, lower-fidelity output for iteration and review",
+    "production": "Full-quality output for final delivery"
+  }
 }

@@ -145,6 +145,8 @@ Transform or generate creative manifests.
 - Creative agents MUST return a valid manifest for the target format on success
 - Creative agents MUST return validation errors if the transformation cannot be completed
 - Creative agents SHOULD preserve tracking URLs and macros during transformation
+- Creative agents SHOULD respect `quality` for generative tasks (`"draft"` for fast iteration, `"production"` for final delivery) and MAY ignore it for non-generative transforms
+- Creative agents SHOULD honor `item_limit` when present, using the lesser of `item_limit` and the format's `max_items`
 - Creative agents MAY use AI/LLM processing for generation tasks
 
 ### preview_creative
