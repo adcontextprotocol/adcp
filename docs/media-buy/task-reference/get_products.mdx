@@ -135,7 +135,7 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
-| `time_budget` | [Duration](/docs/reference/core-types#duration) | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
+| `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 
 ### Filters Object
 
@@ -289,7 +289,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
-| `estimated_wait` | [Duration](/docs/reference/core-types#duration) | No | How much additional time would resolve this scope. |
+| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
