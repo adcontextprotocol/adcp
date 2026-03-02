@@ -65,14 +65,15 @@
     },
     "incomplete": {
       "type": "array",
-      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent or empty when the response is fully complete.",
+      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
           "scope": {
             "type": "string",
-            "enum": ["products", "pricing", "forecast"],
-            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent."
+            "enum": ["products", "pricing", "forecast", "proposals"],
+            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete."
           },
           "description": {
             "type": "string",

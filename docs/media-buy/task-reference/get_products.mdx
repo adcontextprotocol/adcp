@@ -279,7 +279,7 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
 | `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
-| `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. See [incomplete array](#incomplete-array) below. |
+| `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
 
 ### incomplete array
 
@@ -287,7 +287,7 @@ When the seller cannot complete all work within the `time_budget` (or due to its
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. |
+| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
 | `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
@@ -368,7 +368,7 @@ A response with incomplete data — products are returned but some scopes are mi
       "product_id": "prog-display-ros",
       "name": "Programmatic Display — Run of Site",
       "delivery_type": "non_guaranteed",
-      "pricing_options": [{ "model": "cpm", "price": 12.00, "currency": "USD" }]
+      "pricing_options": [{ "pricing_option_id": "cpm-ros", "pricing_model": "cpm", "currency": "USD", "fixed_price": 12.00 }]
     }
   ],
   "incomplete": [
