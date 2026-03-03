@@ -8,6 +8,7 @@ import { SlackDatabase } from "../db/slack-db.js";
 import { sendDirectMessage } from "../slack/client.js";
 import { query } from "../db/client.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
+import { notifyUser } from "../notifications/notification-service.js";
 
 const logger = createLogger("community-routes");
 
@@ -110,6 +111,18 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         );
       }
 
+      // In-app notification (fire-and-forget)
+      const actorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
+      notifyUser({
+        recipientUserId: recipient_user_id,
+        actorUserId: user.id,
+        type: 'connection_request',
+        referenceId: connection.id,
+        referenceType: 'connection',
+        title: `${actorName} sent you a connection request`,
+        url: '/community/connections',
+      }).catch(err => logger.error({ err }, 'Failed to send connection request notification'));
+
       res.status(201).json(connection);
     } catch (error) {
       logger.error({ error }, 'Failed to create connection');
@@ -154,6 +167,18 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
             err => logger.error({ err }, 'Failed to send connection acceptance Slack DM')
           );
         }
+
+        // In-app notification (fire-and-forget)
+        const acceptorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
+        notifyUser({
+          recipientUserId: connection.requester_user_id,
+          actorUserId: user.id,
+          type: 'connection_accepted',
+          referenceId: connection.id,
+          referenceType: 'connection',
+          title: `${acceptorName} accepted your connection request`,
+          url: '/community/connections',
+        }).catch(err => logger.error({ err }, 'Failed to send connection accepted notification'));
       }
 
       res.json(connection);

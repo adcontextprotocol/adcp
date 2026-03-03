@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .notif-container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .notif-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-6);
+    }
+
+    .notif-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+
+    .mark-all-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-2) var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      transition: var(--transition-colors);
+    }
+
+    .mark-all-btn:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+
+    .notif-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .notif-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-4);
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+      text-decoration: none;
+      color: inherit;
+      transition: var(--transition-colors);
+    }
+
+    .notif-item:hover {
+      border-color: var(--color-brand);
+    }
+
+    .notif-item.unread {
+      background: var(--color-primary-50);
+      border-color: var(--color-primary-200, var(--color-brand));
+    }
+
+    .notif-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--color-brand), var(--color-brand-hover));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: var(--text-xs);
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .notif-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .notif-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .notif-title {
+      font-size: var(--text-sm);
+      color: var(--color-text);
+      line-height: 1.4;
+    }
+
+    .notif-time {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-top: var(--space-1);
+    }
+
+    .notif-empty {
+      text-align: center;
+      padding: var(--space-12) var(--space-4);
+      color: var(--color-text-muted);
+    }
+
+    .notif-empty svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: var(--space-3);
+      opacity: 0.4;
+    }
+
+    .load-more {
+      display: block;
+      width: 100%;
+      padding: var(--space-3);
+      margin-top: var(--space-4);
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      cursor: pointer;
+      transition: var(--transition-colors);
+    }
+
+    .load-more:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+  </style>
+</head>
+<body>
+  <script src="/nav.js"></script>
+
+  <div class="notif-container">
+    <div class="notif-header">
+      <h1>Notifications</h1>
+      <button class="mark-all-btn" id="markAllBtn" style="display: none;" onclick="markAllRead()">Mark all as read</button>
+    </div>
+
+    <div id="notifList" class="notif-list">
+      <div class="notif-empty">Loading...</div>
+    </div>
+
+    <button id="loadMoreBtn" class="load-more" style="display: none;" onclick="loadMore()">Load more</button>
+  </div>
+
+  <script>
+    const config = window.__APP_CONFIG__ || {};
+    let offset = 0;
+    const limit = 20;
+    let total = 0;
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function getInitials(first, last) {
+      return ((first || '')[0] || '') + ((last || '')[0] || '') || '?';
+    }
+
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    async function loadNotifications(append) {
+      if (!config.user) {
+        document.getElementById('notifList').innerHTML = `
+          <div class="notif-empty">
+            <p>Log in to see your notifications.</p>
+            <a href="/auth/login" style="color: var(--color-brand);">Log in</a>
+          </div>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/notifications?limit=${limit}&offset=${offset}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load');
+        const data = await res.json();
+        total = data.total;
+
+        const list = document.getElementById('notifList');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const markAllBtn = document.getElementById('markAllBtn');
+
+        if (data.notifications.length === 0 && offset === 0) {
+          list.innerHTML = `
+            <div class="notif-empty">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <p>No notifications yet</p>
+            </div>`;
+          return;
+        }
+
+        const hasUnread = data.notifications.some(n => !n.is_read);
+        markAllBtn.style.display = hasUnread ? 'block' : 'none';
+
+        const html = data.notifications.map(n => {
+          const initials = getInitials(n.actor_first_name, n.actor_last_name);
+          const avatar = n.actor_avatar_url
+            ? `<img src="${escapeHtml(n.actor_avatar_url)}" alt="">`
+            : initials;
+          const tag = n.url ? 'a' : 'div';
+          const href = n.url ? ` href="${escapeHtml(n.url)}"` : '';
+          const onclick = n.url && !n.is_read
+            ? ` onclick="markRead(event, '${n.id}')"` : '';
+
+          return `<${tag}${href} class="notif-item${n.is_read ? '' : ' unread'}"${onclick}>
+            <div class="notif-avatar">${avatar}</div>
+            <div class="notif-content">
+              <div class="notif-title">${escapeHtml(n.title)}</div>
+              <div class="notif-time">${timeAgo(n.created_at)}</div>
+            </div>
+          </${tag}>`;
+        }).join('');
+
+        if (append) {
+          list.insertAdjacentHTML('beforeend', html);
+        } else {
+          list.innerHTML = html;
+        }
+
+        loadMoreBtn.style.display = (offset + limit < total) ? 'block' : 'none';
+      } catch (e) {
+        if (!append) {
+          document.getElementById('notifList').innerHTML =
+            '<div class="notif-empty"><p>Failed to load notifications.</p></div>';
+        }
+      }
+    }
+
+    function loadMore() {
+      offset += limit;
+      loadNotifications(true);
+    }
+
+    async function markRead(event, id) {
+      fetch(`/api/notifications/${id}/read`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    }
+
+    async function markAllRead() {
+      try {
+        await fetch('/api/notifications/read-all', { method: 'POST', credentials: 'include' });
+        document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+        document.getElementById('markAllBtn').style.display = 'none';
+      } catch (e) {}
+    }
+
+    loadNotifications(false);
+  </script>
+</body>
+</html>
