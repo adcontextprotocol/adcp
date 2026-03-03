@@ -8,11 +8,19 @@ npm run verify-version-sync
 echo "🔍 Validating Mintlify documentation..."
 
 # Check for broken internal links
-# Temporarily remove archived docs which have version-specific links
+# Temporarily remove directories that contain non-MDX markdown
 rm -rf dist/docs
+ADDIE_REPOS_MOVED=false
+if [ -d .addie-repos ]; then
+  mv .addie-repos /tmp/.addie-repos-push-$$
+  ADDIE_REPOS_MOVED=true
+fi
 npx --yes mintlify@latest broken-links
 BROKEN_LINKS_EXIT=$?
 git checkout dist/docs 2>/dev/null || true
+if [ "$ADDIE_REPOS_MOVED" = true ]; then
+  mv /tmp/.addie-repos-push-$$ .addie-repos
+fi
 if [ $BROKEN_LINKS_EXIT -ne 0 ]; then
   echo "❌ Mintlify broken links check failed. Please fix broken links before pushing."
   exit 1

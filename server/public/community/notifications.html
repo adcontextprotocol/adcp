@@ -152,14 +152,14 @@
   <div class="notif-container">
     <div class="notif-header">
       <h1>Notifications</h1>
-      <button class="mark-all-btn" id="markAllBtn" style="display: none;" onclick="markAllRead()">Mark all as read</button>
+      <button class="mark-all-btn" id="pageMarkAllBtn" style="display: none;" onclick="markAllRead()">Mark all as read</button>
     </div>
 
-    <div id="notifList" class="notif-list">
+    <div id="pageNotifList" class="notif-list">
       <div class="notif-empty">Loading...</div>
     </div>
 
-    <button id="loadMoreBtn" class="load-more" style="display: none;" onclick="loadMore()">Load more</button>
+    <button id="pageLoadMoreBtn" class="load-more" style="display: none;" onclick="loadMore()">Load more</button>
   </div>
 
   <script>
@@ -191,7 +191,7 @@
 
     async function loadNotifications(append) {
       if (!config.user) {
-        document.getElementById('notifList').innerHTML = `
+        document.getElementById('pageNotifList').innerHTML = `
           <div class="notif-empty">
             <p>Log in to see your notifications.</p>
             <a href="/auth/login" style="color: var(--color-brand);">Log in</a>
@@ -205,9 +205,9 @@
         const data = await res.json();
         total = data.total;
 
-        const list = document.getElementById('notifList');
-        const loadMoreBtn = document.getElementById('loadMoreBtn');
-        const markAllBtn = document.getElementById('markAllBtn');
+        const list = document.getElementById('pageNotifList');
+        const loadMoreBtn = document.getElementById('pageLoadMoreBtn');
+        const markAllBtn = document.getElementById('pageMarkAllBtn');
 
         if (data.notifications.length === 0 && offset === 0) {
           list.innerHTML = `
@@ -252,7 +252,7 @@
         loadMoreBtn.style.display = (offset + limit < total) ? 'block' : 'none';
       } catch (e) {
         if (!append) {
-          document.getElementById('notifList').innerHTML =
+          document.getElementById('pageNotifList').innerHTML =
             '<div class="notif-empty"><p>Failed to load notifications.</p></div>';
         }
       }
@@ -271,7 +271,7 @@
       try {
         await fetch('/api/notifications/read-all', { method: 'POST', credentials: 'include' });
         document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
-        document.getElementById('markAllBtn').style.display = 'none';
+        document.getElementById('pageMarkAllBtn').style.display = 'none';
       } catch (e) {}
     }
 
