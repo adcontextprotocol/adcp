@@ -14,7 +14,7 @@ export function createNotificationRouter() {
     try {
       const user = req.user!;
       const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
-      const offset = parseInt(req.query.offset as string, 10) || 0;
+      const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
       const unreadOnly = req.query.unread_only === 'true';
 
       const result = await notificationDb.listNotifications(user.id, { limit, offset, unreadOnly });
@@ -41,6 +41,9 @@ export function createNotificationRouter() {
   router.post('/:id/read', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+        return res.status(400).json({ error: 'Invalid notification ID' });
+      }
       const success = await notificationDb.markAsRead(req.params.id, user.id);
       res.json({ success });
     } catch (error) {

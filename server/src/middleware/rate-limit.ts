@@ -110,6 +110,33 @@ export const brandCreationRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for notification endpoints (polled from nav bell)
+ * Limits: 120 requests per minute per user (allows 30s polling across multiple tabs)
+ */
+export const notificationRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new PostgresStore('notif:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for notifications');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Notification request limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
  * Rate limiter for bulk resolve endpoints
  * Limits: 20 requests per minute per IP (each request resolves up to 100 domains)
  */

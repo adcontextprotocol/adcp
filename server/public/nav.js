@@ -442,12 +442,12 @@
         border: none;
         cursor: pointer;
         padding: 0.375rem;
-        color: #6b7280;
+        color: var(--color-gray-500);
         transition: color 0.2s;
         display: flex;
         align-items: center;
       }
-      .navbar__notif-btn:hover { color: #111; }
+      .navbar__notif-btn:hover { color: var(--color-gray-900); }
       .navbar__notif-badge {
         position: absolute;
         top: 2px;
@@ -455,7 +455,7 @@
         min-width: 16px;
         height: 16px;
         padding: 0 4px;
-        background: #ef4444;
+        background: var(--color-error-500);
         color: #fff;
         font-size: 10px;
         font-weight: 700;
@@ -472,8 +472,8 @@
         right: 0;
         width: 360px;
         max-height: 420px;
-        background: #fff;
-        border: 1px solid #e5e7eb;
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
         border-radius: 0.5rem;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         z-index: 1002;
@@ -485,13 +485,13 @@
         justify-content: space-between;
         align-items: center;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid var(--color-border);
         font-weight: 600;
         font-size: 0.875rem;
       }
       .navbar__notif-view-all {
         font-size: 0.75rem;
-        color: #4f46e5;
+        color: var(--color-brand);
         text-decoration: none;
         font-weight: 500;
       }
@@ -508,15 +508,15 @@
         text-decoration: none;
         color: inherit;
         transition: background 0.15s;
-        border-bottom: 1px solid #f3f4f6;
+        border-bottom: 1px solid var(--color-gray-100);
       }
-      .navbar__notif-item:hover { background: #f9fafb; }
-      .navbar__notif-item.unread { background: #eef2ff; }
+      .navbar__notif-item:hover { background: var(--color-bg-subtle); }
+      .navbar__notif-item.unread { background: var(--color-primary-50); }
       .navbar__notif-item-avatar {
         width: 28px;
         height: 28px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #4f46e5, #6366f1);
+        background: var(--gradient-primary);
         color: #fff;
         font-size: 10px;
         font-weight: 700;
@@ -530,28 +530,19 @@
       .navbar__notif-item-text {
         font-size: 0.8125rem;
         line-height: 1.35;
-        color: #374151;
+        color: var(--color-gray-700);
       }
       .navbar__notif-item-time {
         font-size: 0.6875rem;
-        color: #9ca3af;
+        color: var(--color-text-muted);
         margin-top: 2px;
       }
       .navbar__notif-empty {
         padding: 2rem 1rem;
         text-align: center;
-        color: #9ca3af;
+        color: var(--color-text-muted);
         font-size: 0.8125rem;
       }
-
-      [data-theme="dark"] .navbar__notif-btn { color: #9ca3af; }
-      [data-theme="dark"] .navbar__notif-btn:hover { color: #f3f4f6; }
-      [data-theme="dark"] .navbar__notif-dropdown { background: #1f2937; border-color: #374151; }
-      [data-theme="dark"] .navbar__notif-header { border-color: #374151; color: #f3f4f6; }
-      [data-theme="dark"] .navbar__notif-item { border-color: #374151; }
-      [data-theme="dark"] .navbar__notif-item:hover { background: #374151; }
-      [data-theme="dark"] .navbar__notif-item.unread { background: #1e293b; }
-      [data-theme="dark"] .navbar__notif-item-text { color: #d1d5db; }
 
       /* Account dropdown */
       .navbar__account {
@@ -1635,18 +1626,22 @@
               notifList.innerHTML = '<div class="navbar__notif-empty">No new notifications</div>';
               return;
             }
+            function esc(str) {
+              if (!str) return '';
+              return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
             notifList.innerHTML = data.notifications.map(function(n) {
               const fi = (n.actor_first_name || '')[0] || '';
               const li = (n.actor_last_name || '')[0] || '';
-              const initials = fi + li || '?';
+              const initials = esc(fi + li) || '?';
               const avatar = n.actor_avatar_url
-                ? '<img src="' + n.actor_avatar_url.replace(/"/g, '&quot;') + '" alt="">'
+                ? '<img src="' + esc(n.actor_avatar_url) + '" alt="">'
                 : initials;
               const tag = n.url ? 'a' : 'div';
-              const href = n.url ? ' href="' + n.url.replace(/"/g, '&quot;') + '"' : '';
-              return '<' + tag + href + ' class="navbar__notif-item' + (n.is_read ? '' : ' unread') + '" data-id="' + n.id + '">'
+              const href = n.url ? ' href="' + esc(n.url) + '"' : '';
+              return '<' + tag + href + ' class="navbar__notif-item' + (n.is_read ? '' : ' unread') + '" data-id="' + esc(n.id) + '">'
                 + '<div class="navbar__notif-item-avatar">' + avatar + '</div>'
-                + '<div><div class="navbar__notif-item-text">' + (n.title || '').replace(/</g, '&lt;') + '</div>'
+                + '<div><div class="navbar__notif-item-text">' + esc(n.title) + '</div>'
                 + '<div class="navbar__notif-item-time">' + notifTimeAgo(n.created_at) + '</div></div>'
                 + '</' + tag + '>';
             }).join('');

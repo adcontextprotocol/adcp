@@ -35,7 +35,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -992,7 +992,7 @@ export class HTTPServer {
     this.app.use('/api/me/engagement', engagementRouter);
 
     // Mount notification routes
-    this.app.use('/api/notifications', createNotificationRouter());
+    this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
 
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());

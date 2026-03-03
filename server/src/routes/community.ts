@@ -5,7 +5,6 @@ import { CommunityDatabase, type CommunityProfile } from "../db/community-db.js"
 import { MemberDatabase } from "../db/member-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
-import { sendDirectMessage } from "../slack/client.js";
 import { query } from "../db/client.js";
 import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
@@ -104,14 +103,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
 
       const connection = await communityDb.requestConnection(user.id, recipient_user_id, message);
 
-      // Notify recipient via Slack DM (fire-and-forget)
-      if (slackDb) {
-        notifyConnectionRequest(slackDb, user, recipient_user_id, message).catch(
-          err => logger.error({ err }, 'Failed to send connection Slack DM')
-        );
-      }
-
-      // In-app notification (fire-and-forget)
+      // In-app notification + Slack DM (fire-and-forget)
       const actorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
       notifyUser({
         recipientUserId: recipient_user_id,
@@ -161,14 +153,7 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
           communityDb.checkAndAwardBadges(connection.recipient_user_id, 'connection'),
         ]).catch(err => logger.error({ err }, 'Badge check failed'));
 
-        // Notify requester via Slack DM (fire-and-forget)
-        if (slackDb) {
-          notifyConnectionAccepted(slackDb, user, connection.requester_user_id).catch(
-            err => logger.error({ err }, 'Failed to send connection acceptance Slack DM')
-          );
-        }
-
-        // In-app notification (fire-and-forget)
+        // In-app notification + Slack DM (fire-and-forget)
         const acceptorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Someone';
         notifyUser({
           recipientUserId: connection.requester_user_id,
@@ -399,37 +384,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
   });
 
   return { publicRouter, userRouter };
-}
-
-async function notifyConnectionRequest(
-  slackDb: SlackDatabase,
-  requester: { id: string; firstName?: string; lastName?: string },
-  recipientUserId: string,
-  message?: string,
-): Promise<void> {
-  const mapping = await slackDb.getByWorkosUserId(recipientUserId);
-  if (!mapping?.slack_user_id) return;
-
-  const name = [requester.firstName, requester.lastName].filter(Boolean).join(' ') || 'Someone';
-  const text = message
-    ? `${name} sent you a connection request on the AgenticAdvertising.org community: "${message}"\n\nView your requests: https://agenticadvertising.org/community/connections`
-    : `${name} sent you a connection request on the AgenticAdvertising.org community.\n\nView your requests: https://agenticadvertising.org/community/connections`;
-
-  await sendDirectMessage(mapping.slack_user_id, { text });
-}
-
-async function notifyConnectionAccepted(
-  slackDb: SlackDatabase,
-  acceptor: { id: string; firstName?: string; lastName?: string },
-  requesterUserId: string,
-): Promise<void> {
-  const mapping = await slackDb.getByWorkosUserId(requesterUserId);
-  if (!mapping?.slack_user_id) return;
-
-  const name = [acceptor.firstName, acceptor.lastName].filter(Boolean).join(' ') || 'Someone';
-  const text = `${name} accepted your connection request on the AgenticAdvertising.org community!\n\nView your connections: https://agenticadvertising.org/community/connections`;
-
-  await sendDirectMessage(mapping.slack_user_id, { text });
 }
 
 /**
