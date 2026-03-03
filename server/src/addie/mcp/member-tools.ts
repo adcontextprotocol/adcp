@@ -13,6 +13,7 @@
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { SlackDatabase } from '../../db/slack-db.js';
 import {
   testAllScenarios,
   formatSuiteResults,
@@ -31,6 +32,7 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
@@ -41,6 +43,8 @@ const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
+const wgDb = new WorkingGroupDatabase();
+const slackDb = new SlackDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -177,12 +181,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_working_group',
     description:
-      'Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name).',
-    usage_hints: 'use for "tell me about X group", getting specific group details',
+      'Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).',
+    usage_hints: 'use for "tell me about X group", "who is in the Kitchen Cabinet", "list members of X committee/council/chapter"',
     input_schema: {
       type: 'object',
       properties: {
         slug: { type: 'string', description: 'Working group slug' },
+        include_members: { type: 'boolean', description: 'Return full member list with name, org, and email (default: false)' },
       },
       required: ['slug'],
     },
@@ -846,6 +851,7 @@ export function createMemberToolHandlers(
 
   handlers.set('get_working_group', async (input) => {
     const slug = input.slug as string;
+    const includeMembers = (input.include_members as boolean) === true;
     const result = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
 
     if (!result.ok) {
@@ -877,6 +883,55 @@ export function createMemberToolHandlers(
         response += `- ${leader.name || 'Unknown'}\n`;
       });
       response += `\n`;
+    }
+
+    if (includeMembers) {
+      // Check admin status — try WorkOS user ID first, then fall back to Slack user ID
+      let isAdmin = false;
+      const workosUserId = memberContext?.workos_user?.workos_user_id;
+      const slackUserId = memberContext?.slack_user?.slack_user_id;
+      const adminGroup = await wgDb.getWorkingGroupBySlug('aao-admin');
+      if (adminGroup) {
+        if (workosUserId) {
+          isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
+        } else if (slackUserId) {
+          const mapping = await slackDb.getBySlackUserId(slackUserId);
+          if (mapping?.workos_user_id) {
+            isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
+          }
+        }
+      }
+
+      if (group.is_private && !isAdmin) {
+        response += `_Member list is only available to admins for private groups._\n`;
+      } else {
+        const pool = getPool();
+        const membersResult = await pool.query<{
+          user_name: string | null;
+          user_email: string | null;
+          user_org_name: string | null;
+        }>(
+          `SELECT wgm.user_name, wgm.user_email, wgm.user_org_name
+           FROM working_group_memberships wgm
+           JOIN working_groups wg ON wg.id = wgm.working_group_id
+           WHERE wg.slug = $1 AND wgm.status = 'active'
+           ORDER BY wgm.user_name ASC`,
+          [slug]
+        );
+
+        response += `### Members\n`;
+        if (membersResult.rows.length === 0) {
+          response += `_No active members._\n`;
+        } else {
+          for (const member of membersResult.rows) {
+            const name = member.user_name || member.user_email || 'Unknown';
+            const org = member.user_org_name ? ` (${member.user_org_name})` : '';
+            const email = member.user_email ? ` — ${member.user_email}` : '';
+            response += `- ${name}${org}${email}\n`;
+          }
+        }
+        response += `\n`;
+      }
     }
 
     return response;
