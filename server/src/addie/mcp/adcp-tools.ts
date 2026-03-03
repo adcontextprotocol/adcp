@@ -1379,11 +1379,8 @@ export function createAdcpToolHandlers(
     try {
       const { AdCPClient } = await import('@adcp/client');
 
-      // For Basic auth, pass the credential via headers instead of auth_token
-      // so the SDK doesn't wrap it in "Bearer".
-      // NOTE: Basic auth via headers only works with StreamableHTTP transport.
-      // If the agent falls back to SSE, the Authorization header is silently dropped
-      // (EventSource API limitation). The SDK logs a warning when this happens.
+      // AdCPClient's AgentConfig does not support typed Basic auth (unlike
+      // TestOptions). Pass the credential via headers to avoid Bearer wrapping.
       const agentConfig = {
         id: 'target',
         name: 'target',

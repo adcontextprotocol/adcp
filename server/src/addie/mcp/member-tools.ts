@@ -2133,9 +2133,25 @@ export function createMemberToolHandlers(
     if (budget) options.budget = budget;
     if (channels) options.channels = channels;
     if (pricingModels) options.pricing_models = pricingModels;
-    // The testing SDK only supports Bearer auth natively. For Basic auth agents,
-    // the test will still send the token as Bearer (SDK limitation).
-    if (authToken) options.auth = { type: 'bearer', token: authToken };
+    if (authToken) {
+      if (usingSavedToken && savedAuthType === 'basic') {
+        // Decode stored base64 credential back to username:password for the SDK
+        const decoded = Buffer.from(authToken, 'base64').toString();
+        const colonIndex = decoded.indexOf(':');
+        if (colonIndex >= 0) {
+          options.auth = {
+            type: 'basic',
+            username: decoded.substring(0, colonIndex),
+            password: decoded.substring(colonIndex + 1),
+          };
+        } else {
+          logger.warn({ agentUrl }, 'Basic auth credential missing colon separator, falling back to Bearer');
+          options.auth = { type: 'bearer', token: authToken };
+        }
+      } else {
+        options.auth = { type: 'bearer', token: authToken };
+      }
+    }
     if (scenarios) options.scenarios = scenarios;
 
     try {
