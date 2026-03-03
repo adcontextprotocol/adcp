@@ -151,7 +151,7 @@ describe('Join Request Approval', () => {
     expect(result.rows[0].status).toBe('approved');
   });
 
-  it('returns 400 when the user is already a member', async () => {
+  it('returns 400 and clears stale pending row when user is already a member', async () => {
     const alreadyMemberError: any = new Error('Already a member');
     alreadyMemberError.code = 'organization_membership_already_exists';
     mockCreateOrganizationMembership.mockRejectedValueOnce(alreadyMemberError);
@@ -162,6 +162,35 @@ describe('Join Request Approval', () => {
       .expect(400);
 
     expect(response.body.error).toBe('User already a member');
+
+    // Stale pending row must be cleaned up so it doesn't keep surfacing in the admin UI
+    const result = await pool.query(
+      'SELECT status FROM organization_join_requests WHERE id = $1',
+      [joinRequestId]
+    );
+    expect(result.rows[0].status).toBe('approved');
+  });
+
+  it('returns 409 and leaves pending row intact on cannot_reactivate error', async () => {
+    // cannot_reactivate means a pending WorkOS invitation exists — the user is NOT yet
+    // a member. The join request must stay pending for admin resolution.
+    const reactivateError: any = new Error('Cannot reactivate');
+    reactivateError.code = 'cannot_reactivate_pending_organization_membership';
+    mockCreateOrganizationMembership.mockRejectedValueOnce(reactivateError);
+
+    const response = await request(app)
+      .post(`/api/organizations/${TEST_ORG_ID}/join-requests/${joinRequestId}/approve`)
+      .send({ role: 'member' })
+      .expect(409);
+
+    expect(response.body.error).toBe('Pending invitation exists');
+
+    // Row must stay pending — user was NOT added
+    const result = await pool.query(
+      'SELECT status FROM organization_join_requests WHERE id = $1',
+      [joinRequestId]
+    );
+    expect(result.rows[0].status).toBe('pending');
   });
 
   it('returns 404 for a non-existent join request', async () => {

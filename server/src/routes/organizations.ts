@@ -305,7 +305,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = memberships.data[0].role?.slug;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
@@ -343,11 +343,34 @@ export function createOrganizationsRouter(): Router {
       // Directly add the user to the organization — join requests are only
       // created by users who have already signed up, so we always have their
       // workos_user_id and don't need to send an invitation.
-      await workos!.userManagement.createOrganizationMembership({
-        userId: request.workos_user_id,
-        organizationId: orgId,
-        roleSlug: role,
-      });
+      try {
+        await workos!.userManagement.createOrganizationMembership({
+          userId: request.workos_user_id,
+          organizationId: orgId,
+          roleSlug: role,
+        });
+      } catch (membershipError: any) {
+        if (membershipError?.code === 'organization_membership_already_exists') {
+          // Previous approval attempt succeeded in WorkOS but failed before the DB
+          // update. Clear the stale pending row and surface the error.
+          logger.info({ adminId: user.id, requestId, orgId }, 'Join request resolved — membership already existed in WorkOS');
+          await joinRequestDb.approveRequest(requestId, user.id);
+          return res.status(400).json({
+            error: 'User already a member',
+            message: 'This user is already a member of the organization',
+          });
+        }
+        if (membershipError?.code === 'cannot_reactivate_pending_organization_membership') {
+          // WorkOS has a pending (unaccepted) invitation for this user — they are not
+          // yet a member. Do not mark the request approved; admin needs to cancel the
+          // stale invitation in WorkOS first.
+          return res.status(409).json({
+            error: 'Pending invitation exists',
+            message: 'This user has a pending invitation that must be cancelled before they can be added directly.',
+          });
+        }
+        throw membershipError;
+      }
 
       // Mark request as approved
       await joinRequestDb.approveRequest(requestId, user.id);
@@ -427,17 +450,6 @@ export function createOrganizationsRouter(): Router {
     } catch (error: any) {
       logger.error({ err: error }, 'Approve join request error:');
 
-      // Check for specific WorkOS errors
-      if (
-        error?.code === 'organization_membership_already_exists' ||
-        error?.code === 'cannot_reactivate_pending_organization_membership'
-      ) {
-        return res.status(400).json({
-          error: 'User already a member',
-          message: 'This user is already a member of the organization',
-        });
-      }
-
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       res.status(500).json({
         error: 'Failed to approve join request',
@@ -466,7 +478,7 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      const userRole = memberships.data[0].role?.slug || 'member';
+      const userRole = memberships.data[0].role?.slug;
       if (userRole !== 'admin' && userRole !== 'owner') {
         return res.status(403).json({
           error: 'Insufficient permissions',
