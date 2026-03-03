@@ -1836,7 +1836,8 @@ export function createMemberToolHandlers(
         };
       }>;
     };
-    const agent = capData?.agents?.[0];
+    const normalizedInput = agentUrl.replace(/\/$/, "");
+    const agent = capData?.agents?.find((a) => a.url.replace(/\/$/, "") === normalizedInput);
 
     // Step 2.5: Check if OAuth is required (from either health check or capabilities discovery)
     const requiresOAuth = healthCheckRequiresOAuth || agent?.capabilities?.oauth_required;
