@@ -136,7 +136,9 @@ Providing multiple identifiers for the same person improves match rates. Composi
 
 **Identifier support varies by seller**: Check `get_adcp_capabilities` → `audience_targeting.supported_identifier_types` and `supported_uid_types` before sending. MAID support is not universal (LinkedIn does not accept MAIDs; iOS IDFA requires App Tracking Transparency consent). The `matching_latency_hours` range and `minimum_audience_size` in capabilities are also seller-specific.
 
-**Size limit**: Send no more than 100,000 members per call. For larger lists, chunk into sequential calls using `add` deltas.
+**Size limit**: Payloads are limited to 100,000 members per call across all audiences. For larger lists, chunk into sequential calls using `add` deltas.
+
+**Concurrency**: Ensure that calls made to `sync_audience` are independent of eachother. They may be processed out-of-order. If you need sequential execution, wait for the callback to your configured webhook before making another call. 
 
 ## Response
 
@@ -503,6 +505,7 @@ All PII is hashed by the buyer before transmission — the protocol never carrie
 | `AUDIENCE_NOT_FOUND` | Audience to remove from doesn't exist | Check `audience_id` or omit `remove` |
 | `INVALID_HASH_FORMAT` | Identifier doesn't match expected hash format | Verify SHA-256 hex encoding (64 chars, lowercase) |
 | `RATE_LIMITED` | Too many sync requests | Retry with exponential backoff; poll no more than every 15 minutes |
+| `CALL_TOO_LARGE` | Too many members in payload | Payloads are limited to 100,000 members across all audiences |
 
 ## Next Steps
 
