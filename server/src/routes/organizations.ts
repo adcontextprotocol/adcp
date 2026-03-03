@@ -340,11 +340,12 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Send invitation via WorkOS
-      await workos!.userManagement.sendInvitation({
-        email: request.user_email,
+      // Directly add the user to the organization — join requests are only
+      // created by users who have already signed up, so we always have their
+      // workos_user_id and don't need to send an invitation.
+      await workos!.userManagement.createOrganizationMembership({
+        userId: request.workos_user_id,
         organizationId: orgId,
-        inviterUserId: user.id,
         roleSlug: role,
       });
 
@@ -421,22 +422,19 @@ export function createOrganizationsRouter(): Router {
 
       res.json({
         success: true,
-        message: `Invitation sent to ${request.user_email}`,
+        message: `${request.user_email} has been added to the organization`,
       });
     } catch (error: any) {
       logger.error({ err: error }, 'Approve join request error:');
 
       // Check for specific WorkOS errors
-      if (error?.code === 'organization_membership_already_exists') {
+      if (
+        error?.code === 'organization_membership_already_exists' ||
+        error?.code === 'cannot_reactivate_pending_organization_membership'
+      ) {
         return res.status(400).json({
           error: 'User already a member',
           message: 'This user is already a member of the organization',
-        });
-      }
-      if (error?.code === 'invitation_already_exists') {
-        return res.status(400).json({
-          error: 'Invitation exists',
-          message: 'There is already a pending invitation for this user',
         });
       }
 
