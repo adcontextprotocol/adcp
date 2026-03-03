@@ -232,7 +232,7 @@
           const tag = n.url ? 'a' : 'div';
           const href = n.url ? ` href="${escapeHtml(n.url)}"` : '';
           const onclick = n.url && !n.is_read
-            ? ` onclick="markRead(event, '${n.id}')"` : '';
+            ? ` onclick="markRead(event, '${escapeHtml(n.id)}')"` : '';
 
           return `<${tag}${href} class="notif-item${n.is_read ? '' : ' unread'}"${onclick}>
             <div class="notif-avatar">${avatar}</div>
