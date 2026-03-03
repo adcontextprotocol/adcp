@@ -550,6 +550,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
         auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
       },
       required: ['agent_url'],
@@ -2006,23 +2007,25 @@ export function createMemberToolHandlers(
     let usingSavedToken = false;
     let usingSavedOAuthToken = false;
     let usingPublicTestAgent = false;
+    let savedAuthType: 'bearer' | 'basic' = 'bearer';
     const organizationId = memberContext?.organization?.workos_organization_id;
 
     if (!authToken && organizationId) {
-      // First, try to get a saved bearer token
+      // First, try to get a saved auth token (bearer or basic)
       try {
-        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
+        const savedInfo = await agentContextDb.getAuthInfoByOrgAndUrl(
           organizationId,
           agentUrl
         );
-        if (savedToken) {
-          authToken = savedToken;
+        if (savedInfo) {
+          authToken = savedInfo.token;
+          savedAuthType = savedInfo.authType;
           usingSavedToken = true;
-          logger.info({ agentUrl }, 'Using saved auth token for agent test');
+          logger.info({ agentUrl, authType: savedInfo.authType }, 'Using saved auth token for agent test');
         }
       } catch (error) {
         // Non-fatal - continue without saved token
-        logger.debug({ error, agentUrl }, 'Could not lookup saved bearer token');
+        logger.debug({ error, agentUrl }, 'Could not lookup saved auth token');
       }
 
       // If no bearer token, try OAuth tokens
@@ -2075,6 +2078,8 @@ export function createMemberToolHandlers(
     if (budget) options.budget = budget;
     if (channels) options.channels = channels;
     if (pricingModels) options.pricing_models = pricingModels;
+    // The testing SDK only supports Bearer auth natively. For Basic auth agents,
+    // the test will still send the token as Bearer (SDK limitation).
     if (authToken) options.auth = { type: 'bearer', token: authToken };
     if (scenarios) options.scenarios = scenarios;
 
@@ -2248,6 +2253,7 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
+    const authType = (input.auth_type as 'bearer' | 'basic') || 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     try {
@@ -2260,14 +2266,15 @@ export function createMemberToolHandlers(
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
         if (authToken) {
-          await agentContextDb.saveAuthToken(context.id, authToken);
+          await agentContextDb.saveAuthToken(context.id, authToken, authType);
         }
         // Refresh context
         context = await agentContextDb.getById(context.id);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         if (authToken) {
-          response += `🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+          const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
+          response += `🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
           response += `_The token is encrypted and will never be shown again._\n`;
         }
         return response;
@@ -2284,7 +2291,7 @@ export function createMemberToolHandlers(
 
       // Save auth token if provided
       if (authToken) {
-        await agentContextDb.saveAuthToken(context.id, authToken);
+        await agentContextDb.saveAuthToken(context.id, authToken, authType);
         context = await agentContextDb.getById(context.id);
       }
 
@@ -2292,7 +2299,8 @@ export function createMemberToolHandlers(
       response += `**URL:** ${agentUrl}\n`;
       response += `**Protocol:** ${protocol.toUpperCase()}\n`;
       if (authToken) {
-        response += `\n🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+        const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
+        response += `\n🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
         response += `_The token is encrypted and will never be shown again._\n`;
       }
       response += `\nWhen you test this agent, I'll automatically use the saved credentials.`;
@@ -2327,7 +2335,8 @@ export function createMemberToolHandlers(
       for (const agent of agents) {
         const name = agent.agent_name || 'Unnamed Agent';
         const type = agent.agent_type !== 'unknown' ? ` (${agent.agent_type})` : '';
-        const hasToken = agent.has_auth_token ? `🔐 ${agent.auth_token_hint}` : '🔓 No token';
+        const authTypeLabel = agent.auth_type === 'basic' ? 'Basic' : 'Bearer';
+        const hasToken = agent.has_auth_token ? `🔐 ${authTypeLabel} ${agent.auth_token_hint}` : '🔓 No token';
 
         response += `### ${name}${type}\n`;
         response += `**URL:** ${agent.agent_url}\n`;

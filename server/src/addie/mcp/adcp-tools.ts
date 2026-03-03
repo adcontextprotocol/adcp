@@ -1293,13 +1293,13 @@ export function createAdcpToolHandlers(
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
 
-  // Helper to get auth token for an agent (checks OAuth first, then static token)
-  async function getAuthToken(agentUrl: string): Promise<string | undefined> {
+  // Helper to get auth credentials for an agent (checks OAuth first, then static token)
+  async function getAuthInfo(agentUrl: string): Promise<{ token: string; authType: 'bearer' | 'basic' } | undefined> {
     const organizationId = memberContext?.organization?.workos_organization_id;
     if (!organizationId) return undefined;
 
     try {
-      // First check for OAuth tokens
+      // First check for OAuth tokens (always bearer)
       const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, agentUrl);
       if (oauthTokens) {
         // Check if token is expired
@@ -1307,25 +1307,25 @@ export function createAdcpToolHandlers(
           const expiresAt = new Date(oauthTokens.expires_at);
           if (expiresAt.getTime() - Date.now() > 5 * 60 * 1000) {
             logger.debug({ agentUrl }, 'Using OAuth access token for agent');
-            return oauthTokens.access_token;
+            return { token: oauthTokens.access_token, authType: 'bearer' };
           }
           // Token expired or expiring soon - could refresh here in future
           logger.debug({ agentUrl, expiresAt }, 'OAuth token expired or expiring soon');
         } else {
           // No expiration, use the token
           logger.debug({ agentUrl }, 'Using OAuth access token for agent (no expiration)');
-          return oauthTokens.access_token;
+          return { token: oauthTokens.access_token, authType: 'bearer' };
         }
       }
 
-      // Fall back to static auth token
-      const token = await agentContextDb.getAuthTokenByOrgAndUrl(organizationId, agentUrl);
-      if (token) {
-        logger.debug({ agentUrl }, 'Using static auth token for agent');
-        return token;
+      // Fall back to static auth token (may be bearer or basic)
+      const authInfo = await agentContextDb.getAuthInfoByOrgAndUrl(organizationId, agentUrl);
+      if (authInfo) {
+        logger.debug({ agentUrl, authType: authInfo.authType }, 'Using static auth token for agent');
+        return authInfo;
       }
     } catch (error) {
-      logger.debug({ error, agentUrl }, 'Failed to get auth token for agent');
+      logger.debug({ error, agentUrl }, 'Failed to get auth info for agent');
     }
     return undefined;
   }
@@ -1372,22 +1372,30 @@ export function createAdcpToolHandlers(
       return `**Error:** ${validationError}`;
     }
 
-    const authToken = await getAuthToken(agentUrl);
+    const authInfo = await getAuthInfo(agentUrl);
 
-    logger.info({ agentUrl, task, hasAuth: !!authToken, debug }, `AdCP: executing ${task}`);
+    logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.authType, debug }, `AdCP: executing ${task}`);
 
     try {
       const { AdCPClient } = await import('@adcp/client');
+
+      // For Basic auth, pass the credential via headers instead of auth_token
+      // so the SDK doesn't wrap it in "Bearer".
+      // NOTE: Basic auth via headers only works with StreamableHTTP transport.
+      // If the agent falls back to SSE, the Authorization header is silently dropped
+      // (EventSource API limitation). The SDK logs a warning when this happens.
+      const agentConfig = {
+        id: 'target',
+        name: 'target',
+        agent_uri: agentUrl,
+        protocol: 'mcp' as const,
+        ...(authInfo?.authType === 'basic'
+          ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
+          : authInfo ? { auth_token: authInfo.token } : {}),
+      };
+
       const multiClient = new AdCPClient(
-        [
-          {
-            id: 'target',
-            name: 'target',
-            agent_uri: agentUrl,
-            protocol: 'mcp',
-            ...(authToken && { auth_token: authToken }),
-          },
-        ],
+        [agentConfig],
         { debug }
       );
       const client = multiClient.agent('target');
