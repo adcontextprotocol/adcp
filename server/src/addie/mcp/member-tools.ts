@@ -2143,7 +2143,7 @@ export function createMemberToolHandlers(
             type: 'basic',
             username: decoded.substring(0, colonIndex),
             password: decoded.substring(colonIndex + 1),
-          };
+          } as unknown as typeof options.auth;
         } else {
           logger.warn({ agentUrl }, 'Basic auth credential missing colon separator, falling back to Bearer');
           options.auth = { type: 'bearer', token: authToken };

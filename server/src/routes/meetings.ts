@@ -12,6 +12,7 @@ import { requireAuth, requireAdmin, optionalAuth } from "../middleware/auth.js";
 import { MeetingsDatabase } from "../db/meetings-db.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { getChannelMembers } from "../slack/client.js";
+import { notifyUser } from "../notifications/notification-service.js";
 import type { WorkingGroupTopic, MeetingStatus } from "../types.js";
 
 // UUID validation helper
@@ -350,6 +351,25 @@ export function createMeetingRouters(): {
       } else if (invite_mode === 'topic_subscribers' && topic_slugs?.length > 0) {
         invitedCount = await meetingsDb.addAttendeesFromGroup(meeting.id, working_group_id, topic_slugs);
         logger.info({ meetingId: meeting.id, invitedCount, invite_mode }, 'Invited topic subscribers');
+      }
+
+      // Notify invited members about new meeting (fire-and-forget)
+      if (invitedCount > 0) {
+        meetingsDb.getAttendeesForMeeting(meeting.id).then(attendees => {
+          for (const att of attendees) {
+            if (att.workos_user_id) {
+              notifyUser({
+                recipientUserId: att.workos_user_id,
+                actorUserId: user.id,
+                type: 'meeting_scheduled',
+                referenceId: meeting.id,
+                referenceType: 'meeting',
+                title: `Meeting scheduled: ${meeting.title}`,
+                url: `/meetings/${meeting.id}`,
+              }).catch(err => logger.error({ err }, 'Failed to send meeting notification'));
+            }
+          }
+        }).catch(err => logger.error({ err }, 'Failed to load attendees for meeting notification'));
       }
 
       res.status(201).json({ ...meeting, invited_count: invitedCount });

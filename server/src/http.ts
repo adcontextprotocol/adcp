@@ -35,7 +35,7 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -75,6 +75,7 @@ import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createEngagementRouter } from "./routes/engagement.js";
+import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
@@ -990,6 +991,9 @@ export class HTTPServer {
     const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
     this.app.use('/api/me/engagement', engagementRouter);
 
+    // Mount notification routes
+    this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
+
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
 
@@ -1824,6 +1828,9 @@ export class HTTPServer {
     });
     this.app.get("/community/connections", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/connections.html');
+    });
+    this.app.get("/community/notifications", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/notifications.html');
     });
     this.app.get("/community/profile/edit", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');

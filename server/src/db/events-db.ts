@@ -109,6 +109,20 @@ export class EventsDatabase {
   }
 
   /**
+   * Get published events starting between two timestamps (for reminder jobs)
+   */
+  async getEventsStartingBetween(from: Date, to: Date): Promise<Event[]> {
+    const result = await query<Event>(
+      `SELECT * FROM events
+       WHERE status = 'published'
+         AND start_time >= $1 AND start_time < $2
+       ORDER BY start_time ASC`,
+      [from.toISOString(), to.toISOString()]
+    );
+    return result.rows.map(row => this.deserializeEvent(row));
+  }
+
+  /**
    * Get event by slug
    */
   async getEventBySlug(slug: string): Promise<Event | null> {

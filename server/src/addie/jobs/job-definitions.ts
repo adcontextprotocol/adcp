@@ -30,6 +30,9 @@ import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
+import { eventsDb } from '../../db/events-db.js';
+import { NotificationDatabase } from '../../db/notification-db.js';
+import { notifyUser } from '../../notifications/notification-service.js';
 import { logger } from '../../logger.js';
 
 const jobLogger = logger.child({ module: 'content-curator-job' });
@@ -285,6 +288,44 @@ export function registerAllJobs(): void {
     runner: autoLinkUnmappedSlackUsers,
     shouldLogResult: (r) => r.linked > 0 || r.errors > 0,
   });
+
+  // Event reminder - sends notifications ~24h before events start
+  jobScheduler.register({
+    name: 'event-reminder',
+    description: 'Send reminder notifications for upcoming events',
+    interval: { value: 60, unit: 'minutes' },
+    initialDelay: { value: 3, unit: 'minutes' },
+    runner: async () => {
+      const from = new Date(Date.now() + 23 * 60 * 60 * 1000);
+      const to = new Date(Date.now() + 25 * 60 * 60 * 1000);
+      const events = await eventsDb.getEventsStartingBetween(from, to);
+      let remindersSent = 0;
+
+      const notificationDb = new NotificationDatabase();
+      for (const event of events) {
+        const registrations = await eventsDb.getEventRegistrations(event.id);
+        for (const reg of registrations) {
+          if (!reg.workos_user_id || reg.registration_status !== 'registered') continue;
+
+          // Skip if reminder already sent for this event+user
+          const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
+          if (alreadySent) continue;
+
+          await notifyUser({
+            recipientUserId: reg.workos_user_id,
+            type: 'event_reminder',
+            referenceId: event.id,
+            referenceType: 'event',
+            title: `Reminder: ${event.title} is tomorrow`,
+            url: `/events/${event.slug}`,
+          }).catch(err => logger.error({ err }, 'Failed to send event reminder'));
+          remindersSent++;
+        }
+      }
+      return { eventsChecked: events.length, remindersSent };
+    },
+    shouldLogResult: (r) => r.eventsChecked > 0,
+  });
 }
 
 /**
@@ -310,4 +351,5 @@ export const JOB_NAMES = {
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
   SLACK_AUTO_LINK: 'slack-auto-link',
+  EVENT_REMINDER: 'event-reminder',
 } as const;

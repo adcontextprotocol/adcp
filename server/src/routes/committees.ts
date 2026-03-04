@@ -16,6 +16,7 @@ import { invalidateMemberContextCache } from "../addie/index.js";
 import { invalidateWebAdminStatusCache } from "../addie/mcp/admin-tools.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
+import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { createChannel, setChannelPurpose } from "../slack/client.js";
@@ -971,6 +972,23 @@ export function createCommitteeRouters(): {
       communityDb.checkAndAwardBadges(user.id, 'wg').catch(err => {
         logger.error({ err, userId: user.id }, 'Failed to check WG badges');
       });
+
+      // Notify group leaders (fire-and-forget)
+      const joinerName = user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}` : user.email;
+      if (group.leaders) {
+        for (const leader of group.leaders) {
+          notifyUser({
+            recipientUserId: leader.canonical_user_id,
+            actorUserId: user.id,
+            type: 'wg_member_joined',
+            referenceId: group.id,
+            referenceType: 'working_group',
+            title: `${joinerName} joined ${group.name}`,
+            url: `/working-groups/${group.slug}`,
+          }).catch(err => logger.error({ err }, 'Failed to send WG join notification'));
+        }
+      }
 
       res.status(201).json({ success: true, membership });
     } catch (error) {

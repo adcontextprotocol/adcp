@@ -595,7 +595,8 @@ export class WorkingGroupDatabase {
            wgm.workos_user_id
          ) AS user_name,
          COALESCE(wgm.user_email, u.email, om.email) AS user_email,
-         COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name
+         COALESCE(wgm.user_org_name, user_org.name, org.name) AS user_org_name,
+         u.slug AS user_slug
        FROM working_group_memberships wgm
        LEFT JOIN users u ON wgm.workos_user_id = u.workos_user_id
        LEFT JOIN organizations user_org ON u.primary_organization_id = user_org.workos_organization_id
