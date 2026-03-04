@@ -999,6 +999,72 @@ export async function createAndSendInvoice(
 }
 
 /**
+ * Validate invoice details and return a preview without creating any Stripe resources.
+ * Use this to show the customer the amount and billing email before committing.
+ * Call createAndSendInvoice after confirmation to actually create and send.
+ */
+export async function validateInvoiceDetails(data: {
+  lookupKey: string;
+  contactEmail: string;
+  couponId?: string;
+}): Promise<{
+  amountDue: number;
+  currency: string;
+  productName: string;
+  discountApplied: boolean;
+  discountWarning?: string;
+} | null> {
+  if (!stripe) {
+    logger.warn('validateInvoiceDetails: Stripe not initialized');
+    return null;
+  }
+
+  const priceId = await getPriceByLookupKey(data.lookupKey);
+  if (!priceId) {
+    logger.error({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
+    return null;
+  }
+
+  try {
+    const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
+    if (!price || price.unit_amount === null || price.unit_amount === 0) {
+      logger.error({ priceId, lookupKey: data.lookupKey }, 'validateInvoiceDetails: Price has zero or null amount');
+      return null;
+    }
+
+    let discountApplied = false;
+    let discountWarning: string | undefined;
+    if (data.couponId) {
+      try {
+        const coupon = await stripe.coupons.retrieve(data.couponId);
+        if (!coupon || !coupon.valid) {
+          discountWarning = `Coupon "${data.couponId}" is invalid or expired. Invoice will be sent without discount.`;
+        } else {
+          discountApplied = true;
+        }
+      } catch {
+        discountWarning = `Coupon "${data.couponId}" does not exist in Stripe. Invoice will be sent without discount.`;
+      }
+    }
+
+    const productName = typeof price.product === 'object' && price.product && 'name' in price.product
+      ? (price.product as { name: string }).name
+      : data.lookupKey;
+
+    return {
+      amountDue: price.unit_amount,
+      currency: price.currency,
+      productName,
+      discountApplied,
+      discountWarning,
+    };
+  } catch (error) {
+    logger.error({ err: error, lookupKey: data.lookupKey }, 'validateInvoiceDetails: Error');
+    return null;
+  }
+}
+
+/**
  * Resend an existing open invoice to the customer's billing email
  */
 export async function resendInvoice(invoiceId: string): Promise<{

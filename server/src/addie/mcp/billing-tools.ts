@@ -14,6 +14,7 @@ import {
   getProductsForCustomer,
   createCheckoutSession,
   createAndSendInvoice,
+  validateInvoiceDetails,
   createStripeCustomer,
   getPriceByLookupKey,
   type BillingProduct,
@@ -73,11 +74,10 @@ If the user doesn't have an account, tell them to sign up first.`,
   },
   {
     name: 'send_invoice',
-    description: `Send an invoice for a membership product to a customer.
-Use this when the customer needs to pay via invoice/PO instead of credit card.
-Requires full billing information including address.
-If the organization has a discount on file (from grant_discount), it will be automatically applied.
-You can also pass an explicit coupon_id to override.`,
+    description: `Preview an invoice for a membership product so the customer can confirm before it is sent.
+Use this when the customer needs to pay by invoice/PO instead of credit card.
+This does NOT send the invoice — it returns the amount and billing email for confirmation.
+After calling this, confirm the details with the customer, then call confirm_send_invoice with the same billing info to send it.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -113,6 +113,51 @@ You can also pass an explicit coupon_id to override.`,
         coupon_id: {
           type: 'string',
           description: 'Explicit Stripe coupon ID to apply (optional - org discount is used automatically if available)',
+        },
+      },
+      required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
+    },
+  },
+  {
+    name: 'confirm_send_invoice',
+    description: `Send an invoice after the customer has confirmed the billing details shown by send_invoice.
+Use this only after the customer explicitly confirms the email address and amount are correct.
+Pass the same billing information as send_invoice.`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        lookup_key: {
+          type: 'string',
+          description: 'The product lookup key from find_membership_products',
+        },
+        company_name: {
+          type: 'string',
+          description: 'Company name for the invoice',
+        },
+        contact_name: {
+          type: 'string',
+          description: 'Contact person name',
+        },
+        contact_email: {
+          type: 'string',
+          description: 'Contact email address confirmed by the customer',
+        },
+        billing_address: {
+          type: 'object',
+          description: 'Billing address',
+          properties: {
+            line1: { type: 'string', description: 'Street address line 1' },
+            line2: { type: 'string', description: 'Street address line 2 (optional)' },
+            city: { type: 'string', description: 'City' },
+            state: { type: 'string', description: 'State/Province' },
+            postal_code: { type: 'string', description: 'Postal/ZIP code' },
+            country: { type: 'string', description: 'Country code (e.g., US)' },
+          },
+          required: ['line1', 'city', 'state', 'postal_code', 'country'],
+        },
+        coupon_id: {
+          type: 'string',
+          description: 'Explicit Stripe coupon ID to apply (optional)',
         },
       },
       required: ['lookup_key', 'company_name', 'contact_name', 'contact_email', 'billing_address'],
@@ -300,8 +345,81 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
   });
 
-  // Send invoice
+  // Preview invoice details for customer confirmation (no Stripe mutations)
   handlers.set('send_invoice', async (input) => {
+    const lookupKey = input.lookup_key as string;
+    const contactEmail = input.contact_email as string;
+    const explicitCouponId = input.coupon_id as string | undefined;
+    const companyName = input.company_name as string;
+
+    // Use authenticated org context directly; fall back to name search for Slack-only users
+    let effectiveCouponId = explicitCouponId;
+    let orgDiscount: string | undefined;
+
+    try {
+      const orgId = memberContext?.organization?.workos_organization_id;
+      const org = orgId
+        ? await orgDb.getOrganization(orgId)
+        : (await orgDb.searchOrganizations({ query: companyName, limit: 1 })
+            .then(results => results.length > 0 ? orgDb.getOrganization(results[0].workos_organization_id) : null));
+
+      if (org && !explicitCouponId && org.stripe_coupon_id) {
+        effectiveCouponId = org.stripe_coupon_id;
+        orgDiscount = org.discount_percent
+          ? `${org.discount_percent}% off`
+          : org.discount_amount_cents
+            ? `$${org.discount_amount_cents / 100} off`
+            : undefined;
+        logger.info(
+          { orgId: org.workos_organization_id, couponId: effectiveCouponId, discount: orgDiscount },
+          'Addie: Using org stored discount for invoice preview'
+        );
+      }
+    } catch (orgLookupError) {
+      logger.debug({ error: orgLookupError }, 'Could not look up org discount for invoice preview');
+    }
+
+    logger.info({ lookupKey, contactEmail, hasCoupon: !!effectiveCouponId }, 'Addie: Previewing invoice');
+
+    try {
+      const preview = await validateInvoiceDetails({
+        lookupKey,
+        contactEmail,
+        couponId: effectiveCouponId,
+      });
+
+      if (!preview) {
+        return JSON.stringify({
+          success: false,
+          error: 'Product not found or Stripe is not configured.',
+        });
+      }
+
+      const amount = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: preview.currency.toUpperCase(),
+      }).format(preview.amountDue / 100);
+
+      return JSON.stringify({
+        success: true,
+        amount,
+        contact_email: contactEmail,
+        product_name: preview.productName,
+        discount_applied: preview.discountApplied,
+        discount_description: orgDiscount,
+        discount_warning: preview.discountWarning,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Addie: Error previewing invoice');
+      return JSON.stringify({
+        success: false,
+        error: 'Failed to preview invoice. Please try again.',
+      });
+    }
+  });
+
+  // Create and send invoice after customer confirms the details
+  handlers.set('confirm_send_invoice', async (input) => {
     const lookupKey = input.lookup_key as string;
     const companyName = input.company_name as string;
     const contactName = input.contact_name as string;
@@ -316,41 +434,34 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     };
     const explicitCouponId = input.coupon_id as string | undefined;
 
-    // Try to find organization by name to get stored discount
+    // Same org coupon lookup as send_invoice
     let effectiveCouponId = explicitCouponId;
     let orgDiscount: string | undefined;
     let workosOrgId: string | undefined;
 
     try {
-      const orgs = await orgDb.searchOrganizations({ query: companyName, limit: 1 });
-      if (orgs.length > 0) {
-        const org = await orgDb.getOrganization(orgs[0].workos_organization_id);
-        if (org) {
-          workosOrgId = org.workos_organization_id;
-          // Use org's stored coupon if no explicit coupon provided
-          if (!explicitCouponId && org.stripe_coupon_id) {
-            effectiveCouponId = org.stripe_coupon_id;
-            orgDiscount = org.discount_percent
-              ? `${org.discount_percent}% off`
-              : org.discount_amount_cents
-                ? `$${org.discount_amount_cents / 100} off`
-                : undefined;
-            logger.info(
-              { orgId: org.workos_organization_id, orgName: org.name, couponId: effectiveCouponId, discount: orgDiscount },
-              'Addie: Using organization stored discount for invoice'
-            );
-          }
+      const orgId = memberContext?.organization?.workos_organization_id;
+      const org = orgId
+        ? await orgDb.getOrganization(orgId)
+        : (await orgDb.searchOrganizations({ query: companyName, limit: 1 })
+            .then(results => results.length > 0 ? orgDb.getOrganization(results[0].workos_organization_id) : null));
+
+      if (org) {
+        workosOrgId = org.workos_organization_id;
+        if (!explicitCouponId && org.stripe_coupon_id) {
+          effectiveCouponId = org.stripe_coupon_id;
+          orgDiscount = org.discount_percent
+            ? `${org.discount_percent}% off`
+            : org.discount_amount_cents
+              ? `$${org.discount_amount_cents / 100} off`
+              : undefined;
         }
       }
     } catch (orgLookupError) {
-      // Non-fatal - continue without org lookup
-      logger.debug({ error: orgLookupError, companyName }, 'Could not look up organization for discount');
+      logger.debug({ error: orgLookupError }, 'Could not look up org discount for invoice send');
     }
 
-    logger.info(
-      { lookupKey, contactEmail, companyName, hasCoupon: !!effectiveCouponId, usingOrgDiscount: !!orgDiscount },
-      'Addie: Sending invoice'
-    );
+    logger.info({ lookupKey, contactEmail, companyName, hasCoupon: !!effectiveCouponId }, 'Addie: Sending confirmed invoice');
 
     try {
       const result = await createAndSendInvoice({
@@ -370,18 +481,6 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         });
       }
 
-      // Build response message
-      let message = `Invoice sent to ${contactEmail}. They will receive an email with payment instructions.`;
-      if (result.discountWarning) {
-        message += `\n\n⚠️ WARNING: ${result.discountWarning}`;
-      } else if (result.discountApplied) {
-        if (orgDiscount) {
-          message += `\n\n✅ Organization discount applied: ${orgDiscount}`;
-        } else {
-          message += `\n\n✅ Discount applied successfully.`;
-        }
-      }
-
       return JSON.stringify({
         success: true,
         invoice_id: result.invoiceId,
@@ -389,7 +488,6 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         discount_applied: result.discountApplied,
         discount_description: orgDiscount,
         discount_warning: result.discountWarning,
-        message,
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');

@@ -799,6 +799,19 @@
         </div>
       </section>
 
+      <!-- ========== SUPPORT REQUESTS SECTION ========== -->
+      <section id="escalations" class="dashboard-section" style="display: none;">
+        <div class="section-header">
+          <h2>Support requests</h2>
+          <p>Requests escalated to the AgenticAdvertising.org team</p>
+        </div>
+        <div class="section-card" id="escalationsCard">
+          <div id="escalationsContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading...</div>
+          </div>
+        </div>
+      </section>
+
       <!-- Hidden legacy elements for JS compatibility -->
       <div id="memberProfileDetails" style="display: none;"></div>
       <div id="membershipCardContent" style="display: none;"></div>
@@ -2410,6 +2423,70 @@
       }
     }
 
+    // Load support requests (escalations) for the current user
+    async function loadEscalations() {
+      const section = document.getElementById('escalations');
+      const content = document.getElementById('escalationsContent');
+      if (!section || !content) return;
+
+      try {
+        const response = await fetch('/api/user/escalations', { credentials: 'include' });
+        if (!response.ok) {
+          section.style.display = '';
+          content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+          return;
+        }
+
+        const data = await response.json();
+        const escalations = data.escalations || [];
+
+        if (escalations.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+
+        section.style.display = '';
+
+        const statusConfig = {
+          open:         { label: 'Open',          bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
+          acknowledged: { label: 'Acknowledged',  bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
+          in_progress:  { label: 'In progress',   bg: 'var(--color-warning-50)',   color: 'var(--color-warning-700)' },
+          resolved:     { label: 'Resolved',      bg: 'var(--color-success-50)',   color: 'var(--color-success-700)' },
+          wont_do:      { label: 'Closed',        bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
+          expired:      { label: 'Expired',       bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
+        };
+
+        content.innerHTML = escalations.map(e => {
+          const cfg = statusConfig[e.status] || statusConfig.open;
+          const date = new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+          const notes = e.resolution_notes
+            ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: var(--color-text-secondary);">${escapeHtml(e.resolution_notes)}</p>`
+            : '';
+          return `
+            <div style="display: flex; align-items: start; gap: 12px; padding: 16px; border-bottom: 1px solid var(--color-border);">
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                  <span style="font-size: 14px; font-weight: 500; color: var(--color-text-heading);">${escapeHtml(e.summary)}</span>
+                  <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: ${cfg.bg}; color: ${cfg.color}; white-space: nowrap;">${cfg.label}</span>
+                </div>
+                <p style="margin: 0; font-size: 12px; color: var(--color-text-secondary);">Submitted ${date}</p>
+                ${notes}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Remove border from last item
+        const items = content.querySelectorAll('[style*="border-bottom"]');
+        if (items.length > 0) items[items.length - 1].style.borderBottom = 'none';
+
+      } catch (error) {
+        console.error('Error loading escalations:', error);
+        section.style.display = '';
+        content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+      }
+    }
+
     // Handle interest click for launching committees
     async function handleCommitteeInterest(committeeSlug, committeeName, buttonEl) {
       try {
@@ -3010,6 +3087,9 @@
 
           // Check for outdated agreements (only for subscribers)
           await checkOutdatedAgreements();
+
+          // Load support requests for this user
+          loadEscalations();
 
         } else {
           // No organizations - redirect to onboarding

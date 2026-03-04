@@ -262,6 +262,38 @@ export async function markNotificationSent(
 }
 
 /**
+ * Get escalations for a specific user (member-facing).
+ * Matches on workos_user_id or slack_user_id — whichever is provided.
+ */
+export async function listEscalationsForUser(
+  workosUserId?: string,
+  slackUserId?: string
+): Promise<Escalation[]> {
+  if (!workosUserId && !slackUserId) return [];
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (workosUserId) {
+    params.push(workosUserId);
+    conditions.push(`workos_user_id = $${params.length}`);
+  }
+  if (slackUserId) {
+    params.push(slackUserId);
+    conditions.push(`slack_user_id = $${params.length}`);
+  }
+
+  const result = await query<Escalation>(
+    `SELECT * FROM addie_escalations
+     WHERE ${conditions.join(' OR ')}
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    params
+  );
+  return result.rows;
+}
+
+/**
  * Get escalations for a specific thread
  */
 export async function getEscalationsForThread(threadId: string): Promise<Escalation[]> {
