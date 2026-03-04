@@ -511,6 +511,15 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           },
           required: ['agent_url', 'id'],
         },
+        brand: {
+          type: 'object',
+          description: "Brand for the creative. Required when the creative agent declares brand as a top-level parameter in its tool schema.",
+          properties: {
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
+          },
+          required: ['domain'],
+        },
         creative_manifest: {
           type: 'object',
           description: 'Source manifest - minimal for generation, complete for transformation',
@@ -1377,18 +1386,62 @@ export function createAdcpToolHandlers(
     logger.info({ agentUrl, task, hasAuth: !!authInfo, authType: authInfo?.authType, debug }, `AdCP: executing ${task}`);
 
     try {
+      if (authInfo?.authType === 'basic') {
+        // AdCPClient's endpoint discovery uses only auth_token (Bearer), so Basic auth
+        // credentials in agent.headers are not sent during the discovery probe. Agents
+        // that require auth for the MCP initialize request get a 401 during discovery,
+        // causing AuthenticationRequiredError even though credentials are stored.
+        //
+        // Bypass discovery by calling callMCPTool directly with the Basic auth header.
+        const { callMCPTool, unwrapProtocolResponse } = await import('@adcp/client');
+        const debugLogs: unknown[] = [];
+
+        const mcpResponse = await callMCPTool(
+          agentUrl,
+          task,
+          params,
+          undefined,
+          debugLogs as any[],
+          {
+            'Authorization': `Basic ${authInfo.token}`,
+            'Accept': 'application/json, text/event-stream',
+          }
+        );
+
+        let data: unknown;
+        try {
+          data = unwrapProtocolResponse(mcpResponse, task);
+        } catch {
+          const textContent = (mcpResponse?.content as any[])?.find((c: any) => c.type === 'text');
+          if (textContent?.text) {
+            try { data = JSON.parse(textContent.text); } catch { data = textContent.text; }
+          }
+        }
+
+        if (mcpResponse?.isError) {
+          let output = `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(data || mcpResponse, null, 2)}\n\`\`\``;
+          if (debug && (debugLogs as any[]).length > 0) {
+            output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(debugLogs, null, 2)}\n\`\`\``;
+          }
+          return output;
+        }
+
+        let output = `**Task:** \`${task}\`\n**Status:** Success\n\n`;
+        output += `**Response:**\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
+        if (debug && (debugLogs as any[]).length > 0) {
+          output += `\n\n**Debug Logs:**\n\`\`\`json\n${JSON.stringify(debugLogs, null, 2)}\n\`\`\``;
+        }
+        return output;
+      }
+
       const { AdCPClient } = await import('@adcp/client');
 
-      // AdCPClient's AgentConfig does not support typed Basic auth (unlike
-      // TestOptions). Pass the credential via headers to avoid Bearer wrapping.
       const agentConfig = {
         id: 'target',
         name: 'target',
         agent_uri: agentUrl,
         protocol: 'mcp' as const,
-        ...(authInfo?.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${authInfo.token}` } }
-          : authInfo ? { auth_token: authInfo.token } : {}),
+        ...(authInfo ? { auth_token: authInfo.token } : {}),
       };
 
       const multiClient = new AdCPClient(
