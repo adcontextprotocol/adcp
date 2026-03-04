@@ -408,25 +408,6 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Get auth token by org and URL (for test_adcp_agent tool)
-   */
-  async getAuthTokenByOrgAndUrl(organizationId: string, agentUrl: string): Promise<string | null> {
-    const result = await query(
-      `SELECT id, auth_token_encrypted, auth_token_iv
-       FROM agent_contexts
-       WHERE organization_id = $1 AND agent_url = $2`,
-      [organizationId, agentUrl]
-    );
-
-    const row = result.rows[0];
-    if (!row || !row.auth_token_encrypted || !row.auth_token_iv) {
-      return null;
-    }
-
-    return decryptToken(row.auth_token_encrypted, row.auth_token_iv, organizationId);
-  }
-
-  /**
    * Get auth token and type by org and URL.
    * Used by the AdCP tool passthrough to determine Bearer vs Basic auth.
    */
