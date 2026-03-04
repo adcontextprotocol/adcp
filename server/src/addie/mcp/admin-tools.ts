@@ -1147,8 +1147,8 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   },
   {
     name: 'list_paying_members',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, or listing members for events/outreach.',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, or getting member contact lists.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -6587,8 +6587,18 @@ Use add_committee_leader to assign a leader.`;
           o.membership_tier,
           o.company_type,
           o.created_at,
-          o.subscription_current_period_end
+          o.subscription_current_period_end,
+          primary_contact.email AS contact_email,
+          primary_contact.first_name AS contact_first_name,
+          primary_contact.last_name AS contact_last_name
         FROM organizations o
+        LEFT JOIN LATERAL (
+          SELECT email, first_name, last_name
+          FROM organization_memberships om
+          WHERE om.workos_organization_id = o.workos_organization_id
+          ORDER BY om.created_at ASC
+          LIMIT 1
+        ) primary_contact ON true
         WHERE o.subscription_status = 'active'
           AND o.subscription_canceled_at IS NULL
           AND ($1 = true OR o.is_personal = false)
@@ -6628,7 +6638,7 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date }) => {
+      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date; contact_email: string | null; contact_first_name: string | null; contact_last_name: string | null }) => {
         const amount = org.subscription_amount
           ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
           : 'Comped';
@@ -6636,7 +6646,13 @@ Use add_committee_leader to assign a leader.`;
           ? (org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '')
           : '';
         const since = formatDate(org.created_at);
-        return `- **${org.name}** — ${amount}${interval} (since ${since})\n`;
+        const contactName = [org.contact_first_name, org.contact_last_name].filter(Boolean).join(' ');
+        const contact = contactName && org.contact_email
+          ? ` — ${contactName} <${org.contact_email}>`
+          : org.contact_email
+            ? ` — ${org.contact_email}`
+            : '';
+        return `- **${org.name}**${contact} — ${amount}${interval} (since ${since})\n`;
       };
 
       let response = `## Active Members\n\n`;
@@ -6738,15 +6754,15 @@ Use add_committee_leader to assign a leader.`;
       if (lifecycleFilter !== 'all') response += `_Filtered to: ${lifecycleFilter}_\n\n`;
       if (memberOnly) response += `_Paying members only_\n\n`;
 
-      response += `| Rank | Name | Organization | Engagement | Excitement | Stage | Next Goal |\n`;
-      response += `|------|------|--------------|------------|------------|-------|-----------|\n`;
+      response += `| Rank | Name | Email | Organization | Engagement | Excitement | Stage | Next Goal |\n`;
+      response += `|------|------|-------|--------------|------------|------------|-------|-----------|\n`;
 
       for (let i = 0; i < sorted.length; i++) {
         const u = sorted[i];
         const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
         const emoji = lifecycleEmoji[u.lifecycle_stage || ''] || '—';
         const stage = u.lifecycle_stage ? `${emoji} ${u.lifecycle_stage}` : '—';
-        response += `| ${i + 1} | **${name}** | ${u.org_name} | ${u.engagement_score ?? '—'} | ${u.excitement_score ?? '—'} | ${stage} | ${u.goal_name ?? '—'} |\n`;
+        response += `| ${i + 1} | **${name}** | ${u.email} | ${u.org_name} | ${u.engagement_score ?? '—'} | ${u.excitement_score ?? '—'} | ${stage} | ${u.goal_name ?? '—'} |\n`;
       }
 
       response += `\n_Ranked by engagement score + (excitement × 0.5). WorkOS-registered users only. Showing top ${sorted.length} individuals._\n`;

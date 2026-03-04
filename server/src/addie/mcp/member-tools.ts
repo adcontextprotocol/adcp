@@ -13,6 +13,7 @@
 import { logger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { SlackDatabase } from '../../db/slack-db.js';
 import {
   testAllScenarios,
   formatSuiteResults,
@@ -31,6 +32,7 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
 import { getRecommendedGroupsForOrg, type GroupRecommendation } from '../services/group-recommendations.js';
@@ -41,6 +43,8 @@ const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
+const wgDb = new WorkingGroupDatabase();
+const slackDb = new SlackDatabase();
 
 /**
  * Known open-source agents and their GitHub repositories.
@@ -177,12 +181,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_working_group',
     description:
-      'Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name).',
-    usage_hints: 'use for "tell me about X group", getting specific group details',
+      'Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).',
+    usage_hints: 'use for "tell me about X group", "who is in the Kitchen Cabinet", "list members of X committee/council/chapter"',
     input_schema: {
       type: 'object',
       properties: {
         slug: { type: 'string', description: 'Working group slug' },
+        include_members: { type: 'boolean', description: 'Return full member list with name, org, and email (default: false)' },
       },
       required: ['slug'],
     },
@@ -550,6 +555,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
         auth_token: { type: 'string', description: 'Auth token (stored encrypted)' },
+        auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
       },
       required: ['agent_url'],
@@ -845,6 +851,7 @@ export function createMemberToolHandlers(
 
   handlers.set('get_working_group', async (input) => {
     const slug = input.slug as string;
+    const includeMembers = (input.include_members as boolean) === true;
     const result = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
 
     if (!result.ok) {
@@ -876,6 +883,55 @@ export function createMemberToolHandlers(
         response += `- ${leader.name || 'Unknown'}\n`;
       });
       response += `\n`;
+    }
+
+    if (includeMembers) {
+      // Check admin status — try WorkOS user ID first, then fall back to Slack user ID
+      let isAdmin = false;
+      const workosUserId = memberContext?.workos_user?.workos_user_id;
+      const slackUserId = memberContext?.slack_user?.slack_user_id;
+      const adminGroup = await wgDb.getWorkingGroupBySlug('aao-admin');
+      if (adminGroup) {
+        if (workosUserId) {
+          isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
+        } else if (slackUserId) {
+          const mapping = await slackDb.getBySlackUserId(slackUserId);
+          if (mapping?.workos_user_id) {
+            isAdmin = await wgDb.isMember(adminGroup.id, mapping.workos_user_id);
+          }
+        }
+      }
+
+      if (group.is_private && !isAdmin) {
+        response += `_Member list is only available to admins for private groups._\n`;
+      } else {
+        const pool = getPool();
+        const membersResult = await pool.query<{
+          user_name: string | null;
+          user_email: string | null;
+          user_org_name: string | null;
+        }>(
+          `SELECT wgm.user_name, wgm.user_email, wgm.user_org_name
+           FROM working_group_memberships wgm
+           JOIN working_groups wg ON wg.id = wgm.working_group_id
+           WHERE wg.slug = $1 AND wgm.status = 'active'
+           ORDER BY wgm.user_name ASC`,
+          [slug]
+        );
+
+        response += `### Members\n`;
+        if (membersResult.rows.length === 0) {
+          response += `_No active members._\n`;
+        } else {
+          for (const member of membersResult.rows) {
+            const name = member.user_name || member.user_email || 'Unknown';
+            const org = member.user_org_name ? ` (${member.user_org_name})` : '';
+            const email = member.user_email ? ` — ${member.user_email}` : '';
+            response += `- ${name}${org}${email}\n`;
+          }
+        }
+        response += `\n`;
+      }
     }
 
     return response;
@@ -2006,23 +2062,25 @@ export function createMemberToolHandlers(
     let usingSavedToken = false;
     let usingSavedOAuthToken = false;
     let usingPublicTestAgent = false;
+    let savedAuthType: 'bearer' | 'basic' = 'bearer';
     const organizationId = memberContext?.organization?.workos_organization_id;
 
     if (!authToken && organizationId) {
-      // First, try to get a saved bearer token
+      // First, try to get a saved auth token (bearer or basic)
       try {
-        const savedToken = await agentContextDb.getAuthTokenByOrgAndUrl(
+        const savedInfo = await agentContextDb.getAuthInfoByOrgAndUrl(
           organizationId,
           agentUrl
         );
-        if (savedToken) {
-          authToken = savedToken;
+        if (savedInfo) {
+          authToken = savedInfo.token;
+          savedAuthType = savedInfo.authType;
           usingSavedToken = true;
-          logger.info({ agentUrl }, 'Using saved auth token for agent test');
+          logger.info({ agentUrl, authType: savedInfo.authType }, 'Using saved auth token for agent test');
         }
       } catch (error) {
         // Non-fatal - continue without saved token
-        logger.debug({ error, agentUrl }, 'Could not lookup saved bearer token');
+        logger.debug({ error, agentUrl }, 'Could not lookup saved auth token');
       }
 
       // If no bearer token, try OAuth tokens
@@ -2075,7 +2133,25 @@ export function createMemberToolHandlers(
     if (budget) options.budget = budget;
     if (channels) options.channels = channels;
     if (pricingModels) options.pricing_models = pricingModels;
-    if (authToken) options.auth = { type: 'bearer', token: authToken };
+    if (authToken) {
+      if (usingSavedToken && savedAuthType === 'basic') {
+        // Decode stored base64 credential back to username:password for the SDK
+        const decoded = Buffer.from(authToken, 'base64').toString();
+        const colonIndex = decoded.indexOf(':');
+        if (colonIndex >= 0) {
+          options.auth = {
+            type: 'basic',
+            username: decoded.substring(0, colonIndex),
+            password: decoded.substring(colonIndex + 1),
+          };
+        } else {
+          logger.warn({ agentUrl }, 'Basic auth credential missing colon separator, falling back to Bearer');
+          options.auth = { type: 'bearer', token: authToken };
+        }
+      } else {
+        options.auth = { type: 'bearer', token: authToken };
+      }
+    }
     if (scenarios) options.scenarios = scenarios;
 
     try {
@@ -2248,6 +2324,7 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
+    const authType = (input.auth_type as 'bearer' | 'basic') || 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     try {
@@ -2260,14 +2337,15 @@ export function createMemberToolHandlers(
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
         if (authToken) {
-          await agentContextDb.saveAuthToken(context.id, authToken);
+          await agentContextDb.saveAuthToken(context.id, authToken, authType);
         }
         // Refresh context
         context = await agentContextDb.getById(context.id);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         if (authToken) {
-          response += `🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+          const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
+          response += `🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
           response += `_The token is encrypted and will never be shown again._\n`;
         }
         return response;
@@ -2284,7 +2362,7 @@ export function createMemberToolHandlers(
 
       // Save auth token if provided
       if (authToken) {
-        await agentContextDb.saveAuthToken(context.id, authToken);
+        await agentContextDb.saveAuthToken(context.id, authToken, authType);
         context = await agentContextDb.getById(context.id);
       }
 
@@ -2292,7 +2370,8 @@ export function createMemberToolHandlers(
       response += `**URL:** ${agentUrl}\n`;
       response += `**Protocol:** ${protocol.toUpperCase()}\n`;
       if (authToken) {
-        response += `\n🔐 Auth token saved securely (hint: ${context?.auth_token_hint})\n`;
+        const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
+        response += `\n🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
         response += `_The token is encrypted and will never be shown again._\n`;
       }
       response += `\nWhen you test this agent, I'll automatically use the saved credentials.`;
@@ -2327,7 +2406,8 @@ export function createMemberToolHandlers(
       for (const agent of agents) {
         const name = agent.agent_name || 'Unnamed Agent';
         const type = agent.agent_type !== 'unknown' ? ` (${agent.agent_type})` : '';
-        const hasToken = agent.has_auth_token ? `🔐 ${agent.auth_token_hint}` : '🔓 No token';
+        const authTypeLabel = agent.auth_type === 'basic' ? 'Basic' : 'Bearer';
+        const hasToken = agent.has_auth_token ? `🔐 ${authTypeLabel} ${agent.auth_token_hint}` : '🔓 No token';
 
         response += `### ${name}${type}\n`;
         response += `**URL:** ${agent.agent_url}\n`;
