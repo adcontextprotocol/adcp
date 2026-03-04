@@ -34,6 +34,7 @@ import {
   mapIndustryToCompanyType,
   mapRevenueToTier,
 } from "../services/lusha.js";
+import { listEscalationsForUser } from "../db/escalation-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { WorkOS } from "@workos-inc/node";
 
@@ -810,6 +811,28 @@ export function createPublicBillingRouter(): Router {
           error: "Failed to update billing info",
           message: "An unexpected error occurred. Please try again.",
         });
+      }
+    }
+  );
+
+  // GET /api/user/escalations - Get escalations for the authenticated user
+  router.get(
+    "/user/escalations",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        // WorkOS auth doesn't carry a Slack user ID, so escalations created via
+        // Slack before the user linked their WorkOS account won't appear here.
+        const rows = await listEscalationsForUser(user.id, undefined);
+        // Return only member-safe fields; addie_context and original_request are internal
+        const escalations = rows.map(({ id, summary, status, created_at, resolution_notes }) => ({
+          id, summary, status, created_at, resolution_notes,
+        }));
+        res.json({ escalations });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching user escalations");
+        res.status(500).json({ error: "Failed to fetch escalations" });
       }
     }
   );
