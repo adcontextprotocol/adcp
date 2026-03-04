@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 Add escalation visibility to member dashboard and two-step invoice confirmation flow.

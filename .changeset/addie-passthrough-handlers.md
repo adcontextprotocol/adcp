@@ -1,5 +1,4 @@
 ---
-"adcontextprotocol": patch
 ---
 
 fix(addie): replace hand-coded AdCP tool handlers with generic passthrough
