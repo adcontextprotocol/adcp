@@ -18,6 +18,7 @@ import {
   testAllScenarios,
   formatSuiteResults,
   setAgentTesterLogger,
+  SCENARIO_REQUIREMENTS,
   type OrchestratorOptions,
   type SuiteResult,
   type TestScenario,
@@ -526,7 +527,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
-        scenarios: { type: 'array', items: { type: 'string', enum: ['health_check', 'discovery', 'create_media_buy', 'full_sales_flow', 'creative_sync', 'creative_inline', 'pricing_models', 'creative_flow', 'signals_flow', 'error_handling', 'validation', 'pricing_edge_cases', 'temporal_validation', 'behavior_analysis', 'response_consistency', 'governance_property_lists', 'governance_content_standards', 'property_list_filters', 'si_session_lifecycle', 'si_availability', 'si_handoff', 'capability_discovery', 'schema_compliance', 'sync_audiences'] }, description: 'Scenarios to run (defaults to all applicable scenarios based on agent capabilities)' },
+        scenarios: { type: 'array', items: { type: 'string', enum: Object.keys(SCENARIO_REQUIREMENTS) as TestScenario[] }, description: 'Scenarios to run (defaults to all applicable scenarios based on agent capabilities)' },
         brief: { type: 'string', description: 'Custom brief' },
         budget: { type: 'number', description: 'Budget in dollars (default: 1000)' },
         dry_run: { type: 'boolean', description: 'Dry-run mode (default: true)' },
