@@ -111,4 +111,12 @@ export class NotificationDatabase {
     );
     return result.rowCount ?? 0;
   }
+
+  async exists(userId: string, type: string, referenceId: string): Promise<boolean> {
+    const result = await query(
+      `SELECT 1 FROM notifications WHERE recipient_user_id = $1 AND type = $2 AND reference_id = $3 LIMIT 1`,
+      [userId, type, referenceId]
+    );
+    return result.rows.length > 0;
+  }
 }
