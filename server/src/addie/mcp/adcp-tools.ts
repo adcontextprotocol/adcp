@@ -511,6 +511,15 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           },
           required: ['agent_url', 'id'],
         },
+        brand: {
+          type: 'object',
+          description: "Brand for the creative. Required when the creative agent declares brand as a top-level parameter in its tool schema.",
+          properties: {
+            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
+            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
+          },
+          required: ['domain'],
+        },
         creative_manifest: {
           type: 'object',
           description: 'Source manifest - minimal for generation, complete for transformation',
@@ -1379,8 +1388,6 @@ export function createAdcpToolHandlers(
     try {
       const { AdCPClient } = await import('@adcp/client');
 
-      // AdCPClient's AgentConfig does not support typed Basic auth (unlike
-      // TestOptions). Pass the credential via headers to avoid Bearer wrapping.
       const agentConfig = {
         id: 'target',
         name: 'target',

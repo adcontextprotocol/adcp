@@ -2324,7 +2324,8 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
-    const authType = (input.auth_type as 'bearer' | 'basic') || 'bearer';
+    const rawAuthType = input.auth_type as string | undefined;
+    const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
     try {
