@@ -29,7 +29,7 @@ import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
@@ -5365,6 +5365,25 @@ Disallow: /api/admin/
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
             logger.error({ error: linkError, slackUserId: slackUserIdToLink }, 'Failed to auto-link Slack account');
+          }
+        } else {
+          // No slack_user_id in state — attempt email-based auto-link for returning users.
+          // user.created webhook only fires at signup; this catches users whose Slack account
+          // was added after they signed up on the website.
+          try {
+            const slackDbForLink = new SlackDatabase();
+            const existingSlackMapping = await slackDbForLink.getByWorkosUserId(user.id);
+            if (!existingSlackMapping) {
+              const linkResult = await tryAutoLinkWebsiteUserToSlack(user.id, user.email);
+              if (linkResult.linked) {
+                logger.info(
+                  { workosUserId: user.id, slackUserId: linkResult.slack_user_id },
+                  'Email-based auto-link on login'
+                );
+              }
+            }
+          } catch (linkError) {
+            logger.warn({ error: linkError, workosUserId: user.id }, 'Failed to email auto-link on login');
           }
         }
 
