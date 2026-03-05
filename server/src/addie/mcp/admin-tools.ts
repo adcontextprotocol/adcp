@@ -1374,6 +1374,54 @@ Do not use this to upload or host logo files — the URL must already be publicl
     },
   },
 
+  {
+    name: 'update_member_profile',
+    description: `Update fields on a member's directory profile. Identify the member by org_name or slug (exact match required). Accepts any combination of: description, tagline, contact info, social links, headquarters, markets, offerings, and visibility settings.
+
+For logo changes, use update_member_logo instead.`,
+    usage_hints: 'Call get_account first to confirm the member exists. Useful for fixing profile data or toggling visibility.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_name: {
+          type: 'string',
+          description: 'Organization display name. Provide this or slug (one is required).',
+        },
+        slug: {
+          type: 'string',
+          description: 'Member profile slug. Provide this or org_name (one is required).',
+        },
+        description: { type: 'string', description: 'Company description.' },
+        tagline: { type: 'string', description: 'Short tagline. Set to empty string to clear.' },
+        contact_email: { type: 'string', description: 'Contact email address.' },
+        contact_website: { type: 'string', description: 'Company website URL.' },
+        contact_phone: { type: 'string', description: 'Contact phone number.' },
+        linkedin_url: { type: 'string', description: 'LinkedIn profile or company page URL.' },
+        twitter_url: { type: 'string', description: 'Twitter/X profile URL.' },
+        headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY").' },
+        markets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Target markets (e.g., ["North America", "EMEA"]).',
+        },
+        offerings: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: [
+              'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent',
+              'si_agent', 'governance_agent', 'publisher', 'data_provider',
+              'consulting', 'other',
+            ],
+          },
+          description: 'Member offering types.',
+        },
+        is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
+        show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
+      },
+    },
+  },
+
   // ============================================
   // ADDIE SDR TOOLS
   // ============================================
@@ -7586,6 +7634,110 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
       return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // UPDATE MEMBER PROFILE
+  // ============================================
+  handlers.set('update_member_profile', async (input) => {
+    const orgName = input.org_name as string | undefined;
+    const slug = input.slug as string | undefined;
+
+    if (!orgName && !slug) {
+      return '❌ Provide either org_name or slug to identify the member.';
+    }
+
+    try {
+      const mDb = new MemberDatabase();
+
+      // Find the member profile (same pattern as update_member_logo)
+      let profile = null;
+      if (slug) {
+        profile = await mDb.getProfileBySlug(slug);
+      }
+      if (!profile && orgName) {
+        const profiles = await mDb.listProfiles({ search: orgName });
+        const exactMatch = profiles.find(
+          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+        );
+        if (!exactMatch) {
+          if (profiles.length > 0) {
+            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
+          }
+          return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
+        }
+        profile = exactMatch;
+      }
+
+      if (!profile) {
+        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+      }
+
+      // Build update object from provided fields
+      const updates: Record<string, unknown> = {};
+      const updatedFields: string[] = [];
+
+      const stringFields = [
+        'description', 'tagline', 'contact_email', 'contact_website',
+        'contact_phone', 'linkedin_url', 'twitter_url', 'headquarters',
+      ] as const;
+
+      for (const field of stringFields) {
+        if (input[field] !== undefined) {
+          updates[field] = (input[field] as string) || null;
+          updatedFields.push(field);
+        }
+      }
+
+      if (input.markets !== undefined) {
+        updates.markets = input.markets;
+        updatedFields.push('markets');
+      }
+
+      if (input.offerings !== undefined) {
+        const offerings = input.offerings as string[];
+        const VALID = [
+          'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent',
+          'si_agent', 'governance_agent', 'publisher', 'data_provider',
+          'consulting', 'other',
+        ];
+        const invalid = offerings.filter(o => !VALID.includes(o));
+        if (invalid.length > 0) {
+          return `❌ Invalid offerings: ${invalid.join(', ')}. Valid options: ${VALID.join(', ')}`;
+        }
+        updates.offerings = offerings;
+        updatedFields.push('offerings');
+      }
+
+      if (input.is_public !== undefined) {
+        updates.is_public = input.is_public;
+        updatedFields.push('is_public');
+      }
+
+      if (input.show_in_carousel !== undefined) {
+        updates.show_in_carousel = input.show_in_carousel;
+        updatedFields.push('show_in_carousel');
+      }
+
+      if (updatedFields.length === 0) {
+        return '❌ No fields to update. Provide at least one field to change.';
+      }
+
+      const updated = await mDb.updateProfile(profile.id, updates as any);
+
+      if (!updated) {
+        return `❌ Failed to update profile for **${profile.display_name}**.`;
+      }
+
+      logger.info({ profileId: profile.id, slug: profile.slug, updatedFields }, 'Member profile updated by admin tool');
+
+      const fieldList = updatedFields.map(f => `- **${f}**: ${JSON.stringify(updates[f])}`).join('\n');
+      return `✅ Profile updated for **${profile.display_name}** (${profile.slug}).\n\nUpdated fields:\n${fieldList}`;
+    } catch (error) {
+      logger.error({ error, orgName, slug }, 'Error updating member profile');
+      return `❌ Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
