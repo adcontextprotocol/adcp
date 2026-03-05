@@ -24,6 +24,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { BrandDatabase } from '../../db/brand-db.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -1341,6 +1342,35 @@ Examples:
           description: 'Filter by entity ID',
         },
       },
+    },
+  },
+
+  // ============================================
+  // MEMBER PROFILE TOOLS
+  // ============================================
+  {
+    name: 'update_member_logo',
+    description: `Set or update the logo URL on a member's directory profile. Requires a publicly hosted HTTPS logo URL plus either the member's org_name or profile slug to identify them. Creates a brand entry if none exists, or updates the existing one.
+
+Do not use this to upload or host logo files — the URL must already be publicly accessible. After updating, use resolve_escalation to close the related support ticket.`,
+    usage_hints: 'Call get_account first to confirm the member exists. After updating, call resolve_escalation to close the escalation and notify the user.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_name: {
+          type: 'string',
+          description: 'Organization display name. Provide this or slug (one is required).',
+        },
+        slug: {
+          type: 'string',
+          description: 'Member profile slug. Provide this or org_name (one is required).',
+        },
+        logo_url: {
+          type: 'string',
+          description: 'Publicly hosted HTTPS URL of the logo (PNG, SVG, etc.)',
+        },
+      },
+      required: ['logo_url'],
     },
   },
 
@@ -7409,6 +7439,153 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, domain }, 'Error triaging prospect domain');
       return `❌ Failed to triage domain "${domain}".`;
+    }
+  });
+
+  // ============================================
+  // UPDATE MEMBER LOGO
+  // ============================================
+  // UPDATE MEMBER LOGO
+  // ============================================
+  handlers.set('update_member_logo', async (input) => {
+    const orgName = input.org_name as string | undefined;
+    const slug = input.slug as string | undefined;
+    const logoUrl = input.logo_url as string;
+
+    if (!logoUrl) {
+      return '❌ logo_url is required.';
+    }
+    if (!orgName && !slug) {
+      return '❌ Provide either org_name or slug to identify the member.';
+    }
+
+    // Validate the logo URL
+    try {
+      const parsed = new URL(logoUrl);
+      if (parsed.protocol !== 'https:') {
+        return '❌ logo_url must use HTTPS.';
+      }
+    } catch {
+      return `❌ Invalid logo_url: "${logoUrl}". Provide a fully-qualified HTTPS URL.`;
+    }
+    if (logoUrl.length > 2000) {
+      return '❌ logo_url must be 2000 characters or less.';
+    }
+
+    try {
+      const mDb = new MemberDatabase();
+      const bDb = new BrandDatabase();
+
+      // Find the member profile
+      let profile = null;
+      if (slug) {
+        profile = await mDb.getProfileBySlug(slug);
+      }
+      if (!profile && orgName) {
+        const profiles = await mDb.listProfiles({ search: orgName });
+        const exactMatch = profiles.find(
+          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+        );
+        if (!exactMatch) {
+          if (profiles.length > 0) {
+            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
+          }
+          return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
+        }
+        profile = exactMatch;
+      }
+
+      if (!profile) {
+        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+      }
+
+      // Determine brand domain: use existing link or derive from contact_website
+      let brandDomain = profile.primary_brand_domain;
+      if (!brandDomain) {
+        if (profile.contact_website) {
+          try {
+            brandDomain = new URL(profile.contact_website).hostname;
+          } catch {
+            brandDomain = undefined;
+          }
+        }
+        if (!brandDomain) {
+          return `❌ No brand domain set for **${profile.display_name}**. Ask them to add their website to their profile first, or set primary_brand_domain manually.`;
+        }
+      }
+
+      const existing = await bDb.getHostedBrandByDomain(brandDomain);
+
+      // Use a transaction so both the brand update and profile link succeed or fail together
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        if (existing) {
+          // Update logo in existing hosted brand
+          const bj = { ...(existing.brand_json as Record<string, unknown>) };
+          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
+          if (brands.length > 0) {
+            const primaryBrand = { ...brands[0] };
+            const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
+            primaryBrand.logos = logos.length > 0
+              ? [{ ...logos[0], url: logoUrl }, ...logos.slice(1)]
+              : [{ url: logoUrl }];
+            bj.brands = [primaryBrand, ...brands.slice(1)];
+          } else {
+            bj.brands = [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: [{ url: logoUrl }],
+              colors: {},
+            }];
+          }
+          await client.query(
+            'UPDATE hosted_brands SET brand_json = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(bj), existing.id]
+          );
+        } else {
+          // Create a new hosted brand entry
+          const brandJson = {
+            house: { domain: brandDomain, name: profile.display_name },
+            brands: [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: [{ url: logoUrl }],
+              colors: {},
+            }],
+          };
+          await client.query(
+            `INSERT INTO hosted_brands (workos_organization_id, brand_domain, brand_json, is_public)
+             VALUES ($1, $2, $3, $4)`,
+            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
+          );
+        }
+
+        // Link the profile to this brand domain if not already set
+        if (!profile.primary_brand_domain) {
+          await client.query(
+            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
+            [brandDomain, profile.id]
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      const action = existing ? 'updated' : 'set';
+      logger.info({ profileId: profile.id, brandDomain, logoUrl, action }, 'Member logo updated');
+      return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${brandDomain}\n- Logo: ${logoUrl}`;
+    } catch (error) {
+      logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
+      return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
