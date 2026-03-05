@@ -913,7 +913,7 @@
                 <div id="brand-verified-status" style="font-size: var(--text-sm);"></div>
               </div>
               <div style="margin-left: auto; display: flex; gap: var(--space-2);">
-                <button id="brand-edit-btn" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Edit</button>
+                <button type="button" id="brand-edit-btn" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Edit</button>
                 <a id="brand-manage-link" href="#" target="_blank" style="padding: var(--space-2) var(--space-4); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
               </div>
             </div>
@@ -933,8 +933,8 @@
                 </div>
               </div>
               <div style="display: flex; gap: var(--space-3); align-items: center;">
-                <button id="brand-save-btn" onclick="saveBrandIdentity(false)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save</button>
-                <button onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Cancel</button>
+                <button type="button" id="brand-save-btn" onclick="saveBrandIdentity(false)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save</button>
+                <button type="button" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Cancel</button>
                 <span id="brand-edit-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm);"></span>
                 <span id="brand-edit-success" style="display: none; color: var(--color-success-700); font-size: var(--text-sm);"></span>
               </div>
@@ -971,7 +971,7 @@
                   </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: var(--space-3);">
-                  <button id="brand-quick-save-btn" onclick="saveBrandIdentity(true)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save brand</button>
+                  <button type="button" id="brand-quick-save-btn" onclick="saveBrandIdentity(true)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save brand</button>
                   <span id="brand-quick-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm);"></span>
                 </div>
               </div>
@@ -1487,7 +1487,12 @@
         // Show logo if available
         const logoPreview = document.getElementById('brand-logo-preview');
         if (profile.resolved_brand?.logo_url) {
-          logoPreview.innerHTML = '<img src="' + profile.resolved_brand.logo_url + '" style="max-width: 76px; max-height: 56px; object-fit: contain;" alt="">';
+          var img = document.createElement('img');
+          img.src = profile.resolved_brand.logo_url;
+          img.style.cssText = 'max-width: 76px; max-height: 56px; object-fit: contain;';
+          img.alt = '';
+          logoPreview.textContent = '';
+          logoPreview.appendChild(img);
         }
 
         // Verification status
@@ -1553,9 +1558,13 @@
         const colorInput = document.getElementById('brand_color_input');
         const colorHex = document.getElementById('brand_color_hex');
         if (currentResolvedBrand?.logo_url) logoInput.value = currentResolvedBrand.logo_url;
+        else logoInput.value = '';
         if (currentResolvedBrand?.brand_color) {
           colorInput.value = currentResolvedBrand.brand_color;
           colorHex.value = currentResolvedBrand.brand_color;
+        } else {
+          colorInput.value = '#667eea';
+          colorHex.value = '';
         }
       }
 
@@ -1576,7 +1585,11 @@
       });
     }
 
+    var _brandSaving = false;
     async function saveBrandIdentity(isNew) {
+      if (_brandSaving) return;
+      _brandSaving = true;
+
       var suffix = isNew ? '_new' : '';
       var logoUrl = (document.getElementById('brand_logo_url' + suffix) || {}).value;
       var brandColor = (document.getElementById('brand_color_hex' + suffix) || {}).value;
@@ -1593,6 +1606,7 @@
       if (!logoUrl && !brandColor) {
         errorEl.textContent = 'Enter a logo URL or pick a brand color.';
         errorEl.style.display = 'inline';
+        _brandSaving = false;
         return;
       }
 
@@ -1635,6 +1649,7 @@
         errorEl.textContent = error.message;
         errorEl.style.display = 'inline';
       } finally {
+        _brandSaving = false;
         btn.disabled = false;
         btn.textContent = isNew ? 'Save brand' : 'Save';
       }

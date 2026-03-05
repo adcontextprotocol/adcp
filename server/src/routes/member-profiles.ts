@@ -585,6 +585,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   // PUT /api/me/member-profile/brand-identity - Update logo URL and brand color inline
   router.put('/brand-identity', requireAuth, async (req, res) => {
     const startTime = Date.now();
+    logger.info({ userId: req.user?.id, org: req.query.org }, 'PUT /api/me/member-profile/brand-identity started');
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
@@ -662,11 +663,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       // Transaction: update/create hosted brand + link profile
-      const existing = await brandDb.getHostedBrandByDomain(brandDomain);
       const pool = getPool();
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+
+        // Read inside transaction with row lock to prevent concurrent insert race
+        const existingResult = await client.query(
+          'SELECT * FROM hosted_brands WHERE brand_domain = $1 FOR UPDATE',
+          [brandDomain]
+        );
+        const existing = existingResult.rows[0] || null;
 
         if (existing) {
           const bj = { ...(existing.brand_json as Record<string, unknown>) };

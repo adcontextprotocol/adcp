@@ -15,7 +15,7 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
-import { COMMITTEE_TYPE_LABELS } from '../../types.js';
+import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
@@ -1408,11 +1408,7 @@ For logo changes, use update_member_logo instead.`,
           type: 'array',
           items: {
             type: 'string',
-            enum: [
-              'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent',
-              'si_agent', 'governance_agent', 'publisher', 'data_provider',
-              'consulting', 'other',
-            ],
+            enum: [...VALID_MEMBER_OFFERINGS],
           },
           description: 'Member offering types.',
         },
@@ -7698,14 +7694,9 @@ Use add_committee_leader to assign a leader.`;
 
       if (input.offerings !== undefined) {
         const offerings = input.offerings as string[];
-        const VALID = [
-          'buyer_agent', 'sales_agent', 'creative_agent', 'signals_agent',
-          'si_agent', 'governance_agent', 'publisher', 'data_provider',
-          'consulting', 'other',
-        ];
-        const invalid = offerings.filter(o => !VALID.includes(o));
+        const invalid = offerings.filter(o => !(VALID_MEMBER_OFFERINGS as readonly string[]).includes(o));
         if (invalid.length > 0) {
-          return `❌ Invalid offerings: ${invalid.join(', ')}. Valid options: ${VALID.join(', ')}`;
+          return `❌ Invalid offerings: ${invalid.join(', ')}. Valid options: ${VALID_MEMBER_OFFERINGS.join(', ')}`;
         }
         updates.offerings = offerings;
         updatedFields.push('offerings');
