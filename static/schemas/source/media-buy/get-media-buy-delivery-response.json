@@ -564,8 +564,6 @@
                   "required": [
                     "package_id",
                     "spend",
-                    "pricing_model",
-                    "rate",
                     "currency"
                   ]
                 }
