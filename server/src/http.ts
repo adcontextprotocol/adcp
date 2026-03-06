@@ -5340,6 +5340,8 @@ Disallow: /api/admin/
             const slackDb = new SlackDatabase();
             const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
 
+            let accountLinked = false;
+
             if (existingMapping && !existingMapping.workos_user_id) {
               // Link the Slack user to the newly authenticated WorkOS user
               await slackDb.mapUser({
@@ -5347,6 +5349,7 @@ Disallow: /api/admin/
                 workos_user_id: user.id,
                 mapping_source: 'user_claimed',
               });
+              accountLinked = true;
               logger.info(
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
@@ -5382,11 +5385,38 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink },
                 'Slack user not found in mapping table, skipping auto-link'
               );
+            } else if (existingMapping.workos_user_id === user.id) {
+              // Already correctly linked — user clicked the link again
+              accountLinked = true;
+              logger.debug(
+                { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                'Slack account already linked to this WorkOS user'
+              );
             } else {
               logger.debug(
                 { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
                 'Slack user already mapped to different WorkOS user'
               );
+            }
+
+            // Mark any pending Link Account outreach goals as succeeded so Addie stops re-sending
+            if (accountLinked) {
+              try {
+                const pool = getPool();
+                await pool.query(
+                  `UPDATE user_goal_history ugh
+                   SET status = 'success', updated_at = NOW()
+                   FROM outreach_goals og
+                   WHERE ugh.goal_id = og.id
+                     AND og.category = 'admin'
+                     AND og.name ILIKE '%link%'
+                     AND ugh.slack_user_id = $1
+                     AND ugh.status IN ('sent', 'pending', 'deferred')`,
+                  [slackUserIdToLink]
+                );
+              } catch (historyError) {
+                logger.warn({ error: historyError, slackUserId: slackUserIdToLink }, 'Failed to mark Link Account goal as success');
+              }
             }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
