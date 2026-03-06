@@ -51,6 +51,7 @@ import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
 import { invalidateMembershipCache } from "./db/org-filters.js";
@@ -844,6 +845,12 @@ export class HTTPServer {
     const { pageRouter: chatPageRouter, apiRouter: chatApiRouter } = createAddieChatRouter();
     this.app.use('/chat', chatPageRouter);              // Page routes: /chat
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
+
+    // Mount Tavus video routes (Addie video chat + OpenAI-compatible LLM endpoint)
+    const { pageRouter: videoPageRouter, apiRouter: videoApiRouter, llmRouter: videoLlmRouter } = createTavusRouter();
+    this.app.use('/video', videoPageRouter);            // Page routes: /video
+    this.app.use('/api/addie/video', videoApiRouter);   // API routes: /api/addie/video/session
+    this.app.use('/api/addie/v1', videoLlmRouter);      // LLM routes: /api/addie/v1/chat/completions
 
     // Mount SI (Sponsored Intelligence) chat routes
     const { apiRouter: siChatApiRouter } = createSiChatRoutes();

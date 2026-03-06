@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video chat with Addie - Agentic Advertising</title>
+  <link rel="icon" type="image/svg+xml" href="/AAo.svg">
+  <link rel="stylesheet" href="/design-system.css">
+  <script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-header {
+      text-align: center;
+      padding: 24px 16px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+    }
+
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .addie-avatar {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .page-header p {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    /* Pre-call state */
+    #pre-call {
+      text-align: center;
+      max-width: 480px;
+    }
+
+    #pre-call .icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      display: block;
+    }
+
+    #pre-call h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 8px;
+    }
+
+    #pre-call p {
+      color: var(--color-text-secondary);
+      font-size: 15px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    .start-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--color-brand);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .start-btn:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .start-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Loading state */
+    #loading {
+      display: none;
+      text-align: center;
+      color: var(--color-text-secondary);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-brand);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Active call state */
+    #call-container {
+      display: none;
+      width: 100%;
+      max-width: 960px;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #call-frame {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      background: var(--color-gray-950);
+    }
+
+    .call-controls {
+      display: flex;
+      justify-content: center;
+    }
+
+    .end-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--color-error-600);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+
+    .end-btn:hover {
+      opacity: 0.85;
+    }
+
+    /* Error state */
+    #error-message {
+      display: none;
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-100);
+      border-radius: 8px;
+      padding: 16px;
+      color: var(--color-error-600);
+      font-size: 14px;
+      max-width: 480px;
+      text-align: center;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>
+      <span class="addie-avatar">✨</span>
+      Video chat with Addie
+    </h1>
+    <p>Talk with Addie, the AgenticAdvertising.org AI, face to face</p>
+  </header>
+
+  <main class="main">
+    <div id="pre-call">
+      <span class="icon">🎥</span>
+      <h2>Start a video conversation</h2>
+      <p>Addie will join as a video avatar and can answer questions about AdCP, agentic advertising, and the AgenticAdvertising.org community.</p>
+      <button class="start-btn" id="start-btn" onclick="startCall()">
+        Start conversation
+      </button>
+      <div id="error-message"></div>
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Connecting you to Addie...</p>
+    </div>
+
+    <div id="call-container">
+      <div id="call-frame"></div>
+      <div class="call-controls">
+        <button class="end-btn" onclick="endCall()">
+          End conversation
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let callFrame = null;
+
+    function showState(state) {
+      document.getElementById('pre-call').style.display = state === 'pre-call' ? 'block' : 'none';
+      document.getElementById('loading').style.display = state === 'loading' ? 'block' : 'none';
+      document.getElementById('call-container').style.display = state === 'active' ? 'flex' : 'none';
+    }
+
+    function showError(message) {
+      const el = document.getElementById('error-message');
+      el.textContent = message;
+      el.style.display = 'block';
+      document.getElementById('start-btn').disabled = false;
+    }
+
+    async function startCall() {
+      document.getElementById('start-btn').disabled = true;
+      document.getElementById('error-message').style.display = 'none';
+      showState('loading');
+
+      let conversationUrl;
+      try {
+        const res = await fetch('/api/addie/video/session', { method: 'POST' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to start session');
+        }
+        const data = await res.json();
+        conversationUrl = data.conversation_url;
+      } catch (err) {
+        showState('pre-call');
+        showError(err.message || 'Unable to connect. Please try again.');
+        return;
+      }
+
+      try {
+        callFrame = window.DailyIframe.createFrame(
+          document.getElementById('call-frame'),
+          {
+            showLeaveButton: false,
+            showFullscreenButton: true,
+            iframeStyle: {
+              width: '100%',
+              height: '100%',
+              border: 'none',
+            },
+            theme: {
+              // Daily.co's iframe API does not support CSS variables.
+              // These values must match --color-primary-700, --color-gray-950, --color-gray-100
+              // in design-system.css.
+              colors: {
+                accent: '#1a36b4',
+                background: '#0a0a0a',
+                baseText: '#f3f4f6',
+              },
+            },
+          }
+        );
+
+        callFrame.on('left-meeting', () => {
+          endCall();
+        });
+
+        callFrame.on('error', (e) => {
+          showState('pre-call');
+          showError('Video error: ' + (e?.errorMsg || 'unknown'));
+        });
+
+        if (!conversationUrl?.startsWith('https://')) {
+          throw new Error('Invalid conversation URL');
+        }
+        await callFrame.join({ url: conversationUrl });
+        showState('active');
+      } catch (err) {
+        showState('pre-call');
+        showError(err.message || 'Failed to join call. Please try again.');
+        callFrame = null;
+      }
+    }
+
+    async function endCall() {
+      if (callFrame) {
+        try { await callFrame.destroy(); } catch (_) {}
+        callFrame = null;
+      }
+      document.getElementById('call-frame').innerHTML = '';
+      document.getElementById('start-btn').disabled = false;
+      showState('pre-call');
+    }
+  </script>
+</body>
+</html>
