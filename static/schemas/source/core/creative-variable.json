@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-variable.json",
+  "title": "Creative Variable",
+  "description": "A dynamic content variable (DCO slot) on a creative. Variables represent content that can change at serve time — headlines, images, product data, etc.",
+  "type": "object",
+  "properties": {
+    "variable_id": {
+      "type": "string",
+      "description": "Variable identifier on the creative platform"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable variable name"
+    },
+    "variable_type": {
+      "type": "string",
+      "enum": ["text", "image", "video", "audio", "url", "number", "boolean", "color"],
+      "description": "Data type of the variable"
+    },
+    "default_value": {
+      "type": "string",
+      "description": "Default value used when no dynamic value is provided at serve time. All types are string-encoded (e.g., numbers as \"42\", booleans as \"true\")."
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether this variable must have a value for the creative to serve",
+      "default": false
+    }
+  },
+  "required": ["variable_id", "name", "variable_type"],
+  "additionalProperties": true
+}

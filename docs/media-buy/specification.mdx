@@ -186,16 +186,9 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 
 ### list_creatives
 
-**Schema**: [`media-buy/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-request.json) / [`media-buy/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-response.json)
-
-**Reference**: [`list_creatives` task](/docs/media-buy/task-reference/list_creatives)
-
-Browse and filter creative assets in the library.
-
-**Requirements:**
-- Sales agents MUST return creatives accessible to the authenticated account
-- Sales agents MUST include approval status for each creative
-- Sales agents SHOULD support filtering by format, status, and date range
+<Note>
+`list_creatives` is defined in the [Creative Protocol](/docs/creative/specification#list_creatives). Sales agents that host creative libraries MAY implement `list_creatives` as part of the Creative Protocol. See the [`list_creatives` task reference](/docs/creative/task-reference/list_creatives).
+</Note>
 
 ### sync_creatives
 
@@ -375,7 +368,7 @@ Sales agents SHOULD target the following response times:
 
 | Operation Type | Target Latency |
 |----------------|----------------|
-| Simple lookups (list_creative_formats, list_creatives) | < 1 second |
+| Simple lookups (list_creative_formats) | < 1 second |
 | Discovery with AI/LLM (get_products) | < 60 seconds |
 | Reporting queries (get_media_buy_delivery) | < 60 seconds |
 | Campaign operations (create, update, sync) | Async acceptable |
@@ -409,8 +402,8 @@ Sales agents MAY require human approval for any operation. When approval is requ
 | [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/update-media-buy-response.json) | update_media_buy response |
 | [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
 | [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
-| [`media-buy/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-request.json) | list_creatives request |
-| [`media-buy/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creatives-response.json) | list_creatives response |
+| [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request (Creative Protocol) |
+| [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response (Creative Protocol) |
 | [`media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json) | sync_creatives request |
 | [`media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json) | sync_creatives response |
 | [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) | get_media_buy_delivery request |

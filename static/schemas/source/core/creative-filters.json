@@ -109,6 +109,26 @@
     "has_performance_data": {
       "type": "boolean",
       "description": "Filter creatives that have performance data when true"
+    },
+    "library_ids": {
+      "type": "array",
+      "description": "Filter by platform library/workspace IDs. Platforms that organize creatives into libraries (e.g., creative libraries, workspaces, campaigns) can use this to scope queries.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by structured format IDs. Returns creatives that match any of these formats.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "has_variables": {
+      "type": "boolean",
+      "description": "When true, return only creatives with dynamic variables (DCO). When false, return only static creatives."
     }
   },
   "additionalProperties": true

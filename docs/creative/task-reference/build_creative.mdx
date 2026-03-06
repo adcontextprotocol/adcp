@@ -3,9 +3,13 @@ title: build_creative
 ---
 
 
-Transform or generate a creative manifest for a specific format. This task takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format.
+Transform, generate, or retrieve a creative manifest for a specific format. Supports three modes:
 
-**Key concept**: `build_creative` is fundamentally a **transformation** - it takes a creative manifest as input and produces a creative manifest as output. For pure generation (creating from scratch), the source manifest is minimal (just format and seed assets). For transformation (e.g., resizing, reformatting), the source is a complete creative.
+1. **Generation**: Create a manifest from a brief or seed assets (`message` + `creative_manifest`)
+2. **Transformation**: Adapt an existing manifest to a different format (`creative_manifest` + `target_format_id`)
+3. **Library retrieval**: Resolve a `creative_id` from the agent's library into a manifest with ad-serving assets
+
+For generation and transformation, `build_creative` takes a creative manifest as input and produces a creative manifest as output. For library retrieval, provide a `creative_id` (from [`list_creatives`](/docs/creative/task-reference/list_creatives)) and the agent resolves it from its library.
 
 For information about format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats.mdx#referencing-formats).
 
@@ -14,11 +18,14 @@ For information about format IDs and how to reference formats, see [Creative For
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes. |
-| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. |
+| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
+| `creative_id` | string | No | Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of `creative_manifest` when retrieving an existing creative for tag generation or format adaptation. |
+| `library_id` | string | No | Library or workspace containing the creative. Used to disambiguate when the same `creative_id` exists in multiple libraries. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
+| `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`) or platform-specific names; values are the literal substitution strings. All occurrences are replaced. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
@@ -120,6 +127,53 @@ Transform an existing creative to a different size:
   }
 }
 ```
+
+### Library retrieval (existing creative)
+
+Retrieve a creative from the agent's library and resolve it into a manifest with ad-serving assets. Use this when you know the `creative_id` from [`list_creatives`](/docs/creative/task-reference/list_creatives) and want the creative agent to produce a delivery-ready manifest with tags (HTML, JavaScript, or VAST):
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "creative_id": "ft_88201",
+  "library_id": "lib_holiday_2026",
+  "target_format_id": {
+    "agent_url": "https://creative.example.com",
+    "id": "display_static",
+    "width": 300,
+    "height": 250
+  },
+  "macro_values": {
+    "CLICK_URL": "https://publisher.example.com/click/abc123"
+  }
+}
+```
+
+**Response** — the manifest includes ad-serving tag assets with macros resolved:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.example.com",
+      "id": "display_static",
+      "width": 300,
+      "height": 250
+    },
+    "assets": {
+      "ad_tag": {
+        "content": "<script src=\"https://cdn.example.com/frameworks/js/sdk.js\"></script><script>AdSDK.createBanner({clickTag:'https://publisher.example.com/click/abc123',width:300,height:250,id:'ft_88201_{CACHEBUSTER}'});</script>"
+      },
+      "clickthrough_url": {
+        "url": "https://acmecorp.example.com/holiday-sale"
+      }
+    }
+  }
+}
+```
+
+The `CLICK_URL` macro was substituted with the provided value; `CACHEBUSTER` remains as a placeholder for the sales agent to resolve at serve time.
 
 ## Response Format
 
@@ -745,6 +799,7 @@ This separation allows you to:
 
 - **Generation**: `message` + minimal `creative_manifest` (empty or seed assets) + `target_format_id`
 - **Transformation**: full `creative_manifest` + `message` + `target_format_id`
+- **Library retrieval**: `creative_id` + `target_format_id` + optional `macro_values`
 - **Refinement**: previous output as `creative_manifest` + `message` with changes
 
 To refine, pass the previous response's `creative_manifest` back as input with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
@@ -788,4 +843,5 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 |------|-------------|
 | `FORMAT_NOT_SUPPORTED` | The `target_format_id` is not supported by this creative agent |
 | `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
+| `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `library_id`) |
 | `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |

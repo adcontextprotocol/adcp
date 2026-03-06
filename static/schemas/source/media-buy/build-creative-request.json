@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform or generate a creative manifest. Takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format.",
+  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces a target manifest in the specified format.",
   "type": "object",
   "properties": {
     "message": {
@@ -11,7 +11,15 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt."
+      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation."
+    },
+    "library_id": {
+      "type": "string",
+      "description": "Library or workspace containing the creative. Optional — used to disambiguate when the same creative_id exists in multiple libraries."
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -29,6 +37,13 @@
       "type": "integer",
       "minimum": 1,
       "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets."
+    },
+    "macro_values": {
+      "type": "object",
+      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER) or platform-specific macro names; values are the substitution strings. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time.",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "context": {
       "$ref": "/schemas/core/context.json"
