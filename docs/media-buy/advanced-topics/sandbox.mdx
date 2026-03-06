@@ -14,15 +14,13 @@ Sellers declare sandbox support in `get_adcp_capabilities`:
 
 ```json
 {
-  "media_buy": {
-    "features": {
-      "sandbox": true
-    }
+  "account": {
+    "sandbox": true
   }
 }
 ```
 
-Check this before requesting a sandbox account. If `sandbox` is not declared or is `false`, the seller does not support sandbox mode.
+Check this before requesting a sandbox account. If `account.sandbox` is not declared or is `false`, the seller does not support sandbox mode.
 
 ## Setting up a sandbox account
 
