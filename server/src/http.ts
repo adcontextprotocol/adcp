@@ -5156,6 +5156,25 @@ Disallow: /api/admin/
 
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
+        // Ensure user exists in local users table (webhooks may have been missed)
+        try {
+          const pool = getPool();
+          await pool.query(
+            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             ON CONFLICT (workos_user_id) DO UPDATE SET
+               email = EXCLUDED.email,
+               first_name = EXCLUDED.first_name,
+               last_name = EXCLUDED.last_name,
+               email_verified = EXCLUDED.email_verified,
+               workos_updated_at = EXCLUDED.workos_updated_at,
+               updated_at = NOW()`,
+            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+          );
+        } catch (upsertError) {
+          logger.error({ err: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        }
+
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
         // This happens when:
         // 1. User has never accepted them, OR
