@@ -15,7 +15,7 @@
     }
 
     body {
-      font-family: var(--font-family-sans);
+      font-family: var(--font-sans);
       background: var(--color-bg-page);
       color: var(--color-text);
       min-height: 100vh;
@@ -153,7 +153,7 @@
       border-radius: 12px;
       overflow: hidden;
       border: 1px solid var(--color-border);
-      background: #000;
+      background: var(--color-gray-950);
     }
 
     .call-controls {
@@ -165,7 +165,7 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: var(--color-error, #dc2626);
+      background: var(--color-error-600);
       color: white;
       border: none;
       border-radius: 8px;
@@ -183,11 +183,11 @@
     /* Error state */
     #error-message {
       display: none;
-      background: var(--color-error-bg, #fef2f2);
-      border: 1px solid var(--color-error-border, #fecaca);
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-100);
       border-radius: 8px;
       padding: 16px;
-      color: var(--color-error, #dc2626);
+      color: var(--color-error-600);
       font-size: 14px;
       max-width: 480px;
       text-align: center;
@@ -278,10 +278,13 @@
               border: 'none',
             },
             theme: {
+              // Daily.co's iframe API does not support CSS variables.
+              // These values must match --color-primary-700, --color-gray-950, --color-gray-100
+              // in design-system.css.
               colors: {
                 accent: '#1a36b4',
-                background: '#0f172a',
-                baseText: '#f1f5f9',
+                background: '#0a0a0a',
+                baseText: '#f3f4f6',
               },
             },
           }
@@ -296,6 +299,9 @@
           showError('Video error: ' + (e?.errorMsg || 'unknown'));
         });
 
+        if (!conversationUrl?.startsWith('https://')) {
+          throw new Error('Invalid conversation URL');
+        }
         await callFrame.join({ url: conversationUrl });
         showState('active');
       } catch (err) {
