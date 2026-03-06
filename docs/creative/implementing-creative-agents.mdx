@@ -11,9 +11,10 @@ A creative agent is a service that:
 - **Defines formats** - Specifies what assets are required and how they should be structured
 - **Validates manifests** - Ensures creative manifests meet format requirements
 - **Generates previews** - Shows how creatives will render
-- **Builds creatives** (optional) - Generates manifests from natural language briefs
+- **Builds creatives** (optional) - Generates manifests from natural language briefs or retrieves them from a library
+- **Hosts a creative library** (optional) - Lets buyers browse and filter existing creatives
 
-Creative agents are independent of sales agents. A third-party creative agency, ad tech platform, or publisher can implement a creative agent to serve multiple buyers and publishers.
+Creative agents are independent of sales agents. An ad server (CM360, Flashtalking), creative management platform, creative agency, or publisher can implement a creative agent.
 
 ## Core Requirements
 
@@ -122,15 +123,28 @@ See [preview_creative task reference](/docs/creative/task-reference/preview_crea
 
 ### build_creative
 
-Generate a creative manifest from a natural language brief. This enables AI-powered creative generation workflows.
+Generate a creative manifest from a natural language brief, transform an existing manifest to a new format, or retrieve a library creative as a delivery-ready manifest.
 
 **Key responsibilities:**
-- Parse natural language brief
+- Parse natural language brief or resolve a `creative_id` from your library
 - Generate or source appropriate assets
-- Return valid manifest for your format
+- Return valid manifest for the target format
+- Substitute `macro_values` into serving tags when provided
 - Optionally return preview URL
 
 See [build_creative task reference](/docs/creative/task-reference/build_creative) for complete API specification.
+
+### list_creatives
+
+Browse and filter creatives in your library. Implement this if your platform hosts a creative library that buyers need to query.
+
+**Key responsibilities:**
+- Return creatives accessible to the authenticated account
+- Support filtering by format, status, tags, and date range
+- Support pagination for large libraries
+- Optionally include DCO variable definitions per creative
+
+See [list_creatives task reference](/docs/creative/task-reference/list_creatives) for complete API specification.
 
 ## Validation Best Practices
 
@@ -273,11 +287,64 @@ You provide enhanced versions of standard formats:
 }
 ```
 
-## Related Documentation
+## Platform mapping
+
+If you're wrapping an existing ad server or creative management platform, this section shows how common platform concepts map to the creative protocol.
+
+### Concept mapping
+
+| Platform concept | AdCP equivalent | Notes |
+|---|---|---|
+| Advertiser / account | Account (via [accounts protocol](/docs/accounts/overview)) | Buyer establishes access before querying the library |
+| Creative library / workspace | `library_id` in `list_creatives` | Optional — platforms without library grouping scope by account |
+| Creative | Creative item in `list_creatives` response | |
+| Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
+| Active / archived / pending | `status` field | |
+| Ad tag / serving tag | Asset in a creative manifest (`html`, `javascript`, or `vast` type) | Tags are just assets — no special concept |
+| Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
+| DCO variables / dynamic fields | `variables` array (via `include_variables=true`) | Named slots with types and defaults |
+| Data feed / targeting rules | Not modeled | AdCP models the variable *slots*, not the optimization rules |
+
+### Tag generation models
+
+Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates both common models:
+
+**Creative-level tags** (e.g., Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset.
+
+**Placement-level tags** (e.g., CM360) — The platform generates tags per placement, not per creative. A CM360 adapter has two options for `build_creative(creative_id)`:
+1. Return the creative's `htmlCode` or `redirectUrl` directly as a manifest asset
+2. Use internal trafficking to produce a tag scoped to the target format
+
+In both cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
+
+### Macro handling
+
+Platforms use their own macro syntax internally. The `macro_values` parameter in `build_creative` lets the caller pass universal macro values (e.g., `CLICK_URL`) that the creative agent substitutes into the output tag using whatever syntax the platform expects.
+
+| Universal macro | CM360 equivalent | Flashtalking equivalent |
+|---|---|---|
+| `{CLICK_URL}` | `%c` | `[clickTag]` |
+| `{CACHEBUSTER}` | `%n` | `[timestamp]` |
+| `{TIMESTAMP}` | `%t` | `[timestamp]` |
+
+The creative agent handles translation — callers always use universal macros.
+
+### Which tasks to implement
+
+| Platform type | Required tasks | Optional tasks |
+|---|---|---|
+| Ad server with creative library | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative`, `get_creative_delivery` |
+| Creative management platform | `list_creative_formats`, `list_creatives` | `build_creative`, `preview_creative` |
+| Generative creative tool | `list_creative_formats`, `build_creative` | `preview_creative` |
+
+Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying.
+
+## Related documentation
 
 - [Creative Formats](/docs/creative/formats) - Understanding format structure
 - [Creative Manifests](/docs/creative/creative-manifests) - How manifests work
 - [Asset Types](/docs/creative/asset-types) - Asset specifications
-- [list_creative_formats Task](/docs/creative/task-reference/list_creative_formats) - API reference
-- [preview_creative Task](/docs/creative/task-reference/preview_creative) - API reference
-- [build_creative Task](/docs/creative/task-reference/build_creative) - API reference
+- [list_creative_formats task](/docs/creative/task-reference/list_creative_formats) - Format discovery API reference
+- [list_creatives task](/docs/creative/task-reference/list_creatives) - Creative library API reference
+- [build_creative task](/docs/creative/task-reference/build_creative) - Manifest generation API reference
+- [preview_creative task](/docs/creative/task-reference/preview_creative) - Preview rendering API reference
