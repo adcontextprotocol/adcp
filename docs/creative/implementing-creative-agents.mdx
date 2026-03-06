@@ -296,9 +296,11 @@ If you're wrapping an existing ad server or creative management platform, this s
 | Platform concept | AdCP equivalent | Notes |
 |---|---|---|
 | Advertiser / account | Account (via [accounts protocol](/docs/accounts/overview)) | Buyer establishes access before querying the library |
-| Creative library / workspace | `library_id` in `list_creatives` | Optional — platforms without library grouping scope by account |
+| Creative library / workspace / template folder | `library_id` in `list_creatives` | Optional — platforms without library grouping scope by account |
 | Creative | Creative item in `list_creatives` response | |
 | Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
+| Template (Celtra) | Format (via `list_creative_formats`) | Templates define the structure and available properties; formats define the structure and available assets |
+| Template object properties (Celtra) | `variables` array | Named slots with types (text, color, image, video, number, boolean) — near-exact match |
 | Active / archived / pending | `status` field | |
 | Ad tag / serving tag | Asset in a creative manifest (`html`, `javascript`, or `vast` type) | Tags are just assets — no special concept |
 | Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
@@ -309,13 +311,23 @@ If you're wrapping an existing ad server or creative management platform, this s
 
 Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates both common models:
 
-**Creative-level tags** (e.g., Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset.
+**Creative-level tags** (Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset. Celtra's `GET /tags?creativeId=X&adServer=Y` is a direct analog — the ad server parameter scopes the output tag format, just as `target_format_id` does in `build_creative`.
 
-**Placement-level tags** (e.g., CM360) — The platform generates tags per placement, not per creative. A CM360 adapter has two options for `build_creative(creative_id)`:
+**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. A CM360 adapter has two options for `build_creative(creative_id)`:
 1. Return the creative's `htmlCode` or `redirectUrl` directly as a manifest asset
 2. Use internal trafficking to produce a tag scoped to the target format
 
 In both cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
+
+### Variable models
+
+Platforms represent dynamic content differently. The creative protocol's `variables` array accommodates the common patterns:
+
+**Named variable slots** (Flashtalking) — Each creative has explicit variables with IDs, names, and types. Maps directly to `creative-variable.json`.
+
+**Template object properties** (Celtra) — Templates define `templateObjects` with typed `properties` (text, color, image, video, percentage, hidden) scoped to specific components and size variants. A Celtra adapter flattens these into the `variables` array, using the template object label and property label to construct `variable_id` and `name`.
+
+**Rule-based asset selection** (CM360) — Dynamic creatives use `dynamicAssetSelection` with targeting rules, fed by data feeds. This model is not variable-based — CM360 adapters would typically not populate the `variables` array, and `has_variables` filtering would not apply.
 
 ### Macro handling
 
@@ -333,8 +345,8 @@ The creative agent handles translation — callers always use universal macros.
 
 | Platform type | Required tasks | Optional tasks |
 |---|---|---|
-| Ad server with creative library | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative`, `get_creative_delivery` |
-| Creative management platform | `list_creative_formats`, `list_creatives` | `build_creative`, `preview_creative` |
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative`, `get_creative_delivery` |
+| Creative management platform (Celtra) | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative` |
 | Generative creative tool | `list_creative_formats`, `build_creative` | `preview_creative` |
 
 Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying.
