@@ -17,6 +17,7 @@ import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
+import { invalidateMemberContextCache } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -7489,8 +7490,6 @@ Use add_committee_leader to assign a leader.`;
   // ============================================
   // UPDATE MEMBER LOGO
   // ============================================
-  // UPDATE MEMBER LOGO
-  // ============================================
   handlers.set('update_member_logo', async (input) => {
     const orgName = input.org_name as string | undefined;
     const slug = input.slug as string | undefined;
@@ -7559,13 +7558,28 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      const existing = await bDb.getHostedBrandByDomain(brandDomain);
-
       // Use a transaction so both the brand update and profile link succeed or fail together
       const pool = getPool();
       const client = await pool.connect();
+      let wasUpdate = false;
       try {
         await client.query('BEGIN');
+
+        // Read inside transaction with row lock to prevent concurrent insert race
+        const existingResult = await client.query(
+          'SELECT * FROM hosted_brands WHERE brand_domain = $1 FOR UPDATE',
+          [brandDomain]
+        );
+        const existing = existingResult.rows[0] || null;
+        wasUpdate = !!existing;
+
+        // Warn if admin tool is crossing org boundaries
+        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
+          logger.warn(
+            { brandDomain, existingOrgId: existing.workos_organization_id, targetOrgId: profile.workos_organization_id },
+            'Admin tool updating brand owned by a different organization'
+          );
+        }
 
         if (existing) {
           // Update logo in existing hosted brand
@@ -7624,7 +7638,8 @@ Use add_committee_leader to assign a leader.`;
         client.release();
       }
 
-      const action = existing ? 'updated' : 'set';
+      invalidateMemberContextCache();
+      const action = wasUpdate ? 'updated' : 'set';
       logger.info({ profileId: profile.id, brandDomain, logoUrl, action }, 'Member logo updated');
       return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${brandDomain}\n- Logo: ${logoUrl}`;
     } catch (error) {
@@ -7722,6 +7737,7 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Failed to update profile for **${profile.display_name}**.`;
       }
 
+      invalidateMemberContextCache();
       logger.info({ profileId: profile.id, slug: profile.slug, updatedFields }, 'Member profile updated by admin tool');
 
       const fieldList = updatedFields.map(f => `- **${f}**: ${JSON.stringify(updates[f])}`).join('\n');
