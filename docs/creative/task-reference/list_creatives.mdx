@@ -3,22 +3,22 @@ title: list_creatives
 ---
 
 
-Browse and filter creative assets in a creative library with advanced filtering, sorting, pagination, and optional data enrichment. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+Browse and filter creatives in a creative library. Supports filtering by format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
+
+Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
 
 **Response time**: ~1 second (simple database lookup)
 
 ## Overview
 
-The `list_creatives` task provides search and filtering capabilities for creative libraries. It supports complex queries with multiple filter types, sorting options, pagination for large result sets, and optional inclusion of enriched data like assignments, performance metrics, and dynamic content variables.
-
 **Key features:**
-- **Advanced filtering**: Search by format, status, tags, dates, assignments, concepts, and variables
-- **Flexible sorting**: Sort by creation date, update date, name, status, or performance metrics
-- **Pagination support**: Handle large creative libraries efficiently
-- **Optional data enrichment**: Include assignments, performance data, sub-assets, and DCO variables as needed
-- **Field selection**: Return only specific fields to optimize response size
-- **Concept-aware**: Filter by creative concept (groups of related creatives across sizes/formats)
-- **Variable-aware**: Find DCO creatives and inspect their dynamic content slots
+- Filter by format, status, tags, dates, assignments, concepts, and variables
+- Sort by creation date, update date, name, status, or performance metrics
+- Cursor-based pagination for large libraries
+- Optionally include assignments, performance data, sub-assets, and dynamic creative optimization (DCO) variables
+- Return only specific fields to reduce response size
+- Filter by creative concept (groups of related creatives across sizes/formats)
+- Find DCO creatives and inspect their dynamic content slots
 
 ## Request parameters
 
@@ -70,7 +70,7 @@ Sort results by various fields with ascending or descending order:
 ```
 
 **Available sort fields:**
-- `created_date` - When creative was uploaded (default)
+- `created_date` - When the creative was created (default)
 - `updated_date` - When creative was last modified
 - `name` - Creative name (alphabetical)
 - `status` - Approval status
@@ -162,10 +162,16 @@ The response provides creative data with optional enrichment:
 | `updated_date` | string | Last modified timestamp |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
-| `variables` | array | DCO variable definitions (when `include_variables=true`) |
+| `variables` | array | Dynamic creative optimization (DCO) variable definitions (when `include_variables=true`) |
 | `assignments` | object | Package assignments (when `include_assignments=true`) |
 | `performance` | object | Performance metrics (when `include_performance=true`) |
 | `sub_assets` | array | Sub-assets for multi-asset formats (when `include_sub_assets=true`) |
+
+## Account requirements
+
+<Note>
+Standalone creative agents (ad servers, creative management platforms that are not also sales agents) MUST implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish and discover accounts before querying the library. Sales agents that implement `list_creatives` already have accounts established via the media-buy protocol.
+</Note>
 
 ## Examples
 
@@ -227,7 +233,7 @@ Find creatives with dynamic content variables for personalized campaigns:
 }
 ```
 
-### Lightweight list for UI
+### Field-limited query
 
 Get minimal creative data for a selection dropdown:
 
@@ -263,12 +269,6 @@ Find all creatives used in specific media buys (sales agents only):
   }
 }
 ```
-
-## Account requirements
-
-Standalone creative agents (ad servers, creative management platforms that are not also sales agents) MUST implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish and discover accounts before querying the library.
-
-Sales agents that implement `list_creatives` already have accounts established via the media-buy protocol.
 
 ## Related tasks
 
