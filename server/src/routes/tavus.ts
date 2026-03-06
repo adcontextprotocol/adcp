@@ -144,6 +144,8 @@ export function createTavusRouter() {
   // Page router: serves GET /video
   const pageRouter = Router();
   pageRouter.get("/", (_req, res) => {
+    // Daily.co iframe needs camera, microphone, and autoplay permissions
+    res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
     res.sendFile(path.join(__dirname, "../../public/video.html"));
   });
 
