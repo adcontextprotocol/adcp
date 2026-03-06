@@ -8,7 +8,7 @@ sidebarTitle: Specification
 </Info>
 
 **Status**: Request for Comments
-**Last Updated**: February 2026
+**Last Updated**: March 2026
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
@@ -119,7 +119,7 @@ Sales agents MUST translate universal macros to their ad server's native syntax.
 
 ## Tasks
 
-The Creative Protocol defines three tasks. See task reference pages for complete request/response schemas and examples.
+The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
 
 ### list_creative_formats
 
@@ -138,7 +138,10 @@ Discover creative formats and their specifications.
 
 **Reference**: [`build_creative` task](/docs/creative/task-reference/build_creative)
 
-Transform or generate creative manifests.
+Transform, generate, or retrieve creative manifests. Supports three modes:
+1. **Generation**: Create a manifest from a brief or seed assets
+2. **Transformation**: Adapt an existing manifest to a different format
+3. **Library retrieval**: Resolve a `creative_id` from the agent's library into a manifest with ad-serving assets (HTML/JavaScript/VAST tags)
 
 **Requirements:**
 - Creative agents MUST validate input manifests against format requirements
@@ -148,6 +151,8 @@ Transform or generate creative manifests.
 - Creative agents SHOULD respect `quality` for generative tasks (`"draft"` for fast iteration, `"production"` for final delivery) and MAY ignore it for non-generative transforms
 - Creative agents SHOULD honor `item_limit` when present, using the lesser of `item_limit` and the format's `max_items`
 - Creative agents MAY use AI/LLM processing for generation tasks
+- When `creative_id` is provided, creative agents MUST resolve the creative from their library
+- When `macro_values` is provided, creative agents SHOULD substitute the specified macros in the output manifest's assets and leave unresolved macros as `{MACRO}` placeholders
 
 ### preview_creative
 
@@ -161,6 +166,35 @@ Generate preview renderings of creative manifests.
 - Creative agents MUST include `expires_at` for preview URLs
 - Creative agents SHOULD support batch preview for multiple creatives
 - Creative agents MAY support multiple output formats (URL, HTML, image)
+
+### list_creatives
+
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json)
+
+**Reference**: [`list_creatives` task](/docs/creative/task-reference/list_creatives)
+
+Browse and filter creative assets in a creative library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Requirements:**
+- Agents MUST return creatives accessible to the authenticated account
+- Agents MUST include approval status for each creative
+- Agents SHOULD support filtering by format, status, tags, and date range
+- Agents SHOULD support filtering by `library_ids` and `format_ids` when the platform organizes creatives into libraries
+- Agents MAY include dynamic content variable definitions when `include_variables=true`
+
+**Account requirements:**
+- Standalone creative agents (not also serving as sales agents) MUST implement the accounts protocol (`sync_accounts` / `list_accounts`) so buyers can establish and discover accounts before querying the library
+- Sales agents that implement `list_creatives` already have accounts via the media-buy protocol
+
+### get_creative_delivery
+
+**Reference**: [`get_creative_delivery` task](/docs/creative/task-reference/get_creative_delivery)
+
+Retrieve creative delivery data with variant-level metrics.
+
+**Requirements:**
+- Creative agents MUST return delivery data for the requested creatives
+- Creative agents SHOULD include variant-level breakdowns when available
 
 ## Error Handling
 
@@ -209,6 +243,9 @@ A conformant Creative Protocol agent SHOULD:
 1. Implement `build_creative` for creative generation
 2. Implement `preview_creative` for preview rendering
 3. Support universal macros in tracking URLs
+4. Implement `list_creatives` when the agent hosts a creative library
+5. Support `creative_id` in `build_creative` when the agent hosts a creative library
+6. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when operating as a standalone creative agent (not also a sales agent)
 
 ### Consumer Conformance
 
