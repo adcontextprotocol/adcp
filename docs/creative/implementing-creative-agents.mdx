@@ -142,7 +142,7 @@ Browse and filter creatives in your library. Implement this if your platform hos
 - Return creatives accessible to the authenticated account
 - Support filtering by format, status, tags, and date range
 - Support pagination for large libraries
-- Optionally include DCO variable definitions per creative
+- Optionally include dynamic creative optimization (DCO) variable definitions per creative
 
 See [list_creatives task reference](/docs/creative/task-reference/list_creatives) for complete API specification.
 
@@ -313,9 +313,9 @@ Ad servers differ in how they produce serving tags. The creative protocol's `bui
 
 **Creative-level tags** (Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset. Celtra's `GET /tags?creativeId=X&adServer=Y` is a direct analog — the ad server parameter scopes the output tag format, just as `target_format_id` does in `build_creative`.
 
-**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. A CM360 adapter has two options for `build_creative(creative_id)`:
+**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. The caller passes `media_buy_id` and optionally `package_id` to provide the trafficking context. A CM360 adapter has two options for `build_creative` with a `creative_id`:
 1. Return the creative's `htmlCode` or `redirectUrl` directly as a manifest asset
-2. Use internal trafficking to produce a tag scoped to the target format
+2. Use internal trafficking with the `media_buy_id` to produce a tag scoped to the target format
 
 In both cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
 
@@ -343,11 +343,13 @@ The creative agent handles translation — callers always use universal macros.
 
 ### Which tasks to implement
 
-| Platform type | Required tasks | Optional tasks |
+The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks each platform type should implement.
+
+| Platform type | Core tasks | Recommended tasks |
 |---|---|---|
-| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative`, `get_creative_delivery` |
-| Creative management platform (Celtra) | `list_creative_formats`, `list_creatives`, `build_creative` | `preview_creative` |
-| Generative creative tool | `list_creative_formats`, `build_creative` | `preview_creative` |
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` |
+| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` |
+| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` |
 
 Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying.
 
