@@ -28,10 +28,6 @@
     "catalog_management": {
       "type": "boolean",
       "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
-    },
-    "sandbox": {
-      "type": "boolean",
-      "description": "Supports sandbox mode for operations without real platform calls or spend"
     }
   },
   "additionalProperties": {
