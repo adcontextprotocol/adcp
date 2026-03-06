@@ -639,6 +639,7 @@ export class HTTPServer {
           }
         });
       } catch (error) {
+        logger.error({ err: error }, 'Failed to list schema versions');
         res.status(500).json({ error: "Failed to list schema versions" });
       }
     });
@@ -1594,6 +1595,7 @@ export class HTTPServer {
         const result = await this.validator.validate(domain, agent_url);
         res.json(result);
       } catch (error) {
+        logger.error({ err: error, domain, agent_url }, 'Validation failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Validation failed",
         });
@@ -1664,6 +1666,7 @@ export class HTTPServer {
         const profile = await this.capabilityDiscovery.discoverCapabilities(agent);
         res.json(profile);
       } catch (error) {
+        logger.error({ err: error, agentId }, 'Capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Capability discovery failed",
         });
@@ -1679,6 +1682,7 @@ export class HTTPServer {
           profiles: Array.from(profiles.values()),
         });
       } catch (error) {
+        logger.error({ err: error, agentCount: agents.length }, 'Bulk capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Bulk discovery failed",
         });
