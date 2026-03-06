@@ -6492,6 +6492,16 @@ Disallow: /api/admin/
               const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
               const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
         }));
@@ -6522,6 +6532,16 @@ Disallow: /api/admin/
               const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
               const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
         }));
@@ -6632,6 +6652,16 @@ Disallow: /api/admin/
             const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
             const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
             profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+          } else {
+            const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (discovered) {
+              const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+              const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+              const primaryBrand = brands?.[0];
+              const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+            }
           }
         }
 
