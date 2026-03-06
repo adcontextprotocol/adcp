@@ -20,7 +20,9 @@ For information about format IDs and how to reference formats, see [Creative For
 | `message` | string | No | Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes. |
 | `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
 | `creative_id` | string | No | Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of `creative_manifest` when retrieving an existing creative for tag generation or format adaptation. |
-| `library_id` | string | No | Library or workspace containing the creative. Used to disambiguate when the same `creative_id` exists in multiple libraries. |
+| `concept_id` | string | No | Creative concept containing the creative. Used to disambiguate when the same `creative_id` exists in multiple concepts. |
+| `media_buy_id` | string | No | Media buy or placement identifier for tag generation. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags. Not needed when tags are generated at the creative level (most creative platforms). |
+| `package_id` | string | No | Package or line item within the media buy. Used with `media_buy_id` when the creative agent needs line-item-level context for tag generation. |
 | `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
@@ -136,7 +138,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "creative_id": "ft_88201",
-  "library_id": "lib_holiday_2026",
+  "concept_id": "concept_holiday_2026",
   "target_format_id": {
     "agent_url": "https://creative.example.com",
     "id": "display_static",
@@ -843,5 +845,5 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 |------|-------------|
 | `FORMAT_NOT_SUPPORTED` | The `target_format_id` is not supported by this creative agent |
 | `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
-| `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `library_id`) |
+| `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `concept_id`) |
 | `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |

@@ -113,13 +113,13 @@
               "type": "string"
             }
           },
-          "library_id": {
+          "concept_id": {
             "type": "string",
-            "description": "Platform library or workspace this creative belongs to"
+            "description": "Creative concept this creative belongs to. Concepts group related creatives across sizes and formats."
           },
-          "library_name": {
+          "concept_name": {
             "type": "string",
-            "description": "Human-readable library or workspace name"
+            "description": "Human-readable concept name"
           },
           "variables": {
             "type": "array",
@@ -301,7 +301,7 @@
           "total_matching": 2,
           "returned": 2,
           "filters_applied": [
-            "library_ids=lib_holiday_2026",
+            "concept_ids=concept_holiday_2026",
             "statuses=approved"
           ]
         },
@@ -333,8 +333,8 @@
               }
             },
             "tags": ["holiday_2026", "display"],
-            "library_id": "lib_holiday_2026",
-            "library_name": "Holiday 2026 Campaign",
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
             "variables": [
               {
                 "variable_id": "headline_text",
@@ -374,8 +374,8 @@
               }
             },
             "tags": ["holiday_2026", "display"],
-            "library_id": "lib_holiday_2026",
-            "library_name": "Holiday 2026 Campaign",
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
             "variables": []
           }
         ],
