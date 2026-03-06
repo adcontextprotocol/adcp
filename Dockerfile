@@ -13,8 +13,8 @@ RUN npm ci --ignore-scripts
 # Copy source code
 COPY . .
 
-# Build the TypeScript server
-RUN npm run build
+# Build the TypeScript server (increase heap for large tsc compilation)
+RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
 # Pre-clone external repos stage (runs in parallel conceptually, deps only on git)
 FROM alpine:3.19 AS repos
