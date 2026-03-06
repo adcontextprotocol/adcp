@@ -675,6 +675,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         );
         const existing = existingResult.rows[0] || null;
 
+        // Ownership check: don't let one org overwrite another org's brand
+        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
+          throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
+        }
+
         if (existing) {
           const bj = { ...(existing.brand_json as Record<string, unknown>) };
           const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
@@ -741,10 +746,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       logger.info({ profileId: profile.id, brandDomain, durationMs: duration }, 'Brand identity updated');
 
       res.json({ brand: resolvedBrand, brand_domain: brandDomain });
-    } catch (error) {
+    } catch (error: any) {
       const duration = Date.now() - startTime;
+      const statusCode = error?.statusCode || 500;
       logger.error({ err: error, durationMs: duration }, 'Update brand identity error');
-      res.status(500).json({ error: 'Failed to update brand identity', message: error instanceof Error ? error.message : 'Unknown error' });
+      res.status(statusCode).json({ error: 'Failed to update brand identity', message: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
