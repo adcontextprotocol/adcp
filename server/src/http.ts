@@ -5156,7 +5156,8 @@ Disallow: /api/admin/
 
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
-        // Ensure user exists in local users table (webhooks may have been missed)
+        // Ensure user exists in local users table (webhooks may have been missed).
+        // WorkOS is the source of truth for name/email — always sync on login.
         try {
           const pool = getPool();
           await pool.query(
@@ -5172,7 +5173,7 @@ Disallow: /api/admin/
             [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
           );
         } catch (upsertError) {
-          logger.error({ err: upsertError, userId: user.id }, 'Failed to upsert user on login');
+          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
         }
 
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
@@ -5386,7 +5387,9 @@ Disallow: /api/admin/
                 'Slack user not found in mapping table, skipping auto-link'
               );
             } else if (existingMapping.workos_user_id === user.id) {
-              // Already correctly linked — user clicked the link again
+              // Already correctly linked — user clicked the link again.
+              // We still mark the goal as success (below) but don't re-send the
+              // "you're now linked" Addie message to avoid duplicate notifications.
               accountLinked = true;
               logger.debug(
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
@@ -5409,7 +5412,7 @@ Disallow: /api/admin/
                    FROM outreach_goals og
                    WHERE ugh.goal_id = og.id
                      AND og.category = 'admin'
-                     AND og.name ILIKE '%link%'
+                     AND og.name = 'Link Account'
                      AND ugh.slack_user_id = $1
                      AND ugh.status IN ('sent', 'pending', 'deferred')`,
                   [slackUserIdToLink]
