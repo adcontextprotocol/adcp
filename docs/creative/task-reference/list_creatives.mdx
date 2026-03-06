@@ -12,12 +12,12 @@ Browse and filter creative assets in a creative library with advanced filtering,
 The `list_creatives` task provides search and filtering capabilities for creative libraries. It supports complex queries with multiple filter types, sorting options, pagination for large result sets, and optional inclusion of enriched data like assignments, performance metrics, and dynamic content variables.
 
 **Key features:**
-- **Advanced filtering**: Search by format, status, tags, dates, assignments, libraries, and variables
+- **Advanced filtering**: Search by format, status, tags, dates, assignments, concepts, and variables
 - **Flexible sorting**: Sort by creation date, update date, name, status, or performance metrics
 - **Pagination support**: Handle large creative libraries efficiently
 - **Optional data enrichment**: Include assignments, performance data, sub-assets, and DCO variables as needed
 - **Field selection**: Return only specific fields to optimize response size
-- **Library-aware**: Filter by platform library or workspace
+- **Concept-aware**: Filter by creative concept (groups of related creatives across sizes/formats)
 - **Variable-aware**: Find DCO creatives and inspect their dynamic content slots
 
 ## Request parameters
@@ -46,7 +46,7 @@ The `list_creatives` task provides search and filtering capabilities for creativ
 
 ## Filtering options
 
-The `filters` object supports format, status, tag, date, library, variable, and assignment filtering. All filters are optional and composable.
+The `filters` object supports format, status, tag, date, concept, variable, and assignment filtering. All filters are optional and composable.
 
 <Note>
 **Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array.
@@ -123,8 +123,8 @@ The response provides creative data with optional enrichment:
       "status": "approved",
       "created_date": "2026-01-15T10:30:00Z",
       "updated_date": "2026-01-15T14:20:00Z",
-      "library_id": "lib_holiday_2026",
-      "library_name": "Holiday 2026 Campaign",
+      "concept_id": "concept_holiday_2026",
+      "concept_name": "Holiday 2026 Campaign",
       "variables": [
         {
           "variable_id": "headline_text",
@@ -160,8 +160,8 @@ The response provides creative data with optional enrichment:
 | `status` | string | Approval status |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
-| `library_id` | string | Platform library/workspace ID |
-| `library_name` | string | Human-readable library name |
+| `concept_id` | string | Creative concept ID |
+| `concept_name` | string | Human-readable concept name |
 | `variables` | array | DCO variable definitions (when `include_variables=true`) |
 | `assignments` | object | Package assignments (when `include_assignments=true`) |
 | `performance` | object | Performance metrics (when `include_performance=true`) |
@@ -169,14 +169,14 @@ The response provides creative data with optional enrichment:
 
 ## Examples
 
-### Library-scoped query with variables
+### Concept-scoped query with variables
 
-List all approved creatives in a specific library, including DCO variable definitions:
+List all approved creatives in a specific concept, including DCO variable definitions:
 
 ```json
 {
   "filters": {
-    "library_ids": ["lib_holiday_2026"],
+    "concept_ids": ["concept_holiday_2026"],
     "statuses": ["approved"]
   },
   "include_variables": true,
@@ -189,7 +189,7 @@ List all approved creatives in a specific library, including DCO variable defini
 
 ### Format-specific query
 
-Find creatives matching specific format IDs across libraries:
+Find creatives matching specific format IDs across concepts:
 
 ```json
 {

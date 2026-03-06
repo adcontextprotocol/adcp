@@ -296,7 +296,7 @@ If you're wrapping an existing ad server or creative management platform, this s
 | Platform concept | AdCP equivalent | Notes |
 |---|---|---|
 | Advertiser / account | Account (via [accounts protocol](/docs/accounts/overview)) | Buyer establishes access before querying the library |
-| Creative library / workspace / template folder | `library_id` in `list_creatives` | Optional — platforms without library grouping scope by account |
+| Creative concept / group / template folder | `concept_id` in `list_creatives` | Groups related creatives across sizes/formats (Flashtalking concepts, Celtra campaign folders, CM360 creative groups) |
 | Creative | Creative item in `list_creatives` response | |
 | Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
 | Template (Celtra) | Format (via `list_creative_formats`) | Templates define the structure and available properties; formats define the structure and available assets |

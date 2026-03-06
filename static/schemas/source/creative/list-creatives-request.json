@@ -66,7 +66,7 @@
           "performance",
           "sub_assets",
           "variables",
-          "library"
+          "concept"
         ]
       }
     },
@@ -89,10 +89,10 @@
       }
     },
     {
-      "description": "List creatives in a specific library matching a format",
+      "description": "List creatives in a specific concept matching a format",
       "data": {
         "filters": {
-          "library_ids": ["lib_holiday_2026"],
+          "concept_ids": ["concept_holiday_2026"],
           "format_ids": [
             {
               "agent_url": "https://creative.example.com",

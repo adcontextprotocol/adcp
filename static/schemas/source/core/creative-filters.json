@@ -110,9 +110,9 @@
       "type": "boolean",
       "description": "Filter creatives that have performance data when true"
     },
-    "library_ids": {
+    "concept_ids": {
       "type": "array",
-      "description": "Filter by platform library/workspace IDs. Platforms that organize creatives into libraries (e.g., creative libraries, workspaces, campaigns) can use this to scope queries.",
+      "description": "Filter by creative concept IDs. Concepts group related creatives across sizes and formats (e.g., Flashtalking concepts, Celtra campaign folders, CM360 creative groups).",
       "items": {
         "type": "string"
       },
