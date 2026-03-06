@@ -226,8 +226,9 @@ export class OutboundPlanner {
       // Currently in progress? Wait.
       if (h.status === 'pending' || h.status === 'sent') return false;
 
-      // Deferred? Check if retry time has passed.
-      if (h.status === 'deferred' && h.next_attempt_at) {
+      // Deferred? Block until retry time has passed. No retry time = blocked indefinitely.
+      if (h.status === 'deferred') {
+        if (!h.next_attempt_at) return false;
         if (new Date() < h.next_attempt_at) return false;
       }
 

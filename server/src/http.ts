@@ -5156,6 +5156,26 @@ Disallow: /api/admin/
 
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
+        // Ensure user exists in local users table (webhooks may have been missed).
+        // WorkOS is the source of truth for name/email — always sync on login.
+        try {
+          const pool = getPool();
+          await pool.query(
+            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             ON CONFLICT (workos_user_id) DO UPDATE SET
+               email = EXCLUDED.email,
+               first_name = EXCLUDED.first_name,
+               last_name = EXCLUDED.last_name,
+               email_verified = EXCLUDED.email_verified,
+               workos_updated_at = EXCLUDED.workos_updated_at,
+               updated_at = NOW()`,
+            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+          );
+        } catch (upsertError) {
+          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        }
+
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
         // This happens when:
         // 1. User has never accepted them, OR
@@ -5321,6 +5341,8 @@ Disallow: /api/admin/
             const slackDb = new SlackDatabase();
             const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
 
+            let accountLinked = false;
+
             if (existingMapping && !existingMapping.workos_user_id) {
               // Link the Slack user to the newly authenticated WorkOS user
               await slackDb.mapUser({
@@ -5328,6 +5350,7 @@ Disallow: /api/admin/
                 workos_user_id: user.id,
                 mapping_source: 'user_claimed',
               });
+              accountLinked = true;
               logger.info(
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
@@ -5363,11 +5386,40 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink },
                 'Slack user not found in mapping table, skipping auto-link'
               );
+            } else if (existingMapping.workos_user_id === user.id) {
+              // Already correctly linked — user clicked the link again.
+              // We still mark the goal as success (below) but don't re-send the
+              // "you're now linked" Addie message to avoid duplicate notifications.
+              accountLinked = true;
+              logger.debug(
+                { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                'Slack account already linked to this WorkOS user'
+              );
             } else {
               logger.debug(
                 { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
                 'Slack user already mapped to different WorkOS user'
               );
+            }
+
+            // Mark any pending Link Account outreach goals as succeeded so Addie stops re-sending
+            if (accountLinked) {
+              try {
+                const pool = getPool();
+                await pool.query(
+                  `UPDATE user_goal_history ugh
+                   SET status = 'success', updated_at = NOW()
+                   FROM outreach_goals og
+                   WHERE ugh.goal_id = og.id
+                     AND og.category = 'admin'
+                     AND og.name = 'Link Account'
+                     AND ugh.slack_user_id = $1
+                     AND ugh.status IN ('sent', 'pending', 'deferred')`,
+                  [slackUserIdToLink]
+                );
+              } catch (historyError) {
+                logger.warn({ error: historyError, slackUserId: slackUserIdToLink }, 'Failed to mark Link Account goal as success');
+              }
             }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
