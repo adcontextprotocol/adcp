@@ -189,7 +189,7 @@
 
     // Build "The Latest" dropdown
     const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
-    const isLatestActive = currentPath.startsWith('/latest') || currentPath.startsWith('/perspectives') || currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
+    const isLatestActive = currentPath.startsWith('/latest') || currentPath.startsWith('/perspectives');
     const latestDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isLatestActive ? 'active' : ''}">
@@ -203,9 +203,6 @@
             <a href="${latestBaseUrl}/industry-news" class="navbar__dropdown-item ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>
             <a href="${latestBaseUrl}/learning" class="navbar__dropdown-item ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>
             <a href="${latestBaseUrl}/announcements" class="navbar__dropdown-item ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>
-            <div class="navbar__dropdown-divider"></div>
-            <a href="/certification.html" class="navbar__dropdown-item ${currentPath === '/certification.html' || currentPath === '/certification' ? 'active' : ''}">Certification</a>
-            <a href="/study-guide.html" class="navbar__dropdown-item ${currentPath === '/study-guide.html' || currentPath === '/study-guide' ? 'active' : ''}">Study guide</a>
           </div>
         </div>`
       : '';
@@ -223,7 +220,8 @@
     const communityPeopleUrl = isLocal ? '/community/people' : `${aaoBaseUrl}/community/people`;
     const isCommunityActive = currentPath.startsWith('/community');
     const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
-    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive;
+    const isCertificationActive = currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
+    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive || isCertificationActive;
     const participateDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isParticipateActive ? 'active' : ''}">
@@ -244,6 +242,8 @@
             <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
             <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
             <a href="${gatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
+            <div class="navbar__dropdown-divider"></div>
+            <a href="/certification.html" class="navbar__dropdown-item ${isCertificationActive ? 'active' : ''}">Certification</a>
           </div>
         </div>`
       : '';
@@ -302,8 +302,6 @@
           ${membershipEnabled ? `<a href="${latestBaseUrl}/industry-news" class="navbar__link navbar__link--indent ${currentPath === '/latest/industry-news' ? 'active' : ''}">Industry News</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/learning" class="navbar__link navbar__link--indent ${currentPath === '/latest/learning' ? 'active' : ''}">Learning Agentic</a>` : ''}
           ${membershipEnabled ? `<a href="${latestBaseUrl}/announcements" class="navbar__link navbar__link--indent ${currentPath === '/latest/announcements' ? 'active' : ''}">Announcements</a>` : ''}
-          ${membershipEnabled ? `<a href="/certification.html" class="navbar__link navbar__link--indent ${currentPath === '/certification.html' || currentPath === '/certification' ? 'active' : ''}">Certification</a>` : ''}
-          ${membershipEnabled ? `<a href="/study-guide.html" class="navbar__link navbar__link--indent ${currentPath === '/study-guide.html' || currentPath === '/study-guide' ? 'active' : ''}">Study guide</a>` : ''}
           ${membershipEnabled ? `<span class="navbar__link navbar__link--header">Participate</span>` : ''}
           ${membershipEnabled ? `<a href="${communityHubUrl}" class="navbar__link navbar__link--indent ${currentPath === '/community' ? 'active' : ''}">Community hub</a>` : ''}
           ${membershipEnabled ? `<a href="${communityPeopleUrl}" class="navbar__link navbar__link--indent ${currentPath.startsWith('/community/people') ? 'active' : ''}">People</a>` : ''}
@@ -314,6 +312,7 @@
           ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
           ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           ${membershipEnabled ? `<a href="${gatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
+          ${membershipEnabled ? `<a href="/certification.html" class="navbar__link navbar__link--indent ${isCertificationActive ? 'active' : ''}">Certification</a>` : ''}
           <span class="navbar__link navbar__link--header">About</span>
           <a href="${aboutUrl}" class="navbar__link navbar__link--indent ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>
