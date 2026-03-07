@@ -71,30 +71,30 @@ ON CONFLICT (id) DO UPDATE SET
 -- CREDENTIAL DEFINITIONS
 -- =====================================================
 
-INSERT INTO certification_credentials (id, tier, name, description, required_modules, requires_any_track_complete, requires_credential, badge_id, sort_order) VALUES
+INSERT INTO certification_credentials (id, tier, name, description, required_modules, requires_any_track_complete, requires_credential, badge_id, certifier_group_id, sort_order) VALUES
   ('basics', 1, 'AdCP Basics',
    'Foundational understanding of agentic advertising and AdCP architecture. Free and open to everyone.',
-   '{A1,A2}', false, NULL, 'adcp_basics', 1),
+   '{A1,A2}', false, NULL, 'adcp_basics', '01kk46ghdkt4c7bq6zvtpgpvpq', 1),
 
   ('practitioner', 2, 'AdCP Practitioner',
    'Deep, role-specific AdCP knowledge with hands-on exercises against live sandbox agents. Requires foundations plus at least one specialization track.',
-   '{A1,A2,A3}', true, NULL, 'adcp_practitioner', 2),
+   '{A1,A2,A3}', true, NULL, 'adcp_practitioner', '01kk46mmaa4tydwk5a1nwga9jx', 2),
 
   ('specialist_media_buy', 3, 'AdCP Specialist — Media buy',
    'Protocol specialist in media buy transactions. Demonstrates mastery of get_products, create_media_buy, update_media_buy, and delivery reporting through capstone lab and adaptive exam.',
-   '{E1}', false, 'practitioner', 'adcp_specialist_media_buy', 3),
+   '{E1}', false, 'practitioner', 'adcp_specialist_media_buy', '01kk46pgtf650kv3d8598hb5sn', 3),
 
   ('specialist_creative', 3, 'AdCP Specialist — Creative',
    'Protocol specialist in creative workflows. Demonstrates mastery of list_creative_formats, sync_creatives, build_creative, and preview_creative through capstone lab and adaptive exam.',
-   '{E2}', false, 'practitioner', 'adcp_specialist_creative', 4),
+   '{E2}', false, 'practitioner', 'adcp_specialist_creative', '01kk46s85k778h4dfnxgwem7bm', 4),
 
   ('specialist_signals', 3, 'AdCP Specialist — Signals',
    'Protocol specialist in measurement and signals. Demonstrates mastery of get_signals, activate_signal, and optimization loops through capstone lab and adaptive exam.',
-   '{E3}', false, 'practitioner', 'adcp_specialist_signals', 5),
+   '{E3}', false, 'practitioner', 'adcp_specialist_signals', NULL, 5),
 
   ('specialist_governance', 3, 'AdCP Specialist — Governance',
    'Protocol specialist in governance and compliance. Demonstrates mastery of property lists, content standards, calibrate_content, and brand safety through capstone lab and adaptive exam.',
-   '{E4}', false, 'practitioner', 'adcp_specialist_governance', 6)
+   '{E4}', false, 'practitioner', 'adcp_specialist_governance', '01kk46tkmsm81hax6q3hr5w8ft', 6)
 ON CONFLICT (id) DO UPDATE SET
   tier = EXCLUDED.tier,
   name = EXCLUDED.name,
@@ -103,4 +103,5 @@ ON CONFLICT (id) DO UPDATE SET
   requires_any_track_complete = EXCLUDED.requires_any_track_complete,
   requires_credential = EXCLUDED.requires_credential,
   badge_id = EXCLUDED.badge_id,
+  certifier_group_id = EXCLUDED.certifier_group_id,
   sort_order = EXCLUDED.sort_order;
