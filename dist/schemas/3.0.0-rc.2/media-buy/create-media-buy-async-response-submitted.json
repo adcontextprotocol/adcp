@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/media-buy/create-media-buy-async-response-submitted.json",
+  "title": "Create Media Buy - Submitted",
+  "description": "Payload acknowledging the task is queued. Usually empty or just context.",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

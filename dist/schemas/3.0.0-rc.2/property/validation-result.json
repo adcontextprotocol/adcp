@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/property/validation-result.json",
+  "title": "Validation Result",
+  "description": "Result of validating a single delivery record against a property list.",
+  "type": "object",
+  "properties": {
+    "identifier": {
+      "$ref": "/schemas/3.0.0-rc.2/core/identifier.json",
+      "description": "The identifier that was validated"
+    },
+    "record_id": {
+      "type": "string",
+      "description": "Client-provided ID from the delivery record (if provided)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["compliant", "non_compliant", "not_covered", "unidentified"],
+      "description": "Validation status: compliant (in list), non_compliant (not in list), not_covered (identifier recognized but no data available), unidentified (identifier type not resolvable by this governance agent)"
+    },
+    "impressions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of impressions from this record"
+    },
+    "violations": {
+      "type": "array",
+      "description": "Specific violations found (only present for non_compliant records)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Machine-readable violation code"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable violation description"
+          },
+          "feature_id": {
+            "type": "string",
+            "description": "ID of the feature that caused the violation (only present for feature_failed violations)"
+          },
+          "requirement": {
+            "type": "object",
+            "description": "The feature requirement that was not met (only present for feature_failed violations)",
+            "properties": {
+              "min_value": {
+                "type": "number",
+                "description": "Minimum value that was required"
+              },
+              "max_value": {
+                "type": "number",
+                "description": "Maximum value that was allowed"
+              },
+              "allowed_values": {
+                "type": "array",
+                "description": "Values that would have been acceptable",
+                "items": {}
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+      }
+    },
+    "authorization": {
+      "$ref": "/schemas/3.0.0-rc.2/property/authorization-result.json",
+      "description": "Authorization validation result (only present if sales_agent_url was provided in the delivery record)"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["identifier", "status", "impressions"],
+  "additionalProperties": false
+}

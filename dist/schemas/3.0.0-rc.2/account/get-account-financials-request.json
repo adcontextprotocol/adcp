@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/account/get-account-financials-request.json",
+  "title": "Get Account Financials Request",
+  "description": "Request financial status for an operator-billed account. Returns spend summary, credit/balance status, and invoice history. Only applicable when the seller declares account_financials capability.",
+  "type": "object",
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.0.0-rc.2/core/account-ref.json",
+      "description": "Account to query financials for. Must be an operator-billed account."
+    },
+    "period": {
+      "$ref": "/schemas/3.0.0-rc.2/core/date-range.json",
+      "description": "Date range for the spend summary. Defaults to the current billing cycle if omitted."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.0-rc.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": ["account"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Query by account ID for current billing cycle",
+      "data": {
+        "account": { "account_id": "acc_acme_001" }
+      }
+    },
+    {
+      "description": "Query by natural key for a specific period",
+      "data": {
+        "account": {
+          "brand": { "domain": "acme-corp.com" },
+          "operator": "acme-corp.com"
+        },
+        "period": {
+          "start": "2026-01-01",
+          "end": "2026-01-31"
+        }
+      }
+    },
+    {
+      "description": "Agency querying financials for a client account",
+      "data": {
+        "account": {
+          "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+          "operator": "pinnacle-media.com"
+        }
+      }
+    }
+  ]
+}

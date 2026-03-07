@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/assets/audio-asset.json",
+  "title": "Audio Asset",
+  "description": "Audio asset with URL and technical specifications",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the audio asset"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Audio duration in milliseconds",
+      "minimum": 0
+    },
+    "file_size_bytes": {
+      "type": "integer",
+      "description": "File size in bytes",
+      "minimum": 1
+    },
+    "container_format": {
+      "type": "string",
+      "description": "Audio container/file format (mp3, m4a, aac, wav, ogg, flac, etc.)"
+    },
+    "codec": {
+      "type": "string",
+      "description": "Audio codec used (aac, aac_lc, he_aac, pcm, mp3, vorbis, opus, flac, ac3, eac3, etc.)"
+    },
+    "sampling_rate_hz": {
+      "type": "integer",
+      "description": "Sampling rate in Hz (e.g., 44100, 48000, 96000)"
+    },
+    "channels": {
+      "type": "string",
+      "enum": ["mono", "stereo", "5.1", "7.1"],
+      "description": "Channel configuration"
+    },
+    "bit_depth": {
+      "type": "integer",
+      "enum": [16, 24, 32],
+      "description": "Bit depth"
+    },
+    "bitrate_kbps": {
+      "type": "integer",
+      "description": "Bitrate in kilobits per second",
+      "minimum": 1
+    },
+    "loudness_lufs": {
+      "type": "number",
+      "description": "Integrated loudness in LUFS"
+    },
+    "true_peak_dbfs": {
+      "type": "number",
+      "description": "True peak level in dBFS"
+    },
+    "transcript_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to text transcript of the audio content",
+      "x-accessibility": true
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.0-rc.2/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": true
+}
