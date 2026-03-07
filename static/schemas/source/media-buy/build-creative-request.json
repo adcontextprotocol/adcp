@@ -23,11 +23,11 @@
     },
     "media_buy_id": {
       "type": "string",
-      "description": "Media buy or placement identifier for tag generation. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags. Not needed when tags are generated at the creative level (most creative platforms)."
+      "description": "Buyer's media buy reference for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms). This is the buyer's reference — the same value used as buyer_ref in create_media_buy."
     },
     "package_id": {
       "type": "string",
-      "description": "Package or line item within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation."
+      "description": "Buyer's package or line item reference within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",

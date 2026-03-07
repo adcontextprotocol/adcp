@@ -43,9 +43,17 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": { "major_versions": [2] },
-  "supported_protocols": ["creative"]
+  "supported_protocols": ["creative"],
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": false,
+    "supports_transformation": true,
+    "supports_compliance": false
+  }
 }
 ```
+
+The `creative` capabilities tell the buyer which interaction models this agent supports. See [Interaction models](#interaction-models) below.
 
 ## Core Concepts
 
@@ -57,6 +65,26 @@ Creative agents are authoritative sources for format definitions. A creative age
 - Validates manifests against format requirements
 - Generates previews showing how creatives will render
 - Optionally generates or transforms creatives from natural language briefs
+
+### Interaction models
+
+Creative agents serve different roles depending on their capabilities. Buyers use `get_adcp_capabilities` to determine which interaction model applies:
+
+| Model | Description | Capabilities | Examples |
+|---|---|---|---|
+| **Transformation agent** | Resizes or adapts existing manifests to new formats | `supports_transformation: true` | Format conversion services |
+| **Generative agent** | Creates manifests from natural language briefs | `supports_generation: true` | AI creative platforms |
+| **Creative ad server** | Hosts a creative library, generates ad-serving tags | `has_creative_library: true` | Flashtalking, CM360, Celtra |
+
+These models compose — an agent can support multiple. A creative ad server with `supports_generation: true` and `has_creative_library: true` can both generate creatives from briefs and retrieve existing ones from its library.
+
+**Buyer workflow by model:**
+
+- **Transformation**: `list_creative_formats` → `build_creative` (with `creative_manifest` + `target_format_id`)
+- **Generation**: `list_creative_formats` → `build_creative` (with `message` + `target_format_id`)
+- **Library retrieval**: `list_creatives` → `build_creative` (with `creative_id` + `target_format_id`)
+
+Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
 ### Format Authority
 
@@ -183,8 +211,9 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 
 **Account requirements:**
-- Standalone creative agents (not also serving as sales agents) MUST implement the accounts protocol (`sync_accounts` / `list_accounts`) so buyers can establish and discover accounts before querying the library
-- Sales agents that implement `list_creatives` already have accounts via the media-buy protocol
+- Creative agents that host a library SHOULD implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying
+- This is the same accounts protocol used by sales agents — there is no separate version
+- Sales agents that already implement accounts for media buys do not need to do anything additional
 
 ### get_creative_delivery
 
@@ -245,7 +274,8 @@ A conformant Creative Protocol agent SHOULD:
 3. Support universal macros in tracking URLs
 4. Implement `list_creatives` when the agent hosts a creative library
 5. Support `creative_id` in `build_creative` when the agent hosts a creative library
-6. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when operating as a standalone creative agent (not also a sales agent)
+6. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
+7. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
 
 ### Consumer Conformance
 

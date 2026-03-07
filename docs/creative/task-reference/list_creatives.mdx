@@ -170,7 +170,7 @@ The response provides creative data with optional enrichment:
 ## Account requirements
 
 <Note>
-Standalone creative agents (ad servers, creative management platforms that are not also sales agents) MUST implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish and discover accounts before querying the library. Sales agents that implement `list_creatives` already have accounts established via the media-buy protocol.
+Creative agents that host a library should implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying creatives. This is the same accounts protocol used by sales agents for media buys — there is no separate version. Sales agents that already implement the accounts protocol for media buys do not need to do anything additional.
 </Note>
 
 ## Examples
