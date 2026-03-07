@@ -4,6 +4,7 @@ import { validateEnvironment } from "./env-validation.js";
 import { runMigrations } from "./db/migrate.js";
 import { getDatabaseConfig } from "./config.js";
 import { initializeAddieBolt } from "./addie/index.js";
+import { logger } from "./logger.js";
 
 // Validate environment variables before starting server
 validateEnvironment();
@@ -11,7 +12,7 @@ validateEnvironment();
 async function main() {
   // Run migrations on startup if RUN_MIGRATIONS is set
   if (process.env.RUN_MIGRATIONS === 'true') {
-    console.log('RUN_MIGRATIONS=true, running database migrations...');
+    logger.info('RUN_MIGRATIONS=true, running database migrations');
     try {
       const dbConfig = getDatabaseConfig();
       if (!dbConfig) {
@@ -19,7 +20,7 @@ async function main() {
       }
       await runMigrations(dbConfig);
     } catch (error) {
-      console.error('Migration failed:', error);
+      logger.fatal({ err: error }, 'Migration failed');
       process.exit(1);
     }
   }
@@ -35,14 +36,14 @@ async function main() {
   // The router is stored in the Bolt app and retrieved via getAddieBoltRouter().
   initializeAddieBolt().then((result) => {
     if (result) {
-      console.log('Addie Bolt initialized successfully');
+      logger.info('Addie Bolt initialized successfully');
     }
   }).catch((error) => {
-    console.warn('Addie Bolt initialization failed (non-fatal):', error);
+    logger.warn({ err: error }, 'Addie Bolt initialization failed (non-fatal)');
   });
 }
 
 main().catch((error) => {
-  console.error("Failed to start server:", error);
+  logger.fatal({ err: error }, 'Failed to start server');
   process.exit(1);
 });

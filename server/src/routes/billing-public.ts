@@ -547,12 +547,18 @@ export function createPublicBillingRouter(): Router {
         const user = req.user!;
         const { orgId } = req.params;
 
-        // Dev mode: return mock billing data based on dev user type
+        // Dev mode: return mock billing data based on dev user type and actual org
         const devUser = isDevModeEnabled() ? getDevUser(req) : null;
         if (devUser) {
-          // For 'member' and 'admin' dev users, simulate active membership
-          // For 'nonmember' dev user, simulate personal workspace with no subscription
-          if (devUser.isMember) {
+          // Look up the actual org to get is_personal flag
+          const devOrg = await orgDb.getOrganization(orgId);
+          if (!devOrg) {
+            return res.status(404).json({ error: "Organization not found" });
+          }
+          const isPersonal = devOrg.is_personal || false;
+
+          if (devUser.isMember && !isPersonal) {
+            // Company org with active membership
             return res.json({
               subscription: {
                 status: "active",
@@ -570,15 +576,34 @@ export function createPublicBillingRouter(): Router {
               suggested_company_type: "adtech",
               suggested_revenue_tier: "5m_50m",
             });
+          } else if (devUser.isMember && isPersonal) {
+            // Personal workspace with active individual membership
+            return res.json({
+              subscription: {
+                status: "active",
+                product_id: "prod_dev_individual",
+                product_name: "Individual Membership (Dev)",
+                current_period_end: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
+                cancel_at_period_end: false,
+              },
+              stripe_customer_id: "cus_dev_mock",
+              customer_session_secret: null,
+              company_type: null,
+              revenue_tier: null,
+              is_personal: true,
+              pending_invoices: [],
+              suggested_company_type: null,
+              suggested_revenue_tier: null,
+            });
           } else {
-            // Non-member dev user - personal workspace (no subscription)
+            // Non-member dev user - no subscription
             return res.json({
               subscription: null,
               stripe_customer_id: "cus_dev_mock",
               customer_session_secret: null,
               company_type: null,
               revenue_tier: null,
-              is_personal: true,
+              is_personal: isPersonal,
               pending_invoices: [],
               suggested_company_type: null,
               suggested_revenue_tier: null,
