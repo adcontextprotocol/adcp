@@ -694,7 +694,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath.startsWith('/certification') || urlPath.startsWith('/study-guide')) {
         return next();
       }
 
@@ -1798,6 +1798,28 @@ export class HTTPServer {
     // adagents.json builder tool
     this.app.get("/adagents/builder", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'adagents-builder.html');
+    });
+
+    // Certification portal — member benefit, requires auth
+    this.app.get("/certification", requireAuth, async (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect('https://agenticadvertising.org/certification');
+      }
+      await this.serveHtmlWithConfig(req, res, 'certification.html');
+    });
+    this.app.get("/certification.html", (req, res) => {
+      res.redirect('/certification');
+    });
+
+    // Study guide — member benefit, requires auth
+    this.app.get("/study-guide", requireAuth, async (req, res) => {
+      if (this.isAdcpDomain(req)) {
+        return res.redirect('https://agenticadvertising.org/study-guide');
+      }
+      await this.serveHtmlWithConfig(req, res, 'study-guide.html');
+    });
+    this.app.get("/study-guide.html", (req, res) => {
+      res.redirect('/study-guide');
     });
 
     // Member Profile UI route - serve member-profile.html at /member-profile

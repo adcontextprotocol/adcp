@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
-import { requireAuth, optionalAuth } from '../middleware/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 import * as certDb from '../db/certification-db.js';
 
 const logger = createLogger('certification-routes');
@@ -28,8 +28,8 @@ export function createCertificationRouters() {
   // PUBLIC ROUTES (/api/certification/*)
   // =====================================================
 
-  // GET /api/certification/tracks — list all tracks with module summaries
-  publicRouter.get('/tracks', async (_req, res) => {
+  // GET /api/certification/tracks — list all tracks with module summaries (member benefit)
+  publicRouter.get('/tracks', requireAuth, async (_req, res) => {
     try {
       const tracks = await certDb.getTracks();
       const modules = await certDb.getModules();
@@ -57,26 +57,12 @@ export function createCertificationRouters() {
     }
   });
 
-  // GET /api/certification/modules/:id — module detail
-  publicRouter.get('/modules/:id', optionalAuth, async (req, res) => {
+  // GET /api/certification/modules/:id — module detail (member benefit)
+  publicRouter.get('/modules/:id', requireAuth, async (req, res) => {
     try {
       const mod = await certDb.getModule(req.params.id);
       if (!mod) {
         return res.status(404).json({ error: 'Module not found' });
-      }
-
-      const isAuthenticated = !!req.user;
-      const isMember = isAuthenticated && (req.user as any).isMember;
-
-      // Omit lesson plan and exercise details for gated modules if not a member
-      if (!mod.is_free && !isMember) {
-        return res.json({
-          ...mod,
-          lesson_plan: null,
-          exercise_definitions: null,
-          assessment_criteria: null,
-          gated: true,
-        });
       }
 
       res.json({ ...mod, gated: false });
