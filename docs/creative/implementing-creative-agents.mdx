@@ -299,7 +299,7 @@ If you're wrapping an existing ad server or creative management platform, this s
 | Creative concept / group / template folder | `concept_id` in `list_creatives` | Groups related creatives across sizes/formats (Flashtalking concepts, Celtra campaign folders, CM360 creative groups) |
 | Creative | Creative item in `list_creatives` response | |
 | Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
-| Template (Celtra) | Format (via `list_creative_formats`) | Templates define the structure and available properties; formats define the structure and available assets |
+| Template (Celtra's term) | Format (via `list_creative_formats`) | Celtra templates define structure and available properties; AdCP formats define structure and available assets |
 | Template object properties (Celtra) | `variables` array | Named slots with types (text, color, image, video, number, boolean) — near-exact match |
 | Active / archived / pending | `status` field | |
 | Ad tag / serving tag | Asset in a creative manifest (`html`, `javascript`, or `vast` type) | Tags are just assets — no special concept |
@@ -343,15 +343,18 @@ The creative agent handles translation — callers always use universal macros.
 
 ### Which tasks to implement
 
-The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks each platform type should implement.
+The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks and capabilities each platform type should implement.
 
-| Platform type | Core tasks | Recommended tasks |
-|---|---|---|
-| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` |
-| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` |
-| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` |
+| Platform type | Core tasks | Recommended tasks | Capabilities |
+|---|---|---|---|
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true` |
+| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
+| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
+| Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
 
-Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying.
+Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
+
+Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. This is the same accounts protocol used by sales agents for media buys.
 
 ## Related documentation
 

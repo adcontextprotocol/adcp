@@ -755,7 +755,17 @@
         },
         "has_creative_library": {
           "type": "boolean",
-          "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Standalone creative agents with a library MUST also implement the accounts protocol (sync_accounts / list_accounts).",
+          "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
+          "default": false
+        },
+        "supports_generation": {
+          "type": "boolean",
+          "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
+          "default": false
+        },
+        "supports_transformation": {
+          "type": "boolean",
+          "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
           "default": false
         }
       },
