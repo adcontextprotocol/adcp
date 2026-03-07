@@ -452,7 +452,7 @@
 
       <form id="profile-form" novalidate>
         <!-- Community visibility -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-visibility">
           <h2 class="edit-section-title">Community visibility</h2>
           <div class="toggle-row">
             <div class="toggle-content">
@@ -467,7 +467,7 @@
         </div>
 
         <!-- About you -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-about">
           <h2 class="edit-section-title">About you</h2>
 
           <div class="form-group">
@@ -516,7 +516,7 @@
         </div>
 
         <!-- Social links -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-social">
           <h2 class="edit-section-title">Social links</h2>
 
           <div class="form-group">
@@ -539,7 +539,7 @@
         </div>
 
         <!-- Preferences -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-preferences">
           <h2 class="edit-section-title">Preferences</h2>
 
           <div class="checkbox-row">
@@ -637,9 +637,14 @@
     // Data fetching
     async function loadProfile() {
       try {
+        const orgParam = new URLSearchParams(window.location.search).get('org');
+        const memberProfileUrl = orgParam
+          ? `/api/me/member-profile?org=${encodeURIComponent(orgParam)}`
+          : '/api/me/member-profile';
+
         const [hubResponse, memberResponse] = await Promise.all([
           fetch('/api/me/community/hub'),
-          fetch('/api/me/member-profile').catch(() => null),
+          fetch(memberProfileUrl).catch(() => null),
         ]);
 
         if (!hubResponse.ok) {
@@ -674,10 +679,11 @@
 
         populateForm(profileData);
 
-        // Show member directory section for individual accounts
+        // Show member directory section for individual accounts and restructure layout
         if (isPersonalAccount) {
           document.getElementById('member-directory-section').style.display = 'block';
           populateMemberFields(memberProfileData, memberBillingData);
+          restructureForIndividual();
         }
 
         document.getElementById('edit-loading').style.display = 'none';
@@ -905,6 +911,121 @@
       toastTimeout = setTimeout(() => {
         toast.classList.remove('toast--visible');
       }, 3000);
+    }
+
+    // Restructure the form layout for individual (personal) accounts
+    function restructureForIndividual() {
+      const form = document.getElementById('profile-form');
+      const saveBar = form.querySelector('.save-bar');
+
+      // Change page title
+      document.querySelector('.edit-title').textContent = 'Your profile';
+
+      // Get existing sections by ID
+      const visibilitySection = document.getElementById('section-visibility');
+      const aboutSection = document.getElementById('section-about');
+      const socialSection = document.getElementById('section-social');
+      const prefsSection = document.getElementById('section-preferences');
+      const memberDirSection = document.getElementById('member-directory-section');
+
+      // -- Extract elements to move --
+
+      // Move slug out of About you
+      const slugField = document.getElementById('field-slug');
+      const slugGroup = slugField.closest('.form-group');
+      const slugPreview = slugGroup.querySelector('.slug-preview');
+
+      // Move expertise and interests out of About you
+      const expertiseGroup = document.getElementById('expertise-container').closest('.form-group');
+      const interestsGroup = document.getElementById('interests-container').closest('.form-group');
+
+      // Move offerings out of Member directory
+      const offeringsGroup = document.getElementById('offering-consulting').closest('.form-group');
+
+      // Move contact fields out of Member directory
+      const contactEmail = document.getElementById('field-contact-email').closest('.form-group');
+      const contactPhone = document.getElementById('field-contact-phone').closest('.form-group');
+      const contactWebsite = document.getElementById('field-contact-website').closest('.form-group');
+
+      // Move visibility toggle out
+      const visibilityToggle = visibilitySection.querySelector('.toggle-row');
+
+      // Member directory status message
+      const statusEl = document.getElementById('member-directory-status');
+
+      // -- Build new sections --
+
+      // Section 1: About you (keep headline, bio, avatar, city — slug/expertise/interests removed)
+      slugGroup.remove();
+      expertiseGroup.remove();
+      interestsGroup.remove();
+
+      // Section 2: Expertise and interests (new)
+      const expertiseSection = document.createElement('div');
+      expertiseSection.className = 'edit-section';
+      const expertiseTitle = document.createElement('h2');
+      expertiseTitle.className = 'edit-section-title';
+      expertiseTitle.textContent = 'Expertise and interests';
+      expertiseSection.appendChild(expertiseTitle);
+      expertiseSection.appendChild(expertiseGroup);
+      expertiseSection.appendChild(interestsGroup);
+      if (offeringsGroup) {
+        offeringsGroup.querySelector('.form-label').textContent = 'What do you offer?';
+        expertiseSection.appendChild(offeringsGroup);
+      }
+
+      // Section 3: Public listing (new)
+      const publicListingSection = document.createElement('div');
+      publicListingSection.className = 'edit-section';
+      const listingTitle = document.createElement('h2');
+      listingTitle.className = 'edit-section-title';
+      listingTitle.textContent = 'Public listing';
+      publicListingSection.appendChild(listingTitle);
+
+      // Add description
+      const listingDesc = document.createElement('p');
+      listingDesc.style.cssText = 'font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-4);';
+      listingDesc.innerHTML = 'Control how you appear in the <a href="/members" style="color: var(--color-brand);">member directory</a> and <a href="/community/people" style="color: var(--color-brand);">community directory</a>.';
+      publicListingSection.appendChild(listingDesc);
+
+      // Add status message
+      if (statusEl) publicListingSection.appendChild(statusEl);
+
+      // Add visibility toggle
+      if (visibilityToggle) {
+        const toggleGroup = document.createElement('div');
+        toggleGroup.className = 'form-group';
+        toggleGroup.appendChild(visibilityToggle);
+        publicListingSection.appendChild(toggleGroup);
+      }
+
+      // Add contact fields
+      if (contactEmail) publicListingSection.appendChild(contactEmail);
+      if (contactWebsite) publicListingSection.appendChild(contactWebsite);
+      if (contactPhone) publicListingSection.appendChild(contactPhone);
+
+      // Add slug at end with updated label for directory context
+      slugGroup.querySelector('.form-label').textContent = 'URL slug';
+      if (slugPreview) {
+        slugPreview.innerHTML = 'agenticadvertising.org/members/<strong id="slug-preview-value">' + escapeHtml(slugField.value || '...') + '</strong>';
+      }
+      publicListingSection.appendChild(slugGroup);
+
+      // Section 4: Rename Preferences → Networking
+      prefsSection.querySelector('.edit-section-title').textContent = 'Networking';
+
+      // -- Remove old sections and reassemble --
+      visibilitySection.remove();
+      memberDirSection.remove();
+
+      // Remove all remaining sections from form
+      Array.from(form.querySelectorAll('.edit-section')).forEach(s => s.remove());
+
+      // Re-insert in new order before save bar
+      const newOrder = [aboutSection, expertiseSection, publicListingSection, prefsSection, socialSection];
+      newOrder.forEach(section => {
+        form.insertBefore(section, saveBar);
+      });
     }
 
     // Helpers

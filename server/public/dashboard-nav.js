@@ -555,37 +555,51 @@
           return '';
         }
 
+        // Customize Profile item based on account type
+        let itemLabel = item.label;
+        let itemHref = item.href;
+        let itemAnchor = item.anchor;
+        if (item.anchor === 'profile') {
+          if (isPersonal) {
+            itemLabel = 'Your profile';
+            itemHref = orgId ? `/community/profile/edit?org=${orgId}` : '/community/profile/edit';
+            itemAnchor = null; // Full page link, not an anchor
+          } else {
+            itemLabel = 'Directory listing';
+          }
+        }
+
         // For anchor links on dashboard, check hash; for page links, check path
         let isActive = false;
-        if (item.anchor && isDashboardPage) {
+        if (itemAnchor && isDashboardPage) {
           // On dashboard with anchor links - check if hash matches or default to profile
-          isActive = currentHash === `#${item.anchor}` ||
-                    (item.anchor === 'profile' && (!currentHash || currentHash === ''));
-        } else if (!item.anchor) {
+          isActive = currentHash === `#${itemAnchor}` ||
+                    (itemAnchor === 'profile' && (!currentHash || currentHash === ''));
+        } else if (!itemAnchor) {
           // Regular page links
-          isActive = currentPath === item.href ||
-                    (item.href !== '/dashboard' && currentPath.startsWith(item.href));
+          isActive = currentPath === itemHref ||
+                    (itemHref !== '/dashboard' && currentPath.startsWith(itemHref));
         }
         const activeClass = isActive ? 'active' : '';
         const hiddenStyle = item.hidden ? ' style="display: none;"' : '';
         const idAttr = item.id ? ` id="${item.id}"` : '';
 
         // Build href with org param for cross-page links
-        let href = item.href;
+        let href = itemHref;
         if (orgId) {
-          if (item.anchor && !isDashboardPage) {
+          if (itemAnchor && !isDashboardPage) {
             // e.g., /dashboard#profile -> /dashboard?org=xyz#profile
-            href = `/dashboard?org=${orgId}#${item.anchor}`;
-          } else if (!item.anchor) {
+            href = `/dashboard?org=${orgId}#${itemAnchor}`;
+          } else if (!itemAnchor && !href.includes('?org=')) {
             // e.g., /dashboard/settings -> /dashboard/settings?org=xyz
-            href = `${item.href}?org=${orgId}`;
+            href = `${itemHref}?org=${orgId}`;
           }
         }
 
         return `
-          <a href="${href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${item.anchor ? `data-anchor="${item.anchor}"` : ''}${hiddenStyle}>
+          <a href="${href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${itemAnchor ? `data-anchor="${itemAnchor}"` : ''}${hiddenStyle}>
             <span class="dashboard-nav-icon">${item.icon}</span>
-            <span>${item.label}</span>
+            <span>${itemLabel}</span>
           </a>
         `;
       }).join('');
