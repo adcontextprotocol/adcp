@@ -54,6 +54,16 @@
       margin-bottom: var(--space-5);
     }
 
+    .edit-section-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-4);
+    }
+
+    .edit-section-description a {
+      color: var(--color-brand);
+    }
+
     .form-group {
       margin-bottom: var(--space-5);
     }
@@ -433,7 +443,7 @@
   <script src="/nav.js"></script>
 
   <div class="edit-container">
-    <a href="/community" class="back-link">
+    <a id="back-link" href="/community" class="back-link">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
       </svg>
@@ -562,8 +572,8 @@
         <!-- Member directory (individual accounts only) -->
         <div class="edit-section" id="member-directory-section" style="display: none;">
           <h2 class="edit-section-title">Member directory</h2>
-          <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-4);">
-            Get listed in the <a href="/members" style="color: var(--color-brand);">member directory</a> so companies and peers can discover your expertise in agentic advertising.
+          <p class="edit-section-description">
+            Get listed in the <a href="/members">member directory</a> so companies and peers can discover your expertise in agentic advertising.
           </p>
 
           <div id="member-directory-status" style="display: none; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-size: var(--text-sm);"></div>
@@ -642,8 +652,9 @@
           ? `/api/me/member-profile?org=${encodeURIComponent(orgParam)}`
           : '/api/me/member-profile';
 
-        const [hubResponse, memberResponse] = await Promise.all([
+        const [hubResponse, meResponse, memberResponse] = await Promise.all([
           fetch('/api/me/community/hub'),
+          fetch('/api/me'),
           fetch(memberProfileUrl).catch(() => null),
         ]);
 
@@ -658,22 +669,31 @@
         const data = await hubResponse.json();
         profileData = data.profile || {};
 
-        // Detect individual account and load member profile data
-        if (memberResponse && memberResponse.ok) {
-          const memberData = await memberResponse.json();
-          memberProfileData = memberData.profile || null;
+        // Detect individual account from /api/me organizations
+        if (meResponse.ok) {
+          const meData = await meResponse.json();
+          const orgs = meData.organizations || [];
+          if (memberResponse && memberResponse.ok) {
+            const memberData = await memberResponse.json();
+            memberProfileData = memberData.profile || null;
+            const targetOrg = orgs.find(o => o.id === memberData.organization_id);
+            isPersonalAccount = targetOrg?.is_personal || false;
 
-          // Check if org is personal via billing endpoint
-          if (memberData.organization_id) {
-            try {
-              const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
-              if (billingResp.ok) {
-                memberBillingData = await billingResp.json();
-                isPersonalAccount = memberBillingData.is_personal || false;
+            // Load billing for subscription status display
+            if (memberData.organization_id) {
+              try {
+                const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
+                if (billingResp.ok) {
+                  memberBillingData = await billingResp.json();
+                }
+              } catch (e) {
+                console.warn('Could not load billing info:', e);
               }
-            } catch (e) {
-              console.warn('Could not load billing info:', e);
             }
+          } else if (orgParam) {
+            // No member profile yet, but check if the requested org is personal
+            const targetOrg = orgs.find(o => o.id === orgParam);
+            isPersonalAccount = targetOrg?.is_personal || false;
           }
         }
 
@@ -918,8 +938,14 @@
       const form = document.getElementById('profile-form');
       const saveBar = form.querySelector('.save-bar');
 
-      // Change page title
+      // Change page title and back link
       document.querySelector('.edit-title').textContent = 'Your profile';
+      const backLink = document.getElementById('back-link');
+      const orgParam = new URLSearchParams(window.location.search).get('org');
+      if (backLink && orgParam) {
+        backLink.href = '/dashboard?org=' + encodeURIComponent(orgParam);
+        backLink.lastChild.textContent = ' Back to dashboard';
+      }
 
       // Get existing sections by ID
       const visibilitySection = document.getElementById('section-visibility');
@@ -947,8 +973,14 @@
       const contactPhone = document.getElementById('field-contact-phone').closest('.form-group');
       const contactWebsite = document.getElementById('field-contact-website').closest('.form-group');
 
-      // Move visibility toggle out
+      // Move visibility toggle out and update its label for combined context
       const visibilityToggle = visibilitySection.querySelector('.toggle-row');
+      if (visibilityToggle) {
+        const toggleLabel = visibilityToggle.querySelector('.toggle-label');
+        const toggleDesc = visibilityToggle.querySelector('.toggle-description');
+        if (toggleLabel) toggleLabel.textContent = 'Show in directories';
+        if (toggleDesc) toggleDesc.innerHTML = 'Make your profile visible in the <a href="/community/people">community directory</a>. Member directory visibility requires an active <a href="/dashboard/settings">membership</a>.';
+      }
 
       // Member directory status message
       const statusEl = document.getElementById('member-directory-status');
@@ -982,10 +1014,10 @@
       listingTitle.textContent = 'Public listing';
       publicListingSection.appendChild(listingTitle);
 
-      // Add description
+      // Add description with sync explanation
       const listingDesc = document.createElement('p');
-      listingDesc.style.cssText = 'font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-4);';
-      listingDesc.innerHTML = 'Control how you appear in the <a href="/members" style="color: var(--color-brand);">member directory</a> and <a href="/community/people" style="color: var(--color-brand);">community directory</a>.';
+      listingDesc.className = 'edit-section-description';
+      listingDesc.innerHTML = 'Your name, photo, and bio appear in both the <a href="/members">member directory</a> and <a href="/community/people">community directory</a>. Contact details and offerings are shown only in the member directory.';
       publicListingSection.appendChild(listingDesc);
 
       // Add status message
@@ -1011,6 +1043,16 @@
       }
       publicListingSection.appendChild(slugGroup);
 
+      // Add preview link if profile has a slug
+      if (slugField.value) {
+        const previewLink = document.createElement('p');
+        previewLink.className = 'edit-section-description';
+        previewLink.style.marginTop = 'var(--space-4)';
+        previewLink.style.marginBottom = '0';
+        previewLink.innerHTML = '<a href="/members/' + encodeURIComponent(slugField.value) + '">Preview your listing &rarr;</a>';
+        publicListingSection.appendChild(previewLink);
+      }
+
       // Section 4: Rename Preferences → Networking
       prefsSection.querySelector('.edit-section-title').textContent = 'Networking';
 
@@ -1021,8 +1063,8 @@
       // Remove all remaining sections from form
       Array.from(form.querySelectorAll('.edit-section')).forEach(s => s.remove());
 
-      // Re-insert in new order before save bar
-      const newOrder = [aboutSection, expertiseSection, publicListingSection, prefsSection, socialSection];
+      // Re-insert in new order before save bar (Social links before Networking)
+      const newOrder = [aboutSection, expertiseSection, publicListingSection, socialSection, prefsSection];
       newOrder.forEach(section => {
         form.insertBefore(section, saveBar);
       });

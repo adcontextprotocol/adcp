@@ -559,9 +559,11 @@
         let itemLabel = item.label;
         let itemHref = item.href;
         let itemAnchor = item.anchor;
+        let itemIcon = item.icon;
         if (item.anchor === 'profile') {
           if (isPersonal) {
             itemLabel = 'Your profile';
+            itemIcon = '👤';
             itemHref = orgId ? `/community/profile/edit?org=${orgId}` : '/community/profile/edit';
             itemAnchor = null; // Full page link, not an anchor
           } else {
@@ -598,7 +600,7 @@
 
         return `
           <a href="${href}" class="dashboard-nav-item ${activeClass}"${idAttr} ${itemAnchor ? `data-anchor="${itemAnchor}"` : ''}${hiddenStyle}>
-            <span class="dashboard-nav-icon">${item.icon}</span>
+            <span class="dashboard-nav-icon">${itemIcon}</span>
             <span>${itemLabel}</span>
           </a>
         `;
