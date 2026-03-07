@@ -123,6 +123,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
                 "pages": [
@@ -167,6 +168,23 @@
                   "docs/governance/creative/index",
                   "docs/governance/creative/get_creative_features",
                   "docs/governance/creative/provenance-verification"
+                ]
+              },
+              {
+                "group": "Campaign Governance",
+                "pages": [
+                  "docs/governance/campaign/index",
+                  "docs/governance/campaign/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/campaign/tasks/index",
+                      "docs/governance/campaign/tasks/sync_plans",
+                      "docs/governance/campaign/tasks/validate_plan_action",
+                      "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/get_plan_audit_logs"
+                    ]
+                  }
                 ]
               }
             ]
@@ -452,6 +470,7 @@
             "group": "Governance Protocol",
             "pages": [
               "docs/governance/overview",
+              "docs/governance/policy-registry",
               {
                 "group": "Property Governance",
                 "pages": [
@@ -496,6 +515,23 @@
                   "docs/governance/creative/index",
                   "docs/governance/creative/get_creative_features",
                   "docs/governance/creative/provenance-verification"
+                ]
+              },
+              {
+                "group": "Campaign Governance",
+                "pages": [
+                  "docs/governance/campaign/index",
+                  "docs/governance/campaign/specification",
+                  {
+                    "group": "Tasks",
+                    "pages": [
+                      "docs/governance/campaign/tasks/index",
+                      "docs/governance/campaign/tasks/sync_plans",
+                      "docs/governance/campaign/tasks/validate_plan_action",
+                      "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/get_plan_audit_logs"
+                    ]
+                  }
                 ]
               }
             ]

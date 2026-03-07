@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/brand-compliance-config.json",
+  "title": "Brand Compliance Configuration",
+  "description": "Brand-level compliance configuration that lives in brand.json. The policy team selects registry policies and adds custom rules. The buying team never interacts with this configuration — they create campaign plans that reference the brand, and governance agents resolve applicable policies automatically.",
+  "type": "object",
+  "properties": {
+    "registry_policies": {
+      "type": "array",
+      "items": { "$ref": "/schemas/governance/policy-ref.json" },
+      "description": "References to standardized policies in the policy registry. Each reference identifies a policy by ID and may include configuration parameters."
+    },
+    "custom_policies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Brand-specific rules as natural language strings. Evaluated by governance agents using AI interpretation. The registry is preferred; custom policies exist for brand-specific rules that do not yet have standardized equivalents."
+    },
+    "verticals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The brand's industry verticals (e.g., \"cpg\", \"beverage\", \"pharmaceutical\"). Governance agents use this to match vertical-specific registry policies."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/get-plan-audit-logs-request.json",
+  "title": "Get Plan Audit Logs Request",
+  "description": "Retrieve governance state and audit trail for a plan.",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "The plan to retrieve."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Filter to a specific campaign. Omit for plan-level aggregate."
+    },
+    "include_entries": {
+      "type": "boolean",
+      "description": "Include the full audit trail. Default: false.",
+      "default": false
+    }
+  },
+  "required": ["plan_id"],
+  "additionalProperties": false
+}

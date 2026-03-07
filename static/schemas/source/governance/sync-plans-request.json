@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/sync-plans-request.json",
+  "title": "Sync Plans Request",
+  "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and target jurisdictions.",
+  "type": "object",
+  "properties": {
+    "plans": {
+      "type": "array",
+      "description": "One or more campaign plans to sync.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "Unique identifier for this plan."
+          },
+          "brand": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies."
+          },
+          "objectives": {
+            "type": "string",
+            "description": "Natural language campaign objectives. Used for strategic alignment validation."
+          },
+          "budget": {
+            "type": "object",
+            "description": "Budget authorization parameters.",
+            "properties": {
+              "total": {
+                "type": "number",
+                "description": "Total authorized budget."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code."
+              },
+              "authority_level": {
+                "$ref": "/schemas/enums/budget-authority-level.json",
+                "description": "Budget authority level for the orchestrator agent."
+              },
+              "per_seller_max_pct": {
+                "type": "number",
+                "description": "Maximum percentage of budget that can go to a single seller."
+              },
+              "reallocation_threshold": {
+                "type": "number",
+                "description": "Amount above which reallocations require escalation (for agent_limited)."
+              }
+            },
+            "required": ["total", "currency", "authority_level"],
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "description": "Channel constraints. If omitted, all channels are allowed.",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": { "$ref": "/schemas/enums/channels.json" },
+                "description": "Channels that must be included in the media mix."
+              },
+              "allowed": {
+                "type": "array",
+                "items": { "$ref": "/schemas/enums/channels.json" },
+                "description": "Channels the orchestrator may use."
+              },
+              "mix_targets": {
+                "type": "object",
+                "description": "Target allocation ranges per channel, keyed by channel ID.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "min_pct": { "type": "number" },
+                    "max_pct": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "flight": {
+            "type": "object",
+            "description": "Authorized flight dates. Media buys with dates outside this window are rejected.",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight start (ISO 8601)."
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight end (ISO 8601)."
+              }
+            },
+            "required": ["start", "end"],
+            "additionalProperties": false
+          },
+          "compliance": {
+            "type": "object",
+            "description": "Campaign compliance context.",
+            "properties": {
+              "jurisdictions": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "ISO 3166-1 alpha-2 country codes for the markets this campaign targets. The governance agent intersects these with the brand's compliance configuration to determine which jurisdiction-specific policies apply."
+              }
+            },
+            "additionalProperties": false
+          },
+          "approved_sellers": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "format": "uri" },
+            "description": "List of approved seller agent URLs. null means any seller."
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": ["plan_id", "brand", "objectives", "budget", "flight"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["plans"],
+  "additionalProperties": false
+}

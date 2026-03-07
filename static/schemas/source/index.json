@@ -1065,6 +1065,18 @@
         "artifact-webhook-payload": {
           "$ref": "/schemas/content-standards/artifact-webhook-payload.json",
           "description": "Webhook payload for content artifact delivery from sales agents to orchestrators"
+        },
+        "policy-entry": {
+          "$ref": "/schemas/governance/policy-entry.json",
+          "description": "A complete policy in the policy registry with natural language text, metadata, and calibration exemplars"
+        },
+        "policy-ref": {
+          "$ref": "/schemas/governance/policy-ref.json",
+          "description": "Reference to a registry policy by ID with optional version pin"
+        },
+        "brand-compliance-config": {
+          "$ref": "/schemas/governance/brand-compliance-config.json",
+          "description": "Brand-level compliance configuration referencing registry policies and custom policies"
         }
       },
       "tasks": {
@@ -1196,6 +1208,46 @@
           "response": {
             "$ref": "/schemas/creative/get-creative-features-response.json",
             "description": "Response payload with feature values for the evaluated creative"
+          }
+        },
+        "sync-plans": {
+          "request": {
+            "$ref": "/schemas/governance/sync-plans-request.json",
+            "description": "Push campaign plans to the governance agent"
+          },
+          "response": {
+            "$ref": "/schemas/governance/sync-plans-response.json",
+            "description": "Sync result with active validation categories per plan"
+          }
+        },
+        "validate-plan-action": {
+          "request": {
+            "$ref": "/schemas/governance/validate-plan-action-request.json",
+            "description": "Validate an orchestrator action against a campaign plan"
+          },
+          "response": {
+            "$ref": "/schemas/governance/validate-plan-action-response.json",
+            "description": "Validation verdict with per-category results"
+          }
+        },
+        "report-plan-outcome": {
+          "request": {
+            "$ref": "/schemas/governance/report-plan-outcome-request.json",
+            "description": "Report the outcome of an action to the governance agent"
+          },
+          "response": {
+            "$ref": "/schemas/governance/report-plan-outcome-response.json",
+            "description": "Outcome acceptance status with budget impact and findings"
+          }
+        },
+        "get-plan-audit-logs": {
+          "request": {
+            "$ref": "/schemas/governance/get-plan-audit-logs-request.json",
+            "description": "Retrieve governance state and audit trail for a plan"
+          },
+          "response": {
+            "$ref": "/schemas/governance/get-plan-audit-logs-response.json",
+            "description": "Plan state with budget tracking, validation history, and compliance summary"
           }
         }
       }

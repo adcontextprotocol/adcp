@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/sync-plans-response.json",
+  "title": "Sync Plans Response",
+  "description": "Response from syncing campaign plans. Returns status and active validation categories for each plan.",
+  "type": "object",
+  "properties": {
+    "plans": {
+      "type": "array",
+      "description": "Status for each synced plan.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "Plan identifier."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "error"],
+            "description": "Sync result status. 'active' means sync succeeded; 'error' means sync failed."
+          },
+          "version": {
+            "type": "integer",
+            "description": "Plan version (increments on each sync)."
+          },
+          "categories": {
+            "type": "array",
+            "description": "Validation categories active for this plan.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category_id": {
+                  "type": "string",
+                  "description": "Validation category identifier."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["active", "inactive"],
+                  "description": "Whether this category is active for this plan."
+                }
+              },
+              "required": ["category_id", "status"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["plan_id", "status", "version"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["plans"],
+  "additionalProperties": false
+}

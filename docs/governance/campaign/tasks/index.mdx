@@ -1,0 +1,21 @@
+---
+title: Task reference
+sidebarTitle: Overview
+---
+
+<Warning>
+**Draft for AdCP 3.0** - Campaign Governance is under active development. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Warning>
+
+# Campaign Governance tasks
+
+Campaign Governance has four tasks.
+
+| Task | Direction | Description |
+|------|-----------|-------------|
+| [`sync_plans`](./sync_plans) | Orchestrator → Gov | Push campaign plans with budget, channels, flight dates, and target jurisdictions |
+| [`validate_plan_action`](./validate_plan_action) | Orchestrator → Gov | Pre-action check: "can I do this?" Returns a verdict |
+| [`report_plan_outcome`](./report_plan_outcome) | Orchestrator → Gov | Post-action report: "here's what happened." Gov updates state and returns any findings |
+| [`get_plan_audit_logs`](./get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
+
+`sync_plans` configures the rules. `validate_plan_action` and `report_plan_outcome` are the before/after pair that the orchestrator calls on every seller interaction. `get_plan_audit_logs` is read-only, for monitoring and reporting.

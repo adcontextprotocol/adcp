@@ -1,0 +1,137 @@
+---
+title: sync_plans
+---
+
+<Warning>
+**Draft for AdCP 3.0** - Campaign Governance is under active development. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Warning>
+
+# sync_plans
+
+Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and target jurisdictions -- and serves as the source of truth for all validation. Compliance policies are resolved from the brand's configuration, not carried in the plan.
+
+## Request
+
+```json
+{
+  "tool": "sync_plans",
+  "arguments": {
+    "plans": [
+      {
+        "plan_id": "plan_q1_2026_launch",
+        "brand": {
+          "domain": "acmecorp.com"
+        },
+        "objectives": "Drive awareness for spring product launch among 25-54 adults in the US, focusing on premium video and high-impact display.",
+        "budget": {
+          "total": 500000,
+          "currency": "USD",
+          "authority_level": "agent_limited",
+          "per_seller_max_pct": 40,
+          "reallocation_threshold": 25000
+        },
+        "channels": {
+          "required": ["olv"],
+          "allowed": ["olv", "display", "ctv", "audio"],
+          "mix_targets": {
+            "olv": { "min_pct": 40, "max_pct": 70 },
+            "display": { "min_pct": 10, "max_pct": 30 },
+            "ctv": { "min_pct": 0, "max_pct": 20 },
+            "audio": { "min_pct": 0, "max_pct": 10 }
+          }
+        },
+        "flight": {
+          "start": "2026-03-15T00:00:00Z",
+          "end": "2026-06-15T00:00:00Z"
+        },
+        "compliance": {
+          "jurisdictions": ["US"]
+        },
+        "approved_sellers": null,
+        "ext": {}
+      }
+    ]
+  }
+}
+```
+
+## Response
+
+```json
+{
+  "plans": [
+    {
+      "plan_id": "plan_q1_2026_launch",
+      "status": "active",
+      "version": 1,
+      "categories": [
+        { "category_id": "budget_authority", "status": "active" },
+        { "category_id": "strategic_alignment", "status": "active" },
+        { "category_id": "bias_fairness", "status": "active" },
+        { "category_id": "regulatory_compliance", "status": "active" },
+        { "category_id": "seller_verification", "status": "active" },
+        { "category_id": "brand_policy", "status": "active" }
+      ]
+    }
+  ]
+}
+```
+
+## How it works
+
+Plans originate in external systems -- an agency's planning tool, a brand's budget system, an insertion order. `sync_plans` pushes them to the governance agent so it knows what to validate against.
+
+Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions.
+
+Multiple campaigns (identified by `buyer_campaign_ref` in `validate_plan_action` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
+
+The plan specifies campaign context -- budget, channels, flight dates, and target jurisdictions. Compliance policies are not carried in the plan; they are resolved from the brand's [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration). This ensures that the buying team operates within policies defined by the brand's policy team, regardless of which orchestrator or agency executes the campaign.
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plans` | array | Yes | One or more campaign plans to sync. |
+| `plans[].plan_id` | string | Yes | Unique identifier for this plan. |
+| `plans[].brand` | BrandRef | Yes | Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies. |
+| `plans[].objectives` | string | Yes | Natural language campaign objectives. Used for strategic alignment validation. |
+| `plans[].budget` | object | Yes | Budget authorization parameters. |
+| `plans[].budget.total` | number | Yes | Total authorized budget. |
+| `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
+| `plans[].budget.authority_level` | enum | Yes | `agent_full`, `agent_limited`, or `human_required`. See [specification](/docs/governance/campaign/specification#budget-authority-levels). |
+| `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
+| `plans[].budget.reallocation_threshold` | number | No | Amount above which reallocations require escalation (for `agent_limited`). |
+| `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
+| `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
+| `plans[].compliance` | object | No | Campaign compliance context. |
+| `plans[].compliance.jurisdictions` | array | No | ISO 3166-1 alpha-2 country codes for the markets this campaign targets. The governance agent intersects these with the brand's compliance configuration to determine which jurisdiction-specific policies apply. |
+| `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
+| `plans[].ext` | object | No | Extension data. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plans` | array | Status for each synced plan. |
+| `plans[].plan_id` | string | Plan identifier. |
+| `plans[].status` | enum | `active` (sync succeeded) or `error` (sync failed). This is the sync result status, not the plan lifecycle status. |
+| `plans[].version` | number | Plan version (increments on each sync). |
+| `plans[].categories` | array | Validation categories active for this plan. Depends on the governance agent's declared capabilities. |
+| `plans[].categories[].category_id` | string | Validation category identifier. |
+| `plans[].categories[].status` | enum | `active` or `inactive`. |
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
+| `BRAND_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. |
+| `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
+
+## Related tasks
+
+- [`validate_plan_action`](./validate_plan_action) -- Validate actions against this plan
+- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes back to update plan state
+- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail
