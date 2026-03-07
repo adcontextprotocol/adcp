@@ -1754,7 +1754,7 @@
         }).format(product.amount_cents / 100);
 
         const tiers = product.revenue_tiers?.length > 0
-          ? `<span class="product-tiers">(${product.revenue_tiers.join(', ')})</span>`
+          ? `<span class="product-tiers">(${product.revenue_tiers.map(t => escapeHtml(t)).join(', ')})</span>`
           : '';
 
         return `
