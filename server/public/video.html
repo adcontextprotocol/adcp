@@ -6,7 +6,6 @@
   <title>Video chat with Addie - Agentic Advertising</title>
   <link rel="icon" type="image/svg+xml" href="/AAo.svg">
   <link rel="stylesheet" href="/design-system.css">
-  <script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
   <style>
     * {
       margin: 0;
@@ -65,6 +64,8 @@
       align-items: center;
       justify-content: center;
       padding: 32px 16px;
+      min-height: 0;
+      overflow: hidden;
     }
 
     /* Pre-call state */
@@ -142,23 +143,30 @@
     #call-container {
       display: none;
       width: 100%;
-      max-width: 960px;
+      flex: 1;
       flex-direction: column;
-      gap: 16px;
+      min-height: 0;
+    }
+
+    .frame-wrapper {
+      flex: 1;
+      position: relative;
+      min-height: 0;
     }
 
     #call-frame {
+      position: absolute;
+      inset: 0;
       width: 100%;
-      aspect-ratio: 16 / 9;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid var(--color-border);
-      background: var(--color-gray-950);
+      height: 100%;
+      border: none;
     }
 
     .call-controls {
+      flex-shrink: 0;
       display: flex;
       justify-content: center;
+      padding: 12px;
     }
 
     .end-btn {
@@ -221,7 +229,9 @@
     </div>
 
     <div id="call-container">
-      <div id="call-frame"></div>
+      <div class="frame-wrapper">
+        <iframe id="call-frame" allow="camera; microphone; autoplay; display-capture"></iframe>
+      </div>
       <div class="call-controls">
         <button class="end-btn" onclick="endCall()">
           End conversation
@@ -231,12 +241,11 @@
   </main>
 
   <script>
-    let callFrame = null;
-
     function showState(state) {
       document.getElementById('pre-call').style.display = state === 'pre-call' ? 'block' : 'none';
       document.getElementById('loading').style.display = state === 'loading' ? 'block' : 'none';
       document.getElementById('call-container').style.display = state === 'active' ? 'flex' : 'none';
+      document.querySelector('.main').style.padding = state === 'active' ? '0' : '';
     }
 
     function showError(message) {
@@ -266,57 +275,19 @@
         return;
       }
 
-      try {
-        callFrame = window.DailyIframe.createFrame(
-          document.getElementById('call-frame'),
-          {
-            showLeaveButton: false,
-            showFullscreenButton: true,
-            iframeStyle: {
-              width: '100%',
-              height: '100%',
-              border: 'none',
-            },
-            theme: {
-              // Daily.co's iframe API does not support CSS variables.
-              // These values must match --color-primary-700, --color-gray-950, --color-gray-100
-              // in design-system.css.
-              colors: {
-                accent: '#1a36b4',
-                background: '#0a0a0a',
-                baseText: '#f3f4f6',
-              },
-            },
-          }
-        );
-
-        callFrame.on('left-meeting', () => {
-          endCall();
-        });
-
-        callFrame.on('error', (e) => {
-          showState('pre-call');
-          showError('Video error: ' + (e?.errorMsg || 'unknown'));
-        });
-
-        if (!conversationUrl?.startsWith('https://')) {
-          throw new Error('Invalid conversation URL');
-        }
-        await callFrame.join({ url: conversationUrl });
-        showState('active');
-      } catch (err) {
+      if (!conversationUrl?.startsWith('https://')) {
         showState('pre-call');
-        showError(err.message || 'Failed to join call. Please try again.');
-        callFrame = null;
+        showError('Invalid conversation URL');
+        return;
       }
+
+      document.getElementById('call-frame').src = conversationUrl;
+      showState('active');
     }
 
-    async function endCall() {
-      if (callFrame) {
-        try { await callFrame.destroy(); } catch (_) {}
-        callFrame = null;
-      }
-      document.getElementById('call-frame').innerHTML = '';
+    function endCall() {
+      const frame = document.getElementById('call-frame');
+      frame.src = 'about:blank';
       document.getElementById('start-btn').disabled = false;
       showState('pre-call');
     }

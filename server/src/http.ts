@@ -694,7 +694,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat') {
         return next();
       }
 
@@ -1518,6 +1518,7 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content - unified CMS for all authenticated users
     this.app.get('/my-content', async (req, res) => {

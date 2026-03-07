@@ -16,7 +16,7 @@ import { logger } from '../logger.js';
 // TYPES
 // =====================================================
 
-export type ThreadChannel = 'slack' | 'web' | 'a2a' | 'email';
+export type ThreadChannel = 'slack' | 'web' | 'a2a' | 'email' | 'video';
 export type UserType = 'slack' | 'workos' | 'agent' | 'anonymous';
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
 export type MessageOutcome = 'resolved' | 'partially_resolved' | 'unresolved' | 'escalated' | 'unknown';
