@@ -2479,12 +2479,12 @@ export class HTTPServer {
     });
 
     // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
-    this.app.get('/brand/view/:domain(*)', async (req, res) => {
+    this.app.get('/brand/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
     });
 
     // GET /property/view/:domain - Property viewer page (wildcard captures dots in domain names)
-    this.app.get('/property/view/:domain(*)', async (req, res) => {
+    this.app.get('/property/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
