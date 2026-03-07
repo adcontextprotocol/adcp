@@ -118,13 +118,14 @@ export function createCertificationRouters() {
   userRouter.get('/certification/progress', async (req, res) => {
     try {
       const userId = req.user!.id;
-      const [progress, trackProgress, certifications] = await Promise.all([
+      const [progress, trackProgress, certifications, credentials] = await Promise.all([
         certDb.getProgress(userId),
         certDb.getTrackProgress(userId),
         certDb.getUserCertifications(userId),
+        certDb.getPublicUserCredentials(userId),
       ]);
 
-      res.json({ progress, trackProgress, certifications });
+      res.json({ progress, trackProgress, certifications, credentials });
     } catch (error) {
       logger.error({ error }, 'Failed to get certification progress');
       res.status(500).json({ error: 'Internal server error' });
@@ -225,7 +226,7 @@ export function createCertificationRouters() {
   // GET /api/me/certification/credentials — earned credentials
   userRouter.get('/certification/credentials', async (req, res) => {
     try {
-      const credentials = await certDb.getUserCredentials(req.user!.id);
+      const credentials = await certDb.getPublicUserCredentials(req.user!.id);
       res.json({ credentials });
     } catch (error) {
       logger.error({ error }, 'Failed to get user credentials');

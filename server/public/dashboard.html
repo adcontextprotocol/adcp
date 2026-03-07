@@ -2777,7 +2777,7 @@
         }
 
         const data = await progressResp.json();
-        const { progress = [], certifications = [] } = data;
+        const { progress = [], credentials = [], certifications = [] } = data;
 
         // Get total module count from tracks API (progress only has started modules)
         let totalModules = 16; // fallback
@@ -2788,7 +2788,10 @@
 
         const completedModules = progress.filter(p => p.status === 'completed').length;
         const inProgressModules = progress.filter(p => p.status === 'in_progress').length;
-        const earnedCredentials = certifications.filter(c => c.status === 'passed');
+        // Use credentials (from user_credentials table with name/tier) or fall back to certifications (legacy exam attempts)
+        const earnedCredentials = credentials.length > 0
+          ? credentials.map(c => ({ tier: c.tier, track_name: c.credential_name }))
+          : certifications.filter(c => c.status === 'passed');
 
         // Credential tier badges
         const tierLabels = { 1: 'Basics', 2: 'Practitioner', 3: 'Specialist' };
