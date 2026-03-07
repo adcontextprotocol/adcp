@@ -44,9 +44,7 @@ Push campaign plans to the governance agent. A plan defines the authorized param
           "start": "2026-03-15T00:00:00Z",
           "end": "2026-06-15T00:00:00Z"
         },
-        "compliance": {
-          "jurisdictions": ["US"]
-        },
+        "countries": ["US"],
         "approved_sellers": null,
         "ext": {}
       }
@@ -87,12 +85,12 @@ Multiple campaigns (identified by `buyer_campaign_ref` in `validate_plan_action`
 
 The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. Compliance policies are not carried in the plan; they are resolved from the brand's [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration). This ensures that the buying team operates within policies defined by the brand's policy team, regardless of which orchestrator or agency executes the campaign.
 
-`compliance.jurisdictions` serves two purposes:
+`countries` and `regions` serve two purposes:
 
-1. **Geo authorization** -- The governance agent rejects media buys targeting outside the authorized markets. A plan with `jurisdictions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
-2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan targeting `["US"]` is subject to all US federal and state-level policies. A plan targeting `["US-MA"]` is only subject to Massachusetts-specific and federal policies.
+1. **Geo authorization** -- The governance agent rejects media buys targeting outside the authorized markets. A plan with `regions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
+2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
-Subdivision codes (ISO 3166-2) allow fine-grained market authorization. A pharma campaign running nationally uses `["US"]`; a cannabis campaign limited to legal states uses `["US-CO", "US-CA", "US-MA"]`.
+These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
 
 ## Fields
 
@@ -112,8 +110,8 @@ Subdivision codes (ISO 3166-2) allow fine-grained market authorization. A pharma
 | `plans[].budget.reallocation_threshold` | number | No | Amount above which reallocations require escalation (for `agent_limited`). |
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
 | `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
-| `plans[].compliance` | object | No | Campaign compliance context. |
-| `plans[].compliance.jurisdictions` | array | No | ISO 3166-1 alpha-2 country codes (or ISO 3166-2 subdivisions like `US-MA`) for the markets this campaign is authorized to run in. Serves two purposes: geo authorization (reject buys targeting outside these markets) and policy resolution (find policies whose jurisdictions overlap). |
+| `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects buys targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
+| `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
 | `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
 | `plans[].ext` | object | No | Extension data. |
 

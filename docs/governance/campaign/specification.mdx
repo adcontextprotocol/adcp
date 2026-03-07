@@ -48,9 +48,7 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
     "start": "2026-03-15T00:00:00Z",
     "end": "2026-06-15T00:00:00Z"
   },
-  "compliance": {
-    "jurisdictions": ["US"]
-  },
+  "countries": ["US"],
   "approved_sellers": null,
   "ext": {}
 }
@@ -126,10 +124,10 @@ When a plan is synced, the governance agent resolves applicable policies through
 1. Resolve the brand from `brand.domain` via the [Brand Protocol](/docs/brand-protocol/index)
 2. Retrieve the brand's compliance configuration
 3. Load referenced registry policies by ID, plus any vertical-specific registry policies matched by the brand's `verticals` declaration
-4. Intersect with the plan's `compliance.jurisdictions` -- only policies applicable to the authorized markets are active. Supports both ISO 3166-1 alpha-2 country codes (`US`, `GB`) and ISO 3166-2 subdivisions (`US-MA`, `US-CA`) for state/region-level targeting
-5. Include all custom brand policies (these apply regardless of jurisdiction)
+4. Intersect with the plan's `countries` and `regions` -- only policies applicable to the authorized markets are active
+5. Include all custom brand policies (these apply regardless of geography)
 
-The `compliance.jurisdictions` field also serves as **geo authorization**: the governance agent MUST reject media buys targeting markets outside the plan's authorized jurisdictions. A plan with `jurisdictions: ["US-MA"]` rejects buys not explicitly targeting Massachusetts, even if they are otherwise compliant.
+The plan's `countries` and `regions` fields also serve as **geo authorization**: the governance agent MUST reject media buys targeting markets outside the plan's authorized geography. A plan with `regions: ["US-MA"]` rejects buys not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
 The resolved policy set is what the governance agent evaluates during [`validate_plan_action`](/docs/governance/campaign/tasks/validate_plan_action). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 

@@ -65,7 +65,7 @@ The orchestrator cannot bypass or modify compliance policies because it does not
 
 The governance agent resolves applicable policies through the brand reference in the plan:
 
-1. The plan includes `brand.domain` (required) and `compliance.jurisdictions` (authorized markets for this campaign)
+1. The plan includes `brand.domain` (required) and `countries`/`regions` (authorized markets for this campaign)
 2. The governance agent resolves the brand via the [Brand Protocol](/docs/brand-protocol/index) and retrieves its compliance configuration
 3. The brand configuration references standardized policies from the **policy registry** by ID and includes any custom brand-specific policies
 4. The governance agent intersects these policies with the plan's authorized markets -- only policies applicable to those markets are active for this plan
@@ -103,7 +103,7 @@ Each phase builds on context from earlier phases. During **purchase**, the gover
 | `budget_authority` | Spend within authorized limits, per-seller concentration, reallocation magnitude |
 | `strategic_alignment` | Channel mix, audience match, publisher quality tier, brief consistency |
 | `bias_fairness` | Protected category targeting, audience composition, disparate impact |
-| `regulatory_compliance` | Jurisdiction-specific regulations resolved from the brand's compliance configuration and the plan's target jurisdictions |
+| `regulatory_compliance` | Jurisdiction-specific regulations resolved from the brand's compliance configuration and the plan's authorized countries/regions |
 | `seller_verification` | Configuration accuracy, undisclosed changes, delivery plausibility |
 | `brand_policy` | Brand-level compliance policies resolved from the brand configuration and policy registry -- competitor separation, category adjacency, custom brand rules |
 
