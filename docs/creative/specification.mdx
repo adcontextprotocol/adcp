@@ -16,7 +16,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 The Creative Protocol defines a standard interface for creative format discovery, manifest validation, creative generation, and preview rendering. This protocol enables AI agents to discover format specifications, build compliant creative assets, and generate previews across advertising platforms.
 
-## Protocol Overview
+## Protocol overview
 
 The Creative Protocol provides:
 
@@ -26,7 +26,7 @@ The Creative Protocol provides:
 - Preview rendering for creative verification
 - Universal macros for cross-platform tracking
 
-## Transport Requirements
+## Transport requirements
 
 Creative agents MUST support at least one of the following transports:
 
@@ -55,9 +55,9 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 
 The `creative` capabilities tell the buyer which interaction models this agent supports. See [Interaction models](#interaction-models) below.
 
-## Core Concepts
+## Core concepts
 
-### Creative Agents
+### Creative agents
 
 Creative agents are authoritative sources for format definitions. A creative agent:
 
@@ -76,7 +76,7 @@ Creative agents serve different roles depending on their capabilities. Buyers us
 | **Generative agent** | Creates manifests from natural language briefs | `supports_generation: true` | AI creative platforms |
 | **Creative ad server** | Hosts a creative library, generates ad-serving tags | `has_creative_library: true` | Flashtalking, CM360, Celtra |
 
-These models compose — an agent can support multiple. A creative ad server with `supports_generation: true` and `has_creative_library: true` can both generate creatives from briefs and retrieve existing ones from its library.
+These models compose — an agent can support multiple. A creative ad server with `supports_generation: true` and `has_creative_library: true` can both generate creatives from briefs and retrieve existing ones from its library. The `supports_compliance` flag is orthogonal — any interaction model can support compliance requirements in briefs.
 
 **Buyer workflow by model:**
 
@@ -86,7 +86,7 @@ These models compose — an agent can support multiple. A creative ad server wit
 
 Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
-### Format Authority
+### Format authority
 
 Each format has exactly one authoritative creative agent, identified by the `agent_url` in the format ID:
 
@@ -134,7 +134,7 @@ Manifests pair format specifications with actual asset content. A manifest provi
 
 Creative agents MUST validate manifests against format requirements before accepting them.
 
-### Universal Macros
+### Universal macros
 
 AdCP defines universal macros for cross-platform tracking. Creative agents MUST support these macros in tracking URLs:
 
@@ -225,7 +225,7 @@ Retrieve creative delivery data with variant-level metrics.
 - Creative agents MUST return delivery data for the requested creatives
 - Creative agents SHOULD include variant-level breakdowns when available
 
-## Error Handling
+## Error handling
 
 Creative agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
 
@@ -237,19 +237,19 @@ Common error codes:
 - `ASSET_INVALID`: Asset does not meet format constraints
 - `GENERATION_FAILED`: Creative generation could not be completed
 
-## Security Considerations
+## Security considerations
 
-### Transport Security
+### Transport security
 
 All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
-### Asset Security
+### Asset security
 
 - Creative agents SHOULD validate that asset URLs are accessible
 - Creative agents SHOULD scan assets for malware and malicious content
 - Creative agents MUST NOT execute untrusted JavaScript during validation
 
-### Preview Security
+### Preview security
 
 - Preview URLs SHOULD be time-limited (indicated by `expires_at`)
 - Creative agents SHOULD sandbox HTML previews to prevent script execution
@@ -257,7 +257,7 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 ## Conformance
 
-### Creative Agent Conformance
+### Creative agent conformance
 
 A conformant Creative Protocol agent MUST:
 
@@ -277,7 +277,7 @@ A conformant Creative Protocol agent SHOULD:
 6. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
 7. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
 
-### Consumer Conformance
+### Consumer conformance
 
 A conformant Creative Protocol consumer MUST:
 
@@ -286,9 +286,9 @@ A conformant Creative Protocol consumer MUST:
 3. Handle validation errors appropriately
 4. Track visited URLs when recursively discovering formats to avoid infinite loops
 
-## Implementation Notes
+## Implementation notes
 
-### Response Time Expectations
+### Response time expectations
 
 Creative agents SHOULD target the following response times:
 
@@ -299,7 +299,7 @@ Creative agents SHOULD target the following response times:
 | Batch preview (10 creatives) | < 10 seconds |
 | Creative generation (build_creative) | < 60 seconds |
 
-### Recursive Format Discovery
+### Recursive format discovery
 
 Creative agents MAY reference other creative agents in their `list_creative_formats` response:
 
@@ -317,7 +317,7 @@ Consumers MAY recursively query referenced agents to discover additional formats
 
 Consumers MUST track visited URLs to prevent infinite loops during recursive discovery.
 
-### Format-Aware Validation
+### Format-aware validation
 
 Manifest validation MUST be performed in the context of the format specification:
 
@@ -327,14 +327,14 @@ Manifest validation MUST be performed in the context of the format specification
 
 The format definition determines what type each asset_id should be. Asset type information is NOT included in the manifest itself.
 
-### Standard vs Custom Formats
+### Standard vs custom formats
 
 - **Standard formats**: Based on IAB specifications, hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
 - **Custom formats**: Defined by individual publishers or creative platforms for specialized inventory
 
 Both work identically—the `agent_url` field identifies which agent is authoritative for each format.
 
-## Schema Reference
+## Schema reference
 
 | Schema | Description |
 |--------|-------------|

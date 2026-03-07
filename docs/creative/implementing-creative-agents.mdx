@@ -5,7 +5,7 @@ title: Implementing Creative Agents
 
 This guide explains how to implement a creative agent that defines and manages creative formats.
 
-## What is a Creative Agent?
+## What is a creative agent?
 
 A creative agent is a service that:
 - **Defines formats** - Specifies what assets are required and how they should be structured
@@ -16,9 +16,9 @@ A creative agent is a service that:
 
 Creative agents are independent of sales agents. An ad server (CM360, Flashtalking), creative management platform, creative agency, or publisher can implement a creative agent.
 
-## Core Requirements
+## Core requirements
 
-### 1. Format ID Namespacing
+### 1. Format ID namespacing
 
 Every format you define must use namespaced format IDs to prevent conflicts.
 
@@ -34,7 +34,7 @@ Every format you define must use namespaced format IDs to prevent conflicts.
 - Format ID portion should be descriptive and unique within your namespace
 - Use lowercase with underscores for consistency
 
-### 2. Format Validation
+### 2. Format validation
 
 When formats reference your agent_url, you are the authority for:
 - Format specifications
@@ -92,7 +92,7 @@ When formats reference your agent_url, you are the authority for:
 }
 ```
 
-## Required Tasks
+## Required tasks
 
 Creative agents must implement these two tasks:
 
@@ -119,7 +119,7 @@ Generate a visual preview showing how a creative manifest will render in your fo
 
 See [preview_creative task reference](/docs/creative/task-reference/preview_creative) for complete API specification.
 
-## Optional Tasks
+## Optional tasks
 
 ### build_creative
 
@@ -146,9 +146,9 @@ Browse and filter creatives in your library. Implement this if your platform hos
 
 See [list_creatives task reference](/docs/creative/task-reference/list_creatives) for complete API specification.
 
-## Validation Best Practices
+## Validation best practices
 
-### Manifest Validation
+### Manifest validation
 
 When validating manifests:
 
@@ -179,7 +179,7 @@ When validating manifests:
 }
 ```
 
-### Handling disclosure requirements
+### Disclosure requirements
 
 When a creative brief includes `compliance.required_disclosures`, creative agents must ensure each disclosure appears in the generated creative. The workflow:
 
@@ -197,7 +197,7 @@ When a creative brief includes `compliance.required_disclosures`, creative agent
 
 **Example:** A brief requires `"SEC Rule 156"` disclosure at `footer` position. Your format declares `supported_disclosure_positions: ["footer", "overlay"]`. The creative agent renders the disclosure text in the footer area of the generated image.
 
-### Format Evolution
+### Format evolution
 
 When updating format definitions:
 
@@ -206,7 +206,7 @@ When updating format definitions:
 - Consider versioning: `youragency.com:format_name_v2`
 - Maintain backward compatibility when possible
 
-## Deployment Checklist
+## Deployment checklist
 
 Before launching your creative agent:
 
@@ -218,9 +218,9 @@ Before launching your creative agent:
 - [ ] Format definitions include complete asset requirements
 - [ ] Documentation available for your custom formats
 
-## Integration Patterns
+## Integration patterns
 
-### Pattern 1: Creative Agency
+### Pattern 1: creative agency
 
 You're a creative agency building custom formats for brands:
 
@@ -241,7 +241,7 @@ You're a creative agency building custom formats for brands:
 }
 ```
 
-### Pattern 2: Platform-Specific Formats
+### Pattern 2: platform-specific formats
 
 You're a platform defining specialized formats:
 
@@ -262,7 +262,7 @@ You're a platform defining specialized formats:
 }
 ```
 
-### Pattern 3: Format Extension Service
+### Pattern 3: format extension service
 
 You provide enhanced versions of standard formats:
 
@@ -335,9 +335,9 @@ Platforms use their own macro syntax internally. The `macro_values` parameter in
 
 | Universal macro | CM360 equivalent | Flashtalking equivalent |
 |---|---|---|
-| `{CLICK_URL}` | `%c` | `[clickTag]` |
-| `{CACHEBUSTER}` | `%n` | `[timestamp]` |
-| `{TIMESTAMP}` | `%t` | `[timestamp]` |
+| `CLICK_URL` | `%c` | `[clickTag]` |
+| `CACHEBUSTER` | `%n` | `[timestamp]` |
+| `TIMESTAMP` | `%t` | `[timestamp]` |
 
 The creative agent handles translation — callers always use universal macros.
 
@@ -356,7 +356,7 @@ Declare these capabilities in `get_adcp_capabilities` so buyer agents can determ
 
 Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. This is the same accounts protocol used by sales agents for media buys.
 
-## Related documentation
+## Related
 
 - [Creative Formats](/docs/creative/formats) - Understanding format structure
 - [Creative Manifests](/docs/creative/creative-manifests) - How manifests work

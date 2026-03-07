@@ -27,7 +27,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
-| `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`) or platform-specific names; values are the literal substitution strings. All occurrences are replaced. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
+| `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
