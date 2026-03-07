@@ -56,7 +56,7 @@ The governance agent runs **buyer-side**. The brand's policy team configures it 
 Campaign Governance enforces an automated separation between **who defines policies** and **who executes campaigns**:
 
 - The **policy team** selects applicable compliance policies from the [policy registry](#policy-resolution), configures brand-specific rules, and maintains the brand's compliance profile. This configuration lives at the brand level (in brand.json), not in individual campaign plans.
-- The **buying team** (or agency) operates the orchestrator, creates campaign plans, and executes media buys. Plans specify campaign context -- budget, channels, flight dates, target jurisdictions -- but never carry compliance policies.
+- The **buying team** (or agency) operates the orchestrator, creates campaign plans, and executes media buys. Plans specify campaign context -- budget, channels, flight dates, authorized markets -- but never carry compliance policies.
 - The **governance agent** resolves applicable policies from the brand's compliance configuration and validates every orchestrator action against them.
 
 The orchestrator cannot bypass or modify compliance policies because it does not carry them. When a regulation changes, the policy team updates the brand configuration once and all active campaigns pick up the change automatically.
@@ -65,11 +65,12 @@ The orchestrator cannot bypass or modify compliance policies because it does not
 
 The governance agent resolves applicable policies through the brand reference in the plan:
 
-1. The plan includes `brand.domain` (required) and `compliance.jurisdictions` (which markets this campaign targets)
+1. The plan includes `brand.domain` (required) and `compliance.jurisdictions` (authorized markets for this campaign)
 2. The governance agent resolves the brand via the [Brand Protocol](/docs/brand-protocol/index) and retrieves its compliance configuration
 3. The brand configuration references standardized policies from the **policy registry** by ID and includes any custom brand-specific policies
-4. The governance agent intersects these policies with the campaign's jurisdictions -- only policies applicable to those markets are active for this plan
+4. The governance agent intersects these policies with the plan's authorized markets -- only policies applicable to those markets are active for this plan
 5. The resolved policy set is what gets evaluated during `validate_plan_action`
+6. Media buys targeting outside the authorized markets are rejected regardless of policy compliance
 
 The **policy registry** is a community-maintained library of standardized, machine-readable advertising compliance policies -- covering jurisdictions (UK HFSS restrictions, US COPPA, EU GDPR), verticals (alcohol, pharma, gambling, financial services), and brand safety baselines. Brands select applicable policies from the registry rather than writing their own. See the [specification](/docs/governance/campaign/specification#brand-compliance-configuration) for details.
 

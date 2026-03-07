@@ -105,7 +105,7 @@
               "jurisdictions": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "ISO 3166-1 alpha-2 country codes for the markets this campaign targets. The governance agent intersects these with the brand's compliance configuration to determine which jurisdiction-specific policies apply."
+                "description": "ISO 3166-1 alpha-2 country codes (or ISO 3166-2 subdivision codes like 'US-MA') for the markets this campaign is authorized to run in. Serves two purposes: (1) Geo authorization — the governance agent rejects media buys targeting outside these markets. (2) Policy resolution — the agent finds all policies whose jurisdictions overlap with these markets. A plan with jurisdictions ['US'] is subject to all US federal and state policies; a plan with ['US-MA'] is only subject to Massachusetts-specific and federal policies, but must reject buys not explicitly targeting MA."
               }
             },
             "additionalProperties": false

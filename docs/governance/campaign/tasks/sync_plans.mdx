@@ -8,7 +8,7 @@ title: sync_plans
 
 # sync_plans
 
-Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and target jurisdictions -- and serves as the source of truth for all validation. Compliance policies are resolved from the brand's configuration, not carried in the plan.
+Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets -- and serves as the source of truth for all validation. Compliance policies are resolved from the brand's configuration, not carried in the plan.
 
 ## Request
 
@@ -85,7 +85,14 @@ Syncing a plan that already exists (same `plan_id`) updates it. The governance a
 
 Multiple campaigns (identified by `buyer_campaign_ref` in `validate_plan_action` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
-The plan specifies campaign context -- budget, channels, flight dates, and target jurisdictions. Compliance policies are not carried in the plan; they are resolved from the brand's [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration). This ensures that the buying team operates within policies defined by the brand's policy team, regardless of which orchestrator or agency executes the campaign.
+The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. Compliance policies are not carried in the plan; they are resolved from the brand's [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration). This ensures that the buying team operates within policies defined by the brand's policy team, regardless of which orchestrator or agency executes the campaign.
+
+`compliance.jurisdictions` serves two purposes:
+
+1. **Geo authorization** -- The governance agent rejects media buys targeting outside the authorized markets. A plan with `jurisdictions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
+2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan targeting `["US"]` is subject to all US federal and state-level policies. A plan targeting `["US-MA"]` is only subject to Massachusetts-specific and federal policies.
+
+Subdivision codes (ISO 3166-2) allow fine-grained market authorization. A pharma campaign running nationally uses `["US"]`; a cannabis campaign limited to legal states uses `["US-CO", "US-CA", "US-MA"]`.
 
 ## Fields
 
@@ -106,7 +113,7 @@ The plan specifies campaign context -- budget, channels, flight dates, and targe
 | `plans[].channels` | object | No | Channel constraints. If omitted, all channels are allowed. |
 | `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
 | `plans[].compliance` | object | No | Campaign compliance context. |
-| `plans[].compliance.jurisdictions` | array | No | ISO 3166-1 alpha-2 country codes for the markets this campaign targets. The governance agent intersects these with the brand's compliance configuration to determine which jurisdiction-specific policies apply. |
+| `plans[].compliance.jurisdictions` | array | No | ISO 3166-1 alpha-2 country codes (or ISO 3166-2 subdivisions like `US-MA`) for the markets this campaign is authorized to run in. Serves two purposes: geo authorization (reject buys targeting outside these markets) and policy resolution (find policies whose jurisdictions overlap). |
 | `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
 | `plans[].ext` | object | No | Extension data. |
 
