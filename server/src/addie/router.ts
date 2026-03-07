@@ -236,6 +236,11 @@ export const ROUTING_RULES = {
       tools: ['search_resources', 'web_search'],
       description: 'Industry news and trends',
     },
+    certification: {
+      patterns: ['certification', 'certify', 'certified', 'certificate', 'training', 'course', 'module', 'lesson', 'exam', 'learn adcp', 'get certified', 'capstone', 'badge'],
+      tools: ['list_certification_tracks', 'get_certification_module', 'start_certification_module', 'complete_certification_module', 'get_learner_progress', 'start_certification_exam', 'complete_certification_exam'],
+      description: 'AdCP certification program — learning modules, exercises, and exams',
+    },
   },
 
   /**

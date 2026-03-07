@@ -79,6 +79,7 @@
         items: [
           { href: isDashboardPage ? '#profile' : '/dashboard#profile', label: 'Profile', icon: '🏢', anchor: 'profile' },
           { href: isDashboardPage ? '#team' : '/dashboard#team', label: 'Team', icon: '👥', anchor: 'team' },
+          { href: isDashboardPage ? '#certification' : '/dashboard#certification', label: 'Certification', icon: '🎓', anchor: 'certification' },
           { href: isDashboardPage ? '#membership' : '/dashboard#membership', label: 'Membership', icon: '⭐', anchor: 'membership' },
           { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
           { href: '/dashboard/emails', label: 'Email preferences', icon: '📧' },
