@@ -3985,14 +3985,16 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'manage.html'));
     this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
-    this.app.get('/manage/prospects', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-prospects.html'));
-    this.app.get('/manage/accounts', requireAuth, (req, res) => res.redirect(302, '/admin/accounts'));
+    this.app.get('/manage/prospects', requireAuth, (req, res) => res.redirect(301, '/manage/accounts'));
+    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
+    this.app.get('/manage/accounts/:orgId', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
     this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
 
     // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(302, '/manage/prospects'));
+    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
     this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
 
     // Admin routes

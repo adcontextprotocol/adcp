@@ -88,12 +88,9 @@ export function setupAccountRoutes(
   apiRouter: Router
 ): void {
 
-  // Page route for unified account list
-  pageRouter.get("/accounts", requireAuth, requireManage, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
-      logger.error({ err }, "Error serving accounts page");
-      res.status(500).send("Internal server error");
-    });
+  // Redirect to manage accounts page
+  pageRouter.get("/accounts", requireAuth, (req, res) => {
+    res.redirect(301, "/manage/accounts");
   });
 
   // Page route for domain discovery tool
@@ -122,16 +119,12 @@ export function setupAccountRoutes(
     }
   );
 
-  // Page route for unified account detail
+  // Redirect account detail to manage
   pageRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireManage,
     (req, res) => {
-      serveHtmlWithConfig(req, res, "admin-account-detail.html").catch((err) => {
-        logger.error({ err }, "Error serving admin account detail page");
-        res.status(500).send("Internal server error");
-      });
+      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
     }
   );
 
@@ -139,9 +132,8 @@ export function setupAccountRoutes(
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
-    requireManage,
     (req, res) => {
-      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
+      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
     }
   );
 
@@ -167,6 +159,7 @@ export function setupAccountRoutes(
           members,
           disqualified,
           missingOwner,
+          openInvoices,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -305,6 +298,14 @@ export function setupAccountRoutes(
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
+
+          // Open invoices
+          pool.query(`
+            SELECT COUNT(DISTINCT o.workos_organization_id) as count
+            FROM organizations o
+            INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
+            WHERE oi.status IN ('draft', 'open')
+          `),
         ]);
 
         res.json({
@@ -318,6 +319,7 @@ export function setupAccountRoutes(
           members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
           missing_owner: parseInt(missingOwner.rows[0].count),
+          open_invoices: parseInt(openInvoices.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
