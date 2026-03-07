@@ -1,0 +1,144 @@
+---
+title: "Publisher / seller track"
+sidebarTitle: Publisher track
+description: Build and operate an AdCP sales agent. Product catalog design, creative specifications, measurement, and reporting.
+---
+
+# Publisher / seller track (B1–B3)
+
+<Info>
+**Members only** — Requires A3 completion. Three modules, ~45 minutes total.
+</Info>
+
+This track teaches you to build and operate the supply side of AdCP. You'll learn how sales agents represent publisher inventory, how buyer agents discover and evaluate your products, and how to expose delivery data and signals for measurement.
+
+Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
+
+---
+
+## B1: Building your sales agent
+
+**~15 min** | Prerequisite: A3
+
+How a hosted sales agent works: product discovery, audience targeting, pricing. Walkthrough of the Hosted Sales Agent Builder and how to define your product catalog.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Product discovery" icon="magnifying-glass" href="/docs/media-buy/product-discovery/index">
+    How buyer agents discover publisher inventory through `get_products`.
+  </Card>
+  <Card title="get_products task" icon="code" href="/docs/media-buy/task-reference/get_products">
+    Task reference: request schema, response schema, and examples.
+  </Card>
+  <Card title="Media products" icon="cube" href="/docs/media-buy/product-discovery/media-products">
+    How to structure products: formats, pricing, targeting, and availability.
+  </Card>
+  <Card title="Authorized properties" icon="shield-check" href="/docs/governance/property/authorized-properties">
+    How publishers declare and authorize their properties for agentic transactions.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Sales agent role** — your always-on, AI-powered sales team that responds to buyer queries
+- **Product catalog design** — products, formats, pricing models, targeting options, availability
+- **Agent guardrails** — minimum CPMs, maximum discounts, acceptable content categories
+- **Multi-agent concurrency** — handling simultaneous buyer queries
+
+<Card title="Start B1 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module B1."
+</Card>
+
+---
+
+## B2: Product discovery and creative specifications
+
+**~18 min** | Prerequisite: B1
+
+Deep dive on `get_products`, `list_creative_formats`, and how buyer agents discover your inventory. Guide to structuring a product catalog and creative specs for maximum discoverability.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="Brief expectations" icon="file-lines" href="/docs/media-buy/product-discovery/brief-expectations">
+    What buyer briefs look like and how to structure products so agents can match them.
+  </Card>
+  <Card title="Example briefs" icon="clipboard-list" href="/docs/media-buy/product-discovery/example-briefs">
+    Real examples of product discovery queries from buyer agents.
+  </Card>
+  <Card title="list_creative_formats task" icon="palette" href="/docs/media-buy/task-reference/list_creative_formats">
+    How creative format specifications work — dimensions, file types, render requirements.
+  </Card>
+  <Card title="Creative formats" icon="image" href="/docs/creative/formats">
+    Format definitions, technical specs, and the renders structure.
+  </Card>
+  <Card title="Implementing standard formats" icon="ruler-combined" href="/docs/media-buy/capability-discovery/implementing-standard-formats">
+    Standard format IDs and how to implement them consistently.
+  </Card>
+  <Card title="Product refinement" icon="filter" href="/docs/media-buy/product-discovery/refinement">
+    How buyer agents refine searches and negotiate product parameters.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **get_products response schema** — products, format_types, targeting_options, pricing
+- **Creative format specifications** — dimensions, file types, max sizes, renders
+- **Catalog optimization** — making inventory easy for AI agents to evaluate
+
+<Card title="Start B2 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module B2."
+</Card>
+
+---
+
+## B3: Measurement, reporting, and optimization
+
+**~12 min** | Prerequisite: B2
+
+How to expose delivery data, measurement signals, and optimization levers through your sales agent. Integration with measurement platforms, lift testing, and attribution.
+
+### Reading list
+
+<CardGroup cols={2}>
+  <Card title="get_media_buy_delivery task" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
+    Delivery metrics: impressions, spend, completion rates, and performance data.
+  </Card>
+  <Card title="Optimization and reporting" icon="chart-mixed" href="/docs/media-buy/media-buys/optimization-reporting">
+    How buyer agents use delivery data for campaign optimization.
+  </Card>
+  <Card title="Signals overview" icon="signal" href="/docs/signals/overview">
+    The signals protocol: audience segments, contextual signals, measurement data.
+  </Card>
+  <Card title="get_signals task" icon="code" href="/docs/signals/tasks/get_signals">
+    Signal discovery: what measurement data is available and how to expose it.
+  </Card>
+  <Card title="activate_signal task" icon="toggle-on" href="/docs/signals/tasks/activate_signal">
+    Enabling specific measurement on a campaign.
+  </Card>
+  <Card title="update_media_buy task" icon="pen-to-square" href="/docs/media-buy/task-reference/update_media_buy">
+    How buyer agents adjust campaigns based on performance data.
+  </Card>
+</CardGroup>
+
+### Key concepts
+
+- **Delivery reporting** — accurate, timely delivery data via `get_media_buy_delivery`
+- **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
+- **Optimization loop** — buyers use delivery + signals data to update campaigns within guardrails
+
+<Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module B3."
+</Card>
+
+---
+
+## What's next
+
+After completing B1–B3, you've earned the **AdCP practitioner** credential. From here you can pursue specialist capstones:
+
+- [Media buy specialist](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [Creative specialist](/docs/learning/specialist/creative) — asset workflows, format compliance
+- [Signals specialist](/docs/learning/specialist/signals) — measurement, attribution, optimization
+- [Governance specialist](/docs/learning/specialist/governance) — brand safety, compliance, content standards

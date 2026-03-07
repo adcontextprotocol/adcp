@@ -101,6 +101,7 @@ import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/coll
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
+import { CERTIFICATION_TOOLS, createCertificationToolHandlers } from './mcp/certification-tools.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
@@ -792,6 +793,13 @@ async function createUserScopedTools(
   const schemaHandlers = createSchemaToolHandlers();
   allTools.push(...SCHEMA_TOOLS);
   for (const [name, handler] of schemaHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add certification tools (learning modules, exams, progress tracking)
+  const certificationHandlers = createCertificationToolHandlers(memberContext);
+  allTools.push(...CERTIFICATION_TOOLS);
+  for (const [name, handler] of certificationHandlers) {
     allHandlers.set(name, handler);
   }
 
