@@ -103,7 +103,7 @@
       background: var(--color-bg-card);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-xs);
-      overflow: hidden;
+      overflow-x: auto;
     }
     table {
       width: 100%;
@@ -190,6 +190,7 @@
     .owner-select:focus {
       outline: none;
       border-color: var(--color-brand);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 10%, transparent);
     }
 
     /* Attention reason badge */
@@ -637,6 +638,11 @@
       grid-template-columns: 1fr 1fr;
       gap: var(--space-4);
     }
+    @media (max-width: 600px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
     .form-hint {
       font-size: var(--text-xs);
       color: var(--color-text-muted);
@@ -696,7 +702,7 @@
       <button class="view-tab" data-view="hot">
         Hot prospects <span class="badge" id="count-hot">-</span>
       </button>
-      <button class="view-tab" data-view="open_invoices" style="background: var(--color-warning-100); color: var(--color-warning-700);">
+      <button class="view-tab" data-view="open_invoices">
         Open invoices <span class="badge" id="count-open_invoices">-</span>
       </button>
       <button class="view-tab" data-view="new_prospects">
@@ -776,22 +782,22 @@
   </div>
 
   <!-- Add Prospect Modal -->
-  <div id="prospectModal" class="modal">
+  <div id="prospectModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="prospectModalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 id="prospectModalTitle">Add prospect</h2>
-        <button class="modal-close" onclick="closeProspectModal()">&times;</button>
+        <button class="modal-close" onclick="closeProspectModal()" aria-label="Close">&times;</button>
       </div>
       <form id="prospectForm" onsubmit="saveProspect(event)">
         <input type="hidden" id="editOrgId">
 
         <div class="form-row">
           <div class="form-group">
-            <label>Company name *</label>
+            <label for="prospectName">Company name *</label>
             <input type="text" id="prospectName" required>
           </div>
           <div class="form-group">
-            <label>Domain</label>
+            <label for="prospectDomain">Domain</label>
             <input type="text" id="prospectDomain" placeholder="example.com">
             <div class="form-hint">Email domain for auto-matching signups</div>
           </div>
@@ -799,7 +805,7 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label>Company type</label>
+            <label for="prospectCompanyType">Company type</label>
             <select id="prospectCompanyType">
               <option value="">Not specified</option>
               <option value="adtech">Ad Tech</option>
@@ -812,7 +818,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Owner</label>
+            <label for="prospectOwner">Owner</label>
             <select id="prospectOwner">
               <option value="">Unassigned</option>
             </select>
@@ -821,7 +827,7 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label>Source</label>
+            <label for="prospectSource">Source</label>
             <select id="prospectSource">
               <option value="aao_launch_list">AAO Launch List</option>
               <option value="slack">Slack</option>
@@ -830,7 +836,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Parent company</label>
+            <label for="prospectParent">Parent company</label>
             <select id="prospectParent">
               <option value="">None (standalone company)</option>
             </select>
@@ -883,11 +889,11 @@
   </div>
 
   <!-- Payment Link Modal -->
-  <div id="paymentLinkModal" class="modal">
+  <div id="paymentLinkModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="paymentLinkModalTitle">
     <div class="modal-content" style="max-width: 500px;">
       <div class="modal-header">
-        <h2>Generate payment link</h2>
-        <button class="modal-close" onclick="closePaymentLinkModal()">&times;</button>
+        <h2 id="paymentLinkModalTitle">Generate payment link</h2>
+        <button class="modal-close" onclick="closePaymentLinkModal()" aria-label="Close">&times;</button>
       </div>
 
       <p id="paymentLinkOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
@@ -916,11 +922,11 @@
   </div>
 
   <!-- Generate Invoice Modal -->
-  <div id="invoiceModal" class="modal">
+  <div id="invoiceModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoiceModalTitle">
     <div class="modal-content" style="max-width: 600px;">
       <div class="modal-header">
-        <h2>Generate invoice</h2>
-        <button class="modal-close" onclick="closeInvoiceModal()">&times;</button>
+        <h2 id="invoiceModalTitle">Generate invoice</h2>
+        <button class="modal-close" onclick="closeInvoiceModal()" aria-label="Close">&times;</button>
       </div>
 
       <p id="invoiceOrgName" style="margin-bottom: var(--space-4); color: var(--color-text-secondary);"></p>
@@ -943,50 +949,50 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label>Contact name *</label>
+              <label for="invoiceContactName">Contact name *</label>
               <input type="text" id="invoiceContactName" required>
             </div>
             <div class="form-group">
-              <label>Contact email *</label>
+              <label for="invoiceContactEmail">Contact email *</label>
               <input type="email" id="invoiceContactEmail" required>
             </div>
           </div>
 
           <div class="form-group">
-            <label>Company name *</label>
+            <label for="invoiceCompanyName">Company name *</label>
             <input type="text" id="invoiceCompanyName" required>
           </div>
 
           <h4 style="margin-top: var(--space-4); margin-bottom: var(--space-3); font-size: var(--text-sm); color: var(--color-text-heading);">Billing address</h4>
 
           <div class="form-group">
-            <label>Street address *</label>
+            <label for="invoiceAddressLine1">Street address *</label>
             <input type="text" id="invoiceAddressLine1" required>
           </div>
 
           <div class="form-group">
-            <label>Address line 2</label>
+            <label for="invoiceAddressLine2">Address line 2</label>
             <input type="text" id="invoiceAddressLine2">
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>City *</label>
+              <label for="invoiceCity">City *</label>
               <input type="text" id="invoiceCity" required>
             </div>
             <div class="form-group">
-              <label>State/Province *</label>
+              <label for="invoiceState">State/Province *</label>
               <input type="text" id="invoiceState" required>
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Postal code *</label>
+              <label for="invoicePostalCode">Postal code *</label>
               <input type="text" id="invoicePostalCode" required>
             </div>
             <div class="form-group">
-              <label>Country *</label>
+              <label for="invoiceCountry">Country *</label>
               <input type="text" id="invoiceCountry" value="US" required>
             </div>
           </div>
@@ -1036,6 +1042,7 @@
       my_accounts: 'Accounts you own or are watching',
       renewals: 'Members with subscriptions ending soon',
       members: 'All paying member organizations',
+      most_users: 'Organizations ranked by number of active users',
       missing_owner: 'Organizations with members but no designated owner',
       all: 'All accounts',
       disqualified: 'Accounts marked as not viable'
@@ -1503,7 +1510,7 @@
       }
 
       if (append) {
-        feed.innerHTML += html;
+        feed.insertAdjacentHTML('beforeend', html);
       } else {
         feed.innerHTML = html;
       }
