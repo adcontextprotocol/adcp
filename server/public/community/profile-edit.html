@@ -608,7 +608,7 @@
 
         <!-- Save -->
         <div class="save-bar">
-          <a href="/community" class="btn btn-ghost">Cancel</a>
+          <a id="cancel-link" href="/community" class="btn btn-ghost">Cancel</a>
           <button type="submit" class="btn btn-primary" id="save-btn">Save changes</button>
         </div>
       </form>
@@ -938,26 +938,36 @@
       const form = document.getElementById('profile-form');
       const saveBar = form.querySelector('.save-bar');
 
-      // Change page title and back link
+      // Change page title, back link, and cancel link
       document.querySelector('.edit-title').textContent = 'Your profile';
-      const backLink = document.getElementById('back-link');
       const orgParam = new URLSearchParams(window.location.search).get('org');
-      if (backLink && orgParam) {
-        backLink.href = '/dashboard?org=' + encodeURIComponent(orgParam);
-        backLink.lastChild.textContent = ' Back to dashboard';
+      if (orgParam) {
+        const dashboardUrl = '/dashboard?org=' + encodeURIComponent(orgParam);
+        const backLink = document.getElementById('back-link');
+        if (backLink) {
+          backLink.href = dashboardUrl;
+          backLink.lastChild.textContent = ' Back to dashboard';
+        }
+        const cancelLink = document.getElementById('cancel-link');
+        if (cancelLink) cancelLink.href = dashboardUrl;
       }
 
-      // Get existing sections by ID
+      // Get existing sections by ID — bail if any are missing
       const visibilitySection = document.getElementById('section-visibility');
       const aboutSection = document.getElementById('section-about');
       const socialSection = document.getElementById('section-social');
       const prefsSection = document.getElementById('section-preferences');
       const memberDirSection = document.getElementById('member-directory-section');
+      if (!visibilitySection || !aboutSection || !socialSection || !prefsSection || !memberDirSection) {
+        console.warn('restructureForIndividual: missing section element, skipping');
+        return;
+      }
 
       // -- Extract elements to move --
 
       // Move slug out of About you
       const slugField = document.getElementById('field-slug');
+      if (!slugField) return;
       const slugGroup = slugField.closest('.form-group');
       const slugPreview = slugGroup.querySelector('.slug-preview');
 
@@ -1043,15 +1053,25 @@
       }
       publicListingSection.appendChild(slugGroup);
 
-      // Add preview link if profile has a slug
-      if (slugField.value) {
-        const previewLink = document.createElement('p');
-        previewLink.className = 'edit-section-description';
-        previewLink.style.marginTop = 'var(--space-4)';
-        previewLink.style.marginBottom = '0';
-        previewLink.innerHTML = '<a href="/members/' + encodeURIComponent(slugField.value) + '">Preview your listing &rarr;</a>';
-        publicListingSection.appendChild(previewLink);
+      // Add preview link that updates with slug input
+      const previewLink = document.createElement('p');
+      previewLink.id = 'listing-preview-link';
+      previewLink.className = 'edit-section-description';
+      previewLink.style.marginTop = 'var(--space-4)';
+      previewLink.style.marginBottom = '0';
+      publicListingSection.appendChild(previewLink);
+
+      function updatePreviewLink() {
+        const slug = slugField.value.trim();
+        if (slug) {
+          previewLink.innerHTML = '<a href="/members/' + encodeURIComponent(slug) + '">Preview your listing &rarr;</a>';
+          previewLink.style.display = '';
+        } else {
+          previewLink.style.display = 'none';
+        }
       }
+      slugField.addEventListener('input', updatePreviewLink);
+      updatePreviewLink();
 
       // Section 4: Rename Preferences → Networking
       prefsSection.querySelector('.edit-section-title').textContent = 'Networking';
