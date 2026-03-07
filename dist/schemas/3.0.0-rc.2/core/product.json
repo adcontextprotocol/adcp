@@ -1,0 +1,296 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/product.json",
+  "title": "Product",
+  "description": "Represents available advertising inventory",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Unique identifier for the product"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable product name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the product and its inventory"
+    },
+    "publisher_properties": {
+      "type": "array",
+      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/publisher-property-selector.json"
+      },
+      "minItems": 1
+    },
+    "channels": {
+      "type": "array",
+      "description": "Advertising channels this product is sold as. Products inherit from their properties' supported_channels but may narrow the scope. For example, a product covering YouTube properties might be sold as ['ctv'] even though those properties support ['olv', 'social', 'ctv'].",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/channels.json"
+      },
+      "uniqueItems": true
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of supported creative format IDs - structured format_id objects with agent_url and id",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/format-id.json"
+      }
+    },
+    "placements": {
+      "type": "array",
+      "description": "Optional array of specific placements within this product. When provided, buyers can target specific placements when assigning creatives.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/placement.json"
+      },
+      "minItems": 1
+    },
+    "delivery_type": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/delivery-type.json"
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Available pricing models for this product",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/pricing-option.json"
+      },
+      "minItems": 1
+    },
+    "forecast": {
+      "$ref": "/schemas/3.0.0-rc.2/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
+    },
+    "outcome_measurement": {
+      "$ref": "/schemas/3.0.0-rc.2/core/outcome-measurement.json"
+    },
+    "delivery_measurement": {
+      "type": "object",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions')"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
+        }
+      },
+      "required": [
+        "provider"
+      ]
+    },
+    "reporting_capabilities": {
+      "$ref": "/schemas/3.0.0-rc.2/core/reporting-capabilities.json"
+    },
+    "creative_policy": {
+      "$ref": "/schemas/3.0.0-rc.2/core/creative-policy.json"
+    },
+    "is_custom": {
+      "type": "boolean",
+      "description": "Whether this is a custom product"
+    },
+    "property_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can filter this product to a subset of its publisher_properties. When false (default), the product is 'all or nothing' - buyers must accept all properties or the product is excluded from property_list filtering results."
+    },
+    "data_provider_signals": {
+      "type": "array",
+      "description": "Data provider signals available for this product. Buyers fetch signal definitions from each data provider's adagents.json and can verify agent authorization.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/core/data-provider-signal-selector.json"
+      }
+    },
+    "signal_targeting_allowed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether buyers can filter this product to a subset of its data_provider_signals. When false (default), the product includes all listed signals as a bundle. When true, buyers can target specific signals."
+    },
+    "catalog_types": {
+      "type": "array",
+      "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",
+      "items": {
+        "$ref": "/schemas/3.0.0-rc.2/enums/catalog-type.json"
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "metric_optimization": {
+      "type": "object",
+      "description": "Metric optimization capabilities for this product. Presence indicates the product supports optimization_goals with kind: 'metric'. No event source or conversion tracking setup required — the seller tracks these metrics natively.",
+      "properties": {
+        "supported_metrics": {
+          "type": "array",
+          "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here.",
+          "items": {
+            "type": "string",
+            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+          },
+          "minItems": 1
+        },
+        "supported_reach_units": {
+          "type": "array",
+          "description": "Reach units this product can optimize for. Required when supported_metrics includes 'reach'. Buyers must set reach_unit to a value in this list on reach optimization goals — sellers reject unsupported values.",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/reach-unit.json"
+          },
+          "minItems": 1
+        },
+        "supported_view_durations": {
+          "type": "array",
+          "description": "Video view duration thresholds (in seconds) this product supports for completed_views goals. Only relevant when supported_metrics includes 'completed_views'. When absent, the seller uses their platform default. Buyers must set view_duration_seconds to a value in this list — sellers reject unsupported values.",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "supported_targets": {
+          "type": "array",
+          "description": "Target kinds available for metric goals on this product. Values match target.kind on the optimization goal. Only these target kinds are accepted — goals with unlisted target kinds will be rejected. When omitted, buyers can set target-less metric goals (maximize volume within budget) but cannot set specific targets.",
+          "items": {
+            "type": "string",
+            "enum": ["cost_per", "threshold_rate"]
+          }
+        }
+      },
+      "required": ["supported_metrics"],
+      "additionalProperties": true
+    },
+    "max_optimization_goals": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of optimization_goals this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1 goal — buyers sending arrays longer than this value should expect the seller to use only the highest-priority (lowest priority number) goal."
+    },
+    "conversion_tracking": {
+      "type": "object",
+      "description": "Conversion event tracking for this product. Presence indicates the product supports optimization_goals with kind: 'event'. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
+      "properties": {
+        "action_sources": {
+          "type": "array",
+          "description": "Action sources relevant to this product (e.g. a retail media product might have 'in_store' and 'website', while a display product might only have 'website')",
+          "items": {
+            "$ref": "/schemas/3.0.0-rc.2/enums/action-source.json"
+          },
+          "minItems": 1
+        },
+        "supported_targets": {
+          "type": "array",
+          "description": "Target kinds available for event goals on this product. Values match target.kind on the optimization goal. cost_per: target cost per conversion event. per_ad_spend: target return on ad spend (requires value_field on event sources). maximize_value: maximize total conversion value without a specific ratio target (requires value_field). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes conversion count within budget — no declaration needed for that mode. When omitted, buyers can still set target-less event goals.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cost_per",
+              "per_ad_spend",
+              "maximize_value"
+            ]
+          },
+          "minItems": 1
+        },
+        "platform_managed": {
+          "type": "boolean",
+          "description": "Whether the seller provides its own always-on measurement (e.g. Amazon sales attribution for Amazon advertisers). When true, sync_event_sources response will include seller-managed event sources with managed_by='seller'."
+        }
+      },
+      "additionalProperties": true
+    },
+    "catalog_match": {
+      "type": "object",
+      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads).",
+      "properties": {
+        "matched_gtins": {
+          "type": "array",
+          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{8,14}$"
+          }
+        },
+        "matched_ids": {
+          "type": "array",
+          "description": "Item IDs from the buyer's catalog that matched this product's inventory. The ID type depends on the catalog type and content_id_type (e.g., SKUs for product catalogs, job_ids for job catalogs, offering_ids for offering catalogs).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matched_count": {
+          "type": "integer",
+          "description": "Number of catalog items that matched this product's inventory.",
+          "minimum": 0
+        },
+        "submitted_count": {
+          "type": "integer",
+          "description": "Total catalog items evaluated from the buyer's catalog.",
+          "minimum": 0
+        }
+      },
+      "required": ["submitted_count"]
+    },
+    "brief_relevance": {
+      "type": "string",
+      "description": "Explanation of why this product matches the brief (only included when brief is provided)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration timestamp for custom products"
+    },
+    "product_card": {
+      "type": "object",
+      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+          "description": "Creative format defining the card layout (typically product_card_standard)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
+    },
+    "product_card_detailed": {
+      "type": "object",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "properties": {
+        "format_id": {
+          "$ref": "/schemas/3.0.0-rc.2/core/format-id.json",
+          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        },
+        "manifest": {
+          "type": "object",
+          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "format_id",
+        "manifest"
+      ],
+      "additionalProperties": true
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.0-rc.2/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "name",
+    "description",
+    "publisher_properties",
+    "format_ids",
+    "delivery_type",
+    "delivery_measurement",
+    "pricing_options"
+  ],
+  "additionalProperties": true
+}

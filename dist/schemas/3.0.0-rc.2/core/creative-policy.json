@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.0-rc.2/core/creative-policy.json",
+  "title": "Creative Policy",
+  "description": "Creative requirements and restrictions for a product",
+  "type": "object",
+  "properties": {
+    "co_branding": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/co-branding-requirement.json",
+      "description": "Co-branding requirement"
+    },
+    "landing_page": {
+      "$ref": "/schemas/3.0.0-rc.2/enums/landing-page-requirement.json",
+      "description": "Landing page requirements"
+    },
+    "templates_available": {
+      "type": "boolean",
+      "description": "Whether creative templates are provided"
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "Whether creatives must include provenance metadata. When true, the seller requires buyers to attach provenance declarations to creative submissions. The seller may independently verify claims via get_creative_features."
+    }
+  },
+  "required": [
+    "co_branding",
+    "landing_page",
+    "templates_available"
+  ],
+  "additionalProperties": true
+}

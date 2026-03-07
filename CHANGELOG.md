@@ -1,5 +1,35 @@
 # Changelog
 
+## 3.0.0-rc.2
+
+### Minor Changes
+
+- 689adb4: Add generation controls to build_creative and preview_creative: quality tier (draft/production), item_limit for catalog cost control, expires_at on build_creative response for generated asset URL expiration, and storyboard reference asset role.
+- 5a54824: Move sandbox capability from `media_buy.features.sandbox` to `account.sandbox` in `get_adcp_capabilities`. Sandbox is account-level, not a media-buy protocol feature — sellers declare it alongside other account capabilities like `supported_billing` and `account_financials`.
+- 30c3ad8: Add `time_budget` to `get_products` request and `incomplete` to response.
+
+  - `time_budget` (Duration): buyers declare how long they will commit to a request. Sellers return best-effort results within the budget and do not start processes (human approvals, expensive external queries) that cannot complete in time.
+  - `incomplete` (array): sellers declare what they could not finish — each entry has a `scope` (`products`, `pricing`, `forecast`, `proposals`), a human-readable `description`, and an optional `estimated_wait` duration so the buyer can decide whether to retry.
+  - Adds `seconds` to the Duration `unit` enum.
+
+### Patch Changes
+
+- 9a7a58f: Complete member profile management pathways:
+
+  - Add `update_member_logo` admin tool to Addie for setting/updating logo URLs in hosted brand entries
+  - Add `update_member_profile` admin tool to Addie for updating profile fields (description, tagline, contact info, social links, visibility)
+  - Add self-serve brand identity editing: PUT /api/me/member-profile/brand-identity endpoint + inline edit forms in member profile page
+  - Members with existing brands can edit logo URL and brand color inline; members without brands get a quick setup form
+
+- 7426bd7: Fix Addie spamming users with duplicate outreach messages and missing email auto-link on login.
+
+  Two bugs fixed:
+
+  - **Spam**: With 2 Fly.io instances running, both could pass the rate limit check simultaneously before either updated `last_outreach_at`. Now the claim is atomic (UPDATE ... WHERE within rate limit window) so only one instance wins.
+  - **Not linked**: Email-based auto-link only ran on `user.created` webhook. Users who joined Slack after signing up, or whose webhook failed, were never retried. Now also runs on every login.
+
+- dfc8203: Update sync_audiences spec with clarifications
+
 ## 3.0.0-rc.1
 
 ### Major Changes
