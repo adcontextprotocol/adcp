@@ -5,16 +5,84 @@ import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
-import { AddieClaudeClient } from "../addie/claude-client.js";
+import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
 import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
-import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from "../mcp/chat-tool.js";
+import {
+  DIRECTORY_TOOLS,
+  createDirectoryToolHandlers,
+} from "../addie/mcp/directory-tools.js";
+import {
+  BRAND_TOOLS,
+  createBrandToolHandlers,
+} from "../addie/mcp/brand-tools.js";
+import {
+  MEMBER_TOOLS,
+  createMemberToolHandlers,
+} from "../addie/mcp/member-tools.js";
+import {
+  BILLING_TOOLS,
+  createBillingToolHandlers,
+} from "../addie/mcp/billing-tools.js";
+import {
+  ESCALATION_TOOLS,
+  createEscalationToolHandlers,
+} from "../addie/mcp/escalation-tools.js";
+import {
+  ADCP_TOOLS,
+  createAdcpToolHandlers,
+} from "../addie/mcp/adcp-tools.js";
+import {
+  ADMIN_TOOLS,
+  createAdminToolHandlers,
+  isWebUserAAOAdmin,
+} from "../addie/mcp/admin-tools.js";
+import {
+  EVENT_TOOLS,
+  createEventToolHandlers,
+} from "../addie/mcp/event-tools.js";
+import {
+  MEETING_TOOLS,
+  createMeetingToolHandlers,
+} from "../addie/mcp/meeting-tools.js";
+import {
+  COLLABORATION_TOOLS,
+  createCollaborationToolHandlers,
+} from "../addie/mcp/collaboration-tools.js";
+import {
+  COMMITTEE_LEADER_TOOLS,
+  createCommitteeLeaderToolHandlers,
+} from "../addie/mcp/committee-leader-tools.js";
+import {
+  MOLTBOOK_TOOLS,
+  createMoltbookToolHandlers,
+} from "../addie/mcp/moltbook-tools.js";
+import {
+  SI_HOST_TOOLS,
+  createSiHostToolHandlers,
+} from "../addie/mcp/si-host-tools.js";
+import {
+  SCHEMA_TOOLS,
+  createSchemaToolHandlers,
+} from "../addie/mcp/schema-tools.js";
+import {
+  PROPERTY_TOOLS,
+  createPropertyToolHandlers,
+} from "../addie/mcp/property-tools.js";
 import { AddieModelConfig } from "../config/models.js";
 import { PostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
+import { getThreadService } from "../addie/thread-service.js";
+import { optionalAuth } from "../middleware/auth.js";
+import {
+  getWebMemberContext,
+  formatMemberContextForPrompt,
+  type MemberContext,
+} from "../addie/member-context.js";
+import { WorkingGroupDatabase } from "../db/working-group-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,16 +100,24 @@ async function initializeTavusClient(): Promise<void> {
       logger.warn("Tavus: No ANTHROPIC_API_KEY configured");
       return;
     }
-    claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
+    claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.voice);
     await initializeKnowledgeSearch();
     const knowledgeHandlers = createKnowledgeToolHandlers();
     for (const tool of KNOWLEDGE_TOOLS) {
-      if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
-        const handler = knowledgeHandlers.get(tool.name);
-        if (handler) claudeClient.registerTool(tool, handler);
-      }
+      const handler = knowledgeHandlers.get(tool.name);
+      if (handler) claudeClient.registerTool(tool, handler);
     }
-    logger.info("Tavus: Initialized Claude client with knowledge tools");
+    const directoryHandlers = createDirectoryToolHandlers();
+    for (const tool of DIRECTORY_TOOLS) {
+      const handler = directoryHandlers.get(tool.name);
+      if (handler) claudeClient.registerTool(tool, handler);
+    }
+    const brandHandlers = createBrandToolHandlers();
+    for (const tool of BRAND_TOOLS) {
+      const handler = brandHandlers.get(tool.name);
+      if (handler) claudeClient.registerTool(tool, handler);
+    }
+    logger.info("Tavus: Initialized Claude client (baseline: knowledge + directory + brand; per-request: full user-scoped tools)");
   })().catch((err) => {
     // Clear so the next request can retry after a transient init failure
     logger.error({ err }, "Tavus: Initialization failed, will retry on next request");
@@ -117,11 +193,107 @@ function buildThreadContext(
   return { currentMessage, threadContext };
 }
 
-// Rate limiters use ipKeyGenerator to handle Fly.io proxy headers correctly.
+/**
+ * Build user-scoped tools for a voice call, matching the web chat tool set.
+ * This gives voice Addie the same capabilities as chat Addie.
+ */
+async function buildVoiceRequestTools(
+  userId: string,
+  threadId: string,
+): Promise<{ requestTools: RequestTools; requestContext: string; memberContext: MemberContext | null }> {
+  let memberContext: MemberContext | null = null;
+  try {
+    memberContext = await getWebMemberContext(userId);
+  } catch (error) {
+    logger.warn({ error, userId }, "Tavus: Failed to get member context");
+  }
 
+  // Format member context for system prompt
+  const contextSections: string[] = [];
+  if (memberContext) {
+    const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
+    if (memberContextText) contextSections.push(memberContextText);
+  }
+
+  // Resolve linked Slack identity early — needed by escalation, collaboration, and committee tools
+  const linkedSlackUserId = memberContext?.slack_user?.slack_user_id;
+
+  // Build per-request tools (mirrors addie-chat.ts prepareRequestWithMemberTools)
+  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS];
+  const combinedHandlers = new Map([
+    ...createMemberToolHandlers(memberContext),
+    ...createSiHostToolHandlers(() => memberContext, () => threadId),
+    ...createAdcpToolHandlers(memberContext),
+    ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
+    ...createBillingToolHandlers(memberContext),
+  ]);
+
+  // Schema tools
+  allTools.push(...SCHEMA_TOOLS);
+  for (const [name, handler] of createSchemaToolHandlers()) {
+    combinedHandlers.set(name, handler);
+  }
+
+  // Property tools
+  allTools.push(...PROPERTY_TOOLS);
+  for (const [name, handler] of createPropertyToolHandlers()) {
+    combinedHandlers.set(name, handler);
+  }
+
+  // Permission-gated tools
+  const workingGroupDb = new WorkingGroupDatabase();
+  const [userIsAdmin, ledGroups] = await Promise.all([
+    isWebUserAAOAdmin(userId),
+    workingGroupDb.getCommitteesLedByUser(userId),
+  ]);
+
+  if (userIsAdmin) {
+    allTools.push(...ADMIN_TOOLS);
+    for (const [name, handler] of createAdminToolHandlers(memberContext)) {
+      combinedHandlers.set(name, handler);
+    }
+    allTools.push(...EVENT_TOOLS);
+    for (const [name, handler] of createEventToolHandlers(memberContext)) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  if (userIsAdmin || ledGroups.length > 0) {
+    allTools.push(...MEETING_TOOLS);
+    for (const [name, handler] of createMeetingToolHandlers(memberContext)) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  allTools.push(...COLLABORATION_TOOLS);
+  for (const [name, handler] of createCollaborationToolHandlers(memberContext, linkedSlackUserId)) {
+    combinedHandlers.set(name, handler);
+  }
+
+  allTools.push(...COMMITTEE_LEADER_TOOLS);
+  for (const [name, handler] of createCommitteeLeaderToolHandlers(memberContext, linkedSlackUserId)) {
+    combinedHandlers.set(name, handler);
+  }
+
+  if (process.env.MOLTBOOK_API_KEY) {
+    allTools.push(...MOLTBOOK_TOOLS);
+    for (const [name, handler] of Object.entries(createMoltbookToolHandlers())) {
+      combinedHandlers.set(name, handler);
+    }
+  }
+
+  return {
+    requestTools: { tools: allTools, handlers: combinedHandlers },
+    requestContext: contextSections.join('\n\n'),
+    memberContext,
+  };
+}
+
+// All LLM requests come from Tavus's infrastructure (same IP),
+// so the limit must accommodate multiple concurrent video calls.
 const llmRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 200,
   store: new PostgresStore("tavus-llm:"),
   keyGenerator: (req) => ipKeyGenerator(req.ip || ""),
   message: { error: { message: "Too many requests" } },
@@ -130,11 +302,12 @@ const llmRateLimiter = rateLimit({
 });
 
 // Stricter limit — each session call creates billable Tavus infrastructure.
+// Keyed by user ID (auth required) with IP fallback.
 const sessionRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
   store: new PostgresStore("tavus-session:"),
-  keyGenerator: (req) => ipKeyGenerator(req.ip || ""),
+  keyGenerator: (req) => (req as Request & { user?: { id: string } }).user?.id || ipKeyGenerator(req.ip || ""),
   message: { error: "Too many requests" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -152,7 +325,11 @@ export function createTavusRouter() {
   // API router: POST /api/addie/video/session
   const apiRouter = Router();
 
-  apiRouter.post("/session", sessionRateLimiter, async (_req, res) => {
+  apiRouter.post("/session", optionalAuth, sessionRateLimiter, async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Please log in to start a video call." });
+    }
+
     const tavusApiKey = process.env.TAVUS_API_KEY;
     const personaId = process.env.TAVUS_PERSONA_ID;
 
@@ -161,6 +338,21 @@ export function createTavusRouter() {
     }
 
     try {
+      const conversationName = `addie-${uuidv4()}`;
+      const rawDisplayName = [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || req.user.email;
+      const displayName = rawDisplayName.replace(/[\[\]<>{}]/g, "").slice(0, 100);
+
+      // Create a thread to track this video conversation
+      const threadService = getThreadService();
+      const thread = await threadService.getOrCreateThread({
+        channel: "video",
+        external_id: conversationName,
+        user_type: "workos",
+        user_id: req.user.id,
+        user_display_name: displayName,
+        context: { persona_id: personaId },
+      });
+
       const response = await fetch("https://tavusapi.com/v2/conversations", {
         method: "POST",
         headers: {
@@ -169,7 +361,11 @@ export function createTavusRouter() {
         },
         body: JSON.stringify({
           persona_id: personaId,
-          conversation_name: `addie-${uuidv4()}`,
+          conversation_name: conversationName,
+          custom_greeting: `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`,
+          // Tavus appends this to the system message sent to our LLM endpoint,
+          // letting us correlate LLM calls back to the thread.
+          conversational_context: `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`,
         }),
       });
 
@@ -183,7 +379,12 @@ export function createTavusRouter() {
       }
 
       const data = (await response.json()) as { conversation_url: string };
-      return res.json({ conversation_url: data.conversation_url });
+      return res.json({
+        conversation_url: data.conversation_url,
+        conversation_id: conversationName,
+        thread_id: thread.thread_id,
+        display_name: displayName,
+      });
     } catch (err) {
       logger.error({ err }, "Tavus: Error creating conversation");
       return res.status(500).json({ error: "Internal error" });
@@ -215,6 +416,17 @@ export function createTavusRouter() {
       return res.status(400).json({ error: { message: "Invalid messages format" } });
     }
 
+    // Extract thread_id from the system message injected via conversational_context
+    const threadIdMatch = messages
+      .filter((m) => m.role === "system")
+      .map((m) => extractText(m.content))
+      .join(" ")
+      .match(/\[conductor:thread_id=([0-9a-f-]{36})\]/);
+    const threadId = threadIdMatch?.[1] ?? null;
+    if (!threadId) {
+      logger.warn("Tavus LLM: No thread_id in system message — transcript will not be logged");
+    }
+
     const parsed = buildThreadContext(messages);
     if (!parsed) {
       return res.status(400).json({ error: { message: "No user message found" } });
@@ -229,14 +441,75 @@ export function createTavusRouter() {
       text: sanitizeInput(m.text).sanitized,
     }));
 
+    // Look up the thread to get user identity and build user-scoped tools.
+    // This gives voice Addie the same capabilities as chat Addie.
+    let voiceRequestTools: RequestTools | undefined;
+    let memberRequestContext = "";
+    if (threadId) {
+      const threadService = getThreadService();
+      try {
+        const thread = await threadService.getThread(threadId);
+        if (thread?.user_id && thread.channel === 'video') {
+          const result = await buildVoiceRequestTools(thread.user_id, threadId);
+          voiceRequestTools = result.requestTools;
+          memberRequestContext = result.requestContext;
+          logger.debug(
+            { userId: thread.user_id, toolCount: voiceRequestTools.tools.length },
+            "Tavus: Built user-scoped tools for voice"
+          );
+        }
+      } catch (err) {
+        logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools, using baseline");
+      }
+    }
+
+    // Log the user message (before voice prefix is applied)
+    if (threadId) {
+      const threadService = getThreadService();
+      threadService.addMessage({
+        thread_id: threadId,
+        role: "user",
+        content: currentMessage,
+      }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
+    }
+
+    // Wrap the user message with voice-mode instructions so they're adjacent
+    // to the actual question (closer = stronger influence on the response).
+    const voicePrefix =
+      "[VOICE CALL — This will be spoken aloud. Keep it SHORT. No lists, no bullets, no markdown, no asterisks. " +
+      "Greetings and small talk: one sentence. " +
+      "Factual or yes/no questions: one to two sentences. " +
+      "Conceptual questions: two to three sentences max — give the essence, not the full explanation. " +
+      "Use natural spoken punctuation — pauses, em-dashes, commas — so it sounds " +
+      "like a person talking, not reading from a document.]\n\n";
+    currentMessage = voicePrefix + currentMessage;
+
+    const voiceContext = [
+      "VOICE MODE: This is a live video call. Your response will be spoken aloud.",
+      "Match response length to the question — brief for simple questions, fuller for substantive ones.",
+      "Never use formatting. Use conversational punctuation (ellipses, em-dashes) for natural pacing.",
+      "When using tools, summarize results conversationally — don't read data verbatim.",
+    ].join("\n");
+
+    // Combine voice instructions with member context
+    const requestContext = [voiceContext, memberRequestContext].filter(Boolean).join("\n\n");
+
     const completionId = `chatcmpl-${uuidv4().replace(/-/g, "").slice(0, 28)}`;
     const created = Math.floor(Date.now() / 1000);
+    const startTime = Date.now();
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    let connectionClosed = false;
+    req.on("close", () => {
+      connectionClosed = true;
+      logger.debug("Tavus: Client disconnected during stream");
+    });
+
     const sendChunk = (delta: Record<string, unknown>, finishReason: string | null = null) => {
+      if (connectionClosed) return;
       const chunk = JSON.stringify({
         id: completionId,
         object: "chat.completion.chunk",
@@ -249,10 +522,36 @@ export function createTavusRouter() {
 
     sendChunk({ role: "assistant", content: "" });
 
+    // For substantive questions, send a filler phrase immediately so Addie starts
+    // speaking while the model processes. Tavus TTS picks this up with near-zero latency.
+    const questionPattern = /\b(what|how|why|explain|tell me|describe|walk me through|can you|could you)\b/i;
+    const rawMessage = currentMessage.slice(voicePrefix.length);
+    const isSubstantive = rawMessage.length > 30 && questionPattern.test(rawMessage);
+    let fullResponse = "";
+    if (isSubstantive) {
+      const fillers = [
+        "Good question... ",
+        "Great question... ",
+        "So... ",
+        "That's a great question... ",
+      ];
+      const filler = fillers[Math.floor(Math.random() * fillers.length)];
+      sendChunk({ content: filler });
+      // Filler is streamed to TTS but not included in fullResponse
+      // so the stored transcript stays clean.
+    }
+
     let streamError = false;
     try {
-      for await (const event of claudeClient.processMessageStream(currentMessage, threadContext)) {
+      for await (const event of claudeClient.processMessageStream(
+        currentMessage,
+        threadContext,
+        voiceRequestTools,
+        { requestContext }
+      )) {
+        if (connectionClosed) break;
         if (event.type === "text") {
+          fullResponse += event.text;
           sendChunk({ content: event.text });
         } else if (event.type === "error") {
           logger.error({ error: event.error }, "Tavus: Addie stream error");
@@ -263,6 +562,18 @@ export function createTavusRouter() {
     } catch (err) {
       logger.error({ err }, "Tavus: Streaming error");
       streamError = true;
+    }
+
+    // Log the assistant response
+    if (threadId && fullResponse) {
+      const threadService = getThreadService();
+      threadService.addMessage({
+        thread_id: threadId,
+        role: "assistant",
+        content: fullResponse,
+        model: AddieModelConfig.voice,
+        latency_ms: Date.now() - startTime,
+      }).catch((err) => logger.error({ err }, "Tavus: Failed to log assistant message"));
     }
 
     if (!streamError) {
