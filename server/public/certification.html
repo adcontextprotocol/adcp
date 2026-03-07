@@ -708,8 +708,8 @@
           var configRes = await fetch('/api/config');
           if (configRes.ok) {
             var config = await configRes.json();
-            state.isAuthenticated = config.isAuthenticated || false;
-            state.isMember = config.isMember || false;
+            state.isAuthenticated = !!config.user;
+            state.isMember = !!(config.user && config.user.isMember);
           }
         } catch (e) { /* not authenticated */ }
 
