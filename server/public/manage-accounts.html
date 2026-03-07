@@ -1969,12 +1969,13 @@
       selectedInvoiceProduct = null;
     }
 
-    // Close modal when clicking outside
-    window.onclick = function(event) {
-      if (event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-      }
-    }
+    // Close modal when clicking outside (use named close functions for proper state cleanup)
+    window.addEventListener('click', function(event) {
+      if (!event.target.classList.contains('modal')) return;
+      if (event.target.id === 'prospectModal') closeProspectModal();
+      else if (event.target.id === 'paymentLinkModal') closePaymentLinkModal();
+      else if (event.target.id === 'invoiceModal') closeInvoiceModal();
+    });
 
     document.addEventListener('DOMContentLoaded', init);
   </script>
