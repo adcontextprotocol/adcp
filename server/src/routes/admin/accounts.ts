@@ -89,7 +89,7 @@ export function setupAccountRoutes(
 ): void {
 
   // Page route for unified account list
-  pageRouter.get("/accounts", requireAuth, requireAdmin, (req, res) => {
+  pageRouter.get("/accounts", requireAuth, requireManage, (req, res) => {
     serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
       logger.error({ err }, "Error serving accounts page");
       res.status(500).send("Internal server error");
@@ -126,7 +126,7 @@ export function setupAccountRoutes(
   pageRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireAdmin,
+    requireManage,
     (req, res) => {
       serveHtmlWithConfig(req, res, "admin-account-detail.html").catch((err) => {
         logger.error({ err }, "Error serving admin account detail page");
@@ -139,7 +139,7 @@ export function setupAccountRoutes(
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
-    requireAdmin,
+    requireManage,
     (req, res) => {
       res.redirect(301, `/admin/accounts/${req.params.orgId}`);
     }
@@ -333,7 +333,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -824,7 +824,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/accounts - List all accounts with action-based views
-  apiRouter.get("/accounts", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/accounts", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
       const { view, owner, search, limit: limitParam, offset: offsetParam } = req.query;

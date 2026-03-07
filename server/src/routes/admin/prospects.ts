@@ -124,7 +124,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
             break;
 
           case "hot_prospects":
-            // Non-paying orgs with high engagement score (30+)
+            // Non-paying orgs with high engagement (score 50+ or high/very_high interest)
             // Uses the stored engagement_score from compute_org_engagement_score()
             query = `
               ${selectFields}
@@ -135,7 +135,10 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
                 ${NOT_MEMBER_ALIASED}
                 OR o.subscription_canceled_at IS NOT NULL
               )
-              AND COALESCE(o.engagement_score, 0) >= 30
+              AND (
+                COALESCE(o.engagement_score, 0) >= 50
+                OR o.interest_level IN ('high', 'very_high')
+              )
             `;
             orderBy = ` ORDER BY o.engagement_score DESC NULLS LAST, o.invoice_requested_at DESC NULLS LAST`;
             break;
@@ -855,7 +858,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
   );
 
   // GET /api/admin/team - Get admin team members for assignment dropdowns
-  apiRouter.get("/team", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/team", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
 

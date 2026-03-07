@@ -9,7 +9,7 @@ import { Router } from "express";
 import { WorkOS } from "@workos-inc/node";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { requireAuth, requireAdmin, requireManage } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import {
@@ -381,7 +381,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   apiRouter.get(
     "/prospects/view-counts",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const pool = getPool();
@@ -397,6 +397,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           addiePipeline,
           needsHuman,
           openInvoices,
+          hotProspects,
         ] = await Promise.all([
           pool.query(`
             SELECT COUNT(DISTINCT o.workos_organization_id) as count
@@ -466,6 +467,21 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
               AND oi.amount_due > 0
               AND (o.is_personal IS NOT TRUE)
           `),
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE (
+              o.subscription_status IS NULL
+              OR o.subscription_status NOT IN ('active', 'trialing')
+              OR o.subscription_canceled_at IS NOT NULL
+            )
+            AND (
+              COALESCE(o.engagement_score, 0) >= 50
+              OR o.interest_level IN ('high', 'very_high')
+            )
+            AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
+            AND (o.is_personal IS NOT TRUE)
+          `),
         ]);
 
         res.json({
@@ -477,6 +493,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
           addie_pipeline: parseInt(addiePipeline.rows[0]?.count || "0"),
           needs_human: parseInt(needsHuman.rows[0]?.count || "0"),
           open_invoices: parseInt(openInvoices.rows[0]?.count || "0"),
+          hot_prospects: parseInt(hotProspects.rows[0]?.count || "0"),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");

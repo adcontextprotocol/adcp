@@ -78,9 +78,9 @@
       border-color: var(--color-gray-300);
     }
     .view-tab.active {
-      background: var(--color-brand);
-      color: white;
-      border-color: var(--color-brand);
+      background: var(--color-brand) !important;
+      color: white !important;
+      border-color: var(--color-brand) !important;
     }
     .view-tab .badge {
       background: var(--color-gray-200);
@@ -1228,7 +1228,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       needs_followup: 'Organizations with pending follow-up actions due within 7 days',
       new_signups: 'Organizations that signed up in the last 14 days with no logged activities',
       open_invoices: 'Organizations with open or draft invoices waiting for payment - follow up to close deals',
-      hot_prospects: 'Non-members with engagement score 30+ (Slack users, team members, activities, events, interest)',
+      hot_prospects: 'Non-members with engagement score 50+ or high/very high interest level',
       going_cold: 'Organizations with no activity in the last 30 days - may need re-engagement',
       renewals: 'Active members with subscriptions ending in the next 60 days',
       low_engagement: 'Active members with low engagement (2 fires or less) - retention risk',
@@ -1337,7 +1337,8 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       document.getElementById('count-going_cold').textContent = viewCounts.going_cold || 0;
       document.getElementById('count-renewals').textContent = viewCounts.renewals || 0;
       document.getElementById('count-my_accounts').textContent = viewCounts.my_accounts || 0;
-      // hot_prospects and low_engagement are calculated client-side, so we don't show counts
+      document.getElementById('count-hot_prospects').textContent = viewCounts.hot_prospects || 0;
+      document.getElementById('count-open_invoices').textContent = viewCounts.open_invoices || 0;
     }
 
     function populateOwnerFilter() {
@@ -1345,7 +1346,7 @@ Beta Inc,Publisher,Randy,Jane Doe,Major news network"></textarea>
       const prospectOwner = document.getElementById('prospectOwner');
 
       filterOwner.innerHTML = '<option value="">All</option>';
-      prospectOwner.innerHTML = '<option value="">Not assigned</option>';
+      prospectOwner.innerHTML = '<option value="">Unassigned</option>';
 
       teamMembers.forEach(member => {
         const isMe = currentUser?.id && member.user_id === currentUser.id;
