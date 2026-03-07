@@ -1684,7 +1684,7 @@
       btn.textContent = 'Saving...';
 
       try {
-        const response = await manageFetch('/api/admin/prospects', {
+        const response = await manageFetch('/api/admin/accounts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
@@ -1720,7 +1720,7 @@
 
     async function loadPaymentLinkProducts(orgId) {
       try {
-        const response = await manageFetch(`/api/admin/prospects/${orgId}/payment-link`, {
+        const response = await manageFetch(`/api/admin/accounts/${orgId}/payment-link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
@@ -1774,7 +1774,7 @@
       container.innerHTML = '<p>Generating payment link...</p>';
 
       try {
-        const response = await manageFetch(`/api/admin/prospects/${paymentLinkOrgId}/payment-link`, {
+        const response = await manageFetch(`/api/admin/accounts/${paymentLinkOrgId}/payment-link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lookup_key: lookupKey })
@@ -1922,7 +1922,7 @@
       };
 
       try {
-        const response = await manageFetch(`/api/admin/prospects/${invoiceOrgId}/invoice`, {
+        const response = await manageFetch(`/api/admin/accounts/${invoiceOrgId}/invoice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)

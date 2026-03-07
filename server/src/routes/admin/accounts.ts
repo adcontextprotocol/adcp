@@ -15,8 +15,16 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
-import { OrganizationDatabase } from "../../db/organization-db.js";
-import { getPendingInvoices } from "../../billing/stripe-client.js";
+import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
+import {
+  getPendingInvoices,
+  createCheckoutSession,
+  getProductsForCustomer,
+  createAndSendInvoice,
+} from "../../billing/stripe-client.js";
+import { createProspect } from "../../services/prospect.js";
+import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
+import { WorkOS } from "@workos-inc/node";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
@@ -85,8 +93,10 @@ function scoreToFires(score: number): number {
 
 export function setupAccountRoutes(
   pageRouter: Router,
-  apiRouter: Router
+  apiRouter: Router,
+  config?: { workos: WorkOS | null }
 ): void {
+  const workos = config?.workos ?? null;
 
   // Redirect to manage accounts page
   pageRouter.get("/accounts", requireAuth, (req, res) => {
@@ -2117,6 +2127,453 @@ export function setupAccountRoutes(
       } catch (error) {
         logger.error({ err: error }, "Error fetching registry activity");
         res.status(500).json({ error: "Failed to fetch registry activity" });
+      }
+    }
+  );
+
+  // =========================================================================
+  // ACCOUNT MUTATIONS (create, update, payment-link, invoice)
+  // =========================================================================
+
+  // POST /api/admin/accounts - Create a new prospect/account
+  apiRouter.post("/accounts", requireAuth, requireManage, async (req, res) => {
+    try {
+      const {
+        name,
+        domain,
+        company_type,
+        prospect_status,
+        prospect_source,
+        prospect_notes,
+        prospect_contact_name,
+        prospect_contact_email,
+        prospect_contact_title,
+        prospect_next_action,
+        prospect_next_action_date,
+        prospect_owner,
+      } = req.body;
+
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ error: "Company name is required" });
+      }
+
+      const result = await createProspect({
+        name,
+        domain,
+        company_type,
+        prospect_status,
+        prospect_source: prospect_source || "referral",
+        prospect_notes,
+        prospect_contact_name,
+        prospect_contact_email,
+        prospect_contact_title,
+        prospect_next_action,
+        prospect_next_action_date,
+        prospect_owner,
+      });
+
+      if (!result.success) {
+        if (result.alreadyExists) {
+          return res.status(409).json({
+            error: "Organization already exists",
+            message: result.error,
+            organization: result.organization,
+          });
+        }
+        return res.status(400).json({
+          error: "Failed to create prospect",
+          message: result.error,
+        });
+      }
+
+      res.status(201).json(result.organization);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating prospect");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to create prospect",
+      });
+    }
+  });
+
+  // PUT /api/admin/accounts/:orgId - Update account/prospect fields
+  apiRouter.put(
+    "/accounts/:orgId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const updates = req.body;
+        const pool = getPool();
+
+        if (updates.revenue_tier && !VALID_REVENUE_TIERS.includes(updates.revenue_tier as any)) {
+          return res.status(400).json({
+            error: "Invalid revenue_tier",
+            message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(", ")}`,
+          });
+        }
+
+        // If name is being updated, sync to WorkOS first
+        if (updates.name && typeof updates.name === "string" && updates.name.trim()) {
+          const trimmedName = updates.name.trim();
+          if (workos) {
+            try {
+              await workos.organizations.updateOrganization({
+                organization: orgId,
+                name: trimmedName,
+              });
+              logger.info({ orgId, newName: trimmedName }, "Organization name synced to WorkOS");
+            } catch (workosError) {
+              logger.error({ err: workosError, orgId }, "Failed to update organization name in WorkOS");
+              return res.status(500).json({
+                error: "Failed to update organization name",
+                message: `Could not sync name change to WorkOS: ${workosError instanceof Error ? workosError.message : 'Unknown error'}`,
+              });
+            }
+          }
+          updates.name = trimmedName;
+        }
+
+        const allowedFields = [
+          "name",
+          "company_type",
+          "company_types",
+          "revenue_tier",
+          "prospect_status",
+          "prospect_source",
+          "prospect_owner",
+          "prospect_notes",
+          "prospect_contact_name",
+          "prospect_contact_email",
+          "prospect_contact_title",
+          "prospect_next_action",
+          "prospect_next_action_date",
+          "disqualification_reason",
+        ];
+
+        const setClauses: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        for (const field of allowedFields) {
+          if (updates[field] !== undefined) {
+            if (field === "company_types") {
+              let typesArray = Array.isArray(updates[field]) ? updates[field] : null;
+              if (typesArray) {
+                typesArray = typesArray.filter((t: string) => COMPANY_TYPE_VALUES.includes(t as any));
+                if (typesArray.length === 0) typesArray = null;
+              }
+              setClauses.push(`${field} = $${paramIndex}`);
+              values.push(typesArray);
+              paramIndex++;
+              if (typesArray && typesArray.length > 0) {
+                setClauses.push(`company_type = $${paramIndex}`);
+                values.push(typesArray[0]);
+                paramIndex++;
+              }
+            } else {
+              setClauses.push(`${field} = $${paramIndex}`);
+              values.push(updates[field] === "" ? null : updates[field]);
+              paramIndex++;
+            }
+          }
+        }
+
+        if (setClauses.length === 0) {
+          return res.status(400).json({ error: "No valid fields to update" });
+        }
+
+        setClauses.push("updated_at = NOW()");
+        values.push(orgId);
+
+        const result = await pool.query(
+          `UPDATE organizations
+           SET ${setClauses.join(", ")}
+           WHERE workos_organization_id = $${paramIndex}
+           RETURNING *`,
+          values
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: "Account not found" });
+        }
+
+        res.json(result.rows[0]);
+      } catch (error) {
+        logger.error({ err: error }, "Error updating account");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update account",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/payment-link - Generate a Stripe payment link
+  apiRouter.post(
+    "/accounts/:orgId/payment-link",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { lookup_key, coupon_id, promotion_code } = req.body;
+        const pool = getPool();
+
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, is_personal, prospect_contact_email,
+                  stripe_coupon_id, stripe_promotion_code
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const customerType = org.is_personal ? "individual" : "company";
+
+        const products = await getProductsForCustomer({
+          customerType,
+          category: "membership",
+        });
+
+        if (!lookup_key) {
+          return res.json({
+            needs_selection: true,
+            products: products.map((p) => ({
+              lookup_key: p.lookup_key,
+              display_name: p.display_name,
+              amount_cents: p.amount_cents,
+              revenue_tiers: p.revenue_tiers,
+            })),
+            message: "Select a product to generate payment link",
+          });
+        }
+
+        const product = products.find((p) => p.lookup_key === lookup_key);
+        if (!product) {
+          return res.status(400).json({
+            error: "Product not found",
+            message: `No product found with lookup key: ${lookup_key}`,
+          });
+        }
+
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        const effectivePromoCode = promotion_code || org.stripe_promotion_code;
+
+        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        const session = await createCheckoutSession({
+          priceId: product.price_id,
+          customerEmail: org.prospect_contact_email || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/join?payment=cancelled`,
+          workosOrganizationId: orgId,
+          isPersonalWorkspace: org.is_personal,
+          couponId: effectiveCouponId || undefined,
+          promotionCode: !effectiveCouponId ? effectivePromoCode : undefined,
+        });
+
+        if (!session?.url) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe is not configured or session created but no URL returned",
+          });
+        }
+
+        logger.info(
+          { orgId, orgName: org.name, lookupKey: lookup_key, adminEmail: req.user!.email },
+          "Admin generated payment link"
+        );
+
+        res.json({
+          success: true,
+          payment_url: session.url,
+          product: { display_name: product.display_name, amount_cents: product.amount_cents },
+          organization: { name: org.name, email: org.prospect_contact_email },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error generating payment link");
+        const errorMessage = error instanceof Error ? error.message : "Unable to generate payment link";
+        res.status(500).json({ error: "Internal server error", message: errorMessage });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/invoice - Generate and send a Stripe invoice
+  apiRouter.post(
+    "/accounts/:orgId/invoice",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const {
+          lookup_key,
+          company_name,
+          contact_name,
+          contact_email,
+          billing_address,
+          coupon_id,
+        } = req.body;
+
+        if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
+          return res.status(400).json({
+            error: "Missing required fields",
+            message: "lookup_key, company_name, contact_name, contact_email, and billing_address are required",
+          });
+        }
+
+        if (!billing_address.line1 || !billing_address.city || !billing_address.state ||
+            !billing_address.postal_code || !billing_address.country) {
+          return res.status(400).json({
+            error: "Incomplete billing address",
+            message: "Billing address must include line1, city, state, postal_code, and country",
+          });
+        }
+
+        const pool = getPool();
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, stripe_coupon_id FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+
+        const result = await createAndSendInvoice({
+          lookupKey: lookup_key,
+          companyName: company_name,
+          contactName: contact_name,
+          contactEmail: contact_email,
+          billingAddress: {
+            line1: billing_address.line1,
+            line2: billing_address.line2,
+            city: billing_address.city,
+            state: billing_address.state,
+            postal_code: billing_address.postal_code,
+            country: billing_address.country,
+          },
+          workosOrganizationId: orgId,
+          couponId: effectiveCouponId,
+        });
+
+        if (!result) {
+          return res.status(500).json({
+            error: "Failed to create invoice",
+            message: "Stripe may not be configured or the product was not found",
+          });
+        }
+
+        await pool.query(
+          `UPDATE organizations SET
+            invoice_requested_at = NOW(),
+            prospect_contact_name = $1,
+            prospect_contact_email = $2
+           WHERE workos_organization_id = $3`,
+          [contact_name, contact_email, orgId]
+        );
+
+        logger.info(
+          { orgId, orgName: org.name, lookupKey: lookup_key, invoiceId: result.invoiceId, contactEmail: contact_email, adminEmail: req.user!.email },
+          "Admin sent invoice"
+        );
+
+        res.json({
+          success: true,
+          invoice_id: result.invoiceId,
+          invoice_url: result.invoiceUrl,
+          organization: { name: org.name },
+          contact: { name: contact_name, email: contact_email },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error sending invoice");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to send invoice",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/team - Admin team members for assignment dropdowns
+  apiRouter.get("/team", requireAuth, requireManage, async (req, res) => {
+    try {
+      const pool = getPool();
+
+      const result = await pool.query(`
+        SELECT DISTINCT
+          u.workos_user_id as user_id,
+          COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.email) as user_name,
+          u.email as user_email
+        FROM working_group_memberships wgm
+        JOIN working_groups wg ON wg.id = wgm.working_group_id
+        JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wg.slug = 'aao-admin'
+          AND wgm.status = 'active'
+        ORDER BY user_name ASC
+      `);
+
+      const currentUserId = req.user?.id;
+      const currentUserName =
+        [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || req.user?.email;
+      const currentUserEmail = req.user?.email;
+
+      const teamMembers = result.rows;
+      const currentUserInList = teamMembers.some(
+        (m: { user_id: string }) => m.user_id === currentUserId
+      );
+
+      if (!currentUserInList && currentUserId) {
+        teamMembers.unshift({
+          user_id: currentUserId,
+          user_name: currentUserName,
+          user_email: currentUserEmail,
+        });
+      }
+
+      res.json(teamMembers);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching admin team");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch admin team",
+      });
+    }
+  });
+
+  // GET /api/admin/organizations - List all organizations (for parent org dropdown)
+  apiRouter.get(
+    "/organizations",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const pool = getPool();
+
+        const result = await pool.query(`
+          SELECT
+            workos_organization_id,
+            name,
+            company_type,
+            prospect_status
+          FROM organizations
+          ORDER BY name ASC
+        `);
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching organizations");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch organizations",
+        });
       }
     }
   );

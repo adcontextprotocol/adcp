@@ -819,8 +819,8 @@ export class HTTPServer {
 
     // Mount admin routes
     const { pageRouter, apiRouter } = createAdminRouter();
-    this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
-    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+    this.app.use('/admin', pageRouter);      // Page routes: /admin/*
+    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/accounts, etc.
 
     // Mount admin insights routes (member insights, goals, outreach)
     const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
@@ -6790,10 +6790,8 @@ Disallow: /api/admin/
 
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
-    // Note: Prospect management routes are in routes/admin.ts
-    // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
-    //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
-    //         GET /api/admin/organizations
+    // Note: Account management routes are in routes/admin/accounts.ts
+    // Old /api/admin/prospects/* paths are proxied via routes/admin/prospects.ts for compatibility
 
     // NOTE: Agent management is now handled through member profiles.
     // Agents are stored in the member_profiles.agents JSONB array.
