@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/get-plan-audit-logs-response.json",
+  "title": "Get Plan Audit Logs Response",
+  "description": "Governance state and audit trail for a plan.",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Plan identifier."
+    },
+    "plan_version": {
+      "type": "integer",
+      "description": "Current plan version."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "suspended", "completed"],
+      "description": "Plan lifecycle status."
+    },
+    "budget": {
+      "type": "object",
+      "description": "Budget state.",
+      "properties": {
+        "authorized": {
+          "type": "number",
+          "description": "Total authorized budget from the plan."
+        },
+        "committed": {
+          "type": "number",
+          "description": "Total budget committed from confirmed outcomes."
+        },
+        "remaining": {
+          "type": "number",
+          "description": "Authorized minus committed."
+        },
+        "utilization_pct": {
+          "type": "number",
+          "description": "Committed as a percentage of authorized."
+        }
+      },
+      "additionalProperties": false
+    },
+    "channel_allocation": {
+      "type": "object",
+      "description": "Current channel mix. Keyed by channel ID.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "committed": {
+            "type": "number",
+            "description": "Budget committed to this channel."
+          },
+          "pct": {
+            "type": "number",
+            "description": "Channel's share of the authorized total budget."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "campaigns": {
+      "type": "array",
+      "description": "Per-campaign breakdown.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "buyer_campaign_ref": {
+            "type": "string",
+            "description": "Campaign identifier."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "suspended", "completed"],
+            "description": "Campaign status."
+          },
+          "committed": {
+            "type": "number",
+            "description": "Budget committed in this campaign."
+          },
+          "active_media_buys": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Media buy IDs currently active."
+          }
+        },
+        "required": ["buyer_campaign_ref", "status", "committed"],
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Aggregate validation and outcome statistics.",
+      "properties": {
+        "actions_validated": {
+          "type": "integer",
+          "description": "Total actions validated."
+        },
+        "outcomes_reported": {
+          "type": "integer",
+          "description": "Total outcomes reported."
+        },
+        "verdicts": {
+          "type": "object",
+          "description": "Count of each verdict type.",
+          "properties": {
+            "approved": { "type": "integer" },
+            "rejected": { "type": "integer" },
+            "modification_required": { "type": "integer" },
+            "escalated": { "type": "integer" }
+          },
+          "additionalProperties": false
+        },
+        "findings_count": {
+          "type": "integer",
+          "description": "Total findings from report_plan_outcome."
+        },
+        "escalations": {
+          "type": "array",
+          "description": "All escalations and their resolutions.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action_id": {
+                "type": "string",
+                "description": "The escalated action."
+              },
+              "reason": {
+                "type": "string",
+                "description": "Why it was escalated."
+              },
+              "resolution": {
+                "type": "string",
+                "description": "How it was resolved (e.g., 'approved_by_human', 'rejected_by_human')."
+              },
+              "resolved_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 resolution timestamp."
+              }
+            },
+            "required": ["action_id", "reason"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "entries": {
+      "type": "array",
+      "description": "Ordered audit trail. Only present when include_entries is true.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Entry identifier."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["validation", "outcome"],
+            "description": "Entry type."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp."
+          },
+          "tool": {
+            "type": "string",
+            "description": "The AdCP tool (present for validation entries)."
+          },
+          "verdict": {
+            "$ref": "/schemas/enums/validation-verdict.json",
+            "description": "Validation verdict (present for validation entries)."
+          },
+          "outcome": {
+            "$ref": "/schemas/enums/outcome-type.json",
+            "description": "Outcome type (present for outcome entries)."
+          },
+          "committed_budget": {
+            "type": "number",
+            "description": "Budget committed (present for completed outcome entries)."
+          },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Media buy ID (present for delivery outcome entries)."
+          },
+          "status": {
+            "type": "string",
+            "description": "Outcome status (present for outcome entries)."
+          }
+        },
+        "required": ["id", "type", "timestamp"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["plan_id", "plan_version", "status", "budget", "campaigns", "summary"],
+  "additionalProperties": false
+}

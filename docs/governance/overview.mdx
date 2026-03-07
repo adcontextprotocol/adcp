@@ -15,15 +15,16 @@ The Governance Protocol provides standardized mechanisms for compliance, brand s
 
 ## Protocol Domains
 
-The Governance Protocol covers four distinct governance domains:
+The Governance Protocol covers six governance domains:
 
 | Domain | What It Governs | Key Mechanisms |
 |--------|-----------------|----------------|
+| **[Policy Registry](./policy-registry)** | Shared policy definitions | Standardized regulations and standards, natural language policy text, calibration exemplars |
 | **[Property Governance](./property/index)** | Where ads can run | Property lists, compliance filtering, adagents.json authorization |
 | **[Brand Protocol](/docs/brand-protocol/index)** | Brand identity & agents | brand.json discovery, brand agent authorization |
 | **[Content Standards](./content-standards/index)** | Brand suitability | Privacy-preserving content evaluation, calibration, validation |
 | **[Creative Governance](./creative/index)** | What creatives are safe and effective | Security scanning, creative quality, content categorization via `get_creative_features` |
-| **Campaign Governance** | What can be bought | Budget controls, approval workflows, policy compliance |
+| **[Campaign Governance](./campaign/index)** | What can be bought | Budget controls, approval workflows, policy compliance |
 
 Each domain has specialized governance agents that provide data, filtering, and scoring capabilities.
 
@@ -34,7 +35,7 @@ The AgenticAdvertising.org Governance Working Group is developing standards acro
 | Area | Focus | Protocol Impact |
 |------|-------|-----------------|
 | Brand Suitability | Safe, appropriate ad contexts | Property Governance, Content filtering, adagents.json |
-| Brand Identity & Standards Library | Machine-readable brand policies | [Brand identity](/docs/brand-protocol/brand-json), Content Standards |
+| Brand Identity & Standards Library | Machine-readable brand policies | [Brand identity](/docs/brand-protocol/brand-json), Content Standards, [Campaign Governance](/docs/governance/campaign/index) policy resolution |
 | Creative Standards & Validation | Technical and ethical creative criteria | Creative Governance |
 | Process & Human Oversight | Human-in-the-loop checkpoints | All protocols |
 | Regulatory & Compliance | Legal and regional frameworks | All protocols |
@@ -177,6 +178,9 @@ The Media Buy Protocol consumes governance data at multiple stages:
 ## Protocol Sections
 
 <CardGroup cols={2}>
+  <Card title="Policy Registry" icon="book" href="/docs/governance/policy-registry">
+    Community-maintained library of standardized advertising regulations and industry standards, consumed by all governance domains.
+  </Card>
   <Card title="Property Governance" icon="building" href="/docs/governance/property/index">
     Control where ads can run with property lists, compliance filtering, and publisher authorization via adagents.json.
   </Card>
@@ -185,5 +189,8 @@ The Media Buy Protocol consumes governance data at multiple stages:
   </Card>
   <Card title="Creative Governance" icon="palette" href="/docs/governance/creative/index">
     Security scanning, creative quality, and content categorization through specialist agents via get_creative_features.
+  </Card>
+  <Card title="Campaign Governance" icon="scale-balanced" href="/docs/governance/campaign/index">
+    Automated validation of buy-side transactions against authorized plans, budgets, and brand compliance configuration.
   </Card>
 </CardGroup>

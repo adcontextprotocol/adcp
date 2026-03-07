@@ -1,0 +1,168 @@
+---
+title: get_plan_audit_logs
+---
+
+<Warning>
+**Draft for AdCP 3.0** - Campaign Governance is under active development. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+</Warning>
+
+# get_plan_audit_logs
+
+Retrieve governance state and audit trail for a plan. Returns budget tracking, validation history, and compliance summary.
+
+## Request
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "include_entries": true
+  }
+}
+```
+
+Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the plan.
+
+## Response
+
+```json
+{
+  "plan_id": "plan_q1_2026_launch",
+  "plan_version": 1,
+  "status": "active",
+  "budget": {
+    "authorized": 500000,
+    "committed": 425000,
+    "remaining": 75000,
+    "utilization_pct": 85
+  },
+  "channel_allocation": {
+    "olv": { "committed": 275000, "pct": 55 },
+    "display": { "committed": 150000, "pct": 30 }
+  },
+  "campaigns": [
+    {
+      "buyer_campaign_ref": "q1-2026-spring-launch",
+      "status": "active",
+      "committed": 425000,
+      "active_media_buys": ["mb_seller_456", "mb_seller_789"]
+    }
+  ],
+  "summary": {
+    "actions_validated": 15,
+    "outcomes_reported": 12,
+    "verdicts": {
+      "approved": 12,
+      "rejected": 1,
+      "modification_required": 1,
+      "escalated": 1
+    },
+    "findings_count": 2,
+    "escalations": [
+      {
+        "action_id": "act_esc_001",
+        "reason": "Budget reallocation exceeds threshold",
+        "resolution": "approved_by_human",
+        "resolved_at": "2026-03-16T09:30:00Z"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "act_001",
+      "type": "validation",
+      "timestamp": "2026-03-10T10:05:00Z",
+      "tool": "get_products",
+      "verdict": "approved"
+    },
+    {
+      "id": "act_003",
+      "type": "validation",
+      "timestamp": "2026-03-15T11:05:00Z",
+      "tool": "create_media_buy",
+      "verdict": "approved"
+    },
+    {
+      "id": "out_001",
+      "type": "outcome",
+      "timestamp": "2026-03-15T11:10:00Z",
+      "tool": "create_media_buy",
+      "outcome": "completed",
+      "committed_budget": 150000
+    },
+    {
+      "id": "out_del_001",
+      "type": "outcome",
+      "timestamp": "2026-03-22T00:00:00Z",
+      "outcome": "delivery",
+      "media_buy_id": "mb_seller_456",
+      "status": "accepted"
+    }
+  ]
+}
+```
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_id` | string | Yes | The plan to retrieve. |
+| `buyer_campaign_ref` | string | No | Filter to a specific campaign. Omit for plan-level aggregate. |
+| `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plan_id` | string | Plan identifier. |
+| `plan_version` | number | Current plan version. |
+| `status` | enum | `active`, `suspended`, or `completed`. |
+| `budget` | object | Budget state. |
+| `budget.authorized` | number | Total authorized budget from the plan. |
+| `budget.committed` | number | Total budget committed from confirmed outcomes. |
+| `budget.remaining` | number | Authorized minus committed. |
+| `budget.utilization_pct` | number | Committed as a percentage of authorized. |
+| `channel_allocation` | object | Current channel mix. Keyed by channel ID. |
+| `channel_allocation[channel].committed` | number | Budget committed to this channel. |
+| `channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
+| `campaigns` | array | Per-campaign breakdown. |
+| `campaigns[].buyer_campaign_ref` | string | Campaign identifier. |
+| `campaigns[].status` | enum | `active`, `suspended`, or `completed`. |
+| `campaigns[].committed` | number | Budget committed in this campaign. |
+| `campaigns[].active_media_buys` | array | Media buy IDs currently active. |
+| `summary` | object | Aggregate validation and outcome statistics. |
+| `summary.actions_validated` | number | Total actions validated. |
+| `summary.outcomes_reported` | number | Total outcomes reported. |
+| `summary.verdicts` | object | Count of each verdict type (`approved`, `rejected`, `modification_required`, `escalated`). |
+| `summary.findings_count` | number | Total findings from `report_plan_outcome`. |
+| `summary.escalations` | array | All escalations and their resolutions. |
+| `summary.escalations[].action_id` | string | The escalated action. |
+| `summary.escalations[].reason` | string | Why it was escalated. |
+| `summary.escalations[].resolution` | string | How it was resolved (e.g., `approved_by_human`, `rejected_by_human`). |
+| `summary.escalations[].resolved_at` | string | ISO 8601 resolution timestamp. |
+| `entries` | array | Ordered audit trail (only when `include_entries` is `true`). |
+| `entries[].id` | string | Entry identifier. |
+| `entries[].type` | enum | `validation` or `outcome`. |
+| `entries[].timestamp` | string | ISO 8601 timestamp. |
+| `entries[].tool` | string | The AdCP tool (present for `validation` entries). |
+| `entries[].verdict` | enum | Validation verdict (present for `validation` entries). |
+| `entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
+| `entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
+| `entries[].media_buy_id` | string | Media buy ID (present for `delivery` outcome entries). |
+| `entries[].status` | enum | Outcome status (present for `outcome` entries). |
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
+
+## Related tasks
+
+- [`sync_plans`](./sync_plans) -- Push or update plans
+- [`validate_plan_action`](./validate_plan_action) -- Validate actions against the plan
+- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes to update plan state
