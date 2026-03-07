@@ -5,19 +5,20 @@ title: Implementing Creative Agents
 
 This guide explains how to implement a creative agent that defines and manages creative formats.
 
-## What is a Creative Agent?
+## What is a creative agent?
 
 A creative agent is a service that:
 - **Defines formats** - Specifies what assets are required and how they should be structured
 - **Validates manifests** - Ensures creative manifests meet format requirements
 - **Generates previews** - Shows how creatives will render
-- **Builds creatives** (optional) - Generates manifests from natural language briefs
+- **Builds creatives** (optional) - Generates manifests from natural language briefs or retrieves them from a library
+- **Hosts a creative library** (optional) - Lets buyers browse and filter existing creatives
 
-Creative agents are independent of sales agents. A third-party creative agency, ad tech platform, or publisher can implement a creative agent to serve multiple buyers and publishers.
+Creative agents are independent of sales agents. An ad server (CM360, Flashtalking), creative management platform, creative agency, or publisher can implement a creative agent.
 
-## Core Requirements
+## Core requirements
 
-### 1. Format ID Namespacing
+### 1. Format ID namespacing
 
 Every format you define must use namespaced format IDs to prevent conflicts.
 
@@ -33,7 +34,7 @@ Every format you define must use namespaced format IDs to prevent conflicts.
 - Format ID portion should be descriptive and unique within your namespace
 - Use lowercase with underscores for consistency
 
-### 2. Format Validation
+### 2. Format validation
 
 When formats reference your agent_url, you are the authority for:
 - Format specifications
@@ -91,7 +92,7 @@ When formats reference your agent_url, you are the authority for:
 }
 ```
 
-## Required Tasks
+## Required tasks
 
 Creative agents must implement these two tasks:
 
@@ -118,23 +119,36 @@ Generate a visual preview showing how a creative manifest will render in your fo
 
 See [preview_creative task reference](/docs/creative/task-reference/preview_creative) for complete API specification.
 
-## Optional Tasks
+## Optional tasks
 
 ### build_creative
 
-Generate a creative manifest from a natural language brief. This enables AI-powered creative generation workflows.
+Generate a creative manifest from a natural language brief, transform an existing manifest to a new format, or retrieve a library creative as a delivery-ready manifest.
 
 **Key responsibilities:**
-- Parse natural language brief
+- Parse natural language brief or resolve a `creative_id` from your library
 - Generate or source appropriate assets
-- Return valid manifest for your format
+- Return valid manifest for the target format
+- Substitute `macro_values` into serving tags when provided
 - Optionally return preview URL
 
 See [build_creative task reference](/docs/creative/task-reference/build_creative) for complete API specification.
 
-## Validation Best Practices
+### list_creatives
 
-### Manifest Validation
+Browse and filter creatives in your library. Implement this if your platform hosts a creative library that buyers need to query.
+
+**Key responsibilities:**
+- Return creatives accessible to the authenticated account
+- Support filtering by format, status, tags, and date range
+- Support pagination for large libraries
+- Optionally include dynamic creative optimization (DCO) variable definitions per creative
+
+See [list_creatives task reference](/docs/creative/task-reference/list_creatives) for complete API specification.
+
+## Validation best practices
+
+### Manifest validation
 
 When validating manifests:
 
@@ -165,7 +179,7 @@ When validating manifests:
 }
 ```
 
-### Handling disclosure requirements
+### Disclosure requirements
 
 When a creative brief includes `compliance.required_disclosures`, creative agents must ensure each disclosure appears in the generated creative. The workflow:
 
@@ -183,7 +197,7 @@ When a creative brief includes `compliance.required_disclosures`, creative agent
 
 **Example:** A brief requires `"SEC Rule 156"` disclosure at `footer` position. Your format declares `supported_disclosure_positions: ["footer", "overlay"]`. The creative agent renders the disclosure text in the footer area of the generated image.
 
-### Format Evolution
+### Format evolution
 
 When updating format definitions:
 
@@ -192,7 +206,7 @@ When updating format definitions:
 - Consider versioning: `youragency.com:format_name_v2`
 - Maintain backward compatibility when possible
 
-## Deployment Checklist
+## Deployment checklist
 
 Before launching your creative agent:
 
@@ -204,9 +218,9 @@ Before launching your creative agent:
 - [ ] Format definitions include complete asset requirements
 - [ ] Documentation available for your custom formats
 
-## Integration Patterns
+## Integration patterns
 
-### Pattern 1: Creative Agency
+### Pattern 1: creative agency
 
 You're a creative agency building custom formats for brands:
 
@@ -227,7 +241,7 @@ You're a creative agency building custom formats for brands:
 }
 ```
 
-### Pattern 2: Platform-Specific Formats
+### Pattern 2: platform-specific formats
 
 You're a platform defining specialized formats:
 
@@ -248,7 +262,7 @@ You're a platform defining specialized formats:
 }
 ```
 
-### Pattern 3: Format Extension Service
+### Pattern 3: format extension service
 
 You provide enhanced versions of standard formats:
 
@@ -273,11 +287,81 @@ You provide enhanced versions of standard formats:
 }
 ```
 
-## Related Documentation
+## Platform mapping
+
+If you're wrapping an existing ad server or creative management platform, this section shows how common platform concepts map to the creative protocol.
+
+### Concept mapping
+
+| Platform concept | AdCP equivalent | Notes |
+|---|---|---|
+| Advertiser / account | Account (via [accounts protocol](/docs/accounts/overview)) | Buyer establishes access before querying the library |
+| Creative concept / group / template folder | `concept_id` in `list_creatives` | Groups related creatives across sizes/formats (Flashtalking concepts, Celtra campaign folders, CM360 creative groups) |
+| Creative | Creative item in `list_creatives` response | |
+| Creative type + size | `format_id` (structured object with `agent_url`, `id`, dimensions) | AdCP combines type and size into a single format reference |
+| Template (Celtra's term) | Format (via `list_creative_formats`) | Celtra templates define structure and available properties; AdCP formats define structure and available assets |
+| Template object properties (Celtra) | `variables` array | Named slots with types (text, color, image, video, number, boolean) — near-exact match |
+| Active / archived / pending | `status` field | |
+| Ad tag / serving tag | Asset in a creative manifest (`html`, `javascript`, or `vast` type) | Tags are just assets — no special concept |
+| Placement / ad unit | Package within a media buy | The buy context where a creative is assigned |
+| DCO variables / dynamic fields | `variables` array (via `include_variables=true`) | Named slots with types and defaults |
+| Data feed / targeting rules | Not modeled | AdCP models the variable *slots*, not the optimization rules |
+
+### Tag generation models
+
+Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates both common models:
+
+**Creative-level tags** (Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset. Celtra's `GET /tags?creativeId=X&adServer=Y` is a direct analog — the ad server parameter scopes the output tag format, just as `target_format_id` does in `build_creative`.
+
+**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. The caller passes `media_buy_id` and optionally `package_id` to provide the trafficking context. A CM360 adapter has two options for `build_creative` with a `creative_id`:
+1. Return the creative's `htmlCode` or `redirectUrl` directly as a manifest asset
+2. Use internal trafficking with the `media_buy_id` to produce a tag scoped to the target format
+
+In both cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
+
+### Variable models
+
+Platforms represent dynamic content differently. The creative protocol's `variables` array accommodates the common patterns:
+
+**Named variable slots** (Flashtalking) — Each creative has explicit variables with IDs, names, and types. Maps directly to `creative-variable.json`.
+
+**Template object properties** (Celtra) — Templates define `templateObjects` with typed `properties` (text, color, image, video, percentage, hidden) scoped to specific components and size variants. A Celtra adapter flattens these into the `variables` array, using the template object label and property label to construct `variable_id` and `name`.
+
+**Rule-based asset selection** (CM360) — Dynamic creatives use `dynamicAssetSelection` with targeting rules, fed by data feeds. This model is not variable-based — CM360 adapters would typically not populate the `variables` array, and `has_variables` filtering would not apply.
+
+### Macro handling
+
+Platforms use their own macro syntax internally. The `macro_values` parameter in `build_creative` lets the caller pass universal macro values (e.g., `CLICK_URL`) that the creative agent substitutes into the output tag using whatever syntax the platform expects.
+
+| Universal macro | CM360 equivalent | Flashtalking equivalent |
+|---|---|---|
+| `CLICK_URL` | `%c` | `[clickTag]` |
+| `CACHEBUSTER` | `%n` | `[timestamp]` |
+| `TIMESTAMP` | `%t` | `[timestamp]` |
+
+The creative agent handles translation — callers always use universal macros.
+
+### Which tasks to implement
+
+The creative protocol requires `list_creative_formats` and `preview_creative` from all creative agents. The table below shows which additional tasks and capabilities each platform type should implement.
+
+| Platform type | Core tasks | Recommended tasks | Capabilities |
+|---|---|---|---|
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true` |
+| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
+| Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
+| Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
+
+Declare these capabilities in `get_adcp_capabilities` so buyer agents can determine the correct interaction model without trial and error. See [Interaction models](/docs/creative/specification#interaction-models) in the spec.
+
+Platforms with a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. This is the same accounts protocol used by sales agents for media buys.
+
+## Related
 
 - [Creative Formats](/docs/creative/formats) - Understanding format structure
 - [Creative Manifests](/docs/creative/creative-manifests) - How manifests work
 - [Asset Types](/docs/creative/asset-types) - Asset specifications
-- [list_creative_formats Task](/docs/creative/task-reference/list_creative_formats) - API reference
-- [preview_creative Task](/docs/creative/task-reference/preview_creative) - API reference
-- [build_creative Task](/docs/creative/task-reference/build_creative) - API reference
+- [list_creative_formats task](/docs/creative/task-reference/list_creative_formats) - Format discovery API reference
+- [list_creatives task](/docs/creative/task-reference/list_creatives) - Creative library API reference
+- [build_creative task](/docs/creative/task-reference/build_creative) - Manifest generation API reference
+- [preview_creative task](/docs/creative/task-reference/preview_creative) - Preview rendering API reference

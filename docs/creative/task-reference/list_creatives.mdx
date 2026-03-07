@@ -1,0 +1,277 @@
+---
+title: list_creatives
+---
+
+
+Browse and filter creatives in a creative library. Supports filtering by format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
+
+Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Response time**: ~1 second (simple database lookup)
+
+## Overview
+
+**Key features:**
+- Filter by format, status, tags, dates, assignments, concepts, and variables
+- Sort by creation date, update date, name, status, or performance metrics
+- Cursor-based pagination for large libraries
+- Optionally include assignments, performance data, sub-assets, and dynamic creative optimization (DCO) variables
+- Return only specific fields to reduce response size
+- Filter by creative concept (groups of related creatives across sizes/formats)
+- Find DCO creatives and inspect their dynamic content slots
+
+## Request parameters
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json)
+
+### Core parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filters` | object | No | Filter criteria for querying creatives |
+| `sort` | object | No | Sorting parameters |
+| `pagination` | object | No | Pagination controls |
+
+### Data inclusion options
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `include_assignments` | boolean | No | Include package assignment information (default: true) |
+| `include_performance` | boolean | No | Include performance metrics (default: false) |
+| `include_sub_assets` | boolean | No | Include sub-assets for carousel/native formats (default: false) |
+| `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
+| `fields` | array | No | Specific fields to return (omit for all fields) |
+
+## Filtering options
+
+The `filters` object supports format, status, tag, date, concept, variable, and assignment filtering. All filters are optional and composable.
+
+<Note>
+**Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array.
+</Note>
+
+<Note>
+Assignment-related filters (`assigned_to_packages`, `media_buy_ids`, `buyer_refs`, `unassigned`, `has_performance_data`) are specific to sales agents that track media buy assignments. Standalone creative agents will ignore these filters.
+</Note>
+
+## Sorting options
+
+Sort results by various fields with ascending or descending order:
+
+```json
+{
+  "sort": {
+    "field": "created_date",
+    "direction": "desc"
+  }
+}
+```
+
+**Available sort fields:**
+- `created_date` - When the creative was created (default)
+- `updated_date` - When creative was last modified
+- `name` - Creative name (alphabetical)
+- `status` - Approval status
+- `assignment_count` - Number of package assignments
+- `performance_score` - Aggregated performance metric
+
+## Pagination
+
+Control result set size with cursor-based pagination:
+
+```json
+{
+  "pagination": {
+    "max_results": 50,
+    "cursor": "eyJjcmVhdGVkX2RhdGUiOi4uLn0"
+  }
+}
+```
+
+## Response format
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json)
+
+The response provides creative data with optional enrichment:
+
+```json
+{
+  "query_summary": {
+    "total_matching": 1,
+    "returned": 1,
+    "filters_applied": ["status=approved"]
+  },
+  "pagination": {
+    "has_more": false,
+    "total_count": 1
+  },
+  "creatives": [
+    {
+      "creative_id": "ft_88201",
+      "name": "Holiday Sale - Medium Rectangle",
+      "format_id": {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      "status": "approved",
+      "created_date": "2026-01-15T10:30:00Z",
+      "updated_date": "2026-01-15T14:20:00Z",
+      "concept_id": "concept_holiday_2026",
+      "concept_name": "Holiday 2026 Campaign",
+      "variables": [
+        {
+          "variable_id": "headline_text",
+          "name": "Headline",
+          "variable_type": "text",
+          "default_value": "Holiday Sale - 50% Off",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "format_summary": {
+    "display_static_300x250": 15,
+    "display_static_728x90": 8,
+    "video_30s_vast": 2
+  },
+  "status_summary": {
+    "approved": 20,
+    "pending_review": 3,
+    "rejected": 2,
+    "archived": 5
+  }
+}
+```
+
+### Per-creative fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `creative_id` | string | Unique creative identifier |
+| `name` | string | Human-readable name |
+| `format_id` | object | Structured format reference |
+| `status` | string | Approval status |
+| `created_date` | string | Creation timestamp |
+| `updated_date` | string | Last modified timestamp |
+| `concept_id` | string | Creative concept ID |
+| `concept_name` | string | Human-readable concept name |
+| `variables` | array | Dynamic creative optimization (DCO) variable definitions (when `include_variables=true`) |
+| `assignments` | object | Package assignments (when `include_assignments=true`) |
+| `performance` | object | Performance metrics (when `include_performance=true`) |
+| `sub_assets` | array | Sub-assets for multi-asset formats (when `include_sub_assets=true`) |
+
+## Account requirements
+
+<Note>
+Creative agents that host a library should implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying creatives. This is the same accounts protocol used by sales agents for media buys — there is no separate version. Sales agents that already implement the accounts protocol for media buys do not need to do anything additional.
+</Note>
+
+## Examples
+
+### Concept-scoped query with variables
+
+List all approved creatives in a specific concept, including DCO variable definitions:
+
+```json
+{
+  "filters": {
+    "concept_ids": ["concept_holiday_2026"],
+    "statuses": ["approved"]
+  },
+  "include_variables": true,
+  "sort": {
+    "field": "created_date",
+    "direction": "desc"
+  }
+}
+```
+
+### Format-specific query
+
+Find creatives matching specific format IDs across concepts:
+
+```json
+{
+  "filters": {
+    "format_ids": [
+      {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      {
+        "agent_url": "https://creative.example.com",
+        "id": "display_static",
+        "width": 728,
+        "height": 90
+      }
+    ],
+    "statuses": ["approved"]
+  }
+}
+```
+
+### Find DCO creatives
+
+Find creatives with dynamic content variables for personalized campaigns:
+
+```json
+{
+  "filters": {
+    "has_variables": true,
+    "statuses": ["approved"]
+  },
+  "include_variables": true
+}
+```
+
+### Field-limited query
+
+Get minimal creative data for a selection dropdown:
+
+```json
+{
+  "fields": ["creative_id", "name", "format", "status"],
+  "include_assignments": false,
+  "filters": {
+    "statuses": ["approved"]
+  },
+  "sort": {
+    "field": "name",
+    "direction": "asc"
+  }
+}
+```
+
+### Campaign-level query
+
+Find all creatives used in specific media buys (sales agents only):
+
+```json
+{
+  "filters": {
+    "media_buy_ids": ["mb_summer_2026", "mb_spring_2026"],
+    "statuses": ["approved"]
+  },
+  "include_assignments": true,
+  "include_performance": true,
+  "sort": {
+    "field": "performance_score",
+    "direction": "desc"
+  }
+}
+```
+
+## Related tasks
+
+- [`build_creative`](/docs/creative/task-reference/build_creative) - Build manifests from library creatives or generate from scratch
+- [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) - Upload and manage creative assets on a sales agent
+- [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) - Discover supported creative formats
+- [`preview_creative`](/docs/creative/task-reference/preview_creative) - Generate previews of creative manifests

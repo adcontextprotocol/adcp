@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-filters.json",
   "title": "Creative Filters",
-  "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
+  "description": "Filter criteria for querying creatives from a creative library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
   "type": "object",
   "properties": {
     "accounts": {
@@ -109,6 +109,26 @@
     "has_performance_data": {
       "type": "boolean",
       "description": "Filter creatives that have performance data when true"
+    },
+    "concept_ids": {
+      "type": "array",
+      "description": "Filter by creative concept IDs. Concepts group related creatives across sizes and formats (e.g., Flashtalking concepts, Celtra campaign folders, CM360 creative groups).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by structured format IDs. Returns creatives that match any of these formats.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "has_variables": {
+      "type": "boolean",
+      "description": "When true, return only creatives with dynamic variables (DCO). When false, return only static creatives."
     }
   },
   "additionalProperties": true

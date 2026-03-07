@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/list-creatives-request.json",
+  "$id": "/schemas/creative/list-creatives-request.json",
   "title": "List Creatives Request",
-  "description": "Request parameters for querying creative assets from the centralized library with filtering, sorting, and pagination",
+  "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
   "type": "object",
   "properties": {
     "filters": {
@@ -43,6 +43,11 @@
       "default": false,
       "description": "Include sub-assets (for carousel/native formats) in response"
     },
+    "include_variables": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include dynamic content variable definitions (DCO slots) for each creative"
+    },
     "fields": {
       "type": "array",
       "description": "Specific fields to include in response (omit for all fields)",
@@ -59,7 +64,9 @@
           "tags",
           "assignments",
           "performance",
-          "sub_assets"
+          "sub_assets",
+          "variables",
+          "concept"
         ]
       }
     },
@@ -76,34 +83,36 @@
       "description": "List all approved video creatives",
       "data": {
         "filters": {
-          "format": "video",
-          "status": "approved"
+          "formats": ["video"],
+          "statuses": ["approved"]
         }
       }
     },
     {
-      "description": "Search for Nike creatives with performance data",
+      "description": "List creatives in a specific concept matching a format",
       "data": {
         "filters": {
-          "name_contains": "nike",
-          "has_performance_data": true
+          "concept_ids": ["concept_holiday_2026"],
+          "format_ids": [
+            {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
+            }
+          ]
         },
-        "include_performance": true
+        "include_variables": true
       }
     },
     {
-      "description": "Get unassigned creatives for assignment",
+      "description": "Find DCO creatives for dynamic campaigns",
       "data": {
         "filters": {
-          "unassigned": true
+          "has_variables": true,
+          "statuses": ["approved"]
         },
-        "sort": {
-          "field": "created_date",
-          "direction": "desc"
-        },
-        "pagination": {
-          "max_results": 20
-        }
+        "include_variables": true
       }
     },
     {
