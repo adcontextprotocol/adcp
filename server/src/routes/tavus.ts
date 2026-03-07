@@ -481,7 +481,9 @@ export function createTavusRouter() {
       "Factual or yes/no questions: one to two sentences. " +
       "Conceptual questions: two to three sentences max — give the essence, not the full explanation. " +
       "Use natural spoken punctuation — pauses, em-dashes, commas — so it sounds " +
-      "like a person talking, not reading from a document.]\n\n";
+      "like a person talking, not reading from a document. " +
+      "TTS pronunciation: write 'AgenticAdvertising dot org' (not 'AgenticAdvertising.org') so it sounds like a URL, not a sentence break. " +
+      "Same for any domain — spell out 'dot' before the TLD.]\n\n";
     currentMessage = voicePrefix + currentMessage;
 
     const voiceContext = [
