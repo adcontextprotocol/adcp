@@ -22,8 +22,7 @@ import {
   getProductsForCustomer,
   createAndSendInvoice,
 } from "../../billing/stripe-client.js";
-import { createProspect } from "../../services/prospect.js";
-import { COMPANY_TYPE_VALUES } from "../../config/company-types.js";
+import { createProspect, updateProspect } from "../../services/prospect.js";
 import { WorkOS } from "@workos-inc/node";
 import {
   MEMBER_FILTER_ALIASED,
@@ -32,64 +31,18 @@ import {
   type OrgTier,
 } from "../../db/org-filters.js";
 import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
+import {
+  computeEngagementTier,
+  scoreToFires,
+  HOT_PROSPECT_SCORE_THRESHOLD,
+  HOT_PROSPECT_INTEREST_LEVELS,
+  GOING_COLD_DAYS,
+  GOING_COLD_MIN_SCORE,
+} from "../../services/account-lifecycle.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
-/**
- * Derive organization tier from subscription and engagement data
- * Uses the shared tier definitions from org-filters.ts
- *
- * Tiers (mutually exclusive, highest wins):
- * - member: paying subscription (active, not canceled, amount > 0)
- * - engaged: not paying, but has users with engagement
- * - registered: not paying, no engaged users, but has users
- * - prospect: no users at all (pure placeholder)
- *
- * For backward compatibility, if has_users/has_engaged_users are not provided,
- * returns simplified "member" or "prospect" based on subscription only.
- */
-function deriveOrgTier(org: {
-  subscription_status: string | null;
-  subscription_canceled_at?: Date | null;
-  has_users?: boolean;
-  has_engaged_users?: boolean;
-}): OrgTier {
-  // Member: active, non-canceled subscription (includes comped members)
-  if (org.subscription_status === "active" && !org.subscription_canceled_at) {
-    return "member";
-  }
-
-  // If we have the engagement data, use full tier logic
-  if (org.has_engaged_users !== undefined || org.has_users !== undefined) {
-    // Engaged: has users with engagement
-    if (org.has_engaged_users) {
-      return "engaged";
-    }
-
-    // Registered: has users but no engagement
-    if (org.has_users) {
-      return "registered";
-    }
-
-    // Prospect: no users at all
-    return "prospect";
-  }
-
-  // Backward compatibility: no engagement data, just return prospect for non-members
-  return "prospect";
-}
-
-/**
- * Map engagement score (0-100) to fire count (0-4)
- */
-function scoreToFires(score: number): number {
-  if (score >= 76) return 4;
-  if (score >= 56) return 3;
-  if (score >= 36) return 2;
-  if (score >= 16) return 1;
-  return 0;
-}
 
 export function setupAccountRoutes(
   pageRouter: Router,
@@ -190,7 +143,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= 50
+                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -232,8 +185,8 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE (${NOT_MEMBER_ALIASED})
               AND (
-                COALESCE(o.engagement_score, 0) >= 50
-                OR o.interest_level IN ('high', 'very_high')
+                COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+                OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
               )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
@@ -252,7 +205,7 @@ export function setupAccountRoutes(
             SELECT COUNT(*) as count
             FROM organizations o
             WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
           `),
@@ -374,7 +327,7 @@ export function setupAccountRoutes(
         const org = orgResult.rows[0];
 
         // Derive member status from subscription
-        const memberStatus = deriveOrgTier(org);
+        const memberStatus = computeEngagementTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
 
         // Resolve effective membership (direct or inherited via brand hierarchy)
@@ -893,7 +846,7 @@ export function setupAccountRoutes(
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
               WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 AND ${MEMBER_FILTER_ALIASED} THEN 'expiring_soon'
-              WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
+              WHEN COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD} AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
               WHEN EXISTS (
@@ -919,7 +872,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= 50
+                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -990,8 +943,8 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE (${NOT_MEMBER_ALIASED})
             AND (
-              COALESCE(o.engagement_score, 0) >= 50
-              OR o.interest_level IN ('high', 'very_high')
+              COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+              OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
@@ -1004,7 +957,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
           `;
@@ -1060,7 +1013,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             WHERE ${MEMBER_FILTER_ALIASED}
-              AND COALESCE(o.engagement_score, 0) < 30
+              AND COALESCE(o.engagement_score, 0) < ${GOING_COLD_MIN_SCORE}
           `;
           orderBy = ` ORDER BY o.engagement_score ASC NULLS FIRST`;
           break;
@@ -1286,7 +1239,7 @@ export function setupAccountRoutes(
 
       // Transform results
       const accounts = result.rows.map((row) => {
-        const memberStatus = deriveOrgTier(row);
+        const memberStatus = computeEngagementTier(row);
         const engagementScore = row.engagement_score || 0;
         const stakeholders =
           stakeholdersMap.get(row.workos_organization_id) || [];
@@ -2205,14 +2158,6 @@ export function setupAccountRoutes(
       try {
         const { orgId } = req.params;
         const updates = req.body;
-        const pool = getPool();
-
-        if (updates.revenue_tier && !VALID_REVENUE_TIERS.includes(updates.revenue_tier as any)) {
-          return res.status(400).json({
-            error: "Invalid revenue_tier",
-            message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(", ")}`,
-          });
-        }
 
         // If name is being updated, sync to WorkOS first
         if (updates.name && typeof updates.name === "string" && updates.name.trim()) {
@@ -2235,71 +2180,17 @@ export function setupAccountRoutes(
           updates.name = trimmedName;
         }
 
-        const allowedFields = [
-          "name",
-          "company_type",
-          "company_types",
-          "revenue_tier",
-          "prospect_status",
-          "prospect_source",
-          "prospect_owner",
-          "prospect_notes",
-          "prospect_contact_name",
-          "prospect_contact_email",
-          "prospect_contact_title",
-          "prospect_next_action",
-          "prospect_next_action_date",
-          "disqualification_reason",
-        ];
+        const result = await updateProspect(orgId, {
+          fields: updates,
+          notesMode: 'overwrite',
+        });
 
-        const setClauses: string[] = [];
-        const values: any[] = [];
-        let paramIndex = 1;
-
-        for (const field of allowedFields) {
-          if (updates[field] !== undefined) {
-            if (field === "company_types") {
-              let typesArray = Array.isArray(updates[field]) ? updates[field] : null;
-              if (typesArray) {
-                typesArray = typesArray.filter((t: string) => COMPANY_TYPE_VALUES.includes(t as any));
-                if (typesArray.length === 0) typesArray = null;
-              }
-              setClauses.push(`${field} = $${paramIndex}`);
-              values.push(typesArray);
-              paramIndex++;
-              if (typesArray && typesArray.length > 0) {
-                setClauses.push(`company_type = $${paramIndex}`);
-                values.push(typesArray[0]);
-                paramIndex++;
-              }
-            } else {
-              setClauses.push(`${field} = $${paramIndex}`);
-              values.push(updates[field] === "" ? null : updates[field]);
-              paramIndex++;
-            }
-          }
+        if (!result.success) {
+          const status = result.error === 'Account not found' ? 404 : 400;
+          return res.status(status).json({ error: result.error });
         }
 
-        if (setClauses.length === 0) {
-          return res.status(400).json({ error: "No valid fields to update" });
-        }
-
-        setClauses.push("updated_at = NOW()");
-        values.push(orgId);
-
-        const result = await pool.query(
-          `UPDATE organizations
-           SET ${setClauses.join(", ")}
-           WHERE workos_organization_id = $${paramIndex}
-           RETURNING *`,
-          values
-        );
-
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: "Account not found" });
-        }
-
-        res.json(result.rows[0]);
+        res.json(result.updated);
       } catch (error) {
         logger.error({ err: error }, "Error updating account");
         res.status(500).json({

@@ -48,7 +48,7 @@ import {
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
 import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
-import { createProspect } from '../../services/prospect.js';
+import { createProspect, updateProspect } from '../../services/prospect.js';
 import {
   getAllFeedsWithStats,
   addFeed,
@@ -86,6 +86,13 @@ import {
   type EscalationStatus,
 } from '../../db/escalation-db.js';
 import { sendDirectMessage } from '../../slack/client.js';
+import {
+  computePipelineStage,
+  PIPELINE_STAGE_EMOJI,
+  computeEngagementLevel,
+  ENGAGEMENT_LABELS,
+  type PipelineStage,
+} from '../../services/account-lifecycle.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -252,95 +259,6 @@ export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> 
   }
 }
 
-
-/**
- * Compute the unified lifecycle stage for an organization.
- * This combines prospect_status and subscription_status into a single view.
- *
- * Lifecycle stages:
- * - prospect: Not contacted yet
- * - contacted: Outreach sent
- * - responded: They replied
- * - interested: Expressed interest
- * - negotiating: In discussions / invoice sent
- * - member: Active subscription
- * - churned: Was a member, subscription ended
- * - declined: Not interested
- */
-export type LifecycleStage =
-  | 'prospect'
-  | 'contacted'
-  | 'responded'
-  | 'interested'
-  | 'negotiating'
-  | 'member'
-  | 'churned'
-  | 'declined';
-
-// Emoji mapping for lifecycle stages - used in multiple places
-export const LIFECYCLE_STAGE_EMOJI: Record<LifecycleStage, string> = {
-  prospect: '🔍',
-  contacted: '📧',
-  responded: '💬',
-  interested: '⭐',
-  negotiating: '🤝',
-  member: '✅',
-  churned: '⚠️',
-  declined: '❌',
-};
-
-export function computeLifecycleStage(org: {
-  subscription_status?: string | null;
-  prospect_status?: string | null;
-  invoice_requested_at?: Date | null;
-}): LifecycleStage {
-  // Active subscription (including trial) = member
-  if (org.subscription_status === 'active' || org.subscription_status === 'trialing') {
-    return 'member';
-  }
-
-  // Subscription ended or payment failed = churned
-  if (
-    org.subscription_status === 'canceled' ||
-    org.subscription_status === 'past_due' ||
-    org.subscription_status === 'unpaid' ||
-    org.subscription_status === 'incomplete_expired'
-  ) {
-    return 'churned';
-  }
-
-  // Incomplete subscription = started payment but didn't finish
-  if (org.subscription_status === 'incomplete') {
-    return 'negotiating';
-  }
-
-  // If they have an invoice requested, they're at least negotiating
-  // (only promote if they're still in early pipeline stages)
-  if (org.invoice_requested_at && (!org.prospect_status || org.prospect_status === 'prospect' || org.prospect_status === 'contacted')) {
-    return 'negotiating';
-  }
-
-  // Map prospect_status to lifecycle stage
-  const prospectStatusMap: Record<string, LifecycleStage> = {
-    prospect: 'prospect',
-    contacted: 'contacted',
-    responded: 'responded',
-    interested: 'interested',
-    negotiating: 'negotiating',
-    converted: 'member', // legacy value
-    joined: 'member', // legacy value
-    declined: 'declined',
-    inactive: 'declined',
-    disqualified: 'declined',
-  };
-
-  if (org.prospect_status && prospectStatusMap[org.prospect_status]) {
-    return prospectStatusMap[org.prospect_status];
-  }
-
-  // Default: unknown org is a prospect
-  return 'prospect';
-}
 
 /**
  * Admin tool definitions - includes both billing/invoice tools and prospect management tools
@@ -1860,11 +1778,11 @@ export function createAdminToolHandlers(
 
         for (let i = 0; i < result.rows.length; i++) {
           const org = result.rows[i];
-          const lifecycleStage = computeLifecycleStage(org);
+          const lifecycleStage = computePipelineStage(org);
           response += `**${i + 1}. ${org.name}**\n`;
           if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
           if (org.company_type) response += `   Type: ${org.company_type}\n`;
-          response += `   Lifecycle: ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
+          response += `   Lifecycle: ${PIPELINE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
           response += `\n`;
         }
 
@@ -1876,7 +1794,7 @@ export function createAdminToolHandlers(
       const orgId = org.workos_organization_id;
 
       // Compute the unified lifecycle stage
-      const lifecycleStage = computeLifecycleStage(org);
+      const lifecycleStage = computePipelineStage(org);
 
       // Gather all the data in parallel
       const [
@@ -1888,6 +1806,7 @@ export function createAdminToolHandlers(
         engagementSignals,
         pendingInvoicesResult,
         subscriptionHistoryResult,
+        stakeholdersResult,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1952,6 +1871,14 @@ export function createAdminToolHandlers(
            LIMIT 10`,
           [orgId]
         ),
+        // Stakeholders (owner, lead, etc.)
+        pool.query(
+          `SELECT user_name, user_email, role, notes
+           FROM org_stakeholders
+           WHERE organization_id = $1
+           ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
+          [orgId]
+        ),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -1962,12 +1889,13 @@ export function createAdminToolHandlers(
       const recentActivities = activitiesResult.rows;
       const pendingInvoices = pendingInvoicesResult;
       const subscriptionHistory = subscriptionHistoryResult.rows;
+      const stakeholders = stakeholdersResult.rows;
 
       // Build comprehensive response
       let response = `## ${org.name}\n\n`;
 
       // Lifecycle stage - the unified view (prominently displayed at top)
-      response += `**Lifecycle Stage:** ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
+      response += `**Lifecycle Stage:** ${PIPELINE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
 
       // Basic info
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
@@ -1982,6 +1910,18 @@ export function createAdminToolHandlers(
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
       if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
+      if (stakeholders.length > 0) {
+        const owner = stakeholders.find((s: { role: string }) => s.role === 'owner');
+        if (owner) {
+          response += `**Account Lead:** ${owner.user_name}`;
+          if (owner.user_email) response += ` (${owner.user_email})`;
+          response += '\n';
+        }
+        const others = stakeholders.filter((s: { role: string }) => s.role !== 'owner');
+        if (others.length > 0) {
+          response += `**Stakeholders:** ${others.map((s: { user_name: string; role: string }) => `${s.user_name} (${s.role})`).join(', ')}\n`;
+        }
+      }
       response += '\n';
 
       // Membership details (if member or has subscription history)
@@ -2097,17 +2037,9 @@ export function createAdminToolHandlers(
 
       // Engagement
       response += `### Engagement\n`;
-      const engagementLabels = ['', 'Low', 'Some', 'Moderate', 'High', 'Very High'];
-      let engagementLevel = 1;
-      if (engagementSignals.interest_level === 'very_high') engagementLevel = 5;
-      else if (engagementSignals.interest_level === 'high') engagementLevel = 4;
-      else if (engagementSignals.working_group_count > 0) engagementLevel = 4;
-      else if (engagementSignals.has_member_profile) engagementLevel = 4;
-      else if (engagementSignals.login_count_30d > 3) engagementLevel = 3;
-      else if (slackUserCount > 0) engagementLevel = 3;
-      else if (engagementSignals.login_count_30d > 0) engagementLevel = 2;
+      const engagementLevel = computeEngagementLevel(engagementSignals, slackUserCount);
 
-      response += `**Level:** ${engagementLabels[engagementLevel]} (${engagementLevel}/5)\n`;
+      response += `**Level:** ${ENGAGEMENT_LABELS[engagementLevel]} (${engagementLevel}/5)\n`;
       if (engagementSignals.login_count_30d > 0) {
         response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
       }
@@ -2235,75 +2167,31 @@ export function createAdminToolHandlers(
   // Update prospect
   handlers.set('update_prospect', async (input) => {
 
-    const pool = getPool();
     const orgId = input.org_id as string;
 
-    // Verify org exists
-    const existing = await pool.query(
-      `SELECT name, prospect_notes FROM organizations WHERE workos_organization_id = $1`,
-      [orgId]
-    );
+    // Map Addie's input field names to DB column names
+    const fields: Record<string, unknown> = {};
+    if (input.company_type !== undefined) fields.company_type = input.company_type;
+    if (input.status !== undefined) fields.prospect_status = input.status;
+    if (input.interest_level !== undefined) fields.interest_level = input.interest_level;
+    if (input.contact_name !== undefined) fields.prospect_contact_name = input.contact_name;
+    if (input.contact_email !== undefined) fields.prospect_contact_email = input.contact_email;
+    if (input.domain !== undefined) fields.email_domain = input.domain;
+    if (input.notes !== undefined) fields.prospect_notes = input.notes;
 
-    if (existing.rows.length === 0) {
-      return `❌ Organization not found with ID: ${orgId}`;
-    }
+    const result = await updateProspect(orgId, {
+      fields,
+      notesMode: 'append',
+      interestLevelSetBy: 'Addie',
+      triggerEnrichment: true,
+    });
 
-    const orgName = existing.rows[0].name;
-    const updates: string[] = [];
-    const values: unknown[] = [];
-    let paramIndex = 1;
-
-    if (input.company_type) {
-      updates.push(`company_type = $${paramIndex++}`);
-      values.push(input.company_type);
-    }
-    if (input.status) {
-      updates.push(`prospect_status = $${paramIndex++}`);
-      values.push(input.status);
-    }
-    if (input.interest_level) {
-      updates.push(`interest_level = $${paramIndex++}`);
-      values.push(input.interest_level);
-      updates.push(`interest_level_set_by = $${paramIndex++}`);
-      values.push('Addie');
-      updates.push(`interest_level_set_at = NOW()`);
-    }
-    if (input.contact_name) {
-      updates.push(`prospect_contact_name = $${paramIndex++}`);
-      values.push(input.contact_name);
-    }
-    if (input.contact_email) {
-      updates.push(`prospect_contact_email = $${paramIndex++}`);
-      values.push(input.contact_email);
-    }
-    if (input.domain) {
-      updates.push(`email_domain = $${paramIndex++}`);
-      values.push(input.domain);
-    }
-    if (input.notes) {
-      // Append to existing notes with timestamp
-      const timestamp = new Date().toISOString().split('T')[0];
-      const existingNotes = existing.rows[0].prospect_notes || '';
-      const newNotes = existingNotes
-        ? `${existingNotes}\n\n[${timestamp}] ${input.notes}`
-        : `[${timestamp}] ${input.notes}`;
-      updates.push(`prospect_notes = $${paramIndex++}`);
-      values.push(newNotes);
+    if (!result.success) {
+      return `❌ ${result.error}`;
     }
 
-    if (updates.length === 0) {
-      return `No updates provided. Specify at least one field to update (company_type, status, interest_level, contact_name, contact_email, domain, notes).`;
-    }
-
-    updates.push(`updated_at = NOW()`);
-    values.push(orgId);
-
-    await pool.query(
-      `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
-      values
-    );
-
-    let response = `✅ Updated **${orgName}**\n\n`;
+    const updated = result.updated as Record<string, unknown>;
+    let response = `✅ Updated **${updated.name}**\n\n`;
     if (input.company_type) response += `• Company type → ${input.company_type}\n`;
     if (input.status) response += `• Status → ${input.status}\n`;
     if (input.interest_level) response += `• Interest level → ${input.interest_level}\n`;
@@ -2312,12 +2200,8 @@ export function createAdminToolHandlers(
     if (input.domain) response += `• Domain → ${input.domain}\n`;
     if (input.notes) response += `• Added note: "${input.notes}"\n`;
 
-    // Trigger enrichment if domain was added
     if (input.domain && isLushaConfigured()) {
       response += `\n_Enriching with new domain..._`;
-      enrichOrganization(orgId, input.domain as string).catch(err => {
-        logger.warn({ err, orgId }, 'Background enrichment failed after update');
-      });
     }
 
     return response;
