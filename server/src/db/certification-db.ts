@@ -60,7 +60,7 @@ export interface LearnerProgress {
   id: string;
   workos_user_id: string;
   module_id: string;
-  status: 'not_started' | 'in_progress' | 'completed';
+  status: 'not_started' | 'in_progress' | 'completed' | 'tested_out';
   started_at: string | null;
   completed_at: string | null;
   score: Record<string, number> | null;
@@ -211,6 +211,29 @@ export async function completeModule(
 }
 
 /**
+ * Mark a module as tested out (user demonstrated knowledge without formal coursework).
+ */
+export async function testOutModule(
+  userId: string,
+  moduleId: string,
+): Promise<LearnerProgress> {
+  const result = await query<LearnerProgress>(
+    `INSERT INTO learner_progress (workos_user_id, module_id, status, started_at, completed_at)
+     VALUES ($1, $2, 'tested_out', NOW(), NOW())
+     ON CONFLICT (workos_user_id, module_id) DO UPDATE
+       SET status = CASE
+         WHEN learner_progress.status = 'completed' THEN learner_progress.status
+         ELSE 'tested_out'
+       END,
+       completed_at = COALESCE(learner_progress.completed_at, NOW()),
+       updated_at = NOW()
+     RETURNING *`,
+    [userId, moduleId]
+  );
+  return result.rows[0];
+}
+
+/**
  * Check if a user has completed all prerequisites for a module.
  */
 export async function checkPrerequisites(userId: string, moduleId: string): Promise<{ met: boolean; missing: string[] }> {
@@ -220,7 +243,7 @@ export async function checkPrerequisites(userId: string, moduleId: string): Prom
 
   const result = await query<{ module_id: string }>(
     `SELECT module_id FROM learner_progress
-     WHERE workos_user_id = $1 AND module_id = ANY($2) AND status = 'completed'`,
+     WHERE workos_user_id = $1 AND module_id = ANY($2) AND status IN ('completed', 'tested_out')`,
     [userId, mod.prerequisites]
   );
   const completed = new Set(result.rows.map(r => r.module_id));
@@ -365,7 +388,7 @@ export async function checkCredentialEligibility(
   if (credential.required_modules.length > 0) {
     const completed = await query<{ module_id: string }>(
       `SELECT module_id FROM learner_progress
-       WHERE workos_user_id = $1 AND module_id = ANY($2) AND status = 'completed'`,
+       WHERE workos_user_id = $1 AND module_id = ANY($2) AND status IN ('completed', 'tested_out')`,
       [userId, credential.required_modules]
     );
     const completedSet = new Set(completed.rows.map(r => r.module_id));
@@ -380,7 +403,7 @@ export async function checkCredentialEligibility(
     const trackCheck = await query<{ track_id: string; total: string; completed: string }>(
       `SELECT m.track_id,
               COUNT(m.id)::text AS total,
-              COUNT(CASE WHEN lp.status = 'completed' THEN 1 END)::text AS completed
+              COUNT(CASE WHEN lp.status IN ('completed', 'tested_out') THEN 1 END)::text AS completed
        FROM certification_modules m
        JOIN certification_tracks t ON t.id = m.track_id
        LEFT JOIN learner_progress lp ON lp.module_id = m.id AND lp.workos_user_id = $1
@@ -464,7 +487,7 @@ export async function getTrackProgress(userId: string): Promise<TrackProgress[]>
     `SELECT
        m.track_id,
        COUNT(m.id)::int AS total_modules,
-       COUNT(CASE WHEN lp.status = 'completed' THEN 1 END)::int AS completed_modules,
+       COUNT(CASE WHEN lp.status IN ('completed', 'tested_out') THEN 1 END)::int AS completed_modules,
        COUNT(CASE WHEN lp.status = 'in_progress' THEN 1 END)::int AS in_progress_modules
      FROM certification_modules m
      LEFT JOIN learner_progress lp ON lp.module_id = m.id AND lp.workos_user_id = $1
@@ -569,7 +592,7 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
   const progressResult = await query<{ workos_user_id: string; status: string; count: number }>(
     `SELECT workos_user_id, status, COUNT(*)::int AS count
      FROM learner_progress
-     WHERE workos_user_id = ANY($1) AND status IN ('completed', 'in_progress')
+     WHERE workos_user_id = ANY($1) AND status IN ('completed', 'tested_out', 'in_progress')
      GROUP BY workos_user_id, status`,
     [memberIds]
   );
@@ -585,7 +608,7 @@ export async function getOrgCertificationSummary(orgId: string): Promise<OrgCert
   const progressByUser = new Map<string, { completed: number; in_progress: number }>();
   for (const row of progressResult.rows) {
     const entry = progressByUser.get(row.workos_user_id) || { completed: 0, in_progress: 0 };
-    if (row.status === 'completed') entry.completed = row.count;
+    if (row.status === 'completed' || row.status === 'tested_out') entry.completed += row.count;
     if (row.status === 'in_progress') entry.in_progress = row.count;
     progressByUser.set(row.workos_user_id, entry);
   }

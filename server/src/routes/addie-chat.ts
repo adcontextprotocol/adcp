@@ -76,6 +76,10 @@ import {
   createBillingToolHandlers,
 } from "../addie/mcp/billing-tools.js";
 import {
+  CERTIFICATION_TOOLS,
+  createCertificationToolHandlers,
+} from "../addie/mcp/certification-tools.js";
+import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
 } from "../addie/mcp/schema-tools.js";
@@ -461,6 +465,14 @@ async function prepareRequestWithMemberTools(
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
     ...createBillingToolHandlers(memberContext),
   ]);
+
+  // Certification tools (for authenticated users)
+  if (userId) {
+    allTools.push(...CERTIFICATION_TOOLS);
+    for (const [name, handler] of createCertificationToolHandlers(memberContext)) {
+      combinedHandlers.set(name, handler);
+    }
+  }
 
   // Permission-gated tools (for authenticated users)
   if (userId) {

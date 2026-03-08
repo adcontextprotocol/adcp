@@ -45,6 +45,35 @@
       line-height: var(--leading-relaxed);
     }
 
+    .cert-header-actions {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+      flex-wrap: wrap;
+    }
+
+    .btn-assess {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      cursor: pointer;
+      border: var(--border-1) solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-primary);
+      transition: border-color var(--duration-normal) var(--ease-in-out),
+                  background var(--duration-normal) var(--ease-in-out);
+    }
+
+    .btn-assess:hover {
+      border-color: var(--color-brand);
+      background: var(--color-bg-hover);
+    }
+
     /* =========================================================================
        Credential tier cards
        ========================================================================= */
@@ -323,6 +352,12 @@
     .module-status-completed {
       background: var(--color-success-100);
       color: var(--color-success-700);
+    }
+
+    .module-status-tested_out {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      opacity: 0.7;
     }
 
     .module-info { flex: 1; min-width: 0; }
@@ -649,6 +684,7 @@
     <div class="cert-header">
       <h1>AdCP certification program</h1>
       <p>Interactive training delivered by Addie, our AI instructor. Learn AdCP through hands-on exercises with real sandbox agents, then earn a verifiable credential.</p>
+      <div class="cert-header-actions" id="cert-header-actions" style="display: none;"></div>
     </div>
 
     <!-- Tier progression -->
@@ -749,13 +785,14 @@
 
         var prog = state.progress.find(function(p) { return p.module_id === moduleId; });
         if (prog && prog.status === 'completed') return 'completed';
+        if (prog && prog.status === 'tested_out') return 'tested_out';
         if (prog && prog.status === 'in_progress') return 'in_progress';
 
         if (!isFree && !state.isMember) return 'locked';
 
         if (prerequisites && prerequisites.length > 0) {
           var completed = new Set(
-            state.progress.filter(function(p) { return p.status === 'completed'; }).map(function(p) { return p.module_id; })
+            state.progress.filter(function(p) { return p.status === 'completed' || p.status === 'tested_out'; }).map(function(p) { return p.module_id; })
           );
           var met = prerequisites.every(function(p) { return completed.has(p); });
           if (!met) return 'locked';
@@ -767,6 +804,7 @@
       function statusIcon(status) {
         switch (status) {
           case 'completed': return '\u2713';
+          case 'tested_out': return '\u2713';
           case 'in_progress': return '\u25B6';
           case 'available': return '\u25CB';
           case 'locked': return '\uD83D\uDD12';
@@ -806,7 +844,7 @@
 
       function countCompletedModules(moduleIds) {
         var completed = new Set(
-          state.progress.filter(function(p) { return p.status === 'completed'; }).map(function(p) { return p.module_id; })
+          state.progress.filter(function(p) { return p.status === 'completed' || p.status === 'tested_out'; }).map(function(p) { return p.module_id; })
         );
         return moduleIds.filter(function(id) { return completed.has(id); }).length;
       }
@@ -844,9 +882,27 @@
          Render
          ===================================================================== */
       function render() {
+        renderHeaderActions();
         renderTiers();
         renderLearningPath();
         renderEarnedCredentials();
+      }
+
+      function renderHeaderActions() {
+        var container = document.getElementById('cert-header-actions');
+        if (!state.isAuthenticated) return;
+
+        var hasAnyProgress = state.progress.length > 0;
+        var html = '';
+
+        if (!hasAnyProgress) {
+          html += '<a href="/chat?topic=certification&action=assess" class="btn-assess">Assess my level</a>';
+        }
+
+        if (html) {
+          container.innerHTML = html;
+          container.style.display = '';
+        }
       }
 
       function renderTiers() {
@@ -1055,6 +1111,8 @@
           html += '    </button>';
         } else if (status === 'completed') {
           html += '    <span class="btn-start btn-start-secondary" style="cursor: default;">Completed</span>';
+        } else if (status === 'tested_out') {
+          html += '    <span class="btn-start btn-start-secondary" style="cursor: default;">Tested out</span>';
         } else if (!state.isAuthenticated) {
           html += '    <a href="/auth/login?return_to=/certification" class="btn-start btn-start-secondary">Sign in</a>';
         } else if (!state.isMember) {

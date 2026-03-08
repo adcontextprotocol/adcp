@@ -131,6 +131,26 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'test_out_modules',
+    description: 'Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out capstone modules (E1-E4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.',
+    usage_hints: 'use after assess_certification_readiness when learner demonstrates mastery of specific modules',
+    input_schema: {
+      type: 'object',
+      properties: {
+        module_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Module IDs to mark as tested out (e.g., ["A1", "A2", "B1"]). Cannot include capstone modules (E1-E4).',
+        },
+        assessment_notes: {
+          type: 'string',
+          description: 'Brief summary of how the learner demonstrated knowledge of these modules.',
+        },
+      },
+      required: ['module_ids', 'assessment_notes'],
+    },
+  },
+  {
     name: 'start_certification_exam',
     description: 'Begin a specialist capstone module (E1: Media Buy, E2: Creative, E3: Signals, E4: Governance). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.',
     usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start E1", "media buy capstone"',
@@ -263,6 +283,7 @@ export function createCertificationToolHandlers(
       lines.push('Modules A1 and A2 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
       lines.push('To start a specialist capstone, say "start capstone E1" (or E2/E3/E4).');
+      lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
     } catch (error) {
@@ -562,7 +583,7 @@ export function createCertificationToolHandlers(
       if (moduleProgress.length > 0) {
         lines.push('## Module details');
         for (const p of moduleProgress) {
-          const status = p.status === 'completed' ? 'completed' : 'in progress';
+          const status = p.status === 'completed' ? 'completed' : p.status === 'tested_out' ? 'tested out' : 'in progress';
           lines.push(`- ${p.module_id}: ${status}${p.score ? ` (${Math.round(Object.values(p.score).reduce((a, b) => a + b, 0) / Object.values(p.score).length)}% avg)` : ''}`);
         }
       }
@@ -575,6 +596,82 @@ export function createCertificationToolHandlers(
     } catch (error) {
       logger.error({ error }, 'Failed to get learner progress');
       return 'Failed to load progress. Please try again.';
+    }
+  });
+
+  // ----- test_out_modules -----
+  handlers.set('test_out_modules', async (input) => {
+    const userId = getUserId();
+    if (!userId) return 'You need to be logged in.';
+
+    try {
+      const moduleIds = (input.module_ids as string[]).map(id => id.toUpperCase());
+      const notes = input.assessment_notes as string || '';
+
+      // Block capstone modules
+      const capstones = moduleIds.filter(id => id.startsWith('E'));
+      if (capstones.length > 0) {
+        return `Cannot test out of capstone modules (${capstones.join(', ')}). Capstones require hands-on assessment.`;
+      }
+
+      // Validate all modules exist
+      const allModules = await certDb.getModules();
+      const moduleMap = new Map(allModules.map(m => [m.id, m]));
+      const invalid = moduleIds.filter(id => !moduleMap.has(id));
+      if (invalid.length > 0) {
+        return `Unknown modules: ${invalid.join(', ')}. Use list_certification_tracks to see valid IDs.`;
+      }
+
+      // Check membership for non-free modules
+      const paidModules = moduleIds.filter(id => {
+        const mod = moduleMap.get(id);
+        return mod && !mod.is_free;
+      });
+      if (paidModules.length > 0 && !memberContext?.is_member) {
+        return `Modules ${paidModules.join(', ')} require membership. Only free modules (A1, A2) can be tested out without membership.`;
+      }
+
+      // Test out each module
+      const results: string[] = [];
+      for (const moduleId of moduleIds) {
+        const progress = await certDb.testOutModule(userId, moduleId);
+        if (progress.status === 'tested_out') {
+          results.push(`- ${moduleId}: tested out`);
+        } else {
+          results.push(`- ${moduleId}: already completed (kept existing status)`);
+        }
+      }
+
+      const lines = [
+        `Marked ${moduleIds.length} module(s) as tested out:`,
+        '',
+        ...results,
+        '',
+        `Assessment notes: ${notes}`,
+      ];
+
+      // Check for newly earned credentials
+      try {
+        const awarded = await certDb.checkAndAwardCredentials(userId);
+        if (awarded.length > 0) {
+          const creds = await certDb.getCredentials();
+          const credMap = new Map(creds.map(c => [c.id, c]));
+          lines.push('');
+          for (const credId of awarded) {
+            const cred = credMap.get(credId);
+            if (cred) {
+              lines.push(`**Credential earned: ${cred.name}!**`);
+            }
+          }
+        }
+      } catch (credError) {
+        logger.error({ error: credError }, 'Failed to check credential eligibility after test-out');
+      }
+
+      return lines.join('\n');
+    } catch (error) {
+      logger.error({ error }, 'Failed to test out modules');
+      return 'Failed to record test-out. Please try again.';
     }
   });
 

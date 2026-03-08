@@ -4133,9 +4133,22 @@
       }
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      // Also handles certification deep links: ?topic=certification&module=A1
       function checkQueryPrompt() {
         const params = new URLSearchParams(window.location.search);
-        const prompt = params.get('prompt');
+        let prompt = params.get('prompt');
+
+        // Synthesize prompt from certification deep link params
+        if (!prompt && params.get('topic') === 'certification') {
+          const moduleId = params.get('module');
+          const action = params.get('action');
+          if (action === 'assess') {
+            prompt = 'I\'d like to assess my AdCP knowledge level. Run a placement assessment to figure out which certification modules I can skip and where I should focus.';
+          } else if (moduleId) {
+            prompt = `Start module ${moduleId}`;
+          }
+        }
+
         if (prompt && prompt.trim()) {
           // Wait for Addie to be ready before sending
           const waitForReady = setInterval(() => {

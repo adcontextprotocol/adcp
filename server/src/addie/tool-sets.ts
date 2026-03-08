@@ -316,13 +316,14 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   certification: {
     name: 'certification',
-    description: 'AdCP certification program — list tracks, teach modules, run exercises, conduct exams, and track learner progress',
+    description: 'AdCP certification program — list tracks, teach modules, run exercises, placement assessment, and track learner progress',
     tools: [
       'list_certification_tracks',
       'get_certification_module',
       'start_certification_module',
       'complete_certification_module',
       'get_learner_progress',
+      'test_out_modules',
       'start_certification_exam',
       'complete_certification_exam',
     ],
