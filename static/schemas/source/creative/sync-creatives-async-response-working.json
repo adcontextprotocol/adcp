@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/sync-creatives-async-response-working.json",
+  "$id": "/schemas/creative/sync-creatives-async-response-working.json",
   "title": "Sync Creatives - Working",
   "description": "Progress payload for active sync_creatives task.",
   "type": "object",

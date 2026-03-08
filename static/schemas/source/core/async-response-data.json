@@ -67,22 +67,22 @@
     {
       "title": "SyncCreativesResponse",
       "description": "Response for completed or failed sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-response.json"
+      "$ref": "/schemas/creative/sync-creatives-response.json"
     },
     {
       "title": "SyncCreativesAsyncWorking",
       "description": "Progress data for working sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-working.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-working.json"
     },
     {
       "title": "SyncCreativesAsyncInputRequired",
       "description": "Input requirements for sync_creatives needing user input",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-input-required.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-input-required.json"
     },
     {
       "title": "SyncCreativesAsyncSubmitted",
       "description": "Acknowledgment for submitted sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-submitted.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-submitted.json"
     },
     {
       "title": "SyncCatalogsResponse",

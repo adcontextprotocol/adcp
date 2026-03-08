@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/sync-creatives-async-response-input-required.json",
+  "$id": "/schemas/creative/sync-creatives-async-response-input-required.json",
   "title": "Sync Creatives - Input Required",
   "description": "Payload when sync_creatives task is paused waiting for buyer clarification or approval.",
   "type": "object",

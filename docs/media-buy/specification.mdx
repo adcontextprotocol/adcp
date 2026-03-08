@@ -192,17 +192,9 @@ Synchronize catalogs (products, inventory, stores, and vertical feeds) on a sell
 
 ### sync_creatives
 
-**Schema**: [`media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json) / [`media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json)
-
-**Reference**: [`sync_creatives` task](/docs/media-buy/task-reference/sync_creatives)
-
-Upload and synchronize creative assets.
-
-**Requirements:**
-- Orchestrators MUST include creative manifest references or inline assets
-- Sales agents MUST validate creatives against format specifications
-- Sales agents MUST return validation errors for non-compliant creatives
-- Sales agents MAY require approval before creatives are available for use
+<Note>
+`sync_creatives` is defined in the [Creative Protocol](/docs/creative/specification#sync_creatives). Any agent that hosts a creative library implements `sync_creatives` as part of the Creative Protocol. See the [`sync_creatives` task reference](/docs/creative/task-reference/sync_creatives).
+</Note>
 
 ### get_media_buys
 
@@ -404,8 +396,8 @@ Sales agents MAY require human approval for any operation. When approval is requ
 | [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request (Creative Protocol) |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response (Creative Protocol) |
-| [`media-buy/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-request.json) | sync_creatives request |
-| [`media-buy/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/sync-creatives-response.json) | sync_creatives response |
+| [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request (Creative Protocol) |
+| [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json) | sync_creatives response (Creative Protocol) |
 | [`media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-request.json) | get_media_buy_delivery request |
 | [`media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-media-buy-delivery-response.json) | get_media_buy_delivery response |
 | [`media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/provide-performance-feedback-request.json) | provide_performance_feedback request |

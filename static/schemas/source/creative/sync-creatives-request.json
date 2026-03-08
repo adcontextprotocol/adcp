@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/sync-creatives-request.json",
+  "$id": "/schemas/creative/sync-creatives-request.json",
   "title": "Sync Creatives Request",
   "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
   "type": "object",
@@ -29,7 +29,7 @@
     },
     "assignments": {
       "type": "array",
-      "description": "Optional bulk assignment of creatives to packages. Each entry maps one creative to one package with optional weight and placement targeting.",
+      "description": "Optional bulk assignment of creatives to packages. Each entry maps one creative to one package with optional weight and placement targeting. Standalone creative agents that do not manage media buys ignore this field.",
       "items": {
         "type": "object",
         "properties": {
@@ -43,7 +43,7 @@
           },
           "weight": {
             "type": "number",
-            "description": "Relative delivery weight (0–100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
+            "description": "Relative delivery weight (0-100). When multiple creatives are assigned to the same package, weights determine impression distribution proportionally. When omitted, the creative receives equal rotation with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
             "minimum": 0,
             "maximum": 100
           },
@@ -84,7 +84,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Optional webhook configuration for async sync notifications. Publisher will send webhook when sync completes if operation takes longer than immediate response time (typically for large bulk operations or manual approval/HITL)."
+      "description": "Optional webhook configuration for async sync notifications. The agent will send a webhook when sync completes if the operation takes longer than immediate response time (typically for large bulk operations or manual approval/HITL)."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -120,7 +120,7 @@
               }
             },
             "tags": [
-              "q1_2024",
+              "q1_2026",
               "video"
             ]
           }
@@ -140,7 +140,7 @@
             "creative_id": "holiday_hero",
             "name": "Holiday Campaign Hero",
             "format_id": {
-              "agent_url": "https://publisher.com/.well-known/adcp/sales",
+              "agent_url": "https://creative.example.com",
               "id": "premium_bespoke_display"
             },
             "assets": {
@@ -154,7 +154,7 @@
             },
             "tags": [
               "holiday",
-              "q4_2024"
+              "q4_2026"
             ]
           }
         ]

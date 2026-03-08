@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/sync-creatives-response.json",
+  "$id": "/schemas/creative/sync-creatives-response.json",
   "title": "Sync Creatives Response",
   "description": "Response from creative sync operation. Returns either per-creative results (best-effort processing) OR operation-level errors (complete failure). This enforces atomic semantics at the operation level while allowing per-item failures within successful operations.",
   "type": "object",

@@ -215,6 +215,24 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - This is the same accounts protocol used by sales agents — there is no separate version
 - Sales agents that already implement accounts for media buys do not need to do anything additional
 
+### sync_creatives
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) / [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
+
+**Reference**: [`sync_creatives` task](/docs/creative/task-reference/sync_creatives)
+
+Upload and synchronize creative assets in a library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Requirements:**
+- Agents MUST validate creatives against format specifications
+- Agents MUST return validation errors for non-compliant creatives
+- Agents MAY require approval before creatives are available for use
+- Agents SHOULD support `dry_run` for validation without applying changes
+- Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
+- Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field
+
 ### get_creative_delivery
 
 **Reference**: [`get_creative_delivery` task](/docs/creative/task-reference/get_creative_delivery)
@@ -273,9 +291,10 @@ A conformant Creative Protocol agent SHOULD:
 2. Implement `preview_creative` for preview rendering
 3. Support universal macros in tracking URLs
 4. Implement `list_creatives` when the agent hosts a creative library
-5. Support `creative_id` in `build_creative` when the agent hosts a creative library
-6. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
-7. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
+5. Implement `sync_creatives` when the agent accepts creative uploads
+6. Support `creative_id` in `build_creative` when the agent hosts a creative library
+7. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
+8. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
 
 ### Consumer conformance
 
@@ -295,6 +314,8 @@ Creative agents SHOULD target the following response times:
 | Operation Type | Target Latency |
 |----------------|----------------|
 | Format listing (list_creative_formats) | < 1 second |
+| Library query (list_creatives) | < 1 second |
+| Creative sync (sync_creatives) | < 5 seconds |
 | Preview generation (preview_creative) | < 5 seconds |
 | Batch preview (10 creatives) | < 10 seconds |
 | Creative generation (build_creative) | < 60 seconds |
@@ -343,3 +364,7 @@ Both work identically—the `agent_url` field identifies which agent is authorit
 | [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v2/core/creative-asset.json) | Asset definition |
 | [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
 | [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request |
+| [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response |
+| [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request |
+| [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json) | sync_creatives response |

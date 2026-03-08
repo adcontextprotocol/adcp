@@ -17,7 +17,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
 | [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
 | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Sync catalog feeds (products, stores, inventory) | Minutes-Days | Catalogs |
-| [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
+| [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](/docs/creative/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
 | [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) | Retrieve media buy status, creative approvals, and delivery snapshots | ~1s | Monitoring |
 | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
@@ -49,7 +49,7 @@ AdCP tasks fall into four response time categories:
 - [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) - Campaign creation and validation
 - [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) - Campaign modifications
 - [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) - Catalog feed processing and review
-- [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) - Creative asset processing
+- [`sync_creatives`](/docs/creative/task-reference/sync_creatives) - Creative asset processing
 - [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) - Audience matching and processing
 
 ## Task Categories by Workflow
@@ -81,7 +81,7 @@ Sync product feeds, inventory, and store data to seller accounts.
 ### Creative Management
 Handle creative assets throughout their lifecycle.
 
-- **[`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)** - Upload assets to centralized library
+- **[`sync_creatives`](/docs/creative/task-reference/sync_creatives)** - Upload assets to centralized library
 - **[`list_creatives`](/docs/creative/task-reference/list_creatives)** - Search and manage your creative library (creative protocol)
 
 ### Performance & Optimization
@@ -150,7 +150,7 @@ Long-running tasks provide:
 3. **Refine Products**: Re-call [`get_products`](/docs/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
 4. **Understand Formats**: Check [`list_creative_formats`](/docs/media-buy/task-reference/list_creative_formats) for requirements
 5. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
-6. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for asset management
+6. **Upload Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for asset management
 7. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
 8. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
 9. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)

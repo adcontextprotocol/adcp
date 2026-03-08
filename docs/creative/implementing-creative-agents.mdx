@@ -146,6 +146,19 @@ Browse and filter creatives in your library. Implement this if your platform hos
 
 See [list_creatives task reference](/docs/creative/task-reference/list_creatives) for complete API specification.
 
+### sync_creatives
+
+Accept creative asset uploads into your library. Implement this if your platform allows buyers to push assets.
+
+**Key responsibilities:**
+- Validate creatives against format specifications
+- Return per-creative results with platform-assigned IDs
+- Support upsert semantics (create or update by `creative_id`)
+- Optionally support bulk package assignments (for agents that also manage media buys)
+- Optionally support async approval workflows for brand safety review
+
+See [sync_creatives task reference](/docs/creative/task-reference/sync_creatives) for complete API specification.
+
 ## Validation best practices
 
 ### Manifest validation
@@ -347,8 +360,8 @@ The creative protocol requires `list_creative_formats` and `preview_creative` fr
 
 | Platform type | Core tasks | Recommended tasks | Capabilities |
 |---|---|---|---|
-| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true` |
-| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
+| Ad server with creative library (CM360, Flashtalking) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true` |
+| Creative management platform (Celtra) | `list_creative_formats`, `preview_creative` | `list_creatives`, `sync_creatives`, `build_creative` | `has_creative_library: true`, `supports_transformation: true` |
 | Generative creative tool | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_generation: true` |
 | Format conversion service | `list_creative_formats`, `preview_creative` | `build_creative` | `supports_transformation: true` |
 

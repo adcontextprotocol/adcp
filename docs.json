@@ -246,7 +246,6 @@
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
-                  "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buys",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
                   "docs/media-buy/task-reference/update_media_buy",
@@ -339,6 +338,7 @@
                   "docs/creative/task-reference/preview_creative-advanced",
                   "docs/creative/task-reference/list_creative_formats",
                   "docs/creative/task-reference/list_creatives",
+                  "docs/creative/task-reference/sync_creatives",
                   "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
@@ -575,7 +575,6 @@
                   "docs/media-buy/task-reference/list_creative_formats",
                   "docs/media-buy/task-reference/create_media_buy",
                   "docs/media-buy/task-reference/sync_catalogs",
-                  "docs/media-buy/task-reference/sync_creatives",
                   "docs/media-buy/task-reference/get_media_buys",
                   "docs/media-buy/task-reference/get_media_buy_delivery",
                   "docs/media-buy/task-reference/update_media_buy",
@@ -668,6 +667,7 @@
                   "docs/creative/task-reference/preview_creative-advanced",
                   "docs/creative/task-reference/list_creative_formats",
                   "docs/creative/task-reference/list_creatives",
+                  "docs/creative/task-reference/sync_creatives",
                   "docs/creative/task-reference/get_creative_delivery"
                 ]
               }
@@ -950,6 +950,10 @@
     {
       "source": "/docs/media-buy/task-reference/list_creatives",
       "destination": "/docs/creative/task-reference/list_creatives"
+    },
+    {
+      "source": "/docs/media-buy/task-reference/sync_creatives",
+      "destination": "/docs/creative/task-reference/sync_creatives"
     }
   ],
   "modeToggle": {

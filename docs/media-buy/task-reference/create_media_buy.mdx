@@ -1273,7 +1273,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/impl
 - AXE segments enable advanced audience targeting
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` instead.
 
 ## Policy Compliance
 
@@ -1299,7 +1299,7 @@ Publishers should ensure:
 
 After creating a media buy:
 
-1. **Upload Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) before deadline
+1. **Upload Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) before deadline
 2. **Monitor Status**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 3. **Optimize**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)
 4. **Update**: Use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to modify campaign
