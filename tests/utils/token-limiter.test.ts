@@ -184,8 +184,8 @@ describe('getConversationTokenLimit', () => {
   });
 
   it('should return model-specific limit minus reserved tokens', () => {
-    const limit = getConversationTokenLimit('claude-sonnet-4-20250514');
-    expect(limit).toBe(MODEL_CONTEXT_LIMITS['claude-sonnet-4-20250514'] - RESERVED_TOKENS);
+    const limit = getConversationTokenLimit('claude-sonnet-4-6');
+    expect(limit).toBe(MODEL_CONTEXT_LIMITS['claude-sonnet-4-6'] - RESERVED_TOKENS);
   });
 
   it('should use default for unknown models', () => {
@@ -195,28 +195,28 @@ describe('getConversationTokenLimit', () => {
 
   it('should use dynamic calculation when toolCount is provided', () => {
     const toolCount = 50;
-    const limit = getConversationTokenLimit('claude-sonnet-4-20250514', toolCount);
+    const limit = getConversationTokenLimit('claude-sonnet-4-6', toolCount);
 
     // Expected: model limit - (system prompt + tool tokens + prepended context + response buffer + safety margin)
     const expectedToolTokens = estimateToolTokens(toolCount);
     const expectedReserved = TOKEN_BUFFERS.systemPrompt + expectedToolTokens +
       TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
-    const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-4-20250514'] - expectedReserved;
+    const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-4-6'] - expectedReserved;
 
     expect(limit).toBe(expectedLimit);
   });
 
   it('should give more conversation budget with fewer tools', () => {
-    const limitWithFewTools = getConversationTokenLimit('claude-sonnet-4-20250514', 10);
-    const limitWithManyTools = getConversationTokenLimit('claude-sonnet-4-20250514', 100);
+    const limitWithFewTools = getConversationTokenLimit('claude-sonnet-4-6', 10);
+    const limitWithManyTools = getConversationTokenLimit('claude-sonnet-4-6', 100);
 
     // Fewer tools = more room for conversation
     expect(limitWithFewTools).toBeGreaterThan(limitWithManyTools);
   });
 
   it('should differ from static buffer when toolCount provided', () => {
-    const staticLimit = getConversationTokenLimit('claude-sonnet-4-20250514');
-    const dynamicLimit = getConversationTokenLimit('claude-sonnet-4-20250514', 50);
+    const staticLimit = getConversationTokenLimit('claude-sonnet-4-6');
+    const dynamicLimit = getConversationTokenLimit('claude-sonnet-4-6', 50);
 
     // Dynamic calculation should differ from static RESERVED_TOKENS buffer
     expect(dynamicLimit).not.toBe(staticLimit);
