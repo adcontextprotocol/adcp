@@ -71,6 +71,13 @@
   // Get current path to mark active link
   const currentPath = window.location.pathname;
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
     const user = config?.user;
