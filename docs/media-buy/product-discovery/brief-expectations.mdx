@@ -265,12 +265,14 @@ Publishers should handle briefs at different completeness levels:
 
 ```mermaid
 graph TD
-    A[Receive Request] --> B{Promoted Offering Valid?}
+    A[Receive Request] --> B{Request Valid?}
     B -->|No| C[Return Policy Error]
-    B -->|Yes| D{Brief Provided?}
-    D -->|No| M[Return All Products Matching Filters]
+    B -->|Yes| W{Wholesale Mode?}
+    W -->|Yes| M[Return All Products Matching Filters]
+    W -->|No| D{Brief Provided?}
+    D -->|No| F[Request Clarification]
     D -->|Yes| E{Brief Complete?}
-    E -->|No| F[Request Clarification]
+    E -->|No| F
     E -->|Yes| G[Process Requirements]
     F --> H[Provide Specific Questions]
     G --> I[Match Products]
