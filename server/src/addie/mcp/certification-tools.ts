@@ -58,6 +58,36 @@ async function issueCertifierBadge(
   }
 }
 
+/**
+ * Build share links for an earned credential.
+ * Returns markdown lines with cert.io share URL, LinkedIn "Add to profile" URL,
+ * and a link to the certification dashboard.
+ */
+function buildShareLinks(
+  credName: string,
+  certifierPublicId: string | null,
+  awardedDate: Date = new Date(),
+): string[] {
+  const lines: string[] = [];
+  const year = awardedDate.getFullYear();
+  const month = awardedDate.getMonth() + 1;
+
+  if (certifierPublicId) {
+    const certUrl = `https://cert.io/c/${certifierPublicId}`;
+    const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
+      + `&name=${encodeURIComponent(credName)}`
+      + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
+      + `&issueYear=${year}&issueMonth=${month}`
+      + `&certUrl=${encodeURIComponent(certUrl)}`;
+
+    lines.push(`- [View and share your credential](${certUrl})`);
+    lines.push(`- [Add to LinkedIn profile](${linkedInUrl})`);
+  }
+
+  lines.push('- [View all credentials](/certification.html)');
+  return lines;
+}
+
 // =====================================================
 // TOOL DEFINITIONS
 // =====================================================
@@ -605,10 +635,8 @@ export function createCertificationToolHandlers(
             const cred = credMap.get(credId);
             if (cred) {
               lines.push(`**Credential earned: ${cred.name}!**`);
-              const issued = await issueCertifierBadge(userId, credId, cred, memberContext);
-              if (issued) {
-                lines.push('Your digital credential has been issued and emailed to you. You can share it on LinkedIn.');
-              }
+              const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
+              lines.push(...buildShareLinks(cred.name, publicId));
             }
           }
         }
@@ -763,6 +791,8 @@ export function createCertificationToolHandlers(
             const cred = credMap.get(credId);
             if (cred) {
               lines.push(`**Credential earned: ${cred.name}!**`);
+              const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
+              lines.push(...buildShareLinks(cred.name, publicId));
             }
           }
         }
@@ -973,12 +1003,10 @@ export function createCertificationToolHandlers(
               if (cred) {
                 lines.push('');
                 lines.push(`**Credential earned: ${cred.name}!**`);
-                const issued = await issueCertifierBadge(userId, credId, cred, memberContext, {
+                const publicId = await issueCertifierBadge(userId, credId, cred, memberContext, {
                   'custom.score': String(overallScore),
                 });
-                if (issued) {
-                  lines.push('Your digital credential has been issued and emailed to you. You can share it on LinkedIn.');
-                }
+                lines.push(...buildShareLinks(cred.name, publicId));
               }
             }
           }

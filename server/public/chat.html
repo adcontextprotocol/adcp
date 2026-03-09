@@ -2896,11 +2896,13 @@
 
           // Render messages and track last assistant message
           lastAssistantMessageId = null;
+          lastAssistantContent = '';
           clearSessionFeedbackTimer();
           data.messages.forEach(msg => {
             addMessage(msg.content, msg.role, msg.message_id);
             if (msg.role === 'assistant' && msg.message_id) {
               lastAssistantMessageId = msg.message_id;
+              lastAssistantContent = msg.content || '';
             }
           });
 
@@ -3459,6 +3461,7 @@
       // === Session-level feedback ===
       let sessionFeedbackTimer = null;
       let lastAssistantMessageId = null;
+      let lastAssistantContent = '';
       const sessionFeedbackShown = new Set(); // Track per conversation
 
       function scheduleSessionFeedback() {
@@ -3466,13 +3469,16 @@
         if (!conversationId || sessionFeedbackShown.has(conversationId)) return;
         if (!lastAssistantMessageId) return;
 
+        // Don't prompt when Addie asked a question — the user is expected to reply
+        if (lastAssistantContent.trimEnd().endsWith('?')) return;
+
         // Count assistant messages in current view
         const assistantMessages = messagesContainer.querySelectorAll('.message--assistant');
         if (assistantMessages.length < 3) return;
 
         sessionFeedbackTimer = setTimeout(() => {
           showSessionFeedback();
-        }, 45000); // 45 seconds of idle
+        }, 180000); // 3 minutes of idle
       }
 
       function clearSessionFeedbackTimer() {
@@ -3941,6 +3947,7 @@
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
           if (messageId) lastAssistantMessageId = messageId;
+          lastAssistantContent = fullContent;
 
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
