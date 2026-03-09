@@ -112,17 +112,61 @@ The `pending_approval` account state is where human review occurs: credit checks
 
 The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) provides a community-maintained layer of brand identity for brands that haven't yet published their own `brand.json`. Buyer agents resolving brands before account setup can contribute data back to the registry as a byproduct of normal workflows — improving identity coverage for the ecosystem without extra effort.
 
-The recommended pattern for buyer agents (see [GitHub #1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
+The recommended pattern for buyer agents uses three building blocks (see [#1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
 
-```
-1. resolve_brand(brand_domain) → check registry
-2. If not found: research_brand(brand_domain) → enrich
-3. Confirm with user where UX permits
-4. save_brand() → contribute back to registry
-5. Establish account → sync_accounts (implicit) or list_accounts (explicit)
+| Tool | Purpose |
+|------|---------|
+| `resolve_brand` | Check registry and fetch brand.json — returns canonical identity if available |
+| `research_brand` | Enrich via Brandfetch and auto-save to registry as `enriched` |
+| `save_brand` | Manually contribute a brand to the registry as `community` |
+
+```javascript
+async function ensureBrand(domain) {
+  // 1. Check registry (brand.json or previously resolved)
+  const resolved = await resolveBrand(domain);
+
+  if (resolved.errors) {
+    // Resolution failed — brand unknown, proceed to enrich
+  } else if (resolved.source === 'brand_json' || resolved.source === 'enriched') {
+    // Authoritative or enriched data available — confirm with user, then use
+    return await confirmWithUser(resolved);
+  }
+  // source === 'community': registry has a placeholder, but enrich for richer data
+
+  // 2. Enrich via Brandfetch — auto-saves to registry as 'enriched'
+  const enriched = await researchBrand(domain);
+  if (enriched.errors) {
+    // Enrichment unavailable — fall back to community entry or prompt user to correct
+    return resolved ? await confirmWithUser(resolved) : null;
+  }
+
+  // 3. Confirm with user before using enriched data
+  // Enrichment is third-party — user confirmation catches errors and improves registry quality
+  return await confirmWithUser(enriched);
+}
 ```
 
-This means registry coverage improves as a natural byproduct of agents doing their normal job.
+`confirmWithUser` is a placeholder for whatever confirmation mechanism fits your UX — an explicit prompt, a review step in a workflow UI, or a low-confidence flag that triggers human review. The confirmation step is what makes the improvement loop work: enrichment data comes from third parties and isn't guaranteed to be correct. User verification before the data is used in a live campaign is what keeps the registry accurate over time.
+
+#### Source authority
+
+The registry tracks where brand data came from. Sources in descending authority:
+
+| Source | Meaning | Can be overwritten? |
+|--------|---------|---------------------|
+| `brand_json` | Brand self-declared via `/.well-known/brand.json` | No — returns 409 |
+| `enriched` | Third-party enrichment (Brandfetch) | Only by higher authority |
+| `community` | Manually contributed by a registry member | Yes |
+
+When an agent calls `save_brand` or `research_brand`, the registry applies merge logic: existing fields from a higher-authority source are preserved, and only missing fields are filled in. This respects what brands have declared while filling gaps.
+
+`research_brand` skips re-enrichment if the registry already has recent `enriched` data for the domain, avoiding redundant API calls.
+
+The full edit history for any brand — who contributed, when, and with what summary — is queryable via [`GET /api/brands/history`](/docs/registry/index#activity-history).
+
+#### Property contribute-back
+
+The same pattern applies to publisher properties. When a buyer agent discovers a new publisher through a sales agent interaction, it can contribute that property back to the registry via `POST /api/properties/save`. This improves property coverage for the ecosystem the same way brand contribute-back improves brand coverage. See [Registry API — save property](/docs/registry/index#save-property) for details.
 
 ## Usage reporting
 

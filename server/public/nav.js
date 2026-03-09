@@ -26,6 +26,13 @@
     return;
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   // Determine if running locally
   const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
 
@@ -90,6 +97,20 @@
         const manageLink = user.isManage ? `<a href="${authBaseUrl}/manage" class="navbar__dropdown-item">Manage AAO</a>` : '';
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
+          <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <span class="navbar__notif-badge" id="notifBadge" style="display:none;"></span>
+          </button>
+          <div class="navbar__notif-dropdown" id="notifDropdown">
+            <div class="navbar__notif-header">
+              <span>Notifications</span>
+              <a href="${authBaseUrl}/community/notifications" class="navbar__notif-view-all">View all</a>
+            </div>
+            <div class="navbar__notif-list" id="notifList"></div>
+          </div>
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
               <span class="navbar__account-name">${escapeHtml(displayName)}</span>
@@ -419,6 +440,115 @@
 
       .navbar__btn--primary:hover {
         background: #2d4fd6;
+      }
+
+      /* Notification bell */
+      .navbar__notif-btn {
+        position: relative;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.375rem;
+        color: var(--color-gray-500);
+        transition: color 0.2s;
+        display: flex;
+        align-items: center;
+      }
+      .navbar__notif-btn:hover { color: var(--color-gray-900); }
+      .navbar__notif-badge {
+        position: absolute;
+        top: 2px;
+        right: 0;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        background: var(--color-error-500);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .navbar__notif-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        width: 360px;
+        max-height: 420px;
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 1002;
+        overflow: hidden;
+      }
+      .navbar__notif-dropdown.open { display: block; }
+      .navbar__notif-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        font-weight: 600;
+        font-size: 0.875rem;
+      }
+      .navbar__notif-view-all {
+        font-size: 0.75rem;
+        color: var(--color-brand);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .navbar__notif-view-all:hover { text-decoration: underline; }
+      .navbar__notif-list {
+        max-height: 340px;
+        overflow-y: auto;
+      }
+      .navbar__notif-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.625rem;
+        padding: 0.625rem 1rem;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s;
+        border-bottom: 1px solid var(--color-gray-100);
+      }
+      .navbar__notif-item:hover { background: var(--color-bg-subtle); }
+      .navbar__notif-item.unread { background: var(--color-primary-50); }
+      .navbar__notif-item-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--gradient-primary);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+      }
+      .navbar__notif-item-avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .navbar__notif-item-text {
+        font-size: 0.8125rem;
+        line-height: 1.35;
+        color: var(--color-gray-700);
+      }
+      .navbar__notif-item-time {
+        font-size: 0.6875rem;
+        color: var(--color-text-muted);
+        margin-top: 2px;
+      }
+      .navbar__notif-empty {
+        padding: 2rem 1rem;
+        text-align: center;
+        color: var(--color-text-muted);
+        font-size: 0.8125rem;
       }
 
       /* Account dropdown */
@@ -1453,6 +1583,93 @@
       });
     }
 
+    // Notification bell
+    const notifBell = document.getElementById('notifBell');
+    const notifDropdown = document.getElementById('notifDropdown');
+    const notifBadge = document.getElementById('notifBadge');
+    const notifList = document.getElementById('notifList');
+
+    if (notifBell && notifDropdown) {
+      // Poll unread count
+      async function updateNotifCount() {
+        try {
+          const res = await fetch('/api/notifications/count', { credentials: 'include' });
+          if (!res.ok) return;
+          const { count } = await res.json();
+          if (count > 0) {
+            notifBadge.textContent = count > 99 ? '99+' : String(count);
+            notifBadge.style.display = 'flex';
+          } else {
+            notifBadge.style.display = 'none';
+          }
+        } catch {}
+      }
+      updateNotifCount();
+      setInterval(updateNotifCount, 30000);
+
+      function notifTimeAgo(dateStr) {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'now';
+        if (mins < 60) return mins + 'm';
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h';
+        const days = Math.floor(hrs / 24);
+        return days + 'd';
+      }
+
+      notifBell.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (accountDropdown) accountDropdown.classList.remove('open');
+        const wasOpen = notifDropdown.classList.contains('open');
+        notifDropdown.classList.toggle('open');
+        if (!wasOpen) {
+          notifList.innerHTML = '<div class="navbar__notif-empty">Loading...</div>';
+          try {
+            const res = await fetch('/api/notifications?limit=10&unread_only=true', { credentials: 'include' });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            if (data.notifications.length === 0) {
+              notifList.innerHTML = '<div class="navbar__notif-empty">No new notifications</div>';
+              return;
+            }
+            function esc(str) {
+              if (!str) return '';
+              return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            notifList.innerHTML = data.notifications.map(function(n) {
+              const fi = (n.actor_first_name || '')[0] || '';
+              const li = (n.actor_last_name || '')[0] || '';
+              const initials = esc(fi + li) || '?';
+              const avatar = n.actor_avatar_url
+                ? '<img src="' + esc(n.actor_avatar_url) + '" alt="">'
+                : initials;
+              const tag = n.url ? 'a' : 'div';
+              const href = n.url ? ' href="' + esc(n.url) + '"' : '';
+              return '<' + tag + href + ' class="navbar__notif-item' + (n.is_read ? '' : ' unread') + '" data-id="' + esc(n.id) + '">'
+                + '<div class="navbar__notif-item-avatar">' + avatar + '</div>'
+                + '<div><div class="navbar__notif-item-text">' + esc(n.title) + '</div>'
+                + '<div class="navbar__notif-item-time">' + notifTimeAgo(n.created_at) + '</div></div>'
+                + '</' + tag + '>';
+            }).join('');
+
+            // Mark as read on click
+            notifList.querySelectorAll('.navbar__notif-item[data-id]').forEach(function(el) {
+              el.addEventListener('click', function() {
+                fetch('/api/notifications/' + el.dataset.id + '/read', { method: 'POST', credentials: 'include' }).catch(function(){});
+                el.classList.remove('unread');
+                updateNotifCount();
+              });
+            });
+          } catch {
+            notifList.innerHTML = '<div class="navbar__notif-empty">Failed to load</div>';
+          }
+        }
+      });
+
+      notifDropdown.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+
     // Mobile menu toggle
     if (mobileMenuBtn && mobileMenu) {
       mobileMenuBtn.addEventListener('click', (e) => {
@@ -1480,6 +1697,7 @@
     // Close all menus when clicking outside
     document.addEventListener('click', (e) => {
       if (accountDropdown) accountDropdown.classList.remove('open');
+      if (notifDropdown) notifDropdown.classList.remove('open');
       if (mobileMenu && mobileMenu.classList.contains('open')) {
         toggleMobileMenu(false);
       }
@@ -1495,6 +1713,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (accountDropdown) accountDropdown.classList.remove('open');
+        if (notifDropdown) notifDropdown.classList.remove('open');
         if (mobileMenu && mobileMenu.classList.contains('open')) {
           toggleMobileMenu(false);
         }

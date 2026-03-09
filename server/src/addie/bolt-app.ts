@@ -111,6 +111,7 @@ import {
 import { InsightsDatabase } from '../db/insights-db.js';
 import { isRetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
+import { getDigestByReviewMessage, approveDigest } from '../db/digest-db.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -3395,6 +3396,70 @@ async function handleViewFlagged({ ack, body, client }: any): Promise<void> {
 }
 
 /**
+ * Handle white_check_mark reaction on a weekly digest review message.
+ * Verifies the reactor is an Editorial working group leader, then approves the digest.
+ * Returns true if the reaction was for a digest review message (handled), false otherwise.
+ */
+async function handleDigestApproval(
+  reactingUserId: string,
+  channelId: string,
+  messageTs: string,
+): Promise<boolean> {
+  const digest = await getDigestByReviewMessage(channelId, messageTs);
+  if (!digest || digest.status !== 'draft') {
+    return false;
+  }
+
+  // Verify reactor is an Editorial working group leader
+  const editorial = await workingGroupDb.getWorkingGroupBySlug('editorial');
+  if (!editorial) {
+    logger.warn('Editorial working group not found for digest approval');
+    return true; // Still handled - don't fall through to general reaction logic
+  }
+
+  const leaders = editorial.leaders || [];
+  // Check both user_id and canonical_user_id since leaders may be added via Slack ID
+  const matchedLeader = leaders.find(
+    (l) => l.user_id === reactingUserId || l.canonical_user_id === reactingUserId,
+  );
+
+  if (!matchedLeader) {
+    logger.info({ reactingUserId }, 'Non-leader attempted digest approval');
+    if (boltApp) {
+      await boltApp.client.chat.postMessage({
+        channel: channelId,
+        thread_ts: messageTs,
+        text: 'Only Editorial working group leaders can approve the digest.',
+      });
+    }
+    return true;
+  }
+
+  // Store canonical (WorkOS) user ID for audit trail
+  const approverUserId = matchedLeader.canonical_user_id || reactingUserId;
+  const approved = await approveDigest(digest.id, approverUserId);
+  if (approved && boltApp) {
+    // Resolve the approver's name for the confirmation message
+    const { resolveSlackUserDisplayName } = await import('../slack/client.js');
+    const resolved = await resolveSlackUserDisplayName(reactingUserId);
+    const name = resolved?.display_name || 'An editor';
+
+    await boltApp.client.chat.postMessage({
+      channel: channelId,
+      thread_ts: messageTs,
+      text: `Approved by ${name}! Will send at 10am ET.`,
+    });
+
+    logger.info(
+      { digestId: digest.id, approvedBy: approverUserId },
+      'Weekly digest approved',
+    );
+  }
+
+  return true;
+}
+
+/**
  * Handle reaction_added events
  * When users react to Addie's messages, interpret the reaction as input:
  * - Thumbs up / check = "yes, proceed" or positive feedback
@@ -3420,6 +3485,12 @@ async function handleReactionAdded({
   // Only process reactions on Addie's messages
   if (!context.botUserId || itemUser !== context.botUserId) {
     return;
+  }
+
+  // Check for weekly digest approval (white_check_mark on digest review message)
+  if (reaction === 'white_check_mark') {
+    const handled = await handleDigestApproval(reactingUserId, itemChannel, itemTs);
+    if (handled) return;
   }
 
   // Check if this is a meaningful reaction (positive or negative)

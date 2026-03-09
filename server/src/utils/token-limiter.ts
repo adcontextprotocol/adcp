@@ -16,10 +16,9 @@ import { logger } from '../logger.js';
  * Reserve buffer space for system prompt, tools, and response generation.
  */
 export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  'claude-sonnet-4-20250514': 200000,
-  'claude-3-5-sonnet-20241022': 200000,
-  'claude-3-opus-20240229': 200000,
-  'claude-3-haiku-20240307': 200000,
+  'claude-opus-4-6': 200000,
+  'claude-sonnet-4-6': 200000,
+  'claude-haiku-4-5': 200000,
   // Default for unknown models
   default: 200000,
 };

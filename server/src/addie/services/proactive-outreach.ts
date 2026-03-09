@@ -126,31 +126,6 @@ function getNthSunday(year: number, month: number, n: number): Date {
 }
 
 /**
- * Check if a user is eligible for outreach
- */
-function isUserEligible(user: SlackUserMapping): boolean {
-  // Bots and deleted users are not eligible
-  if (user.slack_is_bot || user.slack_is_deleted) {
-    return false;
-  }
-
-  // Opted-out users are not eligible
-  if (user.outreach_opt_out) {
-    return false;
-  }
-
-  // Rate limiting: check if contacted within the last week
-  if (user.last_outreach_at) {
-    const daysSince = (Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24);
-    if (daysSince < RATE_LIMIT_DAYS) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
  * Calculate outreach priority for a user
  * Higher priority = more likely to be contacted first
  */
@@ -291,12 +266,12 @@ async function getEligibleCandidates(limit = 10): Promise<OutreachCandidate[]> {
      WHERE slack_is_bot = FALSE
        AND slack_is_deleted = FALSE
        AND outreach_opt_out = FALSE
-       AND (last_outreach_at IS NULL OR last_outreach_at < NOW() - INTERVAL '${RATE_LIMIT_DAYS} days')
+       AND (last_outreach_at IS NULL OR last_outreach_at < NOW() - make_interval(days => $2))
      ORDER BY
        CASE WHEN workos_user_id IS NULL THEN 0 ELSE 1 END,
        last_outreach_at NULLS FIRST
      LIMIT $1`,
-    [limit]
+    [limit, RATE_LIMIT_DAYS]
   );
 
   return result.rows.map(user => ({
@@ -381,13 +356,18 @@ async function sendDmMessage(channelId: string, text: string, threadTs?: string)
 }
 
 /**
- * Update user's last_outreach_at timestamp
+ * Atomically claim a user for outreach by setting last_outreach_at.
+ * Returns true if successfully claimed; returns false if another instance
+ * already contacted them within the rate limit window.
  */
-async function updateLastOutreach(slackUserId: string): Promise<void> {
-  await query(
-    `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
-    [slackUserId]
+async function claimUserForOutreach(slackUserId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW()
+     WHERE slack_user_id = $1
+       AND (last_outreach_at IS NULL OR last_outreach_at < NOW() - make_interval(days => $2))`,
+    [slackUserId, RATE_LIMIT_DAYS]
   );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /**
@@ -469,8 +449,17 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
     return { success: false, error: 'No suitable goal found' };
   }
 
+  // Atomically claim this user before sending to prevent concurrent sends
+  // from multiple app instances both seeing them as eligible
+  const claimed = await claimUserForOutreach(candidate.slack_user_id);
+  if (!claimed) {
+    logger.debug({ slack_user_id: candidate.slack_user_id }, 'User already claimed by another instance, skipping');
+    return { success: false, error: 'Already claimed' };
+  }
+
   // Build the message from the goal template
-  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
+  const basePath = plannedAction.goal.category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(candidate.slack_user_id)}`;
   const message = planner.buildMessage(plannedAction.goal, ctx, linkUrl);
 
   // Send message, continuing existing thread if one exists
@@ -503,9 +492,6 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
     decision_method: plannedAction.decision_method,
     outreach_id: outreach.id,
   });
-
-  // Update user's last_outreach_at
-  await updateLastOutreach(candidate.slack_user_id);
 
   logger.debug({
     outreachId: outreach.id,
@@ -629,6 +615,12 @@ export async function manualOutreach(
     priority: calculatePriority(user),
   };
 
+  // Admin-triggered outreach bypasses the rate limit (claim unconditionally)
+  await query(
+    `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
+    [slackUserId]
+  );
+
   const outreachResult = await initiateOutreachWithPlanner(candidate);
 
   // If outreach was successful and we know who triggered it, auto-assign them as owner
@@ -733,7 +725,8 @@ export async function manualOutreachWithGoal(
   const ctx = await buildPlannerContext(candidate);
 
   // Build the message from the goal template
-  const linkUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+  const basePath = goal.category === 'invitation' ? '/join' : '/auth/login';
+  const linkUrl = `https://agenticadvertising.org${basePath}?slack_user_id=${encodeURIComponent(slackUserId)}`;
   const message = planner.buildMessage(goal, ctx, linkUrl);
 
   // Send message, continuing existing thread if one exists
@@ -767,8 +760,11 @@ export async function manualOutreachWithGoal(
     outreach_id: outreach.id,
   });
 
-  // Update user's last_outreach_at
-  await updateLastOutreach(slackUserId);
+  // Update last_outreach_at (manual admin override, unconditional)
+  await query(
+    `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
+    [slackUserId]
+  );
 
   // Auto-assign admin as owner if outreach was successful
   if (triggeredBy) {

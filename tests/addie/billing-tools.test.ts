@@ -6,6 +6,7 @@ jest.mock('../../server/src/billing/stripe-client.js', () => ({
   getProductsForCustomer: jest.fn(),
   createCheckoutSession: jest.fn(),
   createAndSendInvoice: jest.fn(),
+  validateInvoiceDetails: jest.fn(),
   createStripeCustomer: jest.fn().mockResolvedValue('cus_new_123'),
   getPriceByLookupKey: jest.fn(),
 }));
@@ -363,12 +364,13 @@ describe('billing-tools', () => {
   });
 
   describe('send_invoice', () => {
-    test('sends invoice successfully with subscription', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
-      (createAndSendInvoice as jest.Mock).mockResolvedValue({
-        invoiceId: 'in_abc123',
-        invoiceUrl: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
-        subscriptionId: 'sub_xyz789',
+    test('returns invoice preview without creating Stripe resources', async () => {
+      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
+      (validateInvoiceDetails as jest.Mock).mockResolvedValue({
+        amountDue: 150000,
+        currency: 'usd',
+        productName: 'Corporate Membership',
+        discountApplied: false,
       });
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
@@ -391,28 +393,22 @@ describe('billing-tools', () => {
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.invoice_id).toBe('in_abc123');
-      expect(parsed.invoice_url).toBe('https://invoice.stripe.com/i/acct_xxx/test_xxx');
-      expect(parsed.message).toContain('Invoice sent to ruben.schreurs@ebiquity.com');
+      expect(parsed.contact_email).toBe('ruben.schreurs@ebiquity.com');
+      expect(parsed.amount).toContain('1,500');
+      expect(parsed.product_name).toBe('Corporate Membership');
+      // No invoice_id — no Stripe resources created
+      expect(parsed.invoice_id).toBeUndefined();
 
-      expect(createAndSendInvoice).toHaveBeenCalledWith({
+      expect(validateInvoiceDetails).toHaveBeenCalledWith({
         lookupKey: 'aao_membership_corporate_5m',
-        companyName: 'Ebiquity Plc',
-        contactName: 'Ruben Schreurs',
         contactEmail: 'ruben.schreurs@ebiquity.com',
-        billingAddress: {
-          line1: '123 Test Street',
-          city: 'London',
-          state: 'Greater London',
-          postal_code: 'EC1A 1BB',
-          country: 'GB',
-        },
+        couponId: undefined,
       });
     });
 
-    test('returns error when invoice creation fails', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
-      (createAndSendInvoice as jest.Mock).mockResolvedValue(null);
+    test('returns error when product not found', async () => {
+      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
+      (validateInvoiceDetails as jest.Mock).mockResolvedValue(null);
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -434,13 +430,12 @@ describe('billing-tools', () => {
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('Failed to send invoice');
-      expect(parsed.error).toContain('Stripe may not be configured');
+      expect(parsed.error).toContain('Product not found');
     });
 
     test('handles exceptions gracefully', async () => {
-      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
-      (createAndSendInvoice as jest.Mock).mockRejectedValue(new Error('Stripe API error'));
+      const { validateInvoiceDetails } = await import('../../server/src/billing/stripe-client.js');
+      (validateInvoiceDetails as jest.Mock).mockRejectedValue(new Error('Stripe API error'));
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers();
@@ -459,6 +454,62 @@ describe('billing-tools', () => {
           country: 'US',
         },
       });
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Failed to preview invoice');
+    });
+  });
+
+  describe('confirm_send_invoice', () => {
+    const billingInput = {
+      lookup_key: 'aao_membership_corporate_5m',
+      company_name: 'Ebiquity Plc',
+      contact_name: 'Ruben Schreurs',
+      contact_email: 'ruben.schreurs@ebiquity.com',
+      billing_address: {
+        line1: '123 Test Street',
+        city: 'London',
+        state: 'Greater London',
+        postal_code: 'EC1A 1BB',
+        country: 'GB',
+      },
+    };
+
+    test('creates and sends invoice after confirmation', async () => {
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      (createAndSendInvoice as jest.Mock).mockResolvedValue({
+        invoiceId: 'in_abc123',
+        invoiceUrl: 'https://invoice.stripe.com/i/acct_xxx/test_xxx',
+        subscriptionId: 'sub_xyz789',
+        discountApplied: false,
+      });
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers();
+      const confirmSend = handlers.get('confirm_send_invoice')!;
+
+      const result = await confirmSend(billingInput);
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.invoice_id).toBe('in_abc123');
+      expect(parsed.invoice_url).toBe('https://invoice.stripe.com/i/acct_xxx/test_xxx');
+      expect(createAndSendInvoice).toHaveBeenCalledWith(expect.objectContaining({
+        lookupKey: 'aao_membership_corporate_5m',
+        contactEmail: 'ruben.schreurs@ebiquity.com',
+      }));
+    });
+
+    test('returns error when invoice send fails', async () => {
+      const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
+      (createAndSendInvoice as jest.Mock).mockResolvedValue(null);
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers();
+      const confirmSend = handlers.get('confirm_send_invoice')!;
+
+      const result = await confirmSend(billingInput);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -484,6 +535,7 @@ describe('billing-tools', () => {
       expect(toolNames).toContain('find_membership_products');
       expect(toolNames).toContain('create_payment_link');
       expect(toolNames).toContain('send_invoice');
+      expect(toolNames).toContain('confirm_send_invoice');
     });
   });
 });

@@ -149,6 +149,10 @@
         ]
       }
     },
+    "time_budget": {
+      "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+      "description": "Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing."
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
     },

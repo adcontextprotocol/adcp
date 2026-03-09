@@ -912,7 +912,32 @@
                 <div id="brand-domain-display" style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: 4px;"></div>
                 <div id="brand-verified-status" style="font-size: var(--text-sm);"></div>
               </div>
-              <a id="brand-manage-link" href="#" target="_blank" style="margin-left: auto; padding: var(--space-2) var(--space-4); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
+              <div style="margin-left: auto; display: flex; gap: var(--space-2);">
+                <button type="button" id="brand-edit-btn" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Edit</button>
+                <a id="brand-manage-link" href="#" target="_blank" style="padding: var(--space-2) var(--space-4); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
+              </div>
+            </div>
+
+            <!-- Inline brand edit form -->
+            <div id="brand-edit-form" style="display: none; background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4);">
+              <div class="form-group" style="margin-bottom: var(--space-4);">
+                <label for="brand_logo_url" style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-2);">Logo URL</label>
+                <input type="url" id="brand_logo_url" placeholder="https://example.com/logo.png" style="width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); font-size: var(--text-sm); background: var(--color-bg-card); color: var(--color-text); box-sizing: border-box;">
+                <p style="font-size: 12px; color: var(--color-text-muted); margin-top: var(--space-1);">Publicly accessible HTTPS URL (PNG, SVG, etc.)</p>
+              </div>
+              <div class="form-group" style="margin-bottom: var(--space-4);">
+                <label for="brand_color_input" style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-2);">Brand color</label>
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                  <input type="color" id="brand_color_input" value="#667eea" style="width: 40px; height: 36px; padding: 2px; border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); cursor: pointer; background: var(--color-bg-card);">
+                  <input type="text" id="brand_color_hex" placeholder="#667eea" maxlength="7" style="width: 100px; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); font-size: var(--text-sm); font-family: monospace; background: var(--color-bg-card); color: var(--color-text);">
+                </div>
+              </div>
+              <div style="display: flex; gap: var(--space-3); align-items: center;">
+                <button type="button" id="brand-save-btn" onclick="saveBrandIdentity(false)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save</button>
+                <button type="button" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-5); background: var(--color-bg-card); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Cancel</button>
+                <span id="brand-edit-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm);"></span>
+                <span id="brand-edit-success" style="display: none; color: var(--color-success-700); font-size: var(--text-sm);"></span>
+              </div>
             </div>
 
             <!-- Pointer snippet for unverified brands -->
@@ -930,9 +955,31 @@
 
           <!-- Brand not linked state -->
           <div id="brand-not-linked">
-            <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5); text-align: center;">
-              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">Your brand isn't set up yet. Set it up to get a hosted brand.json and appear with your logo in the member directory.</p>
-              <a href="/onboarding?step=brand" style="display: inline-block; padding: var(--space-2.5) var(--space-5); background: var(--color-brand); color: white; border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Set up brand</a>
+            <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-5);">
+              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4);">Your brand isn't set up yet. Add your logo and brand color to appear in the member directory.</p>
+
+              <div style="margin-bottom: var(--space-4);">
+                <div class="form-group" style="margin-bottom: var(--space-3);">
+                  <label for="brand_logo_url_new" style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-1);">Logo URL</label>
+                  <input type="url" id="brand_logo_url_new" placeholder="https://example.com/logo.png" style="width: 100%; padding: var(--space-2.5) var(--space-4); border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); font-size: var(--text-sm); background: var(--color-bg-card); color: var(--color-text); box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-bottom: var(--space-3);">
+                  <label for="brand_color_input_new" style="font-size: var(--text-sm); font-weight: var(--font-medium); color: var(--color-text-heading); display: block; margin-bottom: var(--space-1);">Brand color</label>
+                  <div style="display: flex; align-items: center; gap: var(--space-3);">
+                    <input type="color" id="brand_color_input_new" value="#667eea" style="width: 40px; height: 36px; padding: 2px; border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); cursor: pointer; background: var(--color-bg-card);">
+                    <input type="text" id="brand_color_hex_new" placeholder="#667eea" maxlength="7" style="width: 100px; padding: var(--space-2.5) var(--space-4); border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); font-size: var(--text-sm); font-family: monospace; background: var(--color-bg-card); color: var(--color-text);">
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: var(--space-3);">
+                  <button type="button" id="brand-quick-save-btn" onclick="saveBrandIdentity(true)" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Save brand</button>
+                  <span id="brand-quick-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm);"></span>
+                </div>
+              </div>
+
+              <div style="text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-3);">or use the full brand builder for more options</div>
+              <div style="text-align: center;">
+                <a href="/brand/builder" style="display: inline-block; padding: var(--space-2.5) var(--space-5); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Brand builder</a>
+              </div>
             </div>
           </div>
 
@@ -1114,6 +1161,7 @@
       setupMemberCardPreview();
       setupPhoneFormatting();
       setupMarketsAutoSelect();
+      setupBrandColorSync();
       // Load profile data after listeners are ready
       loadProfile();
     });
@@ -1439,7 +1487,12 @@
         // Show logo if available
         const logoPreview = document.getElementById('brand-logo-preview');
         if (profile.resolved_brand?.logo_url) {
-          logoPreview.innerHTML = '<img src="' + profile.resolved_brand.logo_url + '" style="max-width: 76px; max-height: 56px; object-fit: contain;" alt="">';
+          var img = document.createElement('img');
+          img.src = profile.resolved_brand.logo_url;
+          img.style.cssText = 'max-width: 76px; max-height: 56px; object-fit: contain;';
+          img.alt = '';
+          logoPreview.textContent = '';
+          logoPreview.appendChild(img);
         }
 
         // Verification status
@@ -1492,6 +1545,113 @@
         }
       } catch {
         if (btn) { btn.textContent = 'Check now'; btn.disabled = false; }
+      }
+    }
+
+    function toggleBrandEdit() {
+      const form = document.getElementById('brand-edit-form');
+      const isHidden = form.style.display === 'none';
+      form.style.display = isHidden ? 'block' : 'none';
+
+      if (isHidden) {
+        const logoInput = document.getElementById('brand_logo_url');
+        const colorInput = document.getElementById('brand_color_input');
+        const colorHex = document.getElementById('brand_color_hex');
+        if (currentResolvedBrand?.logo_url) logoInput.value = currentResolvedBrand.logo_url;
+        else logoInput.value = '';
+        if (currentResolvedBrand?.brand_color) {
+          colorInput.value = currentResolvedBrand.brand_color;
+          colorHex.value = currentResolvedBrand.brand_color;
+        } else {
+          colorInput.value = '#667eea';
+          colorHex.value = '';
+        }
+      }
+
+      document.getElementById('brand-edit-error').style.display = 'none';
+      document.getElementById('brand-edit-success').style.display = 'none';
+    }
+
+    function setupBrandColorSync() {
+      [['brand_color_input', 'brand_color_hex'], ['brand_color_input_new', 'brand_color_hex_new']].forEach(function(pair) {
+        var picker = document.getElementById(pair[0]);
+        var hex = document.getElementById(pair[1]);
+        if (picker && hex) {
+          picker.addEventListener('input', function() { hex.value = picker.value; });
+          hex.addEventListener('input', function() {
+            if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) picker.value = hex.value;
+          });
+        }
+      });
+    }
+
+    var _brandSaving = false;
+    async function saveBrandIdentity(isNew) {
+      if (_brandSaving) return;
+      _brandSaving = true;
+
+      var suffix = isNew ? '_new' : '';
+      var logoUrl = (document.getElementById('brand_logo_url' + suffix) || {}).value;
+      var brandColor = (document.getElementById('brand_color_hex' + suffix) || {}).value;
+      logoUrl = logoUrl ? logoUrl.trim() : null;
+      brandColor = (brandColor && /^#[0-9a-fA-F]{6}$/.test(brandColor.trim())) ? brandColor.trim() : null;
+
+      var errorEl = document.getElementById(isNew ? 'brand-quick-error' : 'brand-edit-error');
+      var successEl = isNew ? null : document.getElementById('brand-edit-success');
+      var btn = document.getElementById(isNew ? 'brand-quick-save-btn' : 'brand-save-btn');
+
+      errorEl.style.display = 'none';
+      if (successEl) successEl.style.display = 'none';
+
+      if (!logoUrl && !brandColor) {
+        errorEl.textContent = 'Enter a logo URL or pick a brand color.';
+        errorEl.style.display = 'inline';
+        _brandSaving = false;
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        var body = {};
+        if (logoUrl) body.logo_url = logoUrl;
+        if (brandColor) body.brand_color = brandColor;
+
+        var response = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          var errData = {};
+          try { errData = await response.json(); } catch {}
+          throw new Error(errData.message || 'Failed to save brand identity');
+        }
+
+        var data = await response.json();
+
+        currentResolvedBrand = data.brand || null;
+        if (currentProfile) {
+          currentProfile.primary_brand_domain = data.brand_domain;
+          currentProfile.resolved_brand = data.brand;
+        }
+        populateBrandSection(currentProfile || { primary_brand_domain: data.brand_domain, resolved_brand: data.brand });
+        updateMemberCardPreview();
+
+        if (successEl) {
+          successEl.textContent = 'Brand identity saved.';
+          successEl.style.display = 'inline';
+        }
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'inline';
+      } finally {
+        _brandSaving = false;
+        btn.disabled = false;
+        btn.textContent = isNew ? 'Save brand' : 'Save';
       }
     }
 

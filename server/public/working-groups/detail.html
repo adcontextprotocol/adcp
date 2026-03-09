@@ -1487,15 +1487,17 @@
 
         memberCount.textContent = currentGroup.memberships.length;
 
-        membersList.innerHTML = currentGroup.memberships.map(member => `
-          <div class="member-item">
+        membersList.innerHTML = currentGroup.memberships.map(member => {
+          const tag = member.user_slug ? 'a' : 'div';
+          const href = member.user_slug ? ` href="/community/people/${encodeURIComponent(member.user_slug)}"` : '';
+          return `<${tag}${href} class="member-item" style="${member.user_slug ? 'text-decoration:none;color:inherit;' : ''}">
             <div class="member-avatar">${getInitials(member.user_name || member.user_email)}</div>
             <div class="member-info">
               <div class="member-name">${escapeHtml(member.user_name || member.user_email || 'Unknown')}</div>
               ${member.user_org_name ? `<div class="member-org">${escapeHtml(member.user_org_name)}</div>` : ''}
             </div>
-          </div>
-        `).join('');
+          </${tag}>`;
+        }).join('');
 
         membersSection.style.display = 'block';
       }

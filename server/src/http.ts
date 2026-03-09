@@ -29,13 +29,13 @@ import { PropertyDatabase } from "./db/property-db.js";
 import * as manifestRefsDb from "./db/manifest-refs-db.js";
 import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus } from "./slack/sync.js";
+import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain } from "./utils/email-domain.js";
 import { requireAuth, requireAdmin, requireManage, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { isWebUserAAOCouncil } from "./addie/mcp/admin-tools.js";
-import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, orgCreationRateLimiter, bulkResolveRateLimiter, brandCreationRateLimiter, notificationRateLimiter } from "./middleware/rate-limit.js";
 import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -51,6 +51,7 @@ import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
+import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
 import { invalidateMembershipCache } from "./db/org-filters.js";
@@ -68,12 +69,14 @@ import { createReferralsRouter } from "./routes/referrals.js";
 import { convertReferral, listAllReferralCodes } from "./db/referral-codes-db.js";
 import { createEventsRouter } from "./routes/events.js";
 import { createLatestRouter } from "./routes/latest.js";
+import { createDigestRouter } from "./routes/digest.js";
 import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createEngagementRouter } from "./routes/engagement.js";
+import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
@@ -636,6 +639,7 @@ export class HTTPServer {
           }
         });
       } catch (error) {
+        logger.error({ err: error }, 'Failed to list schema versions');
         res.status(500).json({ error: "Failed to list schema versions" });
       }
     });
@@ -690,7 +694,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat') {
         return next();
       }
 
@@ -843,6 +847,12 @@ export class HTTPServer {
     this.app.use('/chat', chatPageRouter);              // Page routes: /chat
     this.app.use('/api/addie/chat', chatApiRouter);     // API routes: /api/addie/chat
 
+    // Mount Tavus video routes (Addie video chat + OpenAI-compatible LLM endpoint)
+    const { pageRouter: videoPageRouter, apiRouter: videoApiRouter, llmRouter: videoLlmRouter } = createTavusRouter();
+    this.app.use('/video', videoPageRouter);            // Page routes: /video
+    this.app.use('/api/addie/video', videoApiRouter);   // API routes: /api/addie/video/session
+    this.app.use('/api/addie/v1', videoLlmRouter);      // LLM routes: /api/addie/v1/chat/completions
+
     // Mount SI (Sponsored Intelligence) chat routes
     const { apiRouter: siChatApiRouter } = createSiChatRoutes();
     this.app.use('/api/si', siChatApiRouter);           // API routes: /api/si/sessions/*
@@ -989,6 +999,9 @@ export class HTTPServer {
     const engagementRouter = createEngagementRouter({ orgDb, orgKnowledgeDb, workingGroupDb });
     this.app.use('/api/me/engagement', engagementRouter);
 
+    // Mount notification routes
+    this.app.use('/api/notifications', notificationRateLimiter, createNotificationRouter());
+
     // Mount API key management routes
     this.app.use('/api/me/api-keys', createApiKeysRouter());
 
@@ -1002,6 +1015,9 @@ export class HTTPServer {
     const { pageRouter: latestPageRouter, apiRouter: latestApiRouter } = createLatestRouter();
     this.app.use('/', latestPageRouter);                    // Page routes: /latest, /latest/:slug
     this.app.use('/api', latestApiRouter);                  // API routes: /api/latest/*
+
+    // Mount weekly digest routes (public web view)
+    this.app.use('/digest', createDigestRouter());
 
     // Mount webhook routes (external services like Resend, WorkOS)
     const webhooksRouter = createWebhooksRouter();
@@ -1502,6 +1518,7 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content - unified CMS for all authenticated users
     this.app.get('/my-content', async (req, res) => {
@@ -1579,6 +1596,7 @@ export class HTTPServer {
         const result = await this.validator.validate(domain, agent_url);
         res.json(result);
       } catch (error) {
+        logger.error({ err: error, domain, agent_url }, 'Validation failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Validation failed",
         });
@@ -1649,6 +1667,7 @@ export class HTTPServer {
         const profile = await this.capabilityDiscovery.discoverCapabilities(agent);
         res.json(profile);
       } catch (error) {
+        logger.error({ err: error, agentId }, 'Capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Capability discovery failed",
         });
@@ -1664,6 +1683,7 @@ export class HTTPServer {
           profiles: Array.from(profiles.values()),
         });
       } catch (error) {
+        logger.error({ err: error, agentCount: agents.length }, 'Bulk capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Bulk discovery failed",
         });
@@ -1820,6 +1840,9 @@ export class HTTPServer {
     });
     this.app.get("/community/connections", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/connections.html');
+    });
+    this.app.get("/community/notifications", async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'community/notifications.html');
     });
     this.app.get("/community/profile/edit", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'community/profile-edit.html');
@@ -2456,12 +2479,12 @@ export class HTTPServer {
     });
 
     // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
-    this.app.get('/brand/view/:domain(*)', async (req, res) => {
+    this.app.get('/brand/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
     });
 
     // GET /property/view/:domain - Property viewer page (wildcard captures dots in domain names)
-    this.app.get('/property/view/:domain(*)', async (req, res) => {
+    this.app.get('/property/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
@@ -4244,7 +4267,7 @@ export class HTTPServer {
       try {
         const pool = getPool();
         // Query all analytics views
-        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups] = await Promise.all([
+        const [revenueByMonth, customerHealth, subscriptionMetrics, productRevenue, totalRevenue, totalCustomers, outstandingSummary, outstandingList, recentSignups, payingCustomersByMonth] = await Promise.all([
           pool.query('SELECT * FROM revenue_by_month ORDER BY month DESC LIMIT 12'),
           pool.query('SELECT * FROM customer_health ORDER BY customer_since DESC'),
           pool.query('SELECT * FROM subscription_metrics LIMIT 1'),
@@ -4277,12 +4300,37 @@ export class HTTPServer {
             ORDER BY created_at DESC
             LIMIT 20
           `),
+          pool.query(`
+            SELECT
+              TO_CHAR(DATE_TRUNC('month', re.paid_at), 'YYYY-MM') AS month,
+              array_agg(DISTINCT o.name ORDER BY o.name) AS customer_names
+            FROM revenue_events re
+            JOIN organizations o ON o.workos_organization_id = re.workos_organization_id
+            WHERE re.amount_paid > 0
+              AND re.paid_at IS NOT NULL
+              AND re.paid_at >= NOW() - INTERVAL '12 months'
+            GROUP BY DATE_TRUNC('month', re.paid_at)
+          `),
         ]);
 
         const metrics = subscriptionMetrics.rows[0] || {};
         const outstandingRow = outstandingSummary.rows[0] || {};
+        const customerNamesByMonth = new Map(
+          payingCustomersByMonth.rows.map((r: any) => [r.month as string, r.customer_names as string[]])
+        );
+        const toMonthKey = (month: string | Date): string => {
+          if (!month) return '';
+          if (typeof month === 'string') return month.slice(0, 7);
+          // Use UTC components to match PostgreSQL's TO_CHAR output (assumes UTC Postgres, standard for production)
+          const year = month.getUTCFullYear();
+          const m = String(month.getUTCMonth() + 1).padStart(2, '0');
+          return `${year}-${m}`;
+        };
         res.json({
-          revenue_by_month: revenueByMonth.rows,
+          revenue_by_month: revenueByMonth.rows.map((row: any) => ({
+            ...row,
+            paying_customer_names: customerNamesByMonth.get(toMonthKey(row.month)) || [],
+          })),
           customer_health: customerHealth.rows,
           subscription_metrics: {
             ...metrics,
@@ -5113,6 +5161,26 @@ Disallow: /api/admin/
 
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
+        // Ensure user exists in local users table (webhooks may have been missed).
+        // WorkOS is the source of truth for name/email — always sync on login.
+        try {
+          const pool = getPool();
+          await pool.query(
+            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             ON CONFLICT (workos_user_id) DO UPDATE SET
+               email = EXCLUDED.email,
+               first_name = EXCLUDED.first_name,
+               last_name = EXCLUDED.last_name,
+               email_verified = EXCLUDED.email_verified,
+               workos_updated_at = EXCLUDED.workos_updated_at,
+               updated_at = NOW()`,
+            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+          );
+        } catch (upsertError) {
+          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        }
+
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
         // This happens when:
         // 1. User has never accepted them, OR
@@ -5278,6 +5346,8 @@ Disallow: /api/admin/
             const slackDb = new SlackDatabase();
             const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
 
+            let accountLinked = false;
+
             if (existingMapping && !existingMapping.workos_user_id) {
               // Link the Slack user to the newly authenticated WorkOS user
               await slackDb.mapUser({
@@ -5285,6 +5355,7 @@ Disallow: /api/admin/
                 workos_user_id: user.id,
                 mapping_source: 'user_claimed',
               });
+              accountLinked = true;
               logger.info(
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
@@ -5320,15 +5391,63 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink },
                 'Slack user not found in mapping table, skipping auto-link'
               );
+            } else if (existingMapping.workos_user_id === user.id) {
+              // Already correctly linked — user clicked the link again.
+              // We still mark the goal as success (below) but don't re-send the
+              // "you're now linked" Addie message to avoid duplicate notifications.
+              accountLinked = true;
+              logger.debug(
+                { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                'Slack account already linked to this WorkOS user'
+              );
             } else {
               logger.debug(
                 { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
                 'Slack user already mapped to different WorkOS user'
               );
             }
+
+            // Mark any pending Link Account outreach goals as succeeded so Addie stops re-sending
+            if (accountLinked) {
+              try {
+                const pool = getPool();
+                await pool.query(
+                  `UPDATE user_goal_history ugh
+                   SET status = 'success', updated_at = NOW()
+                   FROM outreach_goals og
+                   WHERE ugh.goal_id = og.id
+                     AND og.category = 'admin'
+                     AND og.name = 'Link Account'
+                     AND ugh.slack_user_id = $1
+                     AND ugh.status IN ('sent', 'pending', 'deferred')`,
+                  [slackUserIdToLink]
+                );
+              } catch (historyError) {
+                logger.warn({ error: historyError, slackUserId: slackUserIdToLink }, 'Failed to mark Link Account goal as success');
+              }
+            }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
             logger.error({ error: linkError, slackUserId: slackUserIdToLink }, 'Failed to auto-link Slack account');
+          }
+        } else {
+          // No slack_user_id in state — attempt email-based auto-link for returning users.
+          // user.created webhook only fires at signup; this catches users whose Slack account
+          // was added after they signed up on the website.
+          try {
+            const slackDbForLink = new SlackDatabase();
+            const existingSlackMapping = await slackDbForLink.getByWorkosUserId(user.id);
+            if (!existingSlackMapping) {
+              const linkResult = await tryAutoLinkWebsiteUserToSlack(user.id, user.email);
+              if (linkResult.linked) {
+                logger.info(
+                  { workosUserId: user.id, slackUserId: linkResult.slack_user_id },
+                  'Email-based auto-link on login'
+                );
+              }
+            }
+          } catch (linkError) {
+            logger.warn({ error: linkError, workosUserId: user.id }, 'Failed to email auto-link on login');
           }
         }
 
@@ -6427,9 +6546,19 @@ Disallow: /api/admin/
               const bj = hosted.brand_json as Record<string, unknown>;
               const brands = bj.brands as Array<Record<string, unknown>> | undefined;
               const primaryBrand = brands?.[0];
-              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
         }));
@@ -6457,9 +6586,19 @@ Disallow: /api/admin/
               const bj = hosted.brand_json as Record<string, unknown>;
               const brands = bj.brands as Array<Record<string, unknown>> | undefined;
               const primaryBrand = brands?.[0];
-              const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-              const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+              const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
         }));
@@ -6567,9 +6706,19 @@ Disallow: /api/admin/
             const bj = hostedBrand.brand_json as Record<string, unknown>;
             const brands = bj.brands as Array<Record<string, unknown>> | undefined;
             const primaryBrand = brands?.[0];
-            const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-            const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+            const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+            const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
             profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+          } else {
+            const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (discovered) {
+              const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+              const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+              const primaryBrand = brands?.[0];
+              const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+            }
           }
         }
 
@@ -6844,7 +6993,7 @@ Disallow: /api/admin/
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
-            const result = await client.getProducts({ brief: '' });
+            const result = await client.getProducts({ buying_mode: 'wholesale' });
             if (result.data?.products) {
               stats.product_count = result.data.products.length;
             }
@@ -7040,6 +7189,7 @@ Disallow: /api/admin/
     jobScheduler.start(JOB_NAMES.TASK_REMINDER);
     jobScheduler.start(JOB_NAMES.ENGAGEMENT_SCORING);
     jobScheduler.start(JOB_NAMES.GOAL_FOLLOW_UP);
+    jobScheduler.start(JOB_NAMES.SLACK_AUTO_LINK);
 
     // Start Moltbook jobs only if API key is configured
     if (process.env.MOLTBOOK_API_KEY) {

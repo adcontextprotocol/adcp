@@ -18,9 +18,10 @@
         "mood_board",
         "example_creative",
         "logo",
-        "strategy_doc"
+        "strategy_doc",
+        "storyboard"
       ],
-      "description": "How the creative agent should use this asset. style_reference: match the visual style; product_shot: include this product; mood_board: overall look and feel; example_creative: example of a similar execution; logo: logo to use; strategy_doc: strategy or planning document for context"
+      "description": "How the creative agent should use this asset. style_reference: match the visual style; product_shot: include this product; mood_board: overall look and feel; example_creative: example of a similar execution; logo: logo to use; strategy_doc: strategy or planning document for context; storyboard: sequential visual direction for video or multi-scene creative"
     },
     "description": {
       "type": "string",

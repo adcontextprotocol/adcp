@@ -1388,9 +1388,110 @@
       color: #4A154B;
     }
 
+    .thread-channel-badge.video {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
     .thread-channel-badge svg {
       width: 10px;
       height: 10px;
+    }
+
+    /* Video call button */
+    .video-call-btn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      margin: 12px auto 0;
+    }
+    .video-call-btn:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+      background: var(--color-primary-50);
+    }
+    .video-call-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .video-call-btn.visible {
+      display: inline-flex;
+    }
+    .video-call-btn.teaser {
+      display: inline-flex;
+      opacity: 0.7;
+    }
+    .video-call-btn.teaser:hover {
+      opacity: 1;
+    }
+    .video-call-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Video panel */
+    .video-panel {
+      display: none;
+      flex-direction: column;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-subtle);
+    }
+    .video-panel.active {
+      display: flex;
+    }
+    .video-panel-frame {
+      width: 100%;
+      height: 40vh;
+    }
+    .video-panel-frame iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .video-panel-controls {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      padding: 8px;
+      background: var(--color-bg-card);
+      border-top: 1px solid var(--color-border);
+    }
+    .video-end-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--color-error-600);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .video-end-btn:hover {
+      opacity: 0.85;
+    }
+    .video-panel-loading {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--color-text-secondary);
+      min-height: 200px;
     }
 
     .history-empty {
@@ -2297,6 +2398,26 @@
           Chat with Addie
         </h1>
         <p>Your AI assistant for AdCP and Agentic Advertising</p>
+        <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+          <span>Video chat</span>
+        </button>
+      </div>
+
+      <div class="video-panel" id="videoPanel">
+        <div class="video-panel-loading" id="videoPanelLoading">
+          <div class="spinner"></div>
+          <p>Connecting you to Addie...</p>
+        </div>
+        <div class="video-panel-frame" id="videoPanelFrame" style="display: none;">
+          <iframe id="videoCallFrame" allow="camera; microphone; autoplay"></iframe>
+        </div>
+        <div class="video-panel-controls">
+          <button class="video-end-btn" id="videoEndBtn">End chat</button>
+        </div>
       </div>
 
       <div class="messages-container" id="messagesContainer">
@@ -2385,12 +2506,25 @@
       const siModalInput = document.getElementById('siModalInput');
       const siModalSend = document.getElementById('siModalSend');
 
+      // Video elements
+      const videoCallBtn = document.getElementById('videoCallBtn');
+      const videoPanel = document.getElementById('videoPanel');
+      const videoPanelLoading = document.getElementById('videoPanelLoading');
+      const videoPanelFrame = document.getElementById('videoPanelFrame');
+      const videoCallFrame = document.getElementById('videoCallFrame');
+      const videoEndBtn = document.getElementById('videoEndBtn');
+
       // State
       let conversationId = null;
       let isLoading = false;
       let isReady = false;
       let impersonationInfo = null;
       let isAuthenticated = false;
+      let videoCallActive = false;
+      let videoConversationId = null;
+      let videoThreadId = null;
+      let videoTranscriptPollTimer = null;
+      let videoLastMessageCount = 0;
       let threads = [];
       let mobileMenuOpen = false;
       let sidebarCollapsed = false;
@@ -2465,13 +2599,16 @@
         try {
           const response = await authFetch('/api/me');
           if (!response.ok) {
-            // Not authenticated — show anonymous banner
+            // Not authenticated — show anonymous banner and video teaser
             document.getElementById('anonymous-banner').classList.add('active');
+            videoCallBtn.classList.add('teaser');
+            videoCallBtn.title = 'Sign in to video chat with Addie';
             return;
           }
 
           const data = await response.json();
           isAuthenticated = true;
+          videoCallBtn.classList.add('visible');
 
           if (data.impersonation && data.impersonation.active) {
             impersonationInfo = data.impersonation;
@@ -2540,6 +2677,15 @@
               <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
             </svg>
             Slack
+          </span>`;
+        }
+        if (channel === 'video') {
+          return `<span class="thread-channel-badge video">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="23 7 16 12 23 17 23 7"></polygon>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            Video
           </span>`;
         }
         return '';
@@ -2887,7 +3033,7 @@
 
         // Load conversation history
         try {
-          const url = `/api/addie/chat/${encodeURIComponent(conversationId)}${channel === 'slack' ? '?channel=slack' : ''}`;
+          const url = `/api/addie/chat/${encodeURIComponent(conversationId)}${channel !== 'web' ? `?channel=${channel}` : ''}`;
           const response = await authFetch(url);
           if (!response.ok) throw new Error('Failed to load conversation');
 
@@ -2903,9 +3049,9 @@
             }
           });
 
-          // Handle read-only mode for Slack threads
+          // Handle read-only mode for Slack/video threads
           if (data.read_only) {
-            setReadOnlyMode(true);
+            setReadOnlyMode(true, data.channel);
           } else {
             setReadOnlyMode(false);
           }
@@ -2919,10 +3065,12 @@
       }
 
       // Set read-only mode for the chat input
-      function setReadOnlyMode(readOnly) {
+      function setReadOnlyMode(readOnly, channel) {
         if (readOnly) {
           chatInput.disabled = true;
-          chatInput.placeholder = 'This is a Slack conversation - reply in Slack to continue';
+          chatInput.placeholder = channel === 'video'
+            ? 'This is a video call transcript'
+            : 'This is a Slack conversation - reply in Slack to continue';
           sendButton.disabled = true;
           sendButton.style.opacity = '0.5';
         } else {
@@ -5073,6 +5221,125 @@
           siCloseModal();
         }
       });
+
+      // === Video Call Functions ===
+
+      async function startVideoCall() {
+        if (videoCallActive) return;
+        if (!isAuthenticated) {
+          window.location.href = '/api/auth/login';
+          return;
+        }
+
+        videoCallBtn.disabled = true;
+        videoCallActive = true;
+        videoLastMessageCount = 0;
+
+        // Show video panel with loading state
+        videoPanel.classList.add('active');
+        videoPanelLoading.style.display = 'flex';
+        videoPanelFrame.style.display = 'none';
+
+        // Clear current chat content for the video transcript
+        clearChatMessages();
+        welcomeMessage.style.display = 'none';
+        addieHomeContainer.classList.remove('visible');
+        setReadOnlyMode(true, 'video');
+
+        try {
+          const res = await authFetch('/api/addie/video/session', { method: 'POST' });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to start video session');
+          }
+          const data = await res.json();
+          if (!data.conversation_url?.startsWith('https://')) {
+            throw new Error('Invalid conversation URL');
+          }
+
+          videoConversationId = data.conversation_id;
+          videoThreadId = data.thread_id;
+          // Append userName so Daily.co skips the name prompt
+          const url = new URL(data.conversation_url);
+          if (data.display_name) {
+            url.searchParams.set('userName', data.display_name);
+          }
+          videoCallFrame.src = url.toString();
+          videoPanelLoading.style.display = 'none';
+          videoPanelFrame.style.display = 'block';
+
+          // Poll for transcript messages to display in the chat area
+          videoTranscriptPollTimer = setInterval(pollVideoTranscript, 3000);
+        } catch (err) {
+          endVideoCall();
+          showError(err.message || 'Unable to start video call');
+        }
+      }
+
+      function endVideoCall() {
+        videoCallActive = false;
+        videoCallFrame.src = 'about:blank';
+        videoPanel.classList.remove('active');
+        videoCallBtn.disabled = false;
+        setReadOnlyMode(false);
+
+        if (videoTranscriptPollTimer) {
+          clearInterval(videoTranscriptPollTimer);
+          videoTranscriptPollTimer = null;
+        }
+
+        // Refresh thread list so the video conversation appears in history
+        if (videoConversationId) {
+          loadThreads();
+        }
+        videoConversationId = null;
+        videoThreadId = null;
+        videoLastMessageCount = 0;
+        videoPollFailures = 0;
+        videoPollInFlight = false;
+      }
+
+      let videoPollInFlight = false;
+      let videoPollFailures = 0;
+
+      async function pollVideoTranscript() {
+        if (!videoConversationId || videoPollInFlight) return;
+        videoPollInFlight = true;
+        try {
+          const url = `/api/addie/chat/${encodeURIComponent(videoConversationId)}?channel=video`;
+          const response = await authFetch(url);
+          if (!response.ok) {
+            videoPollFailures++;
+            if (videoPollFailures >= 10 && videoTranscriptPollTimer) {
+              clearInterval(videoTranscriptPollTimer);
+              videoTranscriptPollTimer = null;
+            }
+            return;
+          }
+          videoPollFailures = 0;
+          const data = await response.json();
+
+          // Only render new messages
+          if (data.messages.length > videoLastMessageCount) {
+            const newMessages = data.messages.slice(videoLastMessageCount);
+            newMessages.forEach(msg => {
+              addMessage(msg.content, msg.role, msg.message_id);
+            });
+            videoLastMessageCount = data.messages.length;
+          }
+        } catch (err) {
+          videoPollFailures++;
+          if (videoPollFailures >= 10 && videoTranscriptPollTimer) {
+            clearInterval(videoTranscriptPollTimer);
+            videoTranscriptPollTimer = null;
+          }
+        } finally {
+          videoPollInFlight = false;
+        }
+      }
+
+      videoCallBtn.addEventListener('click', startVideoCall);
+      videoEndBtn.addEventListener('click', endVideoCall);
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash

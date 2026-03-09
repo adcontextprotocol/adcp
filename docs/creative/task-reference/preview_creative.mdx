@@ -169,6 +169,7 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 | `creative_manifest` | object | Yes | Complete creative manifest with all required assets for the format. |
 | `inputs` | array | No | Array of input sets for multiple preview variants |
 | `output_format` | string | No | `"url"` (default) or `"html"` |
+| `item_limit` | integer | No | Maximum catalog items to render per preview variant. Creative agents SHOULD default to a reasonable sample when omitted and the catalog is large. |
 
 ### Batch Mode
 
@@ -177,6 +178,8 @@ Since each variant from `get_creative_delivery` includes its full `manifest`, yo
 | `request_type` | string | Yes | `"batch"` |
 | `requests` | array | Yes | Array of 1-50 preview requests |
 | `output_format` | string | No | Default output format for all requests |
+
+Each item in `requests` also accepts `item_limit` to cap catalog rendering for that individual preview.
 
 ### Input Sets
 

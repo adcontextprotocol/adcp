@@ -1,4 +1,7 @@
 import { query } from './client.js';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('community-db');
 
 function escapeLikePattern(str: string): string {
   return str.replace(/[%_\\]/g, '\\$&');
@@ -665,13 +668,14 @@ export class CommunityDatabase {
     return result.rows;
   }
 
-  async awardBadge(userId: string, badgeId: string): Promise<void> {
-    await query(
+  async awardBadge(userId: string, badgeId: string): Promise<boolean> {
+    const result = await query(
       `INSERT INTO user_badges (workos_user_id, badge_id)
        VALUES ($1, $2)
        ON CONFLICT (workos_user_id, badge_id) DO NOTHING`,
       [userId, badgeId]
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**
@@ -681,26 +685,43 @@ export class CommunityDatabase {
   async checkAndAwardBadges(userId: string, context: 'connection' | 'profile' | 'event' | 'wg' | 'content'): Promise<string[]> {
     const awarded: string[] = [];
 
+    const BADGE_LABELS: Record<string, string> = {
+      connector: 'Connector',
+      networker: 'Networker',
+      profile_complete: 'Profile complete',
+      event_regular: 'Event regular',
+      working_group_member: 'Working group member',
+      contributor: 'Contributor',
+    };
+
+    const tryAward = async (badgeId: string) => {
+      const isNew = await this.awardBadge(userId, badgeId);
+      if (isNew) {
+        awarded.push(badgeId);
+        // Lazy-import to avoid circular dependencies
+        const { notifyUser } = await import('../notifications/notification-service.js');
+        notifyUser({
+          recipientUserId: userId,
+          type: 'badge_earned',
+          referenceId: badgeId,
+          referenceType: 'badge',
+          title: `You earned the "${BADGE_LABELS[badgeId] || badgeId}" badge`,
+          url: '/community',
+        }).catch(err => logger.error({ err }, 'Failed to send badge notification'));
+      }
+    };
+
     if (context === 'connection') {
       const count = await this.getConnectionCount(userId);
-      if (count >= 10) {
-        await this.awardBadge(userId, 'connector');
-        awarded.push('connector');
-      }
-      if (count >= 25) {
-        await this.awardBadge(userId, 'networker');
-        awarded.push('networker');
-      }
+      if (count >= 10) await tryAward('connector');
+      if (count >= 25) await tryAward('networker');
     }
 
     if (context === 'profile') {
       const profile = await this.getProfile(userId);
       if (profile) {
         const completeness = this.getProfileCompleteness(profile);
-        if (completeness === 100) {
-          await this.awardBadge(userId, 'profile_complete');
-          awarded.push('profile_complete');
-        }
+        if (completeness === 100) await tryAward('profile_complete');
       }
     }
 
@@ -710,10 +731,7 @@ export class CommunityDatabase {
         [userId]
       );
       const count = parseInt(result.rows[0]?.count || '0', 10);
-      if (count >= 3) {
-        await this.awardBadge(userId, 'event_regular');
-        awarded.push('event_regular');
-      }
+      if (count >= 3) await tryAward('event_regular');
     }
 
     if (context === 'wg') {
@@ -722,10 +740,7 @@ export class CommunityDatabase {
         [userId]
       );
       const count = parseInt(result.rows[0]?.count || '0', 10);
-      if (count >= 1) {
-        await this.awardBadge(userId, 'working_group_member');
-        awarded.push('working_group_member');
-      }
+      if (count >= 1) await tryAward('working_group_member');
     }
 
     if (context === 'content') {
@@ -734,10 +749,7 @@ export class CommunityDatabase {
         [userId]
       );
       const count = parseInt(result.rows[0]?.count || '0', 10);
-      if (count >= 1) {
-        await this.awardBadge(userId, 'contributor');
-        awarded.push('contributor');
-      }
+      if (count >= 1) await tryAward('contributor');
     }
 
     return awarded;

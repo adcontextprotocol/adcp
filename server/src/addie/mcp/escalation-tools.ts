@@ -12,8 +12,10 @@ import type { MemberContext } from '../member-context.js';
 import {
   createEscalation,
   markNotificationSent,
+  listEscalationsForUser,
   type EscalationCategory,
   type EscalationPriority,
+  type EscalationStatus,
 } from '../../db/escalation-db.js';
 import { getThreadService } from '../thread-service.js';
 import { sendChannelMessage } from '../../slack/client.js';
@@ -81,6 +83,18 @@ When you escalate, be honest with the user that you're passing this to a human w
         },
       },
       required: ['summary', 'category'],
+    },
+  },
+  {
+    name: 'get_escalation_status',
+    description: `Check the status of support requests previously escalated for the current user.
+Use this when a user asks about the status of a previous request, a ticket, or whether someone followed up.
+Returns a list of their escalations with current status and any resolution notes.`,
+    usage_hints: 'use when user asks about status of a previous request or escalation',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      required: [],
     },
   },
   {
@@ -301,6 +315,62 @@ export function createEscalationToolHandlers(
     } catch (error) {
       logger.error({ error, category, threadId }, 'Failed to create escalation');
       return 'I tried to escalate this but encountered an error. Please reach out directly to the AgenticAdvertising.org team for help.';
+    }
+  });
+
+  // ============================================
+  // GET ESCALATION STATUS
+  // ============================================
+  handlers.set('get_escalation_status', async (_input) => {
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+
+    if (!workosUserId && !slackUserId) {
+      return JSON.stringify({
+        success: false,
+        message: "I can't look up your support requests — I don't have enough information to identify you.",
+      });
+    }
+
+    try {
+      const escalations = await listEscalationsForUser(workosUserId, slackUserId);
+
+      if (escalations.length === 0) {
+        return JSON.stringify({
+          success: true,
+          message: "You don't have any previous support requests on file.",
+          escalations: [],
+        });
+      }
+
+      const statusLabel: Record<EscalationStatus, string> = {
+        open: 'Open — waiting for the team to pick it up',
+        acknowledged: 'Acknowledged — the team has seen it',
+        in_progress: 'In progress — someone is working on it',
+        resolved: 'Resolved',
+        wont_do: 'Closed',
+        expired: 'Expired',
+      };
+
+      const formatted = escalations.map(e => ({
+        id: e.id,
+        summary: e.summary,
+        status: e.status,
+        status_label: statusLabel[e.status] || e.status,
+        submitted: new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        resolution_notes: e.resolution_notes || undefined,
+      }));
+
+      return JSON.stringify({
+        success: true,
+        escalations: formatted,
+        count: formatted.length,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to fetch escalation status');
+      return JSON.stringify({
+        success: false,
+        message: 'I had trouble looking up your support requests. Please try again.',
+      });
     }
   });
 

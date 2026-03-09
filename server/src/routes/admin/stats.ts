@@ -622,6 +622,7 @@ export function setupStatsRoutes(apiRouter: Router): void {
     '5m_50m': '$5M-$50M',
     '50m_250m': '$50M-$250M',
     '250m_1b': '$250M-$1B',
+    none: '—',
     '1b_plus': '$1B+',
     unknown: 'Unknown',
   };
@@ -682,18 +683,43 @@ export function setupStatsRoutes(apiRouter: Router): void {
         `),
 
         // Get the full matrix: company_type × revenue_tier
+        // Uses UNION to ensure all known company types appear even with zero counts
         pool.query(`
-          SELECT
-            COALESCE(company_type, 'unknown') AS company_type,
-            COALESCE(revenue_tier, 'unknown') AS revenue_tier,
-            COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
-            COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
-            COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
-            COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
-          FROM organizations
-          WHERE is_personal IS NOT TRUE
-          GROUP BY company_type, revenue_tier
-          ORDER BY company_type, revenue_tier
+          WITH known_types(company_type) AS (
+            VALUES ('adtech'), ('agency'), ('brand'), ('publisher'), ('data'), ('ai'), ('other')
+          ),
+          org_data AS (
+            SELECT
+              COALESCE(company_type, 'unknown') AS company_type,
+              COALESCE(revenue_tier, 'unknown') AS revenue_tier,
+              COUNT(*) FILTER (WHERE ${MEMBER_FILTER}) AS members,
+              COUNT(*) FILTER (WHERE ${ENGAGED_FILTER}) AS engaged,
+              COUNT(*) FILTER (WHERE ${REGISTERED_FILTER}) AS registered,
+              COALESCE(SUM(subscription_amount) FILTER (WHERE ${MEMBER_FILTER}), 0) AS arr_cents
+            FROM organizations
+            WHERE is_personal IS NOT TRUE
+            GROUP BY company_type, revenue_tier
+          )
+          SELECT * FROM (
+            SELECT company_type, revenue_tier, members, engaged, registered, arr_cents
+            FROM org_data
+            UNION ALL
+            SELECT kt.company_type, 'none' AS revenue_tier, 0, 0, 0, 0
+            FROM known_types kt
+            WHERE NOT EXISTS (SELECT 1 FROM org_data od WHERE od.company_type = kt.company_type)
+          ) combined
+          ORDER BY
+            CASE company_type
+              WHEN 'adtech' THEN 1
+              WHEN 'agency' THEN 2
+              WHEN 'brand' THEN 3
+              WHEN 'publisher' THEN 4
+              WHEN 'data' THEN 5
+              WHEN 'ai' THEN 6
+              WHEN 'other' THEN 7
+              ELSE 8
+            END,
+            revenue_tier
         `),
 
         // Get individuals (personal workspaces) separately

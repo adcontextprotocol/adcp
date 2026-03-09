@@ -76,6 +76,11 @@
           "type": "boolean",
           "description": "Whether this seller supports the get_account_financials task for querying account-level financial status (spend, credit, invoices). Only applicable to operator-billed accounts.",
           "default": false
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "Whether this seller supports sandbox accounts for testing. Buyers can provision a sandbox account via sync_accounts with sandbox: true, and all requests using that account_id will be treated as sandbox — no real platform calls or spend.",
+          "default": false
         }
       },
       "required": ["supported_billing"]

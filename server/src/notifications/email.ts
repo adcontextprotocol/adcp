@@ -593,6 +593,136 @@ ${footerText}`,
   }
 }
 
+export interface BatchMarketingEmail {
+  to: string;
+  subject: string;
+  htmlContent: string;
+  textContent: string;
+  category: string;
+  workosUserId: string;
+}
+
+export interface BatchSendResult {
+  sent: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Send marketing emails in batches via Resend batch API.
+ * Handles preference checks, tracking records, and unsubscribe links per-recipient,
+ * then sends in chunks of 100 via the batch endpoint.
+ */
+export async function sendBatchMarketingEmails(
+  emails: BatchMarketingEmail[],
+): Promise<BatchSendResult> {
+  const result: BatchSendResult = { sent: 0, skipped: 0, failed: 0 };
+
+  if (!resend) {
+    logger.debug('Resend not configured, skipping batch marketing emails');
+    return result;
+  }
+
+  // Prepare each email: check preferences, create tracking, build final HTML
+  const prepared: Array<{
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    headers: Record<string, string>;
+    trackingId: string;
+  }> = [];
+
+  for (const email of emails) {
+    const shouldSend = await emailPrefsDb.shouldSendEmail({
+      workos_user_id: email.workosUserId,
+      category_id: email.category,
+    });
+
+    if (!shouldSend) {
+      result.skipped++;
+      continue;
+    }
+
+    try {
+      const unsubscribeToken = await getUnsubscribeToken(email.workosUserId, email.to);
+      const emailEvent = await emailDb.createEmailEvent({
+        email_type: email.category,
+        recipient_email: email.to,
+        subject: email.subject,
+        workos_user_id: email.workosUserId,
+        metadata: {},
+      });
+
+      const trackingId = emailEvent.tracking_id;
+      const footerHtml = generateFooterHtml(trackingId, unsubscribeToken, email.category);
+      const footerText = generateFooterText(unsubscribeToken, email.category);
+
+      prepared.push({
+        to: email.to,
+        subject: email.subject,
+        html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  ${email.htmlContent}
+  ${footerHtml}
+</body>
+</html>`,
+        text: `${email.textContent}\n\n${footerText}`,
+        headers: {
+          'List-Unsubscribe': `<${BASE_URL}/unsubscribe/${unsubscribeToken}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
+        trackingId,
+      });
+    } catch (error) {
+      logger.error({ error, to: email.to }, 'Failed to prepare marketing email');
+      result.failed++;
+    }
+  }
+
+  // Send in batches of 100
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < prepared.length; i += BATCH_SIZE) {
+    const batch = prepared.slice(i, i + BATCH_SIZE);
+
+    try {
+      const { data: batchData, error } = await resend.batch.send(
+        batch.map((e) => ({
+          from: FROM_EMAIL,
+          to: e.to,
+          subject: e.subject,
+          html: e.html,
+          text: e.text,
+          headers: e.headers,
+        })),
+      );
+
+      if (error) {
+        logger.error({ error, batchIndex: i, batchSize: batch.length }, 'Batch send failed');
+        result.failed += batch.length;
+        continue;
+      }
+
+      // Mark each as sent
+      const batchResults = batchData?.data || [];
+      for (let j = 0; j < batch.length; j++) {
+        const resendId = batchResults[j]?.id;
+        await emailDb.markEmailSent(batch[j].trackingId, resendId);
+        result.sent++;
+      }
+
+      logger.info({ batchIndex: i, count: batch.length }, 'Batch marketing emails sent');
+    } catch (error) {
+      logger.error({ error, batchIndex: i }, 'Error sending batch marketing emails');
+      result.failed += batch.length;
+    }
+  }
+
+  return result;
+}
+
 /**
  * Email thread context for replies
  * Contains the information needed to properly thread a reply

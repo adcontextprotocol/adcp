@@ -203,7 +203,7 @@ export async function resolveEffectiveMembership(orgId: string): Promise<Effecti
         SELECT o.workos_organization_id, o.email_domain, o.name,
                o.subscription_status, o.subscription_canceled_at,
                o.membership_tier, 1 as depth,
-               ARRAY[o.email_domain] as visited
+               ARRAY[o.email_domain]::TEXT[] as visited
         FROM organizations o
         WHERE o.workos_organization_id = $1
 

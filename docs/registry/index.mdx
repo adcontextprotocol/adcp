@@ -101,6 +101,7 @@ All sources produce the same resolution response structure. To get full brand id
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
 | GET | `/api/brands/registry` | List all brands (search, pagination) |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
+| GET | `/api/brands/history` | Edit history for a brand |
 | POST | `/api/brands/save` | Save or update a community brand (auth required) |
 
 ### Property Resolution
@@ -111,6 +112,7 @@ All sources produce the same resolution response structure. To get full brand id
 | POST | `/api/properties/resolve/bulk` | Resolve up to 100 domains at once |
 | GET | `/api/properties/registry` | List all properties (search, pagination) |
 | GET | `/api/properties/validate` | Validate a domain's adagents.json |
+| GET | `/api/properties/history` | Edit history for a property |
 | POST | `/api/properties/save` | Save or update a hosted property (auth required) |
 
 ### Agent Discovery
@@ -154,6 +156,37 @@ All sources produce the same resolution response structure. To get full brand id
 | GET | `/api/public/agent-formats` | Get creative formats from an agent |
 | GET | `/api/public/agent-products` | Get products from a sales agent |
 | GET | `/api/public/validate-publisher` | Validate a publisher domain |
+
+## Activity history
+
+`GET /api/brands/history?domain={domain}` and `GET /api/properties/history?domain={domain}` return the edit history for a registry entry, newest first. These are public endpoints — no authentication required.
+
+```json Response
+{
+  "domain": "acmecorp.com",
+  "total": 3,
+  "revisions": [
+    {
+      "revision_number": 3,
+      "editor_name": "Pinnacle Media",
+      "edit_summary": "Updated logo URL",
+      "source": "community",
+      "is_rollback": false,
+      "created_at": "2026-03-01T12:34:56Z"
+    },
+    {
+      "revision_number": 2,
+      "editor_name": "system",
+      "edit_summary": "API: enriched via Brandfetch",
+      "source": "enriched",
+      "is_rollback": false,
+      "created_at": "2026-02-15T08:00:00Z"
+    }
+  ]
+}
+```
+
+Entries with `editor_name: "system"` were written by automated enrichment. When `is_rollback` is `true`, `rolled_back_to` contains the revision number that was restored. Pagination uses `limit` (max 100) and `offset` query parameters.
 
 ## Authentication
 

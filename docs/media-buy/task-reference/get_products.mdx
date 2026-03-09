@@ -18,7 +18,7 @@ Discover products with a natural language brief:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 import { GetProductsResponseSchema } from '@adcp/client';
 
@@ -45,7 +45,7 @@ for (const product of validated.products) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -62,7 +62,7 @@ async def discover_products():
 asyncio.run(discover_products())
 ```
 
-```bash CLI test=false
+```bash CLI
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
@@ -78,7 +78,7 @@ You can also use structured filters instead of (or in addition to) a brief. In `
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 const result = await testAgent.getProducts({
@@ -98,7 +98,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -135,6 +135,7 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Structured filters (see below) |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination for large product catalogs (see below) |
+| `time_budget` | Duration | No | Maximum time the buyer will commit to this request. The seller returns the best results achievable within this budget and does not start processes (human approvals, expensive external queries) that cannot complete in time. When omitted, the seller decides timing. Example: `{"interval": 30, "unit": "seconds"}`. |
 
 ### Filters Object
 
@@ -278,16 +279,118 @@ Pagination is optional. When omitted, the server returns all results (or a serve
 | `property_list_applied` | boolean | [AdCP 3.0] `true` if the agent filtered products based on the provided `property_list`. Absent or `false` if not provided or not supported. |
 | `catalog_applied` | boolean | `true` if the seller filtered results based on the provided `catalog`. Absent or `false` if no catalog was provided or the seller does not support catalog matching. |
 | `refinement_applied` | [RefinementResult[]](#refinement_applied-response) | Seller acknowledgment of each `refine` entry, matched by position. Only present when `buying_mode` is `"refine"`. See [refinement_applied](#refinement_applied-response) above. |
+| `incomplete` | [IncompleteEntry[]](#incomplete-array) | Declares what the seller could not finish within the `time_budget` or due to internal limits. Each entry identifies a scope with a human-readable explanation. Absent when the response is fully complete. See [incomplete array](#incomplete-array) below. |
+
+### incomplete array
+
+When the seller cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. Buyers can use `estimated_wait` to decide whether to retry with a larger budget.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. |
+| `description` | string | Yes | Human-readable explanation of what is missing and why. |
+| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
 
 **See schema for complete field list**: [`get-products-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/get-products-response.json)
 
 ## Common Scenarios
 
+### Time-budgeted discovery
+
+Declare a time budget when you need fast results and can accept partial data. The seller returns what it can within the budget and declares what is incomplete:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from '@adcp/client/testing';
+
+const result = await testAgent.getProducts({
+  buying_mode: 'brief',
+  brief: 'CTV and display for brand awareness',
+  brand: {
+    domain: 'acmecorp.com'
+  },
+  time_budget: {
+    interval: 10,
+    unit: 'seconds'
+  }
+});
+
+if (result.success && result.data) {
+  console.log(`Found ${result.data.products.length} products`);
+
+  if (result.data.incomplete) {
+    for (const entry of result.data.incomplete) {
+      console.log(`Incomplete: ${entry.scope} — ${entry.description}`);
+      if (entry.estimated_wait) {
+        console.log(`  Would resolve in ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
+      }
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def discover_with_time_budget():
+    result = await test_agent.simple.get_products(
+        buying_mode='brief',
+        brief='CTV and display for brand awareness',
+        brand={
+            'domain': 'acmecorp.com'
+        },
+        time_budget={
+            'interval': 10,
+            'unit': 'seconds'
+        }
+    )
+    print(f"Found {len(result.products)} products")
+
+    for entry in result.get('incomplete', []):
+        print(f"Incomplete: {entry['scope']} — {entry['description']}")
+        if 'estimated_wait' in entry:
+            wait = entry['estimated_wait']
+            print(f"  Would resolve in {wait['interval']} {wait['unit']}")
+
+asyncio.run(discover_with_time_budget())
+```
+
+</CodeGroup>
+
+A response with incomplete data — products are returned but some scopes are missing:
+
+```json test=false
+{
+  "products": [
+    {
+      "product_id": "prog-display-ros",
+      "name": "Programmatic Display — Run of Site",
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [{ "pricing_option_id": "cpm-ros", "pricing_model": "cpm", "currency": "USD", "fixed_price": 12.00 }]
+    }
+  ],
+  "incomplete": [
+    {
+      "scope": "products",
+      "description": "Premium inventory not searched — requires publisher approval",
+      "estimated_wait": { "interval": 60, "unit": "minutes" }
+    },
+    {
+      "scope": "forecast",
+      "description": "Forecast model did not complete within budget",
+      "estimated_wait": { "interval": 45, "unit": "seconds" }
+    }
+  ]
+}
+```
+
 ### Standard Catalog Discovery
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // wholesale mode: buyer applies their own audiences, no publisher curation
@@ -306,7 +409,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -332,7 +435,7 @@ asyncio.run(discover_standard_catalog())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products supporting both video and display
@@ -352,7 +455,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -379,7 +482,7 @@ asyncio.run(discover_multi_format())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products within budget and date range for specific countries and channels
@@ -408,7 +511,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -444,7 +547,7 @@ asyncio.run(discover_with_budget_and_dates())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Get products with property tags
@@ -466,7 +569,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -495,7 +598,7 @@ asyncio.run(discover_property_tags())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find guaranteed delivery products for measurement
@@ -516,7 +619,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -544,7 +647,7 @@ asyncio.run(discover_guaranteed())
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Find products that only accept IAB standard formats
@@ -563,7 +666,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -591,7 +694,7 @@ Use `catalog` with a brand to discover advertising products that can promote you
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Discover retail media products for specific catalog items
@@ -619,7 +722,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -647,7 +750,7 @@ async def discover_commerce_products():
 asyncio.run(discover_commerce_products())
 ```
 
-```bash CLI test=false
+```bash CLI
 uvx adcp \
   https://test-agent.adcontextprotocol.org/mcp \
   get_products \
@@ -696,7 +799,7 @@ Filter products to only those available on properties in your approved list:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent } from '@adcp/client/testing';
 
 // Filter products by property list from governance agent
@@ -723,7 +826,7 @@ if (result.success && result.data) {
 }
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent
 
@@ -871,7 +974,7 @@ See the difference between authenticated and unauthenticated access:
 
 <CodeGroup>
 
-```javascript JavaScript test=false
+```javascript JavaScript
 import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
 
 // WITH authentication - full catalog with pricing
@@ -907,7 +1010,7 @@ console.log(`Without auth: ${publicCatalog.data.products.length} products`);
 console.log(`First product pricing: ${publicCatalog.data.products[0].pricing_options?.length || 0} options`);
 ```
 
-```python Python test=false
+```python Python
 import asyncio
 from adcp.testing import test_agent, test_agent_no_auth
 

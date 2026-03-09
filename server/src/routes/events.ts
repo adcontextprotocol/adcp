@@ -15,6 +15,7 @@ import { eventsDb } from "../db/events-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { upsertEmailContact } from "../db/contacts-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
+import { notifyUser } from "../notifications/notification-service.js";
 import {
   createCheckoutSession,
   createStripeCustomer,
@@ -427,6 +428,26 @@ export function createEventsRouter(): {
       }
 
       logger.info({ eventId: id }, "Event updated");
+
+      // Notify registered users if significant fields changed (fire-and-forget)
+      const significantFields = ['start_time', 'end_time', 'venue_name', 'virtual_url', 'status'] as const;
+      const significantChange = significantFields.some(field => (updates as Record<string, unknown>)[field] !== undefined);
+      if (significantChange) {
+        eventsDb.getEventRegistrations(id).then(registrations => {
+          for (const reg of registrations) {
+            if (reg.workos_user_id && reg.registration_status === 'registered') {
+              notifyUser({
+                recipientUserId: reg.workos_user_id,
+                type: 'event_updated',
+                referenceId: event.id,
+                referenceType: 'event',
+                title: `${event.title} has been updated`,
+                url: `/events/${event.slug}`,
+              }).catch(err => logger.error({ err }, 'Failed to send event update notification'));
+            }
+          }
+        }).catch(err => logger.error({ err }, 'Failed to load registrations for event notification'));
+      }
 
       res.json({ event });
     } catch (error) {

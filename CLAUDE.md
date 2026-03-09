@@ -122,6 +122,15 @@ Description of change.
 
 Types: `patch` (fixes), `minor` (new features), `major` (breaking), `--empty` (no protocol impact)
 
+**Use `--empty` (no package entry) for everything that isn't a protocol change:**
+- Addie (any server-side AI behavior, tools, routing, bolt app)
+- Website / admin UI / member pages
+- Documentation updates (docs/, mintlify)
+- Infrastructure, deployment, migrations
+- Internal tooling and scripts
+
+Only use `patch`/`minor`/`major` when the change affects the published AdCP protocol spec — schemas, task definitions, API reference.
+
 ### Semantic Versioning for Schemas
 - **PATCH**: Fix typos, clarify descriptions
 - **MINOR**: Add optional fields, new enum values, new tasks

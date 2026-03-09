@@ -7,6 +7,9 @@ import { BrandDatabase } from "./db/brand-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { AAO_HOST } from "./config/aao.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger('crawler');
 
 export class CrawlerService {
   private crawler: PropertyCrawler;
@@ -22,7 +25,7 @@ export class CrawlerService {
   private capabilityDiscovery: CapabilityDiscovery;
 
   constructor() {
-    this.crawler = new PropertyCrawler({ logLevel: 'debug' });
+    this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error' });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
     this.brandManager = new BrandManager();
@@ -33,12 +36,12 @@ export class CrawlerService {
 
   async crawlAllAgents(agents: Agent[]): Promise<CrawlResult> {
     if (this.crawling) {
-      console.log("Crawl already in progress, skipping...");
+      log.debug('Crawl already in progress, skipping');
       return this.lastResult || this.emptyResult();
     }
 
     this.crawling = true;
-    console.log(`Starting crawl of ${agents.length} agents...`);
+    log.info({ agentCount: agents.length }, 'Starting crawl');
 
     // Convert our Agent type to AgentInfo for the crawler
     const agentInfos: AgentInfo[] = agents.map((agent) => ({
@@ -54,34 +57,27 @@ export class CrawlerService {
       this.lastResult = result;
       this.crawling = false;
 
-      console.log(
-        `Crawl complete: ${result.totalProperties} properties from ${result.successfulAgents}/${agents.length} agents, checked ${result.totalPublisherDomains} publisher domains`
-      );
+      log.info({
+        totalProperties: result.totalProperties,
+        successfulAgents: result.successfulAgents,
+        totalAgents: agents.length,
+        publisherDomains: result.totalPublisherDomains,
+      }, 'Crawl complete');
 
       if (result.failedAgents > 0) {
-        console.log(`Note: ${result.failedAgents} agent(s) failed (domains without adagents.json files)`);
+        log.warn({ failedAgents: result.failedAgents }, 'Some agents failed (no adagents.json)');
       }
 
       if (result.errors.length > 0) {
-        console.log(`\nCrawl errors by domain:`);
-        const errorsByDomain = new Map<string, string[]>();
+        const errorsByDomain: Record<string, string[]> = {};
         for (const err of result.errors) {
-          const domain = err.agent_url;
-          if (!errorsByDomain.has(domain)) {
-            errorsByDomain.set(domain, []);
-          }
-          errorsByDomain.get(domain)!.push(err.error);
+          (errorsByDomain[err.agent_url] ??= []).push(err.error);
         }
-        for (const [domain, errors] of errorsByDomain) {
-          console.log(`  ${domain}: ${errors.join('; ')}`);
-        }
+        log.warn({ errorsByDomain }, 'Crawl errors');
       }
 
       if (result.warnings && result.warnings.length > 0) {
-        console.log(`\nCrawl warnings:`);
-        for (const warning of result.warnings) {
-          console.log(`  ${warning.domain}: ${warning.message}`);
-        }
+        log.warn({ warnings: result.warnings }, 'Crawl warnings');
       }
 
       // Populate federated index from PropertyIndex and adagents.json files
@@ -94,7 +90,7 @@ export class CrawlerService {
 
       return result;
     } catch (error) {
-      console.error("Crawl failed:", error);
+      log.error({ err: error }, 'Crawl failed');
       this.crawling = false;
       throw error;
     }
@@ -109,14 +105,14 @@ export class CrawlerService {
       this.crawlAllAgents(agents);
     }, intervalMinutes * 60 * 1000);
 
-    console.log(`Periodic crawl started (every ${intervalMinutes} minutes)`);
+    log.info({ intervalMinutes }, 'Periodic crawl started');
   }
 
   stopPeriodicCrawl() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log("Periodic crawl stopped");
+      log.info('Periodic crawl stopped');
     }
   }
 
@@ -158,7 +154,7 @@ export class CrawlerService {
    */
   private async scanBrandsForDomains(domains: string[]): Promise<void> {
     const CONCURRENCY = 5;
-    console.log(`Scanning brand.json for ${domains.length} domains...`);
+    log.debug({ domainCount: domains.length }, 'Scanning brand.json');
     let verified = 0;
     let discovered = 0;
 
@@ -177,7 +173,7 @@ export class CrawlerService {
               if (hosted && !hosted.domain_verified) {
                 await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
                 verified++;
-                console.log(`  Brand verified: ${domain}`);
+                log.debug({ domain }, 'Brand verified');
               }
             }
           } catch {
@@ -199,7 +195,7 @@ export class CrawlerService {
           discovered++;
         }
       } catch (err) {
-        console.log(`  Brand scan failed for ${domain}:`, err instanceof Error ? err.message : err);
+        log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
       }
     };
 
@@ -208,7 +204,7 @@ export class CrawlerService {
       await Promise.all(domains.slice(i, i + CONCURRENCY).map(scanOne));
     }
 
-    console.log(`Brand scan complete: ${verified} verified, ${discovered} authoritative brand.json entries updated`);
+    log.info({ verified, discovered }, 'Brand scan complete');
   }
 
   private extractBrandName(data: unknown, fallback: string): string {
@@ -226,7 +222,7 @@ export class CrawlerService {
    * Returns the set of domains that were crawled (for brand scanning).
    */
   private async populateFederatedIndex(agents: Agent[]): Promise<Set<string>> {
-    console.log("Populating federated index...");
+    log.debug('Populating federated index');
     const index = getPropertyIndex();
 
     // Track domains we've already processed to avoid duplicates
@@ -242,7 +238,7 @@ export class CrawlerService {
         }
       }
     }
-    console.log(`Crawling ${registeredPublisherDomains.length} registered publishers: ${registeredPublisherDomains.join(', ') || '(none)'}`);
+    log.debug({ count: registeredPublisherDomains.length }, 'Crawling registered publishers');
 
     for (const profile of profiles) {
       for (const pubConfig of profile.publishers || []) {
@@ -256,7 +252,7 @@ export class CrawlerService {
           if (validation.valid && validation.raw_data?.authorized_agents) {
             const agentCount = validation.raw_data.authorized_agents.length;
             const propCount = validation.raw_data.properties?.length || 0;
-            console.log(`  ${pubConfig.domain}: found ${agentCount} agents, ${propCount} properties`);
+            log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -279,16 +275,16 @@ export class CrawlerService {
               );
             }
           } else {
-            console.log(`  ${pubConfig.domain}: no valid adagents.json`);
+            log.debug({ domain: pubConfig.domain }, 'No valid adagents.json');
           }
         } catch (err) {
-          console.error(`  ${pubConfig.domain}: failed -`, err instanceof Error ? err.message : err);
+          log.warn({ domain: pubConfig.domain, err: err instanceof Error ? err.message : err }, 'Publisher crawl failed');
         }
       }
     }
 
     // 2. Record publishers discovered from each sales agent's list_authorized_properties
-    console.log("Processing sales agent discovered publishers...");
+    log.debug('Processing sales agent discovered publishers');
     for (const agent of agents) {
       if (agent.type !== "sales") continue;
 
@@ -331,7 +327,7 @@ export class CrawlerService {
             }
           }
         } catch (err) {
-          console.error(`Failed to process domain ${domain}:`, err);
+          log.error({ domain, err }, 'Failed to process domain');
         }
       }
     }
@@ -339,16 +335,15 @@ export class CrawlerService {
     // Log stats
     try {
       const stats = await this.federatedIndex.getStats();
-      const propTypes = Object.entries(stats.properties_by_type)
-        .map(([type, count]) => `${count} ${type}`)
-        .join(', ');
-      console.log(
-        `Federated index populated: ${stats.discovered_agents} agents, ` +
-        `${stats.discovered_publishers} publishers, ` +
-        `${stats.discovered_properties} properties (${propTypes || 'none'}), ` +
-        `${stats.authorizations} authorizations ` +
-        `(${stats.authorizations_by_source.adagents_json} verified, ${stats.authorizations_by_source.agent_claim} claims)`
-      );
+      log.info({
+        agents: stats.discovered_agents,
+        publishers: stats.discovered_publishers,
+        properties: stats.discovered_properties,
+        propertiesByType: stats.properties_by_type,
+        authorizations: stats.authorizations,
+        verified: stats.authorizations_by_source.adagents_json,
+        claims: stats.authorizations_by_source.agent_claim,
+      }, 'Federated index populated');
     } catch {
       // Stats are optional
     }
@@ -371,7 +366,7 @@ export class CrawlerService {
    * Returns 'unknown' if no type-specific tools found or multiple types detected (hybrid agent).
    */
   private async probeAndUpdateAgentTypes(agents: Agent[]): Promise<void> {
-    console.log("Probing agents to discover types...");
+    log.debug('Probing agents to discover types');
 
     // Get all unique agent URLs (from both registered and discovered)
     const allAgents = await this.federatedIndex.listAllAgents();
@@ -393,11 +388,11 @@ export class CrawlerService {
     const urlsToProbe = Array.from(agentUrls).filter(url => !knownTypes.has(url));
 
     if (urlsToProbe.length === 0) {
-      console.log("All agents already have types assigned, skipping probe.");
+      log.debug('All agents already typed, skipping probe');
       return;
     }
 
-    console.log(`Probing ${urlsToProbe.length} agents (${knownTypes.size} already typed)...`);
+    log.debug({ toProbe: urlsToProbe.length, alreadyTyped: knownTypes.size }, 'Probing agents for type');
 
     // Probe agents in parallel with concurrency limit
     const CONCURRENCY = 5;
@@ -452,7 +447,7 @@ export class CrawlerService {
       }
     }
 
-    console.log(`Agent type discovery complete: ${updated} types inferred, ${failed} agents unreachable`);
+    log.info({ updated, unreachable: failed }, 'Agent type discovery complete');
   }
 
   /**

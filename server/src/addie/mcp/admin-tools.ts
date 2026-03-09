@@ -15,8 +15,9 @@
 
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
-import { COMMITTEE_TYPE_LABELS } from '../../types.js';
+import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
+import { invalidateMemberContextCache } from '../member-context.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import type { MembershipTier } from '../../db/organization-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
@@ -24,6 +25,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { BrandDatabase } from '../../db/brand-db.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -1126,15 +1128,35 @@ Roles: member (default), admin (can manage team), owner (full control)`,
     },
   },
   {
+    name: 'list_users_by_engagement',
+    description: 'List WorkOS-registered users ranked by engagement score. Returns name, organization, lifecycle stage, and engagement/excitement scores. Does not include Slack-only contacts.',
+    usage_hints: 'Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. For org-level ranking use list_organizations_by_users instead.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        limit: { type: 'number', description: 'Max results (default: 25)' },
+        lifecycle_stage: {
+          type: 'string',
+          enum: ['new', 'active', 'engaged', 'champion', 'at_risk', 'all'],
+          description: 'Filter by lifecycle stage (default: all)',
+        },
+        member_only: {
+          type: 'boolean',
+          description: 'Only include users from paying member organizations (default: false)',
+        },
+      },
+    },
+  },
+  {
     name: 'list_paying_members',
-    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB). Defaults to corporate members only.',
-    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, or membership revenue by tier.',
+    description: 'List all paying members grouped by subscription level ($50K ICL, $10K corporate, $2.5K SMB, individual). Includes individual members by default. Pass include_individual: false for corporate-only. Each entry includes the primary contact name and email.',
+    usage_hints: 'Use when asked about paying members, subscription breakdown, who pays what, membership revenue by tier, listing members for events/outreach, or getting member contact lists.',
     input_schema: {
       type: 'object' as const,
       properties: {
         include_individual: {
           type: 'boolean',
-          description: 'Include individual (personal) memberships (default: false, corporate only)',
+          description: 'Include individual (personal) memberships (default: true)',
         },
         limit: {
           type: 'number',
@@ -1320,6 +1342,79 @@ Examples:
           type: 'string',
           description: 'Filter by entity ID',
         },
+      },
+    },
+  },
+
+  // ============================================
+  // MEMBER PROFILE TOOLS
+  // ============================================
+  {
+    name: 'update_member_logo',
+    description: `Set or update the logo URL on a member's directory profile. Requires a publicly hosted HTTPS logo URL plus either the member's org_name or profile slug to identify them. Creates a brand entry if none exists, or updates the existing one.
+
+Do not use this to upload or host logo files — the URL must already be publicly accessible. After updating, use resolve_escalation to close the related support ticket.`,
+    usage_hints: 'Call get_account first to confirm the member exists. After updating, call resolve_escalation to close the escalation and notify the user.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_name: {
+          type: 'string',
+          description: 'Organization display name. Provide this or slug (one is required).',
+        },
+        slug: {
+          type: 'string',
+          description: 'Member profile slug. Provide this or org_name (one is required).',
+        },
+        logo_url: {
+          type: 'string',
+          description: 'Publicly hosted HTTPS URL of the logo (PNG, SVG, etc.)',
+        },
+      },
+      required: ['logo_url'],
+    },
+  },
+
+  {
+    name: 'update_member_profile',
+    description: `Update fields on a member's directory profile. Identify the member by org_name or slug (exact match required). Accepts any combination of: description, tagline, contact info, social links, headquarters, markets, offerings, and visibility settings.
+
+For logo changes, use update_member_logo instead.`,
+    usage_hints: 'Call get_account first to confirm the member exists. Useful for fixing profile data or toggling visibility.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_name: {
+          type: 'string',
+          description: 'Organization display name. Provide this or slug (one is required).',
+        },
+        slug: {
+          type: 'string',
+          description: 'Member profile slug. Provide this or org_name (one is required).',
+        },
+        description: { type: 'string', description: 'Company description.' },
+        tagline: { type: 'string', description: 'Short tagline. Set to empty string to clear.' },
+        contact_email: { type: 'string', description: 'Contact email address.' },
+        contact_website: { type: 'string', description: 'Company website URL.' },
+        contact_phone: { type: 'string', description: 'Contact phone number.' },
+        linkedin_url: { type: 'string', description: 'LinkedIn profile or company page URL.' },
+        twitter_url: { type: 'string', description: 'Twitter/X profile URL.' },
+        headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY").' },
+        markets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Target markets (e.g., ["North America", "EMEA"]).',
+        },
+        offerings: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: [...VALID_MEMBER_OFFERINGS],
+          },
+          description: 'Member offering types.',
+        },
+        is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
+        show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
       },
     },
   },
@@ -6553,7 +6648,7 @@ Use add_committee_leader to assign a leader.`;
   handlers.set('list_paying_members', async (input) => {
     try {
       const pool = getPool();
-      const includeIndividual = (input.include_individual as boolean) || false;
+      const includeIndividual = input.include_individual !== false;
       const limit = Math.min(Math.max((input.limit as number) || 50, 1), 100);
 
       const result = await pool.query(
@@ -6567,8 +6662,18 @@ Use add_committee_leader to assign a leader.`;
           o.membership_tier,
           o.company_type,
           o.created_at,
-          o.subscription_current_period_end
+          o.subscription_current_period_end,
+          primary_contact.email AS contact_email,
+          primary_contact.first_name AS contact_first_name,
+          primary_contact.last_name AS contact_last_name
         FROM organizations o
+        LEFT JOIN LATERAL (
+          SELECT email, first_name, last_name
+          FROM organization_memberships om
+          WHERE om.workos_organization_id = o.workos_organization_id
+          ORDER BY om.created_at ASC
+          LIMIT 1
+        ) primary_contact ON true
         WHERE o.subscription_status = 'active'
           AND o.subscription_canceled_at IS NULL
           AND ($1 = true OR o.is_personal = false)
@@ -6608,7 +6713,7 @@ Use add_committee_leader to assign a leader.`;
         }
       }
 
-      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date }) => {
+      const formatRow = (org: { name: string; subscription_amount: number | null; subscription_currency: string | null; subscription_interval: string | null; created_at: Date; contact_email: string | null; contact_first_name: string | null; contact_last_name: string | null }) => {
         const amount = org.subscription_amount
           ? formatCurrency(org.subscription_amount, org.subscription_currency || 'usd')
           : 'Comped';
@@ -6616,7 +6721,13 @@ Use add_committee_leader to assign a leader.`;
           ? (org.subscription_interval === 'month' ? '/mo' : org.subscription_interval === 'year' ? '/yr' : '')
           : '';
         const since = formatDate(org.created_at);
-        return `- **${org.name}** — ${amount}${interval} (since ${since})\n`;
+        const contactName = [org.contact_first_name, org.contact_last_name].filter(Boolean).join(' ');
+        const contact = contactName && org.contact_email
+          ? ` — ${contactName} <${org.contact_email}>`
+          : org.contact_email
+            ? ` — ${org.contact_email}`
+            : '';
+        return `- **${org.name}**${contact} — ${amount}${interval} (since ${since})\n`;
       };
 
       let response = `## Active Members\n\n`;
@@ -6658,6 +6769,82 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error }, 'Error listing members');
       return '❌ Failed to list members. Please try again.';
+    }
+  });
+
+  handlers.set('list_users_by_engagement', async (input) => {
+    try {
+      const pool = getPool();
+      const limit = Math.min(Math.max((input.limit as number) || 25, 1), 100);
+      const validStages = ['new', 'active', 'engaged', 'champion', 'at_risk'];
+      const rawStage = (input.lifecycle_stage as string) || 'all';
+      const lifecycleFilter = validStages.includes(rawStage) ? rawStage : 'all';
+      const memberOnly = (input.member_only as boolean) || false;
+
+      const result = await pool.query<{
+        first_name: string | null;
+        last_name: string | null;
+        email: string;
+        org_name: string | null;
+        engagement_score: number | null;
+        excitement_score: number | null;
+        lifecycle_stage: string | null;
+        goal_name: string | null;
+      }>(`
+        SELECT
+          u.first_name,
+          u.last_name,
+          u.email,
+          o.name AS org_name,
+          u.engagement_score,
+          u.excitement_score,
+          u.lifecycle_stage,
+          (SELECT uc.goal_name FROM unified_contacts_with_goals uc
+           WHERE uc.workos_user_id = u.workos_user_id LIMIT 1) AS goal_name
+        FROM users u
+        LEFT JOIN organizations o ON o.workos_organization_id = u.primary_organization_id
+        WHERE ($1 = 'all' OR u.lifecycle_stage = $1)
+          AND ($2::boolean = false OR o.subscription_status = 'active')
+        ORDER BY
+          (COALESCE(u.engagement_score, 0) + COALESCE(u.excitement_score, 0) * 0.5) DESC,
+          u.engagement_score DESC NULLS LAST
+        LIMIT $3
+      `, [lifecycleFilter, memberOnly, limit]);
+
+      const sorted = result.rows;
+
+      if (sorted.length === 0) {
+        return `No users found${lifecycleFilter !== 'all' ? ` with lifecycle stage: ${lifecycleFilter}` : ''}${memberOnly ? ' at paying member organizations' : ''}.`;
+      }
+
+      const lifecycleEmoji: Record<string, string> = {
+        champion: '🏆',
+        engaged: '⭐',
+        active: '✅',
+        new: '🆕',
+        at_risk: '⚠️',
+      };
+
+      let response = `## Most Engaged Community Members\n\n`;
+      if (lifecycleFilter !== 'all') response += `_Filtered to: ${lifecycleFilter}_\n\n`;
+      if (memberOnly) response += `_Paying members only_\n\n`;
+
+      response += `| Rank | Name | Email | Organization | Engagement | Excitement | Stage | Next Goal |\n`;
+      response += `|------|------|-------|--------------|------------|------------|-------|-----------|\n`;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const u = sorted[i];
+        const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
+        const emoji = lifecycleEmoji[u.lifecycle_stage || ''] || '—';
+        const stage = u.lifecycle_stage ? `${emoji} ${u.lifecycle_stage}` : '—';
+        response += `| ${i + 1} | **${name}** | ${u.email} | ${u.org_name} | ${u.engagement_score ?? '—'} | ${u.excitement_score ?? '—'} | ${stage} | ${u.goal_name ?? '—'} |\n`;
+      }
+
+      response += `\n_Ranked by engagement score + (excitement × 0.5). WorkOS-registered users only. Showing top ${sorted.length} individuals._\n`;
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error listing users by engagement');
+      return '❌ Failed to list users by engagement. Please try again.';
     }
   });
 
@@ -7297,6 +7484,267 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, domain }, 'Error triaging prospect domain');
       return `❌ Failed to triage domain "${domain}".`;
+    }
+  });
+
+  // ============================================
+  // UPDATE MEMBER LOGO
+  // ============================================
+  handlers.set('update_member_logo', async (input) => {
+    const orgName = input.org_name as string | undefined;
+    const slug = input.slug as string | undefined;
+    const logoUrl = input.logo_url as string;
+
+    if (!logoUrl) {
+      return '❌ logo_url is required.';
+    }
+    if (!orgName && !slug) {
+      return '❌ Provide either org_name or slug to identify the member.';
+    }
+
+    // Validate the logo URL
+    try {
+      const parsed = new URL(logoUrl);
+      if (parsed.protocol !== 'https:') {
+        return '❌ logo_url must use HTTPS.';
+      }
+    } catch {
+      return `❌ Invalid logo_url: "${logoUrl}". Provide a fully-qualified HTTPS URL.`;
+    }
+    if (logoUrl.length > 2000) {
+      return '❌ logo_url must be 2000 characters or less.';
+    }
+
+    try {
+      const mDb = new MemberDatabase();
+      const bDb = new BrandDatabase();
+
+      // Find the member profile
+      let profile = null;
+      if (slug) {
+        profile = await mDb.getProfileBySlug(slug);
+      }
+      if (!profile && orgName) {
+        const profiles = await mDb.listProfiles({ search: orgName });
+        const exactMatch = profiles.find(
+          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+        );
+        if (!exactMatch) {
+          if (profiles.length > 0) {
+            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
+          }
+          return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
+        }
+        profile = exactMatch;
+      }
+
+      if (!profile) {
+        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+      }
+
+      // Determine brand domain: use existing link or derive from contact_website
+      let brandDomain = profile.primary_brand_domain;
+      if (!brandDomain) {
+        if (profile.contact_website) {
+          try {
+            brandDomain = new URL(profile.contact_website).hostname;
+          } catch {
+            brandDomain = undefined;
+          }
+        }
+        if (!brandDomain) {
+          return `❌ No brand domain set for **${profile.display_name}**. Ask them to add their website to their profile first, or set primary_brand_domain manually.`;
+        }
+      }
+
+      // Use a transaction so both the brand update and profile link succeed or fail together
+      const pool = getPool();
+      const client = await pool.connect();
+      let wasUpdate = false;
+      try {
+        await client.query('BEGIN');
+
+        // Read inside transaction with row lock to prevent concurrent insert race
+        const existingResult = await client.query(
+          'SELECT * FROM hosted_brands WHERE brand_domain = $1 FOR UPDATE',
+          [brandDomain]
+        );
+        const existing = existingResult.rows[0] || null;
+        wasUpdate = !!existing;
+
+        // Warn if admin tool is crossing org boundaries
+        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
+          logger.warn(
+            { brandDomain, existingOrgId: existing.workos_organization_id, targetOrgId: profile.workos_organization_id },
+            'Admin tool updating brand owned by a different organization'
+          );
+        }
+
+        if (existing) {
+          // Update logo in existing hosted brand
+          const bj = { ...(existing.brand_json as Record<string, unknown>) };
+          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
+          if (brands.length > 0) {
+            const primaryBrand = { ...brands[0] };
+            const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
+            primaryBrand.logos = logos.length > 0
+              ? [{ ...logos[0], url: logoUrl }, ...logos.slice(1)]
+              : [{ url: logoUrl }];
+            bj.brands = [primaryBrand, ...brands.slice(1)];
+          } else {
+            bj.brands = [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: [{ url: logoUrl }],
+              colors: {},
+            }];
+          }
+          await client.query(
+            'UPDATE hosted_brands SET brand_json = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(bj), existing.id]
+          );
+        } else {
+          // Create a new hosted brand entry
+          const brandJson = {
+            house: { domain: brandDomain, name: profile.display_name },
+            brands: [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: [{ url: logoUrl }],
+              colors: {},
+            }],
+          };
+          await client.query(
+            `INSERT INTO hosted_brands (workos_organization_id, brand_domain, brand_json, is_public)
+             VALUES ($1, $2, $3, $4)`,
+            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
+          );
+        }
+
+        // Link the profile to this brand domain if not already set
+        if (!profile.primary_brand_domain) {
+          await client.query(
+            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
+            [brandDomain, profile.id]
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      invalidateMemberContextCache();
+      const action = wasUpdate ? 'updated' : 'set';
+      logger.info({ profileId: profile.id, brandDomain, logoUrl, action }, 'Member logo updated');
+      return `✅ Logo ${action} for **${profile.display_name}**.\n- Domain: ${brandDomain}\n- Logo: ${logoUrl}`;
+    } catch (error) {
+      logger.error({ error, orgName, slug, logoUrl }, 'Error updating member logo');
+      return `❌ Failed to update logo: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // UPDATE MEMBER PROFILE
+  // ============================================
+  handlers.set('update_member_profile', async (input) => {
+    const orgName = input.org_name as string | undefined;
+    const slug = input.slug as string | undefined;
+
+    if (!orgName && !slug) {
+      return '❌ Provide either org_name or slug to identify the member.';
+    }
+
+    try {
+      const mDb = new MemberDatabase();
+
+      // Find the member profile (same pattern as update_member_logo)
+      let profile = null;
+      if (slug) {
+        profile = await mDb.getProfileBySlug(slug);
+      }
+      if (!profile && orgName) {
+        const profiles = await mDb.listProfiles({ search: orgName });
+        const exactMatch = profiles.find(
+          p => p.display_name.toLowerCase() === orgName.toLowerCase()
+        );
+        if (!exactMatch) {
+          if (profiles.length > 0) {
+            const names = profiles.map(p => `"${p.display_name}" (${p.slug})`).join(', ');
+            return `❌ No exact match for "${orgName}". Did you mean: ${names}?`;
+          }
+          return `❌ No member profile found for "${orgName}". Use get_account to verify they exist.`;
+        }
+        profile = exactMatch;
+      }
+
+      if (!profile) {
+        return `❌ No member profile found for "${orgName || slug}". Use get_account to verify they exist.`;
+      }
+
+      // Build update object from provided fields
+      const updates: Record<string, unknown> = {};
+      const updatedFields: string[] = [];
+
+      const stringFields = [
+        'description', 'tagline', 'contact_email', 'contact_website',
+        'contact_phone', 'linkedin_url', 'twitter_url', 'headquarters',
+      ] as const;
+
+      for (const field of stringFields) {
+        if (input[field] !== undefined) {
+          updates[field] = (input[field] as string) || null;
+          updatedFields.push(field);
+        }
+      }
+
+      if (input.markets !== undefined) {
+        updates.markets = input.markets;
+        updatedFields.push('markets');
+      }
+
+      if (input.offerings !== undefined) {
+        const offerings = input.offerings as string[];
+        const invalid = offerings.filter(o => !(VALID_MEMBER_OFFERINGS as readonly string[]).includes(o));
+        if (invalid.length > 0) {
+          return `❌ Invalid offerings: ${invalid.join(', ')}. Valid options: ${VALID_MEMBER_OFFERINGS.join(', ')}`;
+        }
+        updates.offerings = offerings;
+        updatedFields.push('offerings');
+      }
+
+      if (input.is_public !== undefined) {
+        updates.is_public = input.is_public;
+        updatedFields.push('is_public');
+      }
+
+      if (input.show_in_carousel !== undefined) {
+        updates.show_in_carousel = input.show_in_carousel;
+        updatedFields.push('show_in_carousel');
+      }
+
+      if (updatedFields.length === 0) {
+        return '❌ No fields to update. Provide at least one field to change.';
+      }
+
+      const updated = await mDb.updateProfile(profile.id, updates as any);
+
+      if (!updated) {
+        return `❌ Failed to update profile for **${profile.display_name}**.`;
+      }
+
+      invalidateMemberContextCache();
+      logger.info({ profileId: profile.id, slug: profile.slug, updatedFields }, 'Member profile updated by admin tool');
+
+      const fieldList = updatedFields.map(f => `- **${f}**: ${JSON.stringify(updates[f])}`).join('\n');
+      return `✅ Profile updated for **${profile.display_name}** (${profile.slug}).\n\nUpdated fields:\n${fieldList}`;
+    } catch (error) {
+      logger.error({ error, orgName, slug }, 'Error updating member profile');
+      return `❌ Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

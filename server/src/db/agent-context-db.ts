@@ -8,6 +8,7 @@ import crypto from 'crypto';
 
 export type AgentType = 'sales' | 'creative' | 'signals' | 'unknown';
 export type Protocol = 'mcp' | 'a2a';
+export type AuthType = 'bearer' | 'basic';
 
 export interface AgentContext {
   id: string;
@@ -19,6 +20,7 @@ export interface AgentContext {
   // Token info (never expose actual token!)
   has_auth_token: boolean;
   auth_token_hint: string | null;
+  auth_type: AuthType;
   // OAuth info (never expose actual tokens!)
   has_oauth_token: boolean;
   oauth_token_expires_at: Date | null;
@@ -104,7 +106,20 @@ export interface RecordTestInput {
   agent_profile_json?: any;
 }
 
-function getTokenHint(token: string): string {
+function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
+  if (authType === 'basic') {
+    // For Basic auth, try to show username only (token is base64-encoded user:password)
+    try {
+      const decoded = Buffer.from(token, 'base64').toString();
+      const colonIndex = decoded.indexOf(':');
+      if (colonIndex > 0) {
+        return decoded.substring(0, colonIndex) + ':****';
+      }
+    } catch {
+      // Not valid base64, fall through
+    }
+    return '****';
+  }
   if (token.length <= 4) return '****';
   return '****' + token.slice(-4);
 }
@@ -128,6 +143,7 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
@@ -163,6 +179,7 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
@@ -197,6 +214,7 @@ export class AgentContextDatabase {
         protocol,
         auth_token_encrypted IS NOT NULL as has_auth_token,
         auth_token_hint,
+        auth_type,
         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
         oauth_token_expires_at,
         oauth_client_id IS NOT NULL as has_oauth_client,
@@ -239,6 +257,7 @@ export class AgentContextDatabase {
         protocol,
         FALSE as has_auth_token,
         auth_token_hint,
+        auth_type,
         FALSE as has_oauth_token,
         oauth_token_expires_at,
         FALSE as has_oauth_client,
@@ -322,6 +341,7 @@ export class AgentContextDatabase {
          protocol,
          auth_token_encrypted IS NOT NULL as has_auth_token,
          auth_token_hint,
+         auth_type,
          oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
          oauth_token_expires_at,
          oauth_client_id IS NOT NULL as has_oauth_client,
@@ -344,7 +364,7 @@ export class AgentContextDatabase {
    * Save an auth token (encrypted)
    * IMPORTANT: Token is encrypted and never returned in queries
    */
-  async saveAuthToken(id: string, token: string): Promise<void> {
+  async saveAuthToken(id: string, token: string, authType: AuthType = 'bearer'): Promise<void> {
     // Get the org ID for key derivation
     const context = await this.getById(id);
     if (!context) {
@@ -352,7 +372,7 @@ export class AgentContextDatabase {
     }
 
     const { encrypted, iv } = encryptToken(token, context.organization_id);
-    const hint = getTokenHint(token);
+    const hint = getTokenHint(token, authType);
 
     await query(
       `UPDATE agent_contexts
@@ -360,9 +380,10 @@ export class AgentContextDatabase {
          auth_token_encrypted = $1,
          auth_token_iv = $2,
          auth_token_hint = $3,
+         auth_type = $4,
          updated_at = NOW()
-       WHERE id = $4`,
-      [encrypted, iv, hint, id]
+       WHERE id = $5`,
+      [encrypted, iv, hint, authType, id]
     );
   }
 
@@ -387,11 +408,12 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Get auth token by org and URL (for test_adcp_agent tool)
+   * Get auth token and type by org and URL.
+   * Used by the AdCP tool passthrough to determine Bearer vs Basic auth.
    */
-  async getAuthTokenByOrgAndUrl(organizationId: string, agentUrl: string): Promise<string | null> {
+  async getAuthInfoByOrgAndUrl(organizationId: string, agentUrl: string): Promise<{ token: string; authType: AuthType } | null> {
     const result = await query(
-      `SELECT id, auth_token_encrypted, auth_token_iv
+      `SELECT id, auth_token_encrypted, auth_token_iv, auth_type
        FROM agent_contexts
        WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, agentUrl]
@@ -402,7 +424,8 @@ export class AgentContextDatabase {
       return null;
     }
 
-    return decryptToken(row.auth_token_encrypted, row.auth_token_iv, organizationId);
+    const token = decryptToken(row.auth_token_encrypted, row.auth_token_iv, organizationId);
+    return { token, authType: row.auth_type as AuthType };
   }
 
   /**
@@ -415,6 +438,7 @@ export class AgentContextDatabase {
          auth_token_encrypted = NULL,
          auth_token_iv = NULL,
          auth_token_hint = NULL,
+         auth_type = 'bearer',
          updated_at = NOW()
        WHERE id = $1`,
       [id]

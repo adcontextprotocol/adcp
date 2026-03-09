@@ -271,6 +271,20 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const resolved = await brandManager.resolveBrand(domain);
 
     if (!resolved) {
+      // Check hosted brands before falling back to the discovered-brand registry — hosted brands always have a manifest
+      const hosted = await brandDb.getHostedBrandByDomain(domain);
+      if (hosted && hosted.is_public) {
+        const brandJson = hosted.brand_json;
+        const brandName = typeof brandJson?.name === 'string' ? brandJson.name : domain;
+        return JSON.stringify({
+          source: 'hosted',
+          canonical_id: domain,
+          canonical_domain: domain,
+          brand_name: brandName,
+          has_manifest: true,
+        }, null, 2);
+      }
+
       // Check discovered brands as fallback
       const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
       if (discovered) {

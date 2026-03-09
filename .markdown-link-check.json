@@ -14,6 +14,9 @@
     },
     {
       "pattern": "https://adcontextprotocol.org/docs/"
+    },
+    {
+      "pattern": "^https://github.com/adcontextprotocol/adcp$"
     }
   ],
   "timeout": "30s",

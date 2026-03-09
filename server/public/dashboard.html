@@ -698,7 +698,7 @@
       <!-- ========== PROFILE SECTION ========== -->
       <section id="profile" class="dashboard-section">
         <div class="section-header">
-          <h2>Member Profile</h2>
+          <h2>Directory listing</h2>
           <p>How your organization appears in the member directory</p>
         </div>
         <div id="profileCardContainer">
@@ -795,6 +795,19 @@
           <div id="inlinePricingContent" class="section-card-body" style="padding: 24px;">
             <!-- Will be dynamically populated with price, agreement, and checkout button -->
             <div style="text-align: center; color: var(--color-text-secondary);">Loading membership options...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SUPPORT REQUESTS SECTION ========== -->
+      <section id="escalations" class="dashboard-section" style="display: none;">
+        <div class="section-header">
+          <h2>Support requests</h2>
+          <p>Requests escalated to the AgenticAdvertising.org team</p>
+        </div>
+        <div class="section-card" id="escalationsCard">
+          <div id="escalationsContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading...</div>
           </div>
         </div>
       </section>
@@ -1139,8 +1152,20 @@
         }
       }
 
+      // Hide profile section for personal accounts (they use community profile edit)
+      const profileSection = document.getElementById('profile');
+      if (profileSection) {
+        if (isPersonal) {
+          profileSection.style.display = 'none';
+        } else {
+          profileSection.style.display = '';
+        }
+      }
+
       // ===== PROFILE CARD =====
-      renderProfileCard(org.id, hasSubscription);
+      if (!isPersonal) {
+        renderProfileCard(org.id, hasSubscription);
+      }
 
       // ===== MEMBERSHIP CARD =====
       renderMembershipCard(org, hasSubscription);
@@ -1186,9 +1211,9 @@
           container.innerHTML = `
             <div class="card" style="padding: 40px; text-align: center;">
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-              <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">Set up your presence in the member directory</p>
-              <a href="/member-profile?org=${orgId}" class="btn btn-primary">Create Profile</a>
+              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create your listing</h3>
+              <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">Set up your listing in the member directory</p>
+              <a href="/member-profile?org=${orgId}" class="btn btn-primary">Create listing</a>
             </div>
           `;
           actionBar.style.display = 'none';
@@ -2410,6 +2435,70 @@
       }
     }
 
+    // Load support requests (escalations) for the current user
+    async function loadEscalations() {
+      const section = document.getElementById('escalations');
+      const content = document.getElementById('escalationsContent');
+      if (!section || !content) return;
+
+      try {
+        const response = await fetch('/api/user/escalations', { credentials: 'include' });
+        if (!response.ok) {
+          section.style.display = '';
+          content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+          return;
+        }
+
+        const data = await response.json();
+        const escalations = data.escalations || [];
+
+        if (escalations.length === 0) {
+          section.style.display = 'none';
+          return;
+        }
+
+        section.style.display = '';
+
+        const statusConfig = {
+          open:         { label: 'Open',          bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
+          acknowledged: { label: 'Acknowledged',  bg: 'var(--color-primary-50)',   color: 'var(--color-primary-700)' },
+          in_progress:  { label: 'In progress',   bg: 'var(--color-warning-50)',   color: 'var(--color-warning-700)' },
+          resolved:     { label: 'Resolved',      bg: 'var(--color-success-50)',   color: 'var(--color-success-700)' },
+          wont_do:      { label: 'Closed',        bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
+          expired:      { label: 'Expired',       bg: 'var(--color-gray-100)',     color: 'var(--color-text-secondary)' },
+        };
+
+        content.innerHTML = escalations.map(e => {
+          const cfg = statusConfig[e.status] || statusConfig.open;
+          const date = new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+          const notes = e.resolution_notes
+            ? `<p style="margin: 8px 0 0 0; font-size: 13px; color: var(--color-text-secondary);">${escapeHtml(e.resolution_notes)}</p>`
+            : '';
+          return `
+            <div style="display: flex; align-items: start; gap: 12px; padding: 16px; border-bottom: 1px solid var(--color-border);">
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+                  <span style="font-size: 14px; font-weight: 500; color: var(--color-text-heading);">${escapeHtml(e.summary)}</span>
+                  <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: ${cfg.bg}; color: ${cfg.color}; white-space: nowrap;">${cfg.label}</span>
+                </div>
+                <p style="margin: 0; font-size: 12px; color: var(--color-text-secondary);">Submitted ${date}</p>
+                ${notes}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Remove border from last item
+        const items = content.querySelectorAll('[style*="border-bottom"]');
+        if (items.length > 0) items[items.length - 1].style.borderBottom = 'none';
+
+      } catch (error) {
+        console.error('Error loading escalations:', error);
+        section.style.display = '';
+        content.innerHTML = '<p style="padding: 16px; color: var(--color-text-secondary); font-size: 14px;">Unable to load your support requests.</p>';
+      }
+    }
+
     // Handle interest click for launching committees
     async function handleCommitteeInterest(committeeSlug, committeeName, buttonEl) {
       try {
@@ -2590,15 +2679,15 @@
 
         if (!response.ok || response.status === 404) {
           // No profile - update status card
-          updateProfileStatusCard('Not Set', 'Create your profile');
+          updateProfileStatusCard('Not Set', 'Create your listing');
 
           if (previewEl) {
             previewEl.innerHTML = `
               <div style="text-align: center; padding: 20px 16px;">
                 <div style="font-size: 32px; margin-bottom: 12px;">✨</div>
-                <h4 style="margin: 0 0 6px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
+                <h4 style="margin: 0 0 6px 0; color: var(--color-text-heading); font-size: 14px;">Create your listing</h4>
                 <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">
-                  Build your presence in the ecosystem
+                  Get listed in the member directory
                 </p>
               </div>
             `;
@@ -2609,7 +2698,7 @@
                 href="/member-profile?org=${orgId}"
                 class="btn btn-primary btn-sm btn-block"
               >
-                Create Profile
+                Create listing
               </a>
             `;
           }
@@ -2629,7 +2718,7 @@
             updateProfileStatusCard('Draft', 'Subscribe to publish');
           }
         } else {
-          updateProfileStatusCard('Not Set', 'Create your profile');
+          updateProfileStatusCard('Not Set', 'Create your listing');
         }
 
         if (previewEl && profile) {
@@ -2690,12 +2779,12 @@
             actionsContainer.innerHTML = actionHtml;
           }
         } else if (previewEl) {
-          // No profile exists - show compact "Create Your Profile" UI
+          // No profile exists - show compact "Create your listing" UI
           previewEl.innerHTML = `
             <div style="text-align: center; padding: 16px;">
               <div style="font-size: 32px; margin-bottom: 8px;">✨</div>
-              <h4 style="margin: 0 0 4px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
-              <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">Build your presence in the ecosystem</p>
+              <h4 style="margin: 0 0 4px 0; color: var(--color-text-heading); font-size: 14px;">Create your listing</h4>
+              <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">Get listed in the member directory</p>
             </div>
           `;
           if (actionsContainer) {
@@ -2704,7 +2793,7 @@
                 href="/member-profile?org=${orgId}"
                 style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
               >
-                Create Profile
+                Create listing
               </a>
             `;
           }
@@ -2717,8 +2806,8 @@
           previewEl.innerHTML = `
             <div style="text-align: center; padding: 30px 20px;">
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-              <p style="margin: 0; color: var(--color-text-muted); font-size: 14px;">Set up your member profile. It will be published when you subscribe as a member.</p>
+              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create your listing</h3>
+              <p style="margin: 0; color: var(--color-text-muted); font-size: 14px;">Set up your directory listing. It will be published when you subscribe as a member.</p>
             </div>
           `;
         }
@@ -2728,7 +2817,7 @@
               href="/member-profile?org=${orgId}"
               style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
             >
-              Create Profile
+              Create listing
             </a>
           `;
         }
@@ -3010,6 +3099,9 @@
 
           // Check for outdated agreements (only for subscribers)
           await checkOutdatedAgreements();
+
+          // Load support requests for this user
+          loadEscalations();
 
         } else {
           // No organizations - redirect to onboarding

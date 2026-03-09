@@ -63,6 +63,31 @@
         "additionalProperties": false
       }
     },
+    "incomplete": {
+      "type": "array",
+      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["products", "pricing", "forecast", "proposals"],
+            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of what is missing and why."
+          },
+          "estimated_wait": {
+            "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+            "description": "How much additional time would resolve this scope. Allows the buyer to decide whether to retry with a larger time_budget."
+          }
+        },
+        "required": ["scope", "description"],
+        "additionalProperties": false
+      }
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-response.json"
     },

@@ -688,6 +688,7 @@ export interface WorkingGroupMembership {
   user_email?: string;
   user_name?: string;
   user_org_name?: string;
+  user_slug?: string | null;
   workos_organization_id?: string;
   status: WorkingGroupMembershipStatus;
   added_by_user_id?: string;

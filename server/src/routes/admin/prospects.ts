@@ -863,7 +863,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
       const result = await pool.query(`
         SELECT DISTINCT
           u.workos_user_id as user_id,
-          COALESCE(u.first_name || ' ' || u.last_name, u.email) as user_name,
+          COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.email) as user_name,
           u.email as user_email
         FROM working_group_memberships wgm
         JOIN working_groups wg ON wg.id = wgm.working_group_id
@@ -876,9 +876,7 @@ export function setupProspectRoutes(apiRouter: Router, config: ProspectRoutesCon
       // Also include the current user if not already in the list (they should be admin to reach here)
       const currentUserId = req.user?.id;
       const currentUserName =
-        req.user?.firstName && req.user?.lastName
-          ? `${req.user.firstName} ${req.user.lastName}`.trim()
-          : req.user?.email;
+        [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || req.user?.email;
       const currentUserEmail = req.user?.email;
 
       const teamMembers = result.rows;

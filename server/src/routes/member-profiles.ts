@@ -14,7 +14,7 @@ import {
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
-import { query } from "../db/client.js";
+import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
@@ -55,11 +55,11 @@ async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<Mem
   const hosted = await brandDb.getHostedBrandByDomain(domain);
   if (hosted) {
     const bj = hosted.brand_json as Record<string, unknown>;
-    // house_portfolio: read from brands[0]
+    // house_portfolio: read from brands[0]; fall back to top-level logos for simple brand.json
     const brands = bj.brands as Array<Record<string, unknown>> | undefined;
     const primaryBrand = brands?.[0];
-    const logos = primaryBrand?.logos as Array<Record<string, unknown>> | undefined;
-    const colors = primaryBrand?.colors as Record<string, unknown> | undefined;
+    const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
+    const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
     return {
       domain,
       logo_url: logos?.[0]?.url as string | undefined,
@@ -579,6 +579,178 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     } catch (error) {
       logger.error({ err: error }, 'Failed to verify brand domain');
       return res.status(500).json({ error: 'Failed to verify brand domain' });
+    }
+  });
+
+  // PUT /api/me/member-profile/brand-identity - Update logo URL and brand color inline
+  router.put('/brand-identity', requireAuth, async (req, res) => {
+    const startTime = Date.now();
+    logger.info({ userId: req.user?.id, org: req.query.org }, 'PUT /api/me/member-profile/brand-identity started');
+    try {
+      const user = req.user!;
+      const requestedOrgId = req.query.org as string | undefined;
+      const { logo_url, brand_color } = req.body;
+
+      // Validate inputs
+      if (!logo_url && !brand_color) {
+        return res.status(400).json({
+          error: 'Missing fields',
+          message: 'Provide at least one of logo_url or brand_color.',
+        });
+      }
+
+      if (logo_url) {
+        try {
+          const parsed = new URL(logo_url);
+          if (parsed.protocol !== 'https:') {
+            return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must use HTTPS.' });
+          }
+        } catch {
+          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be a valid URL.' });
+        }
+        if (logo_url.length > 2000) {
+          return res.status(400).json({ error: 'Invalid logo URL', message: 'logo_url must be 2000 characters or less.' });
+        }
+      }
+
+      if (brand_color && !/^#[0-9a-fA-F]{6}$/.test(brand_color)) {
+        return res.status(400).json({ error: 'Invalid brand color', message: 'brand_color must be a hex color (e.g., #FF5733).' });
+      }
+
+      // Auth: resolve target org (same pattern as /visibility route)
+      const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
+      let targetOrgId: string;
+
+      if (isDevUserProfile) {
+        const localOrg = await orgDb.getOrganization(requestedOrgId!);
+        if (!localOrg) {
+          return res.status(404).json({ error: 'Organization not found', message: 'The requested organization does not exist' });
+        }
+        targetOrgId = requestedOrgId!;
+      } else {
+        const memberships = await workos!.userManagement.listOrganizationMemberships({ userId: user.id });
+        if (memberships.data.length === 0) {
+          return res.status(404).json({ error: 'No organization', message: 'User is not a member of any organization' });
+        }
+        if (requestedOrgId) {
+          const isMember = memberships.data.some(m => m.organizationId === requestedOrgId);
+          if (!isMember) {
+            return res.status(403).json({ error: 'Not authorized', message: 'User is not a member of the requested organization' });
+          }
+          targetOrgId = requestedOrgId;
+        } else {
+          targetOrgId = memberships.data[0].organizationId;
+        }
+      }
+
+      const profile = await memberDb.getProfileByOrgId(targetOrgId);
+      if (!profile) {
+        return res.status(404).json({ error: 'Profile not found', message: 'No member profile exists for your organization.' });
+      }
+
+      // Derive brand domain
+      let brandDomain = profile.primary_brand_domain;
+      if (!brandDomain) {
+        if (profile.contact_website) {
+          try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
+        }
+        if (!brandDomain) {
+          return res.status(400).json({
+            error: 'No brand domain',
+            message: 'Set a website URL in your profile first.',
+          });
+        }
+      }
+
+      // Transaction: update/create hosted brand + link profile
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Read inside transaction with row lock to prevent concurrent insert race
+        const existingResult = await client.query(
+          'SELECT * FROM hosted_brands WHERE brand_domain = $1 FOR UPDATE',
+          [brandDomain]
+        );
+        const existing = existingResult.rows[0] || null;
+
+        // Ownership check: don't let one org overwrite another org's brand
+        if (existing && existing.workos_organization_id && existing.workos_organization_id !== profile.workos_organization_id) {
+          throw Object.assign(new Error('This brand domain is managed by another organization.'), { statusCode: 403 });
+        }
+
+        if (existing) {
+          const bj = { ...(existing.brand_json as Record<string, unknown>) };
+          const brands = (bj.brands as Array<Record<string, unknown>> | undefined) ?? [];
+          if (brands.length > 0) {
+            const primaryBrand = { ...brands[0] };
+            if (logo_url) {
+              const logos = (primaryBrand.logos as Array<Record<string, unknown>> | undefined) ?? [];
+              primaryBrand.logos = logos.length > 0
+                ? [{ ...logos[0], url: logo_url }, ...logos.slice(1)]
+                : [{ url: logo_url }];
+            }
+            if (brand_color) {
+              primaryBrand.colors = { ...(primaryBrand.colors as Record<string, unknown> || {}), primary: brand_color };
+            }
+            bj.brands = [primaryBrand, ...brands.slice(1)];
+          } else {
+            bj.brands = [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: logo_url ? [{ url: logo_url }] : [],
+              colors: brand_color ? { primary: brand_color } : {},
+            }];
+          }
+          await client.query(
+            'UPDATE hosted_brands SET brand_json = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(bj), existing.id]
+          );
+        } else {
+          const brandJson = {
+            house: { domain: brandDomain, name: profile.display_name },
+            brands: [{
+              id: profile.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+              names: [{ en: profile.display_name }],
+              logos: logo_url ? [{ url: logo_url }] : [],
+              colors: brand_color ? { primary: brand_color } : {},
+            }],
+          };
+          await client.query(
+            `INSERT INTO hosted_brands (workos_organization_id, brand_domain, brand_json, is_public)
+             VALUES ($1, $2, $3, $4)`,
+            [profile.workos_organization_id, brandDomain, JSON.stringify(brandJson), true]
+          );
+        }
+
+        if (!profile.primary_brand_domain) {
+          await client.query(
+            'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
+            [brandDomain, profile.id]
+          );
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      const resolvedBrand = await resolveBrand(brandDb, brandDomain);
+      invalidateMemberContextCache();
+
+      const duration = Date.now() - startTime;
+      logger.info({ profileId: profile.id, brandDomain, durationMs: duration }, 'Brand identity updated');
+
+      res.json({ brand: resolvedBrand, brand_domain: brandDomain });
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      const statusCode = error?.statusCode || 500;
+      logger.error({ err: error, durationMs: duration }, 'Update brand identity error');
+      res.status(statusCode).json({ error: 'Failed to update brand identity', message: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 

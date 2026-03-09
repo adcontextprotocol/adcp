@@ -365,9 +365,14 @@ export class AddieClaudeClient {
     }
     systemPromptMs = Date.now() - promptStart;
 
-    // Append per-request context (member info, channel, goals) to system prompt
+    // Build system content as array: base prompt is cached, requestContext is not.
+    // Separating them lets Anthropic cache the stable base while the dynamic
+    // per-user context (member profile, channel, goals) is sent fresh each call.
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+    ];
     if (options?.requestContext?.trim()) {
-      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+      systemBlocks.push({ type: 'text', text: options.requestContext });
     }
 
     // Get config version ID for this interaction (skip for eval mode)
@@ -413,17 +418,25 @@ export class AddieClaudeClient {
       role: turn.role,
       content: turn.content,
     }));
+
+    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
+    // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
+    const customTools: Anthropic.Tool[] = allTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
+    }));
+    if (customTools.length > 0) {
+      customTools[customTools.length - 1] = {
+        ...customTools[customTools.length - 1],
+        cache_control: { type: 'ephemeral' },
+      };
+    }
+
     let iteration = 0;
 
     while (iteration < maxIterations) {
       iteration++;
-
-      // Build tools array: custom tools + request tools + optional web search
-      const customTools = allTools.map(t => ({
-        name: t.name,
-        description: t.description,
-        input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-      }));
 
       // Use beta API to access web search
       const llmStart = Date.now();
@@ -431,7 +444,7 @@ export class AddieClaudeClient {
         () => this.client.beta.messages.create({
           model: effectiveModel,
           max_tokens: 4096,
-          system: systemPrompt,
+          system: systemBlocks,
           tools: [
             ...customTools,
             // Add web search tool via beta API
@@ -441,7 +454,6 @@ export class AddieClaudeClient {
             }] : []),
           ],
           messages,
-          // Required for beta API
           betas: ['web-search-2025-03-05'],
         }),
         { maxRetries: 3, initialDelayMs: 1000 },
@@ -863,9 +875,12 @@ export class AddieClaudeClient {
     let { prompt: systemPrompt, ruleIds, rulesSnapshot } = await this.getSystemPrompt();
     systemPromptMs = Date.now() - promptStart;
 
-    // Append per-request context (member info, channel, goals) to system prompt
+    // Build system content as array: base prompt is cached, requestContext is not.
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+    ];
     if (options?.requestContext?.trim()) {
-      systemPrompt = `${systemPrompt}\n\n${options.requestContext}`;
+      systemBlocks.push({ type: 'text', text: options.requestContext });
     }
 
     // Get config version ID for this interaction (for tracking/analysis)
@@ -910,19 +925,26 @@ export class AddieClaudeClient {
       content: turn.content,
     }));
 
+    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
+    // Mark the last tool with cache_control so Anthropic caches all tool definitions.
+    const customTools: Anthropic.Tool[] = allTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
+    }));
+    if (customTools.length > 0) {
+      customTools[customTools.length - 1] = {
+        ...customTools[customTools.length - 1],
+        cache_control: { type: 'ephemeral' },
+      };
+    }
+
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
 
     try {
       while (iteration < maxIterations) {
         iteration++;
-
-        // Build tools array: custom tools + request tools + optional web search
-        const customTools = allTools.map(t => ({
-          name: t.name,
-          description: t.description,
-          input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-        }));
 
         const llmStart = Date.now();
 
@@ -943,7 +965,7 @@ export class AddieClaudeClient {
             const stream = this.client.messages.stream({
               model: effectiveModel,
               max_tokens: 4096,
-              system: systemPrompt,
+              system: systemBlocks,
               tools: customTools,
               messages,
             });
