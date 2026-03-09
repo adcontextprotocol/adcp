@@ -503,7 +503,10 @@ async function initiateOutreachWithPlanner(
   captureEvent(candidate.slack_user_id, 'outreach_sent', {
     goal_id: plannedAction.goal.id,
     goal_name: plannedAction.goal.name,
+    goal_category: plannedAction.goal.category,
     decision_method: plannedAction.decision_method,
+    priority_score: plannedAction.priority_score,
+    outreach_type: outreachType,
     outreach_id: outreach.id,
   });
 

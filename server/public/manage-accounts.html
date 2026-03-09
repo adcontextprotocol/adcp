@@ -770,8 +770,8 @@
       <button class="view-tab" data-view="members">
         Members <span class="badge" id="count-members">-</span>
       </button>
-      <button class="view-tab" data-view="churned">
-        Churned <span class="badge" id="count-churned">-</span>
+      <button class="view-tab" data-view="missing_owner">
+        No owner <span class="badge" id="count-missing_owner">-</span>
       </button>
       <button class="view-tab" data-view="all">
         All
@@ -796,8 +796,8 @@
           <button class="view-tab" data-view="most_users">
             Most users
           </button>
-          <button class="view-tab" data-view="missing_owner">
-            No owner <span class="badge" id="count-missing_owner">-</span>
+          <button class="view-tab" data-view="churned">
+            Churned <span class="badge" id="count-churned">-</span>
           </button>
           <button class="view-tab" data-view="disqualified">
             Disqualified <span class="badge" id="count-disqualified">-</span>
@@ -1234,6 +1234,14 @@
           if (badge) {
             badge.textContent = count;
           }
+        }
+
+        // Show dot on "More" button when secondary tabs have items
+        const secondaryViews = ['new_insights', 'new_prospects', 'going_cold', 'renewals', 'churned', 'disqualified'];
+        const hasSecondaryItems = secondaryViews.some(v => (counts[v] || 0) > 0);
+        const moreTrigger = document.querySelector('.more-trigger');
+        if (moreTrigger) {
+          moreTrigger.textContent = hasSecondaryItems ? 'More ●' : 'More ▾';
         }
       } catch (e) {
         console.error('Error loading view counts:', e);
@@ -2115,6 +2123,8 @@
       const checked = document.querySelectorAll('.row-checkbox:checked');
       const orgIds = Array.from(checked).map(cb => cb.value);
       const teamMember = teamMembers.find(m => m.user_id === ownerId);
+      const ownerName = teamMember?.user_name || teamMember?.user_email || ownerId;
+      if (!confirm(`Assign ${ownerName} as owner to ${orgIds.length} account${orgIds.length > 1 ? 's' : ''}?`)) return;
 
       const results = await Promise.allSettled(orgIds.map(orgId =>
         manageFetch(`/api/admin/organizations/${orgId}/stakeholders`, {
@@ -2129,7 +2139,7 @@
         })
       ));
 
-      const failed = results.filter(r => r.status === 'rejected').length;
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
       if (failed > 0) {
         alert(`Assigned ${orgIds.length - failed} of ${orgIds.length} accounts. ${failed} failed.`);
       }

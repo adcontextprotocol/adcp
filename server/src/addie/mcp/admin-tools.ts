@@ -99,6 +99,7 @@ import {
   canContactUser,
 } from '../services/proactive-outreach.js';
 import * as outboundDb from '../../db/outbound-db.js';
+import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
 import { captureEvent } from '../../utils/posthog.js';
 
 const logger = createLogger('addie-admin-tools');
@@ -1405,7 +1406,7 @@ For logo changes, use update_member_logo instead.`,
   },
   {
     name: 'send_outreach',
-    description: 'Send a DM outreach message to a Slack user. Uses the outbound planner to select the best goal, or specify a goal_id to override. Checks eligibility first. Use check_outreach_eligibility to preview without sending.',
+    description: 'Trigger outreach to a Slack user. Uses the outbound planner to select the best goal, or specify a goal_id. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -1421,19 +1422,9 @@ For logo changes, use update_member_logo instead.`,
           type: 'string',
           description: 'Admin context to record before sending (e.g., "Met at conference, interested in working groups")',
         },
-      },
-      required: ['slack_user_id'],
-    },
-  },
-  {
-    name: 'check_outreach_eligibility',
-    description: 'Check if a Slack user can be contacted for outreach. Returns eligibility status, reason, and last contact date. Use before send_outreach to preview.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        slack_user_id: {
-          type: 'string',
-          description: 'Slack user ID to check',
+        dry_run: {
+          type: 'boolean',
+          description: 'If true, check eligibility without sending. Returns whether the user can be contacted and their capabilities.',
         },
       },
       required: ['slack_user_id'],
@@ -1451,6 +1442,35 @@ For logo changes, use update_member_logo instead.`,
         },
       },
       required: ['query'],
+    },
+  },
+  {
+    name: 'get_action_items',
+    description: 'Get open action items from the outreach pipeline — nudges, warm leads, momentum signals, follow-ups. Shows what needs attention today. Use to answer "who needs follow-up?" or "what\'s in my pipeline?"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          description: 'Filter by status: open, snoozed, completed, dismissed. Default: open',
+          enum: ['open', 'snoozed', 'completed', 'dismissed'],
+        },
+        action_type: {
+          type: 'string',
+          description: 'Filter by type: nudge, warm_lead, momentum, feedback, alert, follow_up, celebration',
+          enum: ['nudge', 'warm_lead', 'momentum', 'feedback', 'alert', 'follow_up', 'celebration'],
+        },
+        priority: {
+          type: 'string',
+          description: 'Filter by priority: high, medium, low',
+          enum: ['high', 'medium', 'low'],
+        },
+        limit: {
+          type: 'number',
+          description: 'Max items to return. Default 20.',
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -7781,12 +7801,10 @@ Use add_committee_leader to assign a leader.`;
     try {
       if (slackUserId) {
         // Per-user timeline: outreach + goal history
-        const [outreachHistory, goalHistory] = await Promise.all([
-          insightsDb.getRecentOutreach(100),
+        const [userOutreach, goalHistory] = await Promise.all([
+          insightsDb.getOutreachForUser(slackUserId, limit),
           outboundDb.getUserGoalHistory(slackUserId),
         ]);
-
-        const userOutreach = outreachHistory.filter(o => o.slack_user_id === slackUserId).slice(0, limit);
 
         let response = `## Outreach timeline for ${userOutreach[0]?.slack_display_name || userOutreach[0]?.slack_real_name || slackUserId}\n\n`;
 
@@ -7806,6 +7824,10 @@ Use add_committee_leader to assign a leader.`;
             if (o.initial_message) {
               const preview = o.initial_message.substring(0, 120);
               response += `  > ${preview}${o.initial_message.length > 120 ? '...' : ''}\n`;
+            }
+            if (o.user_responded) {
+              response += `  Response: ${o.response_text || '(no text recorded)'}\n`;
+              response += `  Sentiment: ${o.response_sentiment || 'unknown'}\n`;
             }
           }
         }
@@ -7833,6 +7855,9 @@ Use add_committee_leader to assign a leader.`;
           response += `- ${responded} **${name}** — ${date} (${o.outreach_type})`;
           if (o.response_sentiment) response += ` | ${o.response_sentiment}`;
           response += '\n';
+          if (o.user_responded && o.response_text) {
+            response += `  Response: ${o.response_text}\n`;
+          }
         }
 
         return response;
@@ -7868,6 +7893,19 @@ Use add_committee_leader to assign a leader.`;
         return `❌ Cannot contact this user: ${eligibility.reason}`;
       }
 
+      // Dry run: return eligibility info without sending
+      if (input.dry_run) {
+        const capabilities = await outboundDb.getMemberCapabilities(slackUserId).catch(() => null);
+        let dryRunResponse = `Eligible to contact ${slackUserId}.`;
+        if (capabilities) {
+          dryRunResponse += `\nAccount linked: ${capabilities.account_linked ? 'yes' : 'no'}`;
+          dryRunResponse += `\nProfile complete: ${capabilities.profile_complete ? 'yes' : 'no'}`;
+          dryRunResponse += `\nWorking groups: ${capabilities.working_group_count}`;
+          dryRunResponse += `\nSlack messages (30d): ${capabilities.slack_message_count_30d}`;
+        }
+        return dryRunResponse;
+      }
+
       let result;
       if (goalId) {
         result = await manualOutreachWithGoal(slackUserId, goalId, context, triggeredBy);
@@ -7876,9 +7914,9 @@ Use add_committee_leader to assign a leader.`;
       }
 
       if (result.success) {
-        captureEvent(triggeredBy?.id || 'addie', 'admin_tool_used', {
+        captureEvent(slackUserId, 'admin_tool_used', {
           tool_name: 'send_outreach',
-          target_user: slackUserId,
+          triggered_by: triggeredBy?.id,
           goal_id: goalId,
           is_manual: true,
         });
@@ -7893,40 +7931,6 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, slackUserId }, 'Error sending outreach');
       return `❌ Failed to send outreach: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    }
-  });
-
-  handlers.set('check_outreach_eligibility', async (input) => {
-    const slackUserId = input.slack_user_id as string;
-
-    if (!slackUserId) {
-      return '❌ slack_user_id is required.';
-    }
-
-    try {
-      const [eligibility, capabilities] = await Promise.all([
-        canContactUser(slackUserId),
-        outboundDb.getMemberCapabilities(slackUserId).catch(() => null),
-      ]);
-
-      let response = `## Outreach eligibility for ${slackUserId}\n\n`;
-      response += eligibility.canContact
-        ? '✅ **Eligible** for outreach\n'
-        : `❌ **Not eligible**: ${eligibility.reason}\n`;
-
-      if (capabilities) {
-        response += '\n### Capabilities\n';
-        response += `- Profile complete: ${capabilities.profile_complete ? 'yes' : 'no'}\n`;
-        response += `- Working groups: ${capabilities.working_group_count}\n`;
-        response += `- Slack messages (30d): ${capabilities.slack_message_count_30d}\n`;
-        response += `- Account linked: ${capabilities.account_linked ? 'yes' : 'no'}\n`;
-        if (capabilities.is_committee_leader) response += `- Committee leader: yes\n`;
-      }
-
-      return response;
-    } catch (error) {
-      logger.error({ error, slackUserId }, 'Error checking outreach eligibility');
-      return `❌ Failed to check eligibility: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
@@ -7971,7 +7975,7 @@ Use add_committee_leader to assign a leader.`;
           : Promise.resolve({ rows: [] }),
         insightsDb.getInsightsForUser(slackUserId),
         outboundDb.getUserGoalHistory(slackUserId),
-        insightsDb.getRecentOutreach(100).then(all => all.filter(o => o.slack_user_id === slackUserId).slice(0, 10)),
+        insightsDb.getOutreachForUser(slackUserId, 10),
         canContactUser(slackUserId),
       ]);
 
@@ -8029,6 +8033,44 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, query: queryStr }, 'Error looking up person');
       return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_action_items', async (input) => {
+    const status = (input.status as ActionStatus) || 'open';
+    const actionType = input.action_type as ActionType | undefined;
+    const priority = input.priority as ActionPriority | undefined;
+    const limit = (input.limit as number) || 20;
+
+    try {
+      const items = await getActionItemsDb({
+        status,
+        actionType,
+        priority,
+        limit,
+      });
+
+      if (items.length === 0) {
+        return `No ${status} action items found${actionType ? ` of type "${actionType}"` : ''}.`;
+      }
+
+      const summary = items.map(item => {
+        const parts = [
+          `#${item.id} [${item.priority.toUpperCase()}] ${item.action_type}: ${item.title}`,
+        ];
+        if (item.description) parts.push(`  ${item.description}`);
+        if (item.slack_user_id) parts.push(`  User: ${item.slack_user_id}`);
+        if (item.org_id) parts.push(`  Org: ${item.org_id}`);
+        if (item.assigned_to) parts.push(`  Assigned to: ${item.assigned_to}`);
+        if (item.snoozed_until) parts.push(`  Snoozed until: ${new Date(item.snoozed_until).toLocaleDateString()}`);
+        parts.push(`  Created: ${new Date(item.created_at).toLocaleDateString()}`);
+        return parts.join('\n');
+      }).join('\n\n');
+
+      return `${items.length} ${status} action items:\n\n${summary}`;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching action items');
+      return `Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 
