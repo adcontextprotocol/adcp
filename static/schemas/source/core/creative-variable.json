@@ -16,7 +16,7 @@
     "variable_type": {
       "type": "string",
       "enum": ["text", "image", "video", "audio", "url", "number", "boolean", "color"],
-      "description": "Data type of the variable"
+      "description": "Data type of the variable. Each type represents a semantic content slot: text (headlines, body copy), image/video/audio (media URLs), url (clickthrough or tracking URLs), number (prices, counts), boolean (conditional flags like show_discount or is_raining), color (hex color values)."
     },
     "default_value": {
       "type": "string",
