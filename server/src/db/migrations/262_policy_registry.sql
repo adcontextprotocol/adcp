@@ -19,6 +19,8 @@ CREATE TABLE policies (
   verticals JSONB DEFAULT '[]'::jsonb,
   channels JSONB,
   effective_date TEXT,
+  sunset_date TEXT,
+  governance_domains JSONB DEFAULT '[]'::jsonb,
   source_url TEXT,
   source_name TEXT,
   policy TEXT NOT NULL,
@@ -36,6 +38,7 @@ CREATE INDEX idx_policies_enforcement ON policies(enforcement);
 CREATE INDEX idx_policies_source_type ON policies(source_type);
 CREATE INDEX idx_policies_review_status ON policies(review_status);
 CREATE INDEX idx_policies_name_search ON policies USING gin(to_tsvector('english', name || ' ' || COALESCE(description, '')));
+CREATE INDEX idx_policies_governance_domains ON policies USING gin(governance_domains);
 
 -- =============================================================================
 -- 2. Policy revisions (append-only changelog)
@@ -66,7 +69,7 @@ CREATE INDEX idx_policy_revisions_created ON policy_revisions(created_at);
 
 -- ── Regulations (enforcement: must) ─────────────────────────────
 
-INSERT INTO policies (policy_id, version, name, description, category, enforcement, jurisdictions, region_aliases, verticals, channels, effective_date, source_url, source_name, policy, exemplars, source_type, review_status)
+INSERT INTO policies (policy_id, version, name, description, category, enforcement, jurisdictions, region_aliases, verticals, channels, effective_date, governance_domains, source_url, source_name, policy, exemplars, source_type, review_status)
 VALUES
 
 -- UK HFSS
@@ -76,6 +79,7 @@ VALUES
  '["GB"]'::jsonb, '{}'::jsonb,
  '["food", "beverage"]'::jsonb, NULL,
  '2025-10-01',
+ '["campaign", "property", "content_standards"]'::jsonb,
  'https://www.legislation.gov.uk/ukpga/2022/17/contents',
  'UK Parliament',
  'The UK Health and Social Care Act 2022 restricts paid online advertising of food and drink products classified as "less healthy" under the Nutrient Profiling Model (NPM). Products scoring 4 or above (food) or 1 or above (drinks) on the NPM are restricted.
@@ -95,6 +99,7 @@ Exemptions: Brand-only advertising that does not identify a specific less health
  '["US"]'::jsonb, '{}'::jsonb,
  '[]'::jsonb, NULL,
  '2000-04-21',
+ '["campaign", "property"]'::jsonb,
  'https://www.ftc.gov/legal-library/browse/rules/childrens-online-privacy-protection-rule-coppa',
  'US Federal Trade Commission',
  'The Children''s Online Privacy Protection Act (COPPA) regulates the collection, use, and disclosure of personal information from children under 13 years of age. For advertising purposes, COPPA imposes strict requirements on ad targeting and data collection.
@@ -115,6 +120,7 @@ Operators of websites or online services directed to children, or that have actu
  '{"EU": ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"]}'::jsonb,
  '[]'::jsonb, NULL,
  '2018-05-25',
+ '["campaign", "property"]'::jsonb,
  'https://eur-lex.europa.eu/eli/reg/2016/679/oj',
  'European Parliament and Council',
  'The General Data Protection Regulation (GDPR) requires a valid legal basis for processing personal data for advertising purposes. For most advertising use cases, freely given, specific, informed, and unambiguous consent is the appropriate legal basis.
@@ -137,6 +143,7 @@ Data subjects have the right to object to processing for direct marketing purpos
  '{"EU": ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"]}'::jsonb,
  '[]'::jsonb, NULL,
  '2026-08-02',
+ '["creative", "content_standards"]'::jsonb,
  'https://eur-lex.europa.eu/eli/reg/2024/1689/oj',
  'European Parliament and Council',
  'Article 50 of the EU AI Act establishes transparency obligations for AI-generated content. When AI systems generate synthetic audio, image, video, or text content that could reasonably be mistaken for authentic, it must be disclosed.
@@ -156,6 +163,7 @@ Exceptions: Content that undergoes human editorial review and where a natural pe
  '["US"]'::jsonb, '{}'::jsonb,
  '[]'::jsonb, NULL,
  '2026-01-01',
+ '["creative", "content_standards"]'::jsonb,
  'https://leginfo.legislature.ca.gov/faces/billNavClient.xhtml?bill_id=202320240SB942',
  'California State Legislature',
  'The California AI Transparency Act (SB 942) requires large online platforms (those with more than 1 million monthly users in California) to detect and label AI-generated content, including content used in advertising.
@@ -175,6 +183,7 @@ Provenance data: Platforms must make reasonable efforts to preserve provenance m
  '["US"]'::jsonb, '{}'::jsonb,
  '["cannabis", "marijuana"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "property", "creative", "content_standards"]'::jsonb,
  'https://www.ncsl.org/health/state-medical-cannabis-laws',
  'National Conference of State Legislatures',
  'Cannabis advertising in the United States is subject to a patchwork of state-level regulations. There is no federal advertising framework because cannabis remains a Schedule I substance federally. Advertisers must comply with the specific regulations of each state where ads will be served.
@@ -198,6 +207,7 @@ Platform restrictions: Many digital platforms prohibit cannabis advertising enti
  '[]'::jsonb, '{}'::jsonb,
  '["alcohol", "beverage", "spirits", "beer", "wine"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "property", "creative", "content_standards"]'::jsonb,
  'https://www.iard.org/resources/digital-guiding-principles/',
  'International Alliance for Responsible Drinking',
  'Alcohol advertising should follow responsible marketing practices to prevent underage exposure and promote responsible consumption. These standards represent industry consensus across major markets.
@@ -219,6 +229,7 @@ Responsible messaging: Include responsible drinking messaging where feasible (e.
  '["US"]'::jsonb, '{}'::jsonb,
  '["pharmaceutical", "healthcare", "biotech"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "creative", "content_standards"]'::jsonb,
  'https://www.fda.gov/drugs/drug-information-consumers/prescription-drug-advertising',
  'US Food and Drug Administration',
  'Pharmaceutical advertising should present a fair balance of benefit and risk information. These standards align with FDA guidance for prescription drug advertising and extend to digital formats.
@@ -240,6 +251,7 @@ Not a substitute for medical advice: All pharmaceutical advertising should inclu
  '[]'::jsonb, '{}'::jsonb,
  '["gambling", "gaming", "betting", "casino", "lottery"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "property", "content_standards"]'::jsonb,
  'https://iclg.com/practice-areas/gambling-laws-and-regulations',
  'International Comparative Legal Guides',
  'Gambling advertising should promote responsible gambling and protect vulnerable populations. These standards synthesize best practices from major regulated markets.
@@ -261,6 +273,7 @@ Content restrictions: No portrayal of gambling as a guaranteed way to make money
  '[]'::jsonb, '{}'::jsonb,
  '["financial_services", "insurance", "banking", "fintech", "investment"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "content_standards"]'::jsonb,
  'https://www.consumerfinance.gov/rules-policy/',
  'Consumer Financial Protection Bureau',
  'Financial services advertising should be transparent about costs, risks, and terms. These standards apply to advertising for banking products, insurance, investment services, lending, and fintech products.
@@ -282,6 +295,7 @@ Terms accessibility: Full terms and conditions must be accessible from the ad (l
  '[]'::jsonb, '{}'::jsonb,
  '["tobacco", "nicotine", "vaping", "e-cigarettes"]'::jsonb, NULL,
  '2024-01-01',
+ '["campaign", "property", "creative", "content_standards"]'::jsonb,
  'https://www.who.int/publications/i/item/9789240077164',
  'World Health Organization',
  'Tobacco and nicotine product advertising, where permitted, should follow strict responsible marketing practices. Many jurisdictions ban tobacco advertising entirely; these standards apply where digital advertising is legally permitted.
