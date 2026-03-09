@@ -68,6 +68,24 @@
       "$ref": "/schemas/enums/wcag-level.json",
       "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
     },
+    "disclosure_positions": {
+      "type": "array",
+      "description": "Filter to formats that support all of these disclosure positions. When a format has disclosure_capabilities, match against those positions. Otherwise fall back to supported_disclosure_positions. Use to find formats compatible with a brief's compliance requirements.",
+      "items": {
+        "$ref": "/schemas/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disclosure_persistence": {
+      "type": "array",
+      "description": "Filter to formats where each requested persistence mode is supported by at least one position in disclosure_capabilities. Different positions may satisfy different modes. Use to find formats compatible with jurisdiction-specific persistence requirements (e.g., continuous for EU AI Act).",
+      "items": {
+        "$ref": "/schemas/enums/disclosure-persistence.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "output_format_ids": {
       "type": "array",
       "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",

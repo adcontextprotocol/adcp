@@ -98,6 +98,10 @@
               "language": {
                 "type": "string",
                 "description": "Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA', 'es'). When omitted, the disclosure is assumed to match the creative's language."
+              },
+              "persistence": {
+                "$ref": "/schemas/enums/disclosure-persistence.json",
+                "description": "How long the disclosure must persist during content playback or display. When omitted, the creative agent should use the most restrictive persistence mode supported by the target format."
               }
             },
             "required": ["text"],

@@ -380,6 +380,113 @@ async function runTests() {
     'Creative brief with compliance fields'
   );
 
+  // Provenance with declared_at and render_guidance
+  await validateExample(
+    {
+      "digital_source_type": "trained_algorithmic_media",
+      "declared_by": {
+        "agent_url": "https://creative.pinnaclemedia.example.com",
+        "role": "agency"
+      },
+      "declared_at": "2026-02-15T14:35:00Z",
+      "created_time": "2026-02-15T14:30:00Z",
+      "disclosure": {
+        "required": true,
+        "jurisdictions": [
+          {
+            "country": "DE",
+            "regulation": "eu_ai_act_article_50",
+            "label_text": "KI-generiert",
+            "render_guidance": {
+              "persistence": "continuous",
+              "positions": ["overlay", "subtitle"]
+            }
+          },
+          {
+            "country": "CN",
+            "regulation": "cn_deep_synthesis",
+            "label_text": "AI-generated content",
+            "render_guidance": {
+              "persistence": "initial",
+              "min_duration_ms": 3000,
+              "positions": ["overlay", "pre_roll"]
+            }
+          },
+          {
+            "country": "US",
+            "region": "CA",
+            "regulation": "ca_sb_942",
+            "label_text": "Created with AI",
+            "render_guidance": {
+              "persistence": "flexible",
+              "positions": ["prominent", "footer"]
+            }
+          }
+        ]
+      }
+    },
+    '/schemas/core/provenance.json',
+    'Provenance with declared_at and render_guidance'
+  );
+
+  // Format with disclosure_capabilities
+  await validateExample(
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_15s_hosted"
+      },
+      "name": "Hosted Video 15s",
+      "supported_disclosure_positions": ["overlay", "footer", "subtitle"],
+      "disclosure_capabilities": [
+        { "position": "overlay", "persistence": ["continuous", "initial"] },
+        { "position": "footer", "persistence": ["continuous"] },
+        { "position": "subtitle", "persistence": ["continuous", "initial"] }
+      ]
+    },
+    '/schemas/core/format.json',
+    'Format with disclosure_capabilities'
+  );
+
+  // Creative brief with disclosure persistence
+  await validateExample(
+    {
+      "name": "EU AI Compliance Campaign",
+      "compliance": {
+        "required_disclosures": [
+          {
+            "text": "KI-generiert",
+            "position": "overlay",
+            "persistence": "continuous",
+            "jurisdictions": ["DE"],
+            "regulation": "eu_ai_act_article_50"
+          }
+        ]
+      }
+    },
+    '/schemas/core/creative-brief.json',
+    'Creative brief with disclosure persistence'
+  );
+
+  // list_creative_formats request with disclosure filters
+  await validateExample(
+    {
+      "disclosure_positions": ["overlay"],
+      "disclosure_persistence": ["continuous"]
+    },
+    '/schemas/creative/list-creative-formats-request.json',
+    'list_creative_formats request with disclosure filters (creative domain)'
+  );
+
+  await validateExample(
+    {
+      "disclosure_positions": ["overlay", "subtitle"],
+      "disclosure_persistence": ["continuous", "initial"]
+    },
+    '/schemas/media-buy/list-creative-formats-request.json',
+    'list_creative_formats request with disclosure filters (media-buy domain)'
+  );
+
   // Print results
   log('\n===========================================');
   log(`Tests completed: ${totalTests}`);

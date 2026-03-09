@@ -72,6 +72,11 @@
       "required": ["role"],
       "additionalProperties": true
     },
+    "declared_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this provenance claim was made (ISO 8601). Distinct from created_time, which records when the content itself was produced. A provenance claim may be attached well after content creation, for example when retroactively declaring AI involvement for regulatory compliance."
+    },
     "created_time": {
       "type": "string",
       "format": "date-time",
@@ -119,6 +124,35 @@
               "label_text": {
                 "type": "string",
                 "description": "Required disclosure label text for this jurisdiction, in the local language"
+              },
+              "render_guidance": {
+                "type": "object",
+                "description": "How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent for persistence and position based on regulatory requirements. Publishers control actual rendering but governance agents can audit whether guidance was followed.",
+                "minProperties": 1,
+                "properties": {
+                  "persistence": {
+                    "$ref": "/schemas/enums/disclosure-persistence.json",
+                    "description": "How long the disclosure must persist during content playback or display"
+                  },
+                  "min_duration_ms": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Minimum display duration in milliseconds for initial persistence. Recommended when persistence is initial — without it, the duration is at the publisher's discretion. At serve time the publisher reads this from provenance since the brief is not available."
+                  },
+                  "positions": {
+                    "type": "array",
+                    "description": "Preferred disclosure positions in priority order. The first position a format supports should be used.",
+                    "items": {
+                      "$ref": "/schemas/enums/disclosure-position.json"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "ext": {
+                    "$ref": "/schemas/core/ext.json"
+                  }
+                },
+                "additionalProperties": true
               }
             },
             "required": ["country", "regulation"],
