@@ -819,8 +819,8 @@ export class HTTPServer {
 
     // Mount admin routes
     const { pageRouter, apiRouter } = createAdminRouter();
-    this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
-    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+    this.app.use('/admin', pageRouter);      // Page routes: /admin/*
+    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/accounts, etc.
 
     // Mount admin insights routes (member insights, goals, outreach)
     const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
@@ -3986,14 +3986,16 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'manage.html'));
     this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
-    this.app.get('/manage/prospects', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-prospects.html'));
-    this.app.get('/manage/accounts', requireAuth, (req, res) => res.redirect(302, '/admin/accounts'));
+    this.app.get('/manage/prospects', requireAuth, (req, res) => res.redirect(301, '/manage/accounts'));
+    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
+    this.app.get('/manage/accounts/:orgId', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
     this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
 
     // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(302, '/manage/prospects'));
+    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
     this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
 
     // Admin routes
@@ -6789,10 +6791,8 @@ Disallow: /api/admin/
 
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
-    // Note: Prospect management routes are in routes/admin.ts
-    // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
-    //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
-    //         GET /api/admin/organizations
+    // Note: Account management routes are in routes/admin/accounts.ts
+    // Old /api/admin/prospects/* paths are proxied via routes/admin/prospects.ts for compatibility
 
     // NOTE: Agent management is now handled through member profiles.
     // Agents are stored in the member_profiles.agents JSONB array.

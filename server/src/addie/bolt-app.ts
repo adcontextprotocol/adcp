@@ -28,6 +28,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { logger } from '../logger.js';
+import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { getPool } from '../db/client.js';
@@ -1021,6 +1022,13 @@ async function handleUserMessage({
         sentiment: analysis.sentiment,
         intent: analysis.intent,
       }, 'Addie Bolt: Recorded outreach response (Assistant)');
+      captureEvent(userId, 'outreach_responded', {
+        outreach_id: pendingOutreach.id,
+        outreach_type: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        channel: 'assistant_thread',
+      });
     }
   } catch (err) {
     logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
@@ -2209,6 +2217,14 @@ async function handleDirectMessage(
         intent: analysis.intent,
         followUpDays: analysis.followUpDays,
       }, 'Addie Bolt: Recorded outreach response');
+      captureEvent(userId, 'outreach_responded', {
+        outreach_id: pendingOutreach.id,
+        outreach_type: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        follow_up_days: analysis.followUpDays,
+        channel: 'dm',
+      });
     }
   } catch (err) {
     // Don't fail the DM handling if outreach tracking fails
