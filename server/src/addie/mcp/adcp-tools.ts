@@ -401,7 +401,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         sort: {
           type: 'object',
           properties: {
-            field: { type: 'string', enum: ['created_date', 'updated_date', 'name', 'status', 'assignment_count', 'performance_score'] },
+            field: { type: 'string', enum: ['created_date', 'updated_date', 'name', 'status', 'assignment_count'] },
             direction: { type: 'string', enum: ['asc', 'desc'] },
           },
         },
@@ -413,7 +413,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
         },
         include_assignments: { type: 'boolean', description: 'Include package assignments (default true)' },
-        include_performance: { type: 'boolean', description: 'Include performance metrics' },
+        include_snapshot: { type: 'boolean', description: 'Include lightweight delivery snapshot (lifetime impressions, last served date)' },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',

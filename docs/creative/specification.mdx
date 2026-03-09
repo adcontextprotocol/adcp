@@ -211,6 +211,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents SHOULD support filtering by format, status, tags, and date range
 - Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
+- Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
 
 **Account requirements:**
 - Creative agents that host a library SHOULD implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying

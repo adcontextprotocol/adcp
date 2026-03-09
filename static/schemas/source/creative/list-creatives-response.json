@@ -170,48 +170,46 @@
             ],
             "additionalProperties": true
           },
-          "performance": {
+          "snapshot": {
             "type": "object",
-            "description": "Aggregated performance metrics (included when include_performance=true)",
+            "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
             "properties": {
-              "impressions": {
-                "type": "integer",
-                "description": "Total impressions across all assignments",
-                "minimum": 0
-              },
-              "clicks": {
-                "type": "integer",
-                "description": "Total clicks across all assignments",
-                "minimum": 0
-              },
-              "ctr": {
-                "type": "number",
-                "description": "Click-through rate (clicks/impressions)",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "conversion_rate": {
-                "type": "number",
-                "description": "Conversion rate across all assignments",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "performance_score": {
-                "type": "number",
-                "description": "Aggregated performance score (0-100)",
-                "minimum": 0,
-                "maximum": 100
-              },
-              "last_updated": {
+              "as_of": {
                 "type": "string",
                 "format": "date-time",
-                "description": "When performance data was last updated"
+                "description": "When this snapshot was captured by the platform"
+              },
+              "staleness_seconds": {
+                "type": "integer",
+                "description": "Maximum age of this data in seconds. For example, 3600 means the data may be up to 1 hour old.",
+                "minimum": 0
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Lifetime impressions across all assignments. Not scoped to any date range.",
+                "minimum": 0
+              },
+              "last_served": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time this creative served an impression. Absent when the creative has never served."
               }
             },
             "required": [
-              "last_updated"
+              "as_of",
+              "staleness_seconds",
+              "impressions"
             ],
             "additionalProperties": true
+          },
+          "snapshot_unavailable_reason": {
+            "type": "string",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative.",
+            "enum": [
+              "SNAPSHOT_UNSUPPORTED",
+              "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
+              "SNAPSHOT_PERMISSION_DENIED"
+            ]
           },
           "sub_assets": {
             "type": "array",
@@ -275,6 +273,13 @@
         }
       },
       "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors (e.g., invalid filters, account not found)",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
     },
     "sandbox": {
       "type": "boolean",

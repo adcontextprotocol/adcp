@@ -106,9 +106,9 @@
       "type": "boolean",
       "description": "Filter for unassigned creatives when true, assigned creatives when false"
     },
-    "has_performance_data": {
+    "has_served": {
       "type": "boolean",
-      "description": "Filter creatives that have performance data when true"
+      "description": "When true, return only creatives that have served at least one impression. When false, return only creatives that have never served."
     },
     "concept_ids": {
       "type": "array",

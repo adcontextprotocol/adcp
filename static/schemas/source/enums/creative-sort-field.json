@@ -9,7 +9,6 @@
     "updated_date",
     "name",
     "status",
-    "assignment_count",
-    "performance_score"
+    "assignment_count"
   ]
 }

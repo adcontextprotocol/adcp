@@ -33,10 +33,10 @@
       "default": true,
       "description": "Include package assignment information in response"
     },
-    "include_performance": {
+    "include_snapshot": {
       "type": "boolean",
       "default": false,
-      "description": "Include aggregated performance metrics in response"
+      "description": "Include a lightweight delivery snapshot per creative (lifetime impressions and last-served date). For detailed performance analytics, use get_creative_delivery."
     },
     "include_sub_assets": {
       "type": "boolean",
@@ -63,7 +63,7 @@
           "updated_date",
           "tags",
           "assignments",
-          "performance",
+          "snapshot",
           "sub_assets",
           "variables",
           "concept"
