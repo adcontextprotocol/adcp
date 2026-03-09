@@ -383,9 +383,9 @@
           <table id="urls-table">
             <thead>
               <tr>
-                <th scope="col">URL</th>
-                <th scope="col" class="text-right">Citation count</th>
-                <th scope="col">Models citing</th>
+                <th scope="col">Domain</th>
+                <th scope="col" class="text-right">Responses</th>
+                <th scope="col" class="text-right">Avg visibility</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -556,9 +556,9 @@
         if (urls.length > 0) {
           urlsTable.innerHTML = urls.map(row => `
             <tr>
-              <td class="url-text">${/^https?:\/\//i.test(row.url) ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${escapeHtml(row.url)}</a>` : escapeHtml(row.url)}</td>
+              <td class="url-text">${escapeHtml(row.url)}</td>
               <td class="text-right">${formatNumber(row.citation_count)}</td>
-              <td>${escapeHtml(Array.isArray(row.models) ? row.models.join(', ') : (row.models || ''))}</td>
+              <td class="text-right">${formatPercent(row.avg_visibility)}</td>
             </tr>
           `).join('');
         } else {
