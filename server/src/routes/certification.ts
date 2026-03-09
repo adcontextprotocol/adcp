@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
-import { requireAuth, optionalAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 import * as certDb from '../db/certification-db.js';
+import { query } from '../db/client.js';
 
 const logger = createLogger('certification-routes');
 
@@ -90,7 +91,15 @@ export function createCertificationRouters() {
   publicRouter.get('/credentials', async (_req, res) => {
     try {
       const credentials = await certDb.getCredentials();
-      res.json({ credentials });
+      // Strip internal Certifier config from public response
+      res.json({
+        credentials: credentials.map(c => ({
+          id: c.id, tier: c.tier, name: c.name, description: c.description,
+          required_modules: c.required_modules, sort_order: c.sort_order,
+          requires_any_track_complete: c.requires_any_track_complete,
+          requires_credential: c.requires_credential,
+        })),
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to get credentials');
       res.status(500).json({ error: 'Internal server error' });
@@ -279,5 +288,99 @@ export function createCertificationRouters() {
     }
   });
 
-  return { publicRouter, userRouter, orgRouter };
+  // =====================================================
+  // ADMIN ROUTES
+  // =====================================================
+
+  const adminRouter = Router();
+  adminRouter.use(requireAdmin);
+
+  // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
+  adminRouter.post('/backfill-badges', async (_req, res) => {
+    try {
+      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } =
+        await import('../services/certifier-client.js');
+
+      if (!isCertifierConfigured()) {
+        return res.status(503).json({ error: 'Certifier not configured' });
+      }
+
+      // Find credentials needing backfill (limit to avoid timeout)
+      const needsBadgeUrl = await query<{
+        id: string; workos_user_id: string; credential_id: string;
+        certifier_credential_id: string | null; certifier_public_id: string | null;
+      }>(
+        `SELECT uc.id, uc.workos_user_id, uc.credential_id,
+                uc.certifier_credential_id, uc.certifier_public_id
+         FROM user_credentials uc
+         JOIN certification_credentials cc ON cc.id = uc.credential_id
+         WHERE uc.certifier_badge_url IS NULL
+           AND cc.certifier_group_id IS NOT NULL
+         LIMIT 50`
+      );
+
+      let updated = 0;
+      const errors: string[] = [];
+
+      for (const row of needsBadgeUrl.rows) {
+        try {
+          if (row.certifier_credential_id) {
+            // Has certifier ID but missing badge URL — just fetch the badge
+            const badgeUrl = await getCredentialBadgeUrl(row.certifier_credential_id);
+            if (badgeUrl) {
+              await certDb.awardCredential(
+                row.workos_user_id, row.credential_id,
+                row.certifier_credential_id, row.certifier_public_id || undefined,
+                badgeUrl,
+              );
+              updated++;
+            }
+          } else {
+            // No certifier ID at all — need to re-issue
+            const cred = await certDb.getCredential(row.credential_id);
+            if (!cred?.certifier_group_id) continue;
+
+            // Get user info for Certifier
+            const userResult = await query<{ first_name: string; last_name: string; email: string }>(
+              'SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1',
+              [row.workos_user_id]
+            );
+            const user = userResult.rows[0];
+            if (!user) continue;
+
+            const credential = await issueCredential({
+              groupId: cred.certifier_group_id,
+              recipient: {
+                name: `${user.first_name} ${user.last_name}`.trim() || user.email,
+                email: user.email,
+              },
+            });
+
+            let badgeUrl: string | null = null;
+            try {
+              badgeUrl = await getCredentialBadgeUrl(credential.id);
+            } catch { /* badge URL is optional */ }
+
+            await certDb.awardCredential(
+              row.workos_user_id, row.credential_id,
+              credential.id, credential.publicId,
+              badgeUrl || undefined,
+            );
+            updated++;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
+          logger.error({ error: err, row }, 'Backfill failed for credential');
+        }
+      }
+
+      res.json({ total: needsBadgeUrl.rows.length, updated, errors });
+    } catch (error) {
+      logger.error({ error }, 'Failed to backfill badges');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  return { publicRouter, userRouter, orgRouter, adminRouter };
 }

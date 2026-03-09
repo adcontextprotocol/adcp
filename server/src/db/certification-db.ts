@@ -104,6 +104,7 @@ export interface UserCredential {
   awarded_at: string;
   certifier_credential_id: string | null;
   certifier_public_id: string | null;
+  certifier_badge_url: string | null;
 }
 
 // =====================================================
@@ -429,16 +430,18 @@ export async function awardCredential(
   userId: string,
   credentialId: string,
   certifierCredentialId?: string,
-  certifierPublicId?: string
+  certifierPublicId?: string,
+  certifierBadgeUrl?: string,
 ): Promise<UserCredential> {
   const result = await query<UserCredential>(
-    `INSERT INTO user_credentials (workos_user_id, credential_id, certifier_credential_id, certifier_public_id)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO user_credentials (workos_user_id, credential_id, certifier_credential_id, certifier_public_id, certifier_badge_url)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (workos_user_id, credential_id) DO UPDATE
        SET certifier_credential_id = COALESCE(EXCLUDED.certifier_credential_id, user_credentials.certifier_credential_id),
-           certifier_public_id = COALESCE(EXCLUDED.certifier_public_id, user_credentials.certifier_public_id)
+           certifier_public_id = COALESCE(EXCLUDED.certifier_public_id, user_credentials.certifier_public_id),
+           certifier_badge_url = COALESCE(EXCLUDED.certifier_badge_url, user_credentials.certifier_badge_url)
      RETURNING *`,
-    [userId, credentialId, certifierCredentialId || null, certifierPublicId || null]
+    [userId, credentialId, certifierCredentialId || null, certifierPublicId || null, certifierBadgeUrl || null]
   );
   return result.rows[0];
 }
@@ -527,6 +530,7 @@ export async function getPublicUserCredentials(userId: string): Promise<PublicUs
 export interface OwnUserCredential extends PublicUserCredential {
   certifier_public_id: string | null;
   certifier_credential_id: string | null;
+  certifier_badge_url: string | null;
 }
 
 /**
@@ -535,7 +539,7 @@ export interface OwnUserCredential extends PublicUserCredential {
 export async function getOwnUserCredentials(userId: string): Promise<OwnUserCredential[]> {
   const result = await query<OwnUserCredential>(
     `SELECT uc.credential_id, cc.name AS credential_name, cc.tier, uc.awarded_at,
-            uc.certifier_public_id, uc.certifier_credential_id
+            uc.certifier_public_id, uc.certifier_credential_id, uc.certifier_badge_url
      FROM user_credentials uc
      JOIN certification_credentials cc ON cc.id = uc.credential_id
      WHERE uc.workos_user_id = $1

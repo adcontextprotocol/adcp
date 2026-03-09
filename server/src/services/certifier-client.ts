@@ -82,6 +82,39 @@ export async function getCredential(credentialId: string): Promise<CertifierCred
   return response.data;
 }
 
+export interface CertifierDesignPreview {
+  format: string;
+  url: string;
+}
+
+export interface CertifierDesign {
+  id: string;
+  name: string;
+  previews: CertifierDesignPreview[];
+}
+
+/**
+ * Get credential designs (certificate and badge images).
+ */
+export async function getCredentialDesigns(credentialId: string): Promise<CertifierDesign[]> {
+  const client = getClient();
+  const response = await client.get<CertifierDesign[]>(`/credentials/${credentialId}/designs`);
+  return response.data;
+}
+
+/**
+ * Get the badge image PNG URL for a credential.
+ * Looks for a design with "badge" in its name, falls back to the first design.
+ */
+export async function getCredentialBadgeUrl(credentialId: string): Promise<string | null> {
+  const designs = await getCredentialDesigns(credentialId);
+  if (!designs.length) return null;
+
+  const badge = designs.find(d => d.name.toLowerCase().includes('badge')) || designs[0];
+  const png = badge.previews.find(p => p.format === 'png');
+  return png?.url || null;
+}
+
 /**
  * Check whether Certifier integration is configured.
  */

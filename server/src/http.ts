@@ -994,10 +994,11 @@ export class HTTPServer {
     this.app.use('/api/me', communityUserRouter);
 
     // Mount certification routes
-    const { publicRouter: certPublicRouter, userRouter: certUserRouter, orgRouter: certOrgRouter } = createCertificationRouters();
+    const { publicRouter: certPublicRouter, userRouter: certUserRouter, orgRouter: certOrgRouter, adminRouter: certAdminRouter } = createCertificationRouters();
     this.app.use('/api/certification', certPublicRouter);
     this.app.use('/api/me', certUserRouter);
     this.app.use('/api/organizations', certOrgRouter);
+    this.app.use('/api/admin/certification', certAdminRouter);
 
     // Mount engagement dashboard route
     const orgKnowledgeDb = new OrgKnowledgeDatabase();

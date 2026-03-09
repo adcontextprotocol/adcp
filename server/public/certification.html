@@ -734,6 +734,13 @@
       text-decoration: underline;
     }
 
+    .credential-pending-note {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      font-style: italic;
+      margin-top: var(--space-2);
+    }
+
     /* =========================================================================
        Empty / loading states
        ========================================================================= */
@@ -971,25 +978,32 @@
           var certUrl = hasCertifier ? 'https://cert.io/c/' + mc.certifier_public_id : '';
           var certPageUrl = window.location.origin + '/certification';
           var shareUrl = certUrl || certPageUrl;
-          var badgeImgUrl = hasCertifier ? 'https://api.certifier.io/v1/credentials/' + mc.certifier_credential_id + '/badge' : '';
+          var badgeImgUrl = mc.certifier_badge_url || '';
           var dateStr = new Date(mc.awarded_at).toLocaleDateString();
 
-          // Certifier badge image + QR code link
-          if (hasCertifier) {
+          // Certifier badge image + verification link
+          if (badgeImgUrl || hasCertifier) {
             html += '<div class="credential-badge-row">';
-            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-link">';
-            html += '<img src="' + certUrl + '/badge" alt="' + esc(credName) + ' credential badge" class="credential-badge-img" onerror="this.style.display=\'none\'" />';
-            html += '</a>';
+            if (badgeImgUrl) {
+              var badgeLink = certUrl || certPageUrl;
+              html += '<a href="' + badgeLink + '" target="_blank" rel="noopener" class="credential-badge-link">';
+              html += '<img src="' + esc(badgeImgUrl) + '" alt="' + esc(credName) + ' credential badge" class="credential-badge-img" onerror="this.style.display=\'none\'" />';
+              html += '</a>';
+            }
             html += '<div class="credential-badge-info">';
             html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
             html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
-            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
+            if (hasCertifier) {
+              html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
+            }
             html += '</div>';
             html += '</div>';
           } else {
-            if (earnedCreds.length > 1) {
-              html += '<p style="font-size: var(--text-sm); font-weight: var(--font-medium); margin-bottom: var(--space-2);">' + esc(credName) + ' \u2014 earned ' + dateStr + '</p>';
-            }
+            html += '<div class="credential-badge-info">';
+            html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
+            html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
+            html += '<p class="credential-pending-note">Digital badge is being processed.</p>';
+            html += '</div>';
           }
 
           // Share buttons
@@ -1035,12 +1049,13 @@
           html += '<button class="embed-tab" onclick="switchEmbed(\'' + credDef.id + '\', \'markdown\', this)">Markdown</button>';
           html += '</div>';
 
-          // Use Certifier badge image in embed code, fall back to org logo
-          var embedImgSrc = hasCertifier ? certUrl + '/badge' : window.location.origin + '/AAo.svg';
+          // Use stored badge image URL, fall back to org logo
+          var embedImgSrc = badgeImgUrl || window.location.origin + '/AAo.svg';
+          var safeAltName = credName.replace(/"/g, '&quot;');
           var embedHtml = '<a href="' + shareUrl + '" target="_blank" rel="noopener">'
-            + '<img src="' + embedImgSrc + '" alt="' + credName + ' - AgenticAdvertising.org" height="80" />'
+            + '<img src="' + embedImgSrc + '" alt="' + safeAltName + ' - AgenticAdvertising.org" height="80" />'
             + '</a>';
-          var embedMarkdown = '[![' + credName + '](' + embedImgSrc + ')](' + shareUrl + ')';
+          var embedMarkdown = '[![' + credName.replace(/[\[\]]/g, '') + '](' + embedImgSrc + ')](' + shareUrl + ')';
 
           html += '<pre class="embed-code" data-type="html">' + esc(embedHtml) + '</pre>';
           html += '<pre class="embed-code" data-type="markdown" style="display:none">' + esc(embedMarkdown) + '</pre>';

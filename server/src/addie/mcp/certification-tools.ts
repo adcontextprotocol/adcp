@@ -26,7 +26,7 @@ async function issueCertifierBadge(
   if (!cred.certifier_group_id || !memberContext?.workos_user) return null;
 
   try {
-    const { issueCredential, isCertifierConfigured } = await import('../../services/certifier-client.js');
+    const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl } = await import('../../services/certifier-client.js');
     if (!isCertifierConfigured()) return null;
 
     const expiryDate = cred.tier === 1 ? undefined : (() => {
@@ -45,8 +45,15 @@ async function issueCertifierBadge(
       ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
     });
 
-    await certDb.awardCredential(userId, credId, credential.id, credential.publicId);
-    logger.info({ credentialId: credential.id, userId, credId }, 'Credential issued via Certifier');
+    let badgeUrl: string | null = null;
+    try {
+      badgeUrl = await getCredentialBadgeUrl(credential.id);
+    } catch (badgeErr) {
+      logger.warn({ error: badgeErr, credentialId: credential.id }, 'Failed to fetch badge URL');
+    }
+
+    await certDb.awardCredential(userId, credId, credential.id, credential.publicId, badgeUrl || undefined);
+    logger.info({ credentialId: credential.id, userId, credId, badgeUrl }, 'Credential issued via Certifier');
     return credential.publicId || credential.id;
   } catch (certError) {
     logger.error({ error: certError, credId }, 'Failed to issue Certifier credential (continuing)');
