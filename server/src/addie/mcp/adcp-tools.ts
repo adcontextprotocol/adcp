@@ -217,6 +217,102 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
     },
   },
   {
+    name: 'sync_catalogs',
+    description:
+      'Sync product catalogs, store locations, job postings, hotel listings, and other structured feeds to a seller account. Supports inline items or external feed URLs. When called without catalogs, returns all catalogs on the account (discovery mode).',
+    usage_hints:
+      'use when the user wants to push product feeds, catalog data, store locations, job postings, hotel listings, or other structured data to a seller account. Also use to discover what catalogs already exist on an account. Use after list_creative_formats shows catalog asset requirements, or before sync_creatives when the format needs catalog data.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_url: {
+          type: 'string',
+          description: 'The sales agent URL (must be HTTPS)',
+        },
+        account: {
+          type: 'object',
+          description: 'The account that owns the catalogs',
+          properties: {
+            account_id: { type: 'string', description: 'Account identifier' },
+          },
+          required: ['account_id'],
+        },
+        catalogs: {
+          type: 'array',
+          description: 'Catalog objects to sync. Omit for discovery mode (returns all catalogs on the account).',
+          items: {
+            type: 'object',
+            properties: {
+              catalog_id: { type: 'string', description: "Buyer's identifier for this catalog" },
+              name: { type: 'string', description: 'Human-readable catalog name' },
+              type: {
+                type: 'string',
+                description: 'Catalog type',
+                enum: [
+                  'offering', 'product', 'inventory', 'store', 'promotion',
+                  'hotel', 'flight', 'job', 'vehicle', 'real_estate',
+                  'education', 'destination', 'app',
+                ],
+              },
+              url: { type: 'string', description: 'External feed URL (mutually exclusive with items)' },
+              feed_format: {
+                type: 'string',
+                description: 'Feed format when using url',
+                enum: ['google_merchant_center', 'facebook_catalog', 'shopify', 'linkedin_jobs', 'custom'],
+              },
+              update_frequency: {
+                type: 'string',
+                description: 'How often the feed should be refreshed',
+                enum: ['realtime', 'hourly', 'daily', 'weekly'],
+              },
+              items: {
+                type: 'array',
+                description: 'Inline catalog data (mutually exclusive with url). Item schema depends on catalog type — e.g., Offering objects for "offering", JobItem for "job", HotelItem for "hotel".',
+                items: { type: 'object' },
+              },
+              feed_field_mappings: {
+                type: 'array',
+                description: 'Field normalization rules for mapping non-standard feed fields to AdCP schema',
+                items: {
+                  type: 'object',
+                  properties: {
+                    source_field: { type: 'string', description: 'Field name in the external feed' },
+                    target_field: { type: 'string', description: 'AdCP schema field to map to' },
+                    transform: { type: 'string', description: 'Named transform (date, divide, boolean, split)' },
+                  },
+                },
+              },
+            },
+            required: ['type'],
+          },
+        },
+        catalog_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific catalog IDs. In discovery mode (catalogs omitted), returns only these catalogs.',
+        },
+        delete_missing: {
+          type: 'boolean',
+          description: 'Remove catalogs not included in this sync (default: false). Use with caution — catalogs not in the request will be permanently deleted from the account.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Preview changes without applying',
+        },
+        validation_mode: {
+          type: 'string',
+          description: 'Validation strictness for catalog data',
+          enum: ['strict', 'lenient'],
+        },
+        debug: {
+          type: 'boolean',
+          description: 'Enable debug logging to see protocol-level details',
+        },
+      },
+      required: ['agent_url', 'account'],
+    },
+  },
+  {
     name: 'list_creative_formats',
     description:
       'View supported creative specifications from a sales or creative agent. Returns format definitions with dimensions and asset requirements.',
