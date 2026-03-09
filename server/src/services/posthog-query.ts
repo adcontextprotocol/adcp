@@ -18,13 +18,20 @@ const AI_REFERRER_DOMAINS = [
   "gemini.google.com",
   "copilot.microsoft.com",
   "claude.ai",
+  "anthropic.com",
   "you.com",
   "phind.com",
   "kagi.com",
 ];
 
-const AI_REFERRER_REGEX =
-  "chatgpt|openai|perplexity|gemini|copilot|claude|anthropic|you\\.com|phind|kagi";
+// Derive regex from domain list to prevent drift
+const AI_REFERRER_REGEX = AI_REFERRER_DOMAINS
+  .map((d) => d.replace(/\./g, "\\."))
+  .join("|");
+
+// PostHog's query API lives on the dashboard host (us.posthog.com),
+// not the ingestion host (us.i.posthog.com) used by POSTHOG_HOST.
+const POSTHOG_QUERY_HOST = "https://us.posthog.com";
 
 export function getPostHogQueryConfig(): {
   apiKey: string;
@@ -37,7 +44,7 @@ export function getPostHogQueryConfig(): {
   return {
     apiKey,
     projectId,
-    host: process.env.POSTHOG_HOST || "https://us.posthog.com",
+    host: POSTHOG_QUERY_HOST,
   };
 }
 
@@ -53,7 +60,7 @@ async function queryPostHog(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query: queryPayload }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -65,6 +72,15 @@ async function queryPostHog(
 
   return response.json();
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getResultsArray(response: unknown): any[] {
+  const obj = response as Record<string, unknown> | null;
+  return Array.isArray(obj?.results) ? obj.results : [];
+}
+
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+let referrerCache: { data: AiReferrerData; timestamp: number } | null = null;
 
 export interface AiReferrerSource {
   domain: string;
@@ -88,6 +104,10 @@ export interface AiReferrerData {
 }
 
 export async function fetchAiReferrerData(): Promise<AiReferrerData | null> {
+  if (referrerCache && Date.now() - referrerCache.timestamp < CACHE_TTL_MS) {
+    return referrerCache.data;
+  }
+
   const config = getPostHogQueryConfig();
   if (!config) return null;
 
@@ -176,51 +196,37 @@ export async function fetchAiReferrerData(): Promise<AiReferrerData | null> {
         queryPostHog(config, landingPagesQuery),
       ]);
 
-    // Parse by-domain results
-    const domainData = byDomainResult as {
-      results: Array<{
-        data: number[];
-        labels: string[];
-        count: number;
-        breakdown_value: string;
-      }>;
-    };
+    // Parse by-domain results (defensive: PostHog response shape may vary)
+    const domainResults = getResultsArray(byDomainResult);
 
-    const sources: AiReferrerSource[] = (domainData.results || [])
-      .filter((r) => AI_REFERRER_DOMAINS.some((d) => r.breakdown_value.includes(d)))
+    const sources: AiReferrerSource[] = domainResults
+      .filter((r) => r.breakdown_value && AI_REFERRER_DOMAINS.some((d) => String(r.breakdown_value).includes(d)))
       .map((r) => ({
-        domain: r.breakdown_value,
-        pageviews: r.count,
-        weeklyData: r.data,
-        weekLabels: r.labels,
+        domain: String(r.breakdown_value),
+        pageviews: Number(r.count) || 0,
+        weeklyData: Array.isArray(r.data) ? r.data.map(Number) : [],
+        weekLabels: Array.isArray(r.labels) ? r.labels.map(String) : [],
       }))
       .sort((a, b) => b.pageviews - a.pageviews);
 
     const totalAiReferrals = sources.reduce((sum, s) => sum + s.pageviews, 0);
 
     // Parse total pageviews
-    const totalData = totalResult as {
-      results: Array<{ count: number }>;
-    };
-    const totalPageviews = totalData.results?.[0]?.count || 0;
+    const totalResults = getResultsArray(totalResult);
+    const totalPageviews = Number(totalResults[0]?.count) || 0;
 
     // Parse landing pages
-    const landingData = landingPagesResult as {
-      results: Array<{
-        aggregated_value: number;
-        breakdown_value: string;
-      }>;
-    };
+    const landingResults = getResultsArray(landingPagesResult);
 
-    const landingPages: AiReferrerLandingPage[] = (landingData.results || [])
-      .filter((r) => r.breakdown_value !== "$$_posthog_breakdown_other_$$")
+    const landingPages: AiReferrerLandingPage[] = landingResults
+      .filter((r) => r.breakdown_value && r.breakdown_value !== "$$_posthog_breakdown_other_$$")
       .map((r) => ({
-        path: r.breakdown_value,
-        pageviews: r.aggregated_value,
+        path: String(r.breakdown_value),
+        pageviews: Number(r.aggregated_value) || 0,
       }))
       .sort((a, b) => b.pageviews - a.pageviews);
 
-    return {
+    const result: AiReferrerData = {
       sources,
       landingPages,
       totalAiReferrals,
@@ -231,6 +237,9 @@ export async function fetchAiReferrerData(): Promise<AiReferrerData | null> {
           : 0,
       period: "30d",
     };
+
+    referrerCache = { data: result, timestamp: Date.now() };
+    return result;
   } catch (err) {
     logger.error({ err }, "Failed to fetch AI referrer data from PostHog");
     return null;
