@@ -1155,6 +1155,7 @@
           }
           html += '    <a href="https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=' + encodeURIComponent(def.name) + '&organizationName=AgenticAdvertising.org&issueYear=' + new Date(mc.awarded_at).getFullYear() + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1);
           if (mc.certifier_public_id) {
+            html += '&certId=' + encodeURIComponent(mc.certifier_public_id);
             html += '&certUrl=' + encodeURIComponent('https://cert.io/c/' + mc.certifier_public_id);
           }
           html += '" target="_blank" rel="noopener" class="credential-link">Add to LinkedIn</a>';

@@ -78,6 +78,7 @@ function buildShareLinks(
       + `&name=${encodeURIComponent(credName)}`
       + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
       + `&issueYear=${year}&issueMonth=${month}`
+      + `&certId=${encodeURIComponent(certifierPublicId)}`
       + `&certUrl=${encodeURIComponent(certUrl)}`;
 
     lines.push(`- [View and share your credential](${certUrl})`);
