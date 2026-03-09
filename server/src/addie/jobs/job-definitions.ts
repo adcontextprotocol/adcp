@@ -30,7 +30,7 @@ import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { runGeoMonitorJob } from './geo-monitor.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
-import { autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
+import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -287,7 +287,16 @@ export function registerAllJobs(): void {
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: autoLinkUnmappedSlackUsers,
-    shouldLogResult: (r) => r.linked > 0 || r.errors > 0,
+    shouldLogResult: (r) => r.linked > 0 || r.pending_org_prospects_set > 0 || r.errors > 0,
+  });
+
+  jobScheduler.register({
+    name: 'domain-member-backfill',
+    description: 'Add verified-domain Slack users as org members if not already added',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    runner: autoAddVerifiedDomainUsersAsMembers,
+    shouldLogResult: (r) => r.added > 0 || r.errors > 0,
   });
 
   // GEO prompt monitor - checks LLM visibility for AdCP mentions
@@ -363,6 +372,7 @@ export const JOB_NAMES = {
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
   SLACK_AUTO_LINK: 'slack-auto-link',
+  DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   EVENT_REMINDER: 'event-reminder',
   GEO_MONITOR: 'geo-monitor',
 } as const;
