@@ -320,6 +320,7 @@
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
+              "docs/creative/catalog-schemas",
               "docs/creative/accessibility",
               "docs/creative/provenance",
               {
@@ -649,6 +650,7 @@
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
+              "docs/creative/catalog-schemas",
               "docs/creative/accessibility",
               "docs/creative/provenance",
               {

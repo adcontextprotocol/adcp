@@ -1,7 +1,8 @@
 ---
 title: Catalogs
 description: Typed data feeds — products, hotels, jobs, vehicles, stores, and more — that provide the items publishers render in ads
-keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hotel, flight, job, vehicle, real estate, education, destination, app, mobile app, sync_catalogs, catalog requirements]
+testable: true
+keywords: [catalogs, product feed, inventory, stores, promotions, offerings, hotel, flight, job, vehicle, real estate, education, destination, app, mobile app, sync_catalogs, catalog requirements, universal asset registry, asset registry]
 ---
 
 # Catalogs
@@ -13,6 +14,28 @@ Catalogs are a foundational building block in AdCP:
 - **Formats declare** what catalog types they need as `catalog` asset types in their `assets` array
 - **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
 - **Creatives reference** synced catalogs by `catalog_id` in the manifest's `assets` map instead of embedding items inline
+
+## Which catalog type should I use?
+
+Pick the catalog type that matches what you're advertising.
+
+| I'm advertising... | Catalog type | Item schema | Required fields |
+|---|---|---|---|
+| Physical products / ecommerce SKUs | `product` | *(your existing feed — Google Merchant, Shopify, etc.)* | Depends on feed format |
+| Job openings / recruitment | `job` | [JobItem](/docs/creative/catalog-schemas#job-catalog) | `job_id`, `title`, `company_name`, `description` |
+| Hotels / lodging | `hotel` | [HotelItem](/docs/creative/catalog-schemas#hotel-catalog) | `hotel_id`, `name`, `location` |
+| Vehicles (new or used) | `vehicle` | [VehicleItem](/docs/creative/catalog-schemas#vehicle-catalog) | `vehicle_id`, `title`, `make`, `model`, `year` |
+| Flights / air travel | `flight` | [FlightItem](/docs/creative/catalog-schemas#flight-catalog) | `flight_id`, `origin`, `destination` |
+| Real estate listings | `real_estate` | [RealEstateItem](/docs/creative/catalog-schemas#real-estate-catalog) | `listing_id`, `title`, `address` |
+| University programs / courses | `education` | [EducationItem](/docs/creative/catalog-schemas#education-catalog) | `program_id`, `name`, `school` |
+| Travel destinations | `destination` | [DestinationItem](/docs/creative/catalog-schemas#destination-catalog) | `destination_id`, `name` |
+| Mobile apps | `app` | [AppItem](/docs/creative/catalog-schemas#app-catalog) | `app_id`, `name`, `platform` |
+| Store locations | `store` | [StoreItem](#stores) | `store_id`, `name`, `location` |
+| Campaigns, services, events | `offering` | [Offering](#offerings) | `offering_id`, `name` |
+| Stock levels per location | `inventory` | *(your existing feed format)* | Depends on feed format |
+| Sales, deals, pricing | `promotion` | *(your existing feed format)* | Depends on feed format |
+
+Each vertical type (job through app) has a defined AdCP schema with examples — see the [catalog item schemas](/docs/creative/catalog-schemas) page for field tables and starter templates. Structural types (product, inventory, promotion) use freeform schemas that map to your existing feed format via `feed_format` and `feed_field_mappings`.
 
 ## Where sync_catalogs fits
 
@@ -82,10 +105,10 @@ Catalog types fall into two categories: **structural** types that describe the d
 | Type | Item Schema | Description |
 |------|-------------|-------------|
 | `offering` | [Offering](https://adcontextprotocol.org/schemas/v3/core/offering.json) | AdCP Offering objects — campaigns, vacancies, events, services |
-| `product` | *(freeform)* | Ecommerce product entries (Google Merchant Center, Shopify, etc.) |
-| `inventory` | *(freeform)* | Stock and availability per product per location |
-| `store` | [StoreItem](https://adcontextprotocol.org/schemas/latest/core/store-item.json) | Physical locations with addresses and catchment areas |
-| `promotion` | *(freeform)* | Sales, deals, and promotional pricing |
+| `product` | *(your existing feed format)* | Ecommerce product entries (Google Merchant Center, Shopify, etc.) |
+| `inventory` | *(your existing feed format)* | Stock and availability per product per location |
+| `store` | [StoreItem](https://adcontextprotocol.org/schemas/v3/core/store-item.json) | Physical locations with addresses and catchment areas |
+| `promotion` | *(your existing feed format)* | Sales, deals, and promotional pricing |
 
 ### Vertical types
 
@@ -93,14 +116,14 @@ Each vertical type has a defined AdCP item schema, so formats can declare `catal
 
 | Type | Item Schema | Maps To |
 |------|-------------|---------|
-| `hotel` | [HotelItem](https://adcontextprotocol.org/schemas/latest/core/hotel-item.json) | Google Hotel Center, Meta hotel catalogs |
-| `flight` | [FlightItem](https://adcontextprotocol.org/schemas/latest/core/flight-item.json) | Google DynamicFlightsAsset, Meta flight catalogs |
-| `job` | [JobItem](https://adcontextprotocol.org/schemas/latest/core/job-item.json) | LinkedIn Jobs XML, Google DynamicJobsAsset, schema.org JobPosting |
-| `vehicle` | [VehicleItem](https://adcontextprotocol.org/schemas/latest/core/vehicle-item.json) | Meta Automotive Inventory, Microsoft Auto Inventory feeds |
-| `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/latest/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
-| `education` | [EducationItem](https://adcontextprotocol.org/schemas/latest/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
-| `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/latest/core/destination-item.json) | Meta destination catalogs, Google travel ads |
-| `app` | [AppItem](https://adcontextprotocol.org/schemas/latest/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
+| `hotel` | [HotelItem](https://adcontextprotocol.org/schemas/v3/core/hotel-item.json) | Google Hotel Center, Meta hotel catalogs |
+| `flight` | [FlightItem](https://adcontextprotocol.org/schemas/v3/core/flight-item.json) | Google DynamicFlightsAsset, Meta flight catalogs |
+| `job` | [JobItem](https://adcontextprotocol.org/schemas/v3/core/job-item.json) | LinkedIn Jobs XML, Google DynamicJobsAsset, schema.org JobPosting |
+| `vehicle` | [VehicleItem](https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json) | Meta Automotive Inventory, Microsoft Auto Inventory feeds |
+| `real_estate` | [RealEstateItem](https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json) | Google DynamicRealEstateAsset, Meta home listing catalogs |
+| `education` | [EducationItem](https://adcontextprotocol.org/schemas/v3/core/education-item.json) | Google DynamicEducationAsset, schema.org Course |
+| `destination` | [DestinationItem](https://adcontextprotocol.org/schemas/v3/core/destination-item.json) | Meta destination catalogs, Google travel ads |
+| `app` | [AppItem](https://adcontextprotocol.org/schemas/v3/core/app-item.json) | Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, Snapchat App Install Ads |
 
 ## Typed catalog assets
 
@@ -146,9 +169,9 @@ Formats use `field_bindings` (see [Format catalog requirements](#format-catalog-
 
 ## The Catalog object
 
-**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/latest/core/catalog.json)
+**Schema URL**: [`/schemas/core/catalog.json`](https://adcontextprotocol.org/schemas/v3/core/catalog.json)
 
-```typescript
+```typescript test=false
 interface Catalog {
   // Identity (required for sync_catalogs, optional for inline use)
   catalog_id?: string;  // Buyer's identifier — also used to reference synced catalogs
@@ -446,6 +469,10 @@ Each mapping entry is one of:
 
 Multiple mappings can assemble a nested object. The `price.amount` and `price.currency` mappings above each write one field of the `price` object independently.
 
+## Item schema reference
+
+Each vertical catalog type has a defined item schema with field tables, required fields, and starter templates. See **[Catalog item schemas](/docs/creative/catalog-schemas)** for the complete reference with minimal and full examples for every vertical type.
+
 ## Format catalog requirements
 
 Formats that render product listings, store locators, or promotional content declare what catalog feeds they need as `catalog` asset types in their `assets` array. Each catalog asset carries `requirements` with fields like `catalog_type`, `min_items`, and `required_fields`. This tells buying agents which catalogs to sync before submitting creatives.
@@ -593,7 +620,7 @@ When a format declares catalog asset types, the buying agent syncs the required 
 
 An Offering is an individual promotable item within an `offering`-type catalog — a campaign, product, service, promotion, or vacancy. Each offering is a semantic unit with its own name, validity window, landing URL, creative assets, and geographic scope.
 
-```typescript
+```typescript test=false
 interface Offering {
   // Identity (required)
   offering_id: string;
@@ -645,11 +672,11 @@ interface Offering {
 
 ### OfferingAssetGroup
 
-**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/latest/core/offering-asset-group.json)
+**Schema URL**: [`/schemas/core/offering-asset-group.json`](https://adcontextprotocol.org/schemas/v3/core/offering-asset-group.json)
 
 A typed pool of creative assets within an offering. Uses the same `asset_group_id` vocabulary as format-level asset definitions, enabling formats to declare per-group constraints on what each offering must provide.
 
-```typescript
+```typescript test=false
 interface OfferingAssetGroup {
   asset_group_id: string;        // e.g., 'headlines', 'images_landscape'
   asset_type: AssetContentType;  // Type of all items in this group
@@ -665,11 +692,11 @@ interface OfferingAssetGroup {
 
 ### OfferingAssetConstraint
 
-**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/latest/core/requirements/offering-asset-constraint.json)
+**Schema URL**: [`/schemas/core/requirements/offering-asset-constraint.json`](https://adcontextprotocol.org/schemas/v3/core/requirements/offering-asset-constraint.json)
 
 Declared by a format to specify what asset groups each offering must provide. Used within a catalog asset's `requirements` to constrain what offerings in a catalog must provide.
 
-```typescript
+```typescript test=false
 interface OfferingAssetConstraint {
   asset_group_id: string;
   asset_type: AssetContentType;
@@ -745,11 +772,11 @@ Call `list_creative_formats` and check the format's `assets` array for `catalog`
 
 ## Stores
 
-**Schema URL**: [`/schemas/core/store-item.json`](https://adcontextprotocol.org/schemas/latest/core/store-item.json)
+**Schema URL**: [`/schemas/core/store-item.json`](https://adcontextprotocol.org/schemas/v3/core/store-item.json)
 
 A StoreItem represents a physical location within a `store`-type catalog. Each store carries coordinates, an optional address, and one or more catchment areas that define the geographic reach around that location.
 
-```typescript
+```typescript test=false
 interface StoreItem {
   store_id: string;              // Unique identifier
   name: string;                  // Human-readable name
@@ -785,7 +812,7 @@ interface StoreItem {
 
 ### Catchment areas
 
-**Schema URL**: [`/schemas/core/catchment.json`](https://adcontextprotocol.org/schemas/latest/core/catchment.json)
+**Schema URL**: [`/schemas/core/catchment.json`](https://adcontextprotocol.org/schemas/v3/core/catchment.json)
 
 A catchment defines the geographic area a store serves. Three methods are supported — provide exactly one per catchment:
 
