@@ -11,6 +11,7 @@ primary_region = 'iad'
 # If this fails, the deployment is rolled back automatically
 [deploy]
   release_command = "node dist/db/migrate.js"
+  release_command_timeout = "15m"
   strategy = "rolling"
 
 [env]

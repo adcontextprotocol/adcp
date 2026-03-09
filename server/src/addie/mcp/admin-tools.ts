@@ -48,7 +48,7 @@ import {
   mapIndustryToCompanyType,
 } from '../../services/lusha.js';
 import { COMPANY_TYPE_VALUES } from '../../config/company-types.js';
-import { createProspect } from '../../services/prospect.js';
+import { createProspect, updateProspect } from '../../services/prospect.js';
 import {
   getAllFeedsWithStats,
   addFeed,
@@ -86,6 +86,21 @@ import {
   type EscalationStatus,
 } from '../../db/escalation-db.js';
 import { sendDirectMessage } from '../../slack/client.js';
+import {
+  computePipelineStage,
+  PIPELINE_STAGE_EMOJI,
+  computeEngagementLevel,
+  ENGAGEMENT_LABELS,
+  type PipelineStage,
+} from '../../services/account-lifecycle.js';
+import {
+  manualOutreach,
+  manualOutreachWithGoal,
+  canContactUser,
+} from '../services/proactive-outreach.js';
+import * as outboundDb from '../../db/outbound-db.js';
+import { getActionItems as getActionItemsDb, type ActionStatus, type ActionType, type ActionPriority } from '../../db/account-management-db.js';
+import { captureEvent } from '../../utils/posthog.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -252,95 +267,6 @@ export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> 
   }
 }
 
-
-/**
- * Compute the unified lifecycle stage for an organization.
- * This combines prospect_status and subscription_status into a single view.
- *
- * Lifecycle stages:
- * - prospect: Not contacted yet
- * - contacted: Outreach sent
- * - responded: They replied
- * - interested: Expressed interest
- * - negotiating: In discussions / invoice sent
- * - member: Active subscription
- * - churned: Was a member, subscription ended
- * - declined: Not interested
- */
-export type LifecycleStage =
-  | 'prospect'
-  | 'contacted'
-  | 'responded'
-  | 'interested'
-  | 'negotiating'
-  | 'member'
-  | 'churned'
-  | 'declined';
-
-// Emoji mapping for lifecycle stages - used in multiple places
-export const LIFECYCLE_STAGE_EMOJI: Record<LifecycleStage, string> = {
-  prospect: '🔍',
-  contacted: '📧',
-  responded: '💬',
-  interested: '⭐',
-  negotiating: '🤝',
-  member: '✅',
-  churned: '⚠️',
-  declined: '❌',
-};
-
-export function computeLifecycleStage(org: {
-  subscription_status?: string | null;
-  prospect_status?: string | null;
-  invoice_requested_at?: Date | null;
-}): LifecycleStage {
-  // Active subscription (including trial) = member
-  if (org.subscription_status === 'active' || org.subscription_status === 'trialing') {
-    return 'member';
-  }
-
-  // Subscription ended or payment failed = churned
-  if (
-    org.subscription_status === 'canceled' ||
-    org.subscription_status === 'past_due' ||
-    org.subscription_status === 'unpaid' ||
-    org.subscription_status === 'incomplete_expired'
-  ) {
-    return 'churned';
-  }
-
-  // Incomplete subscription = started payment but didn't finish
-  if (org.subscription_status === 'incomplete') {
-    return 'negotiating';
-  }
-
-  // If they have an invoice requested, they're at least negotiating
-  // (only promote if they're still in early pipeline stages)
-  if (org.invoice_requested_at && (!org.prospect_status || org.prospect_status === 'prospect' || org.prospect_status === 'contacted')) {
-    return 'negotiating';
-  }
-
-  // Map prospect_status to lifecycle stage
-  const prospectStatusMap: Record<string, LifecycleStage> = {
-    prospect: 'prospect',
-    contacted: 'contacted',
-    responded: 'responded',
-    interested: 'interested',
-    negotiating: 'negotiating',
-    converted: 'member', // legacy value
-    joined: 'member', // legacy value
-    declined: 'declined',
-    inactive: 'declined',
-    disqualified: 'declined',
-  };
-
-  if (org.prospect_status && prospectStatusMap[org.prospect_status]) {
-    return prospectStatusMap[org.prospect_status];
-  }
-
-  // Default: unknown org is a prospect
-  return 'prospect';
-}
 
 /**
  * Admin tool definitions - includes both billing/invoice tools and prospect management tools
@@ -1444,6 +1370,109 @@ For logo changes, use update_member_logo instead.`,
       required: ['domain'],
     },
   },
+
+  // ============================================
+  // OUTREACH TOOLS
+  // ============================================
+  {
+    name: 'get_outreach_stats',
+    description: 'Get outreach performance metrics: messages sent, response rates, and per-goal breakdown. Use this when asked "how is outreach going?" or about SDR performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'number',
+          description: 'Filter to a specific goal ID (optional — omit for all goals)',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_outreach_history',
+    description: 'Get outreach message history. With a slack_user_id, returns that person\'s full outreach timeline with goals and responses. Without, returns recent system-wide outreach.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID to get history for (optional — omit for recent system-wide)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
+  {
+    name: 'send_outreach',
+    description: 'Trigger outreach to a Slack user. Uses the outbound planner to select the best goal, or specify a goal_id. Checks eligibility first. Set dry_run=true to check eligibility without sending. Use lookup_person for full person context.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID to contact',
+        },
+        goal_id: {
+          type: 'number',
+          description: 'Specific outreach goal ID to use (optional — planner selects if omitted)',
+        },
+        context: {
+          type: 'string',
+          description: 'Admin context to record before sending (e.g., "Met at conference, interested in working groups")',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'If true, check eligibility without sending. Returns whether the user can be contacted and their capabilities.',
+        },
+      },
+      required: ['slack_user_id'],
+    },
+  },
+  {
+    name: 'lookup_person',
+    description: 'Look up a person by Slack user ID or email. Returns their org, insights, outreach history, goal progress, and capabilities. Use for person-level context (vs get_account for org-level).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Slack user ID (U...) or email address',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_action_items',
+    description: 'Get open action items from the outreach pipeline — nudges, warm leads, momentum signals, follow-ups. Shows what needs attention today. Use to answer "who needs follow-up?" or "what\'s in my pipeline?"',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: {
+          type: 'string',
+          description: 'Filter by status: open, snoozed, completed, dismissed. Default: open',
+          enum: ['open', 'snoozed', 'completed', 'dismissed'],
+        },
+        action_type: {
+          type: 'string',
+          description: 'Filter by type: nudge, warm_lead, momentum, feedback, alert, follow_up, celebration',
+          enum: ['nudge', 'warm_lead', 'momentum', 'feedback', 'alert', 'follow_up', 'celebration'],
+        },
+        priority: {
+          type: 'string',
+          description: 'Filter by priority: high, medium, low',
+          enum: ['high', 'medium', 'low'],
+        },
+        limit: {
+          type: 'number',
+          description: 'Max items to return. Default 20.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -1860,11 +1889,11 @@ export function createAdminToolHandlers(
 
         for (let i = 0; i < result.rows.length; i++) {
           const org = result.rows[i];
-          const lifecycleStage = computeLifecycleStage(org);
+          const lifecycleStage = computePipelineStage(org);
           response += `**${i + 1}. ${org.name}**\n`;
           if (org.email_domain) response += `   Domain: ${org.email_domain}\n`;
           if (org.company_type) response += `   Type: ${org.company_type}\n`;
-          response += `   Lifecycle: ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
+          response += `   Lifecycle: ${PIPELINE_STAGE_EMOJI[lifecycleStage]} ${lifecycleStage}\n`;
           response += `\n`;
         }
 
@@ -1876,7 +1905,7 @@ export function createAdminToolHandlers(
       const orgId = org.workos_organization_id;
 
       // Compute the unified lifecycle stage
-      const lifecycleStage = computeLifecycleStage(org);
+      const lifecycleStage = computePipelineStage(org);
 
       // Gather all the data in parallel
       const [
@@ -1888,6 +1917,7 @@ export function createAdminToolHandlers(
         engagementSignals,
         pendingInvoicesResult,
         subscriptionHistoryResult,
+        stakeholdersResult,
       ] = await Promise.all([
         // Slack users count for this org (mapped members)
         pool.query(
@@ -1952,6 +1982,14 @@ export function createAdminToolHandlers(
            LIMIT 10`,
           [orgId]
         ),
+        // Stakeholders (owner, lead, etc.)
+        pool.query(
+          `SELECT user_name, user_email, role, notes
+           FROM org_stakeholders
+           WHERE organization_id = $1
+           ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END, created_at`,
+          [orgId]
+        ),
       ]);
 
       const slackUserCount = parseInt(slackUsersResult.rows[0]?.slack_user_count || '0');
@@ -1962,12 +2000,13 @@ export function createAdminToolHandlers(
       const recentActivities = activitiesResult.rows;
       const pendingInvoices = pendingInvoicesResult;
       const subscriptionHistory = subscriptionHistoryResult.rows;
+      const stakeholders = stakeholdersResult.rows;
 
       // Build comprehensive response
       let response = `## ${org.name}\n\n`;
 
       // Lifecycle stage - the unified view (prominently displayed at top)
-      response += `**Lifecycle Stage:** ${LIFECYCLE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
+      response += `**Lifecycle Stage:** ${PIPELINE_STAGE_EMOJI[lifecycleStage]} **${lifecycleStage.charAt(0).toUpperCase() + lifecycleStage.slice(1)}**\n`;
 
       // Basic info
       if (org.company_type) response += `**Type:** ${org.company_type}\n`;
@@ -1982,6 +2021,18 @@ export function createAdminToolHandlers(
       if (org.revenue_tier) response += `**Revenue Tier:** ${formatRevenueTier(org.revenue_tier)}\n`;
       response += `**ID:** ${orgId}\n`;
       if (org.stripe_customer_id) response += `**Stripe Customer:** \`${org.stripe_customer_id}\`\n`;
+      if (stakeholders.length > 0) {
+        const owner = stakeholders.find((s: { role: string }) => s.role === 'owner');
+        if (owner) {
+          response += `**Account Lead:** ${owner.user_name}`;
+          if (owner.user_email) response += ` (${owner.user_email})`;
+          response += '\n';
+        }
+        const others = stakeholders.filter((s: { role: string }) => s.role !== 'owner');
+        if (others.length > 0) {
+          response += `**Stakeholders:** ${others.map((s: { user_name: string; role: string }) => `${s.user_name} (${s.role})`).join(', ')}\n`;
+        }
+      }
       response += '\n';
 
       // Membership details (if member or has subscription history)
@@ -2097,17 +2148,9 @@ export function createAdminToolHandlers(
 
       // Engagement
       response += `### Engagement\n`;
-      const engagementLabels = ['', 'Low', 'Some', 'Moderate', 'High', 'Very High'];
-      let engagementLevel = 1;
-      if (engagementSignals.interest_level === 'very_high') engagementLevel = 5;
-      else if (engagementSignals.interest_level === 'high') engagementLevel = 4;
-      else if (engagementSignals.working_group_count > 0) engagementLevel = 4;
-      else if (engagementSignals.has_member_profile) engagementLevel = 4;
-      else if (engagementSignals.login_count_30d > 3) engagementLevel = 3;
-      else if (slackUserCount > 0) engagementLevel = 3;
-      else if (engagementSignals.login_count_30d > 0) engagementLevel = 2;
+      const engagementLevel = computeEngagementLevel(engagementSignals, slackUserCount);
 
-      response += `**Level:** ${engagementLabels[engagementLevel]} (${engagementLevel}/5)\n`;
+      response += `**Level:** ${ENGAGEMENT_LABELS[engagementLevel]} (${engagementLevel}/5)\n`;
       if (engagementSignals.login_count_30d > 0) {
         response += `**Dashboard logins (30d):** ${engagementSignals.login_count_30d}\n`;
       }
@@ -2235,75 +2278,31 @@ export function createAdminToolHandlers(
   // Update prospect
   handlers.set('update_prospect', async (input) => {
 
-    const pool = getPool();
     const orgId = input.org_id as string;
 
-    // Verify org exists
-    const existing = await pool.query(
-      `SELECT name, prospect_notes FROM organizations WHERE workos_organization_id = $1`,
-      [orgId]
-    );
+    // Map Addie's input field names to DB column names
+    const fields: Record<string, unknown> = {};
+    if (input.company_type !== undefined) fields.company_type = input.company_type;
+    if (input.status !== undefined) fields.prospect_status = input.status;
+    if (input.interest_level !== undefined) fields.interest_level = input.interest_level;
+    if (input.contact_name !== undefined) fields.prospect_contact_name = input.contact_name;
+    if (input.contact_email !== undefined) fields.prospect_contact_email = input.contact_email;
+    if (input.domain !== undefined) fields.email_domain = input.domain;
+    if (input.notes !== undefined) fields.prospect_notes = input.notes;
 
-    if (existing.rows.length === 0) {
-      return `❌ Organization not found with ID: ${orgId}`;
-    }
+    const result = await updateProspect(orgId, {
+      fields,
+      notesMode: 'append',
+      interestLevelSetBy: 'Addie',
+      triggerEnrichment: true,
+    });
 
-    const orgName = existing.rows[0].name;
-    const updates: string[] = [];
-    const values: unknown[] = [];
-    let paramIndex = 1;
-
-    if (input.company_type) {
-      updates.push(`company_type = $${paramIndex++}`);
-      values.push(input.company_type);
-    }
-    if (input.status) {
-      updates.push(`prospect_status = $${paramIndex++}`);
-      values.push(input.status);
-    }
-    if (input.interest_level) {
-      updates.push(`interest_level = $${paramIndex++}`);
-      values.push(input.interest_level);
-      updates.push(`interest_level_set_by = $${paramIndex++}`);
-      values.push('Addie');
-      updates.push(`interest_level_set_at = NOW()`);
-    }
-    if (input.contact_name) {
-      updates.push(`prospect_contact_name = $${paramIndex++}`);
-      values.push(input.contact_name);
-    }
-    if (input.contact_email) {
-      updates.push(`prospect_contact_email = $${paramIndex++}`);
-      values.push(input.contact_email);
-    }
-    if (input.domain) {
-      updates.push(`email_domain = $${paramIndex++}`);
-      values.push(input.domain);
-    }
-    if (input.notes) {
-      // Append to existing notes with timestamp
-      const timestamp = new Date().toISOString().split('T')[0];
-      const existingNotes = existing.rows[0].prospect_notes || '';
-      const newNotes = existingNotes
-        ? `${existingNotes}\n\n[${timestamp}] ${input.notes}`
-        : `[${timestamp}] ${input.notes}`;
-      updates.push(`prospect_notes = $${paramIndex++}`);
-      values.push(newNotes);
+    if (!result.success) {
+      return `❌ ${result.error}`;
     }
 
-    if (updates.length === 0) {
-      return `No updates provided. Specify at least one field to update (company_type, status, interest_level, contact_name, contact_email, domain, notes).`;
-    }
-
-    updates.push(`updated_at = NOW()`);
-    values.push(orgId);
-
-    await pool.query(
-      `UPDATE organizations SET ${updates.join(', ')} WHERE workos_organization_id = $${paramIndex}`,
-      values
-    );
-
-    let response = `✅ Updated **${orgName}**\n\n`;
+    const updated = result.updated as Record<string, unknown>;
+    let response = `✅ Updated **${updated.name}**\n\n`;
     if (input.company_type) response += `• Company type → ${input.company_type}\n`;
     if (input.status) response += `• Status → ${input.status}\n`;
     if (input.interest_level) response += `• Interest level → ${input.interest_level}\n`;
@@ -2312,12 +2311,8 @@ export function createAdminToolHandlers(
     if (input.domain) response += `• Domain → ${input.domain}\n`;
     if (input.notes) response += `• Added note: "${input.notes}"\n`;
 
-    // Trigger enrichment if domain was added
     if (input.domain && isLushaConfigured()) {
       response += `\n_Enriching with new domain..._`;
-      enrichOrganization(orgId, input.domain as string).catch(err => {
-        logger.warn({ err, orgId }, 'Background enrichment failed after update');
-      });
     }
 
     return response;
@@ -7745,6 +7740,337 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, orgName, slug }, 'Error updating member profile');
       return `❌ Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // OUTREACH HANDLERS
+  // ============================================
+
+  handlers.set('get_outreach_stats', async (input) => {
+    const goalIdFilter = input.goal_id as number | undefined;
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      const [timeStats, goalStats] = await Promise.all([
+        insightsDb.getOutreachTimeStats(),
+        insightsDb.getOutreachGoalStats(),
+      ]);
+
+      let response = '## Outreach performance\n\n';
+      response += `**Today:** ${timeStats.sent_today} sent, ${timeStats.responded_today} responded\n`;
+      response += `**This week:** ${timeStats.sent_this_week} sent, ${timeStats.responded_this_week} responded\n`;
+      response += `**This month:** ${timeStats.sent_this_month} sent, ${timeStats.responded_this_month} responded\n`;
+      response += `**All time:** ${timeStats.total_sent} sent, ${timeStats.total_responded} responded`;
+      if (timeStats.overall_response_rate_pct !== null) {
+        response += ` (${timeStats.overall_response_rate_pct}% response rate)`;
+      }
+      response += `\n**Insights gathered:** ${timeStats.total_insights}\n`;
+
+      const activeGoals = goalIdFilter
+        ? goalStats.filter(g => g.goal_id === goalIdFilter)
+        : goalStats.filter(g => g.total_sent > 0);
+
+      if (activeGoals.length > 0) {
+        response += '\n## Per-goal breakdown\n\n';
+        for (const g of activeGoals) {
+          response += `### ${g.goal_name} (${g.goal_type})\n`;
+          response += `- Sent: ${g.total_sent} | Responded: ${g.total_responded} | Rate: ${g.response_rate_pct ?? 0}%\n`;
+          response += `- Insights: ${g.total_insights} | Conversions: ${g.converted_count} | Interested: ${g.interested_count}\n`;
+          if (g.positive_responses || g.negative_responses || g.refusal_responses) {
+            response += `- Sentiment: ${g.positive_responses} positive, ${g.neutral_responses} neutral, ${g.negative_responses} negative, ${g.refusal_responses} refusal\n`;
+          }
+          if (g.last_outreach_at) {
+            response += `- Last sent: ${formatDate(new Date(g.last_outreach_at))}\n`;
+          }
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching outreach stats');
+      return '❌ Failed to fetch outreach stats.';
+    }
+  });
+
+  handlers.set('get_outreach_history', async (input) => {
+    const slackUserId = input.slack_user_id as string | undefined;
+    const limit = (input.limit as number) || 20;
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      if (slackUserId) {
+        // Per-user timeline: outreach + goal history
+        const [userOutreach, goalHistory] = await Promise.all([
+          insightsDb.getOutreachForUser(slackUserId, limit),
+          outboundDb.getUserGoalHistory(slackUserId),
+        ]);
+
+        let response = `## Outreach timeline for ${userOutreach[0]?.slack_display_name || userOutreach[0]?.slack_real_name || slackUserId}\n\n`;
+
+        if (userOutreach.length === 0 && goalHistory.length === 0) {
+          return response + 'No outreach history found for this user.';
+        }
+
+        if (userOutreach.length > 0) {
+          response += '### Messages sent\n';
+          for (const o of userOutreach) {
+            const date = formatDate(new Date(o.sent_at));
+            const responded = o.user_responded ? '✅ responded' : '⏳ no response';
+            response += `- **${date}** (${o.outreach_type}): ${responded}`;
+            if (o.response_sentiment) response += ` | sentiment: ${o.response_sentiment}`;
+            if (o.response_intent) response += ` | intent: ${o.response_intent}`;
+            response += '\n';
+            if (o.initial_message) {
+              const preview = o.initial_message.substring(0, 120);
+              response += `  > ${preview}${o.initial_message.length > 120 ? '...' : ''}\n`;
+            }
+            if (o.user_responded) {
+              response += `  Response: ${o.response_text || '(no text recorded)'}\n`;
+              response += `  Sentiment: ${o.response_sentiment || 'unknown'}\n`;
+            }
+          }
+        }
+
+        if (goalHistory.length > 0) {
+          response += '\n### Goal history\n';
+          for (const g of goalHistory) {
+            response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)`;
+            if (g.planner_reason) response += ` — ${g.planner_reason}`;
+            if (g.response_sentiment) response += ` | ${g.response_sentiment}`;
+            response += '\n';
+          }
+        }
+
+        return response;
+      } else {
+        // System-wide recent outreach
+        const recent = await insightsDb.getRecentOutreach(limit);
+
+        let response = `## Recent outreach (last ${recent.length})\n\n`;
+        for (const o of recent) {
+          const name = o.slack_display_name || o.slack_real_name || o.slack_user_id;
+          const date = formatDate(new Date(o.sent_at));
+          const responded = o.user_responded ? '✅' : '⏳';
+          response += `- ${responded} **${name}** — ${date} (${o.outreach_type})`;
+          if (o.response_sentiment) response += ` | ${o.response_sentiment}`;
+          response += '\n';
+          if (o.user_responded && o.response_text) {
+            response += `  Response: ${o.response_text}\n`;
+          }
+        }
+
+        return response;
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error fetching outreach history');
+      return '❌ Failed to fetch outreach history.';
+    }
+  });
+
+  handlers.set('send_outreach', async (input) => {
+    const slackUserId = input.slack_user_id as string;
+    const goalId = input.goal_id as number | undefined;
+    const context = input.context as string | undefined;
+
+    if (!slackUserId) {
+      return '❌ slack_user_id is required.';
+    }
+
+    // Build triggeredBy from member context
+    const triggeredBy = memberContext?.workos_user ? {
+      id: memberContext.workos_user.workos_user_id,
+      name: memberContext.workos_user.first_name
+        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
+        : memberContext.workos_user.email,
+      email: memberContext.workos_user.email,
+    } : undefined;
+
+    try {
+      // Check eligibility first
+      const eligibility = await canContactUser(slackUserId);
+      if (!eligibility.canContact) {
+        return `❌ Cannot contact this user: ${eligibility.reason}`;
+      }
+
+      // Dry run: return eligibility info without sending
+      if (input.dry_run) {
+        const capabilities = await outboundDb.getMemberCapabilities(slackUserId).catch(() => null);
+        let dryRunResponse = `Eligible to contact ${slackUserId}.`;
+        if (capabilities) {
+          dryRunResponse += `\nAccount linked: ${capabilities.account_linked ? 'yes' : 'no'}`;
+          dryRunResponse += `\nProfile complete: ${capabilities.profile_complete ? 'yes' : 'no'}`;
+          dryRunResponse += `\nWorking groups: ${capabilities.working_group_count}`;
+          dryRunResponse += `\nSlack messages (30d): ${capabilities.slack_message_count_30d}`;
+        }
+        return dryRunResponse;
+      }
+
+      let result;
+      if (goalId) {
+        result = await manualOutreachWithGoal(slackUserId, goalId, context, triggeredBy);
+      } else {
+        result = await manualOutreach(slackUserId, triggeredBy);
+      }
+
+      if (result.success) {
+        captureEvent(slackUserId, 'admin_tool_used', {
+          tool_name: 'send_outreach',
+          triggered_by: triggeredBy?.id,
+          goal_id: goalId,
+          is_manual: true,
+        });
+        let response = `✅ Outreach sent to ${slackUserId}`;
+        if (result.outreach_id) response += ` (outreach #${result.outreach_id})`;
+        if (goalId) response += ` using goal #${goalId}`;
+        if (triggeredBy) response += `\nAuto-assigned ${triggeredBy.name} as account owner.`;
+        return response;
+      } else {
+        return `❌ Outreach failed: ${result.error}`;
+      }
+    } catch (error) {
+      logger.error({ error, slackUserId }, 'Error sending outreach');
+      return `❌ Failed to send outreach: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('lookup_person', async (input) => {
+    const queryStr = input.query as string;
+
+    if (!queryStr) {
+      return '❌ query is required (Slack user ID or email).';
+    }
+
+    const pool = getPool();
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      // Look up by slack_user_id or email
+      const isSlackId = queryStr.startsWith('U');
+      const userResult = await pool.query(
+        isSlackId
+          ? `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`
+          : `SELECT * FROM slack_user_mappings WHERE slack_email = $1`,
+        [queryStr]
+      );
+
+      if (userResult.rows.length === 0) {
+        return `No person found for "${queryStr}".`;
+      }
+
+      const user = userResult.rows[0];
+      const slackUserId = user.slack_user_id;
+
+      // Parallel lookups
+      const [orgResult, insights, goalHistory, outreachHistory, eligibility] = await Promise.all([
+        user.workos_user_id
+          ? pool.query(
+              `SELECT o.name, o.workos_organization_id, o.subscription_status
+               FROM organizations o
+               JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+               WHERE om.workos_user_id = $1
+               LIMIT 1`,
+              [user.workos_user_id]
+            )
+          : Promise.resolve({ rows: [] }),
+        insightsDb.getInsightsForUser(slackUserId),
+        outboundDb.getUserGoalHistory(slackUserId),
+        insightsDb.getOutreachForUser(slackUserId, 10),
+        canContactUser(slackUserId),
+      ]);
+
+      const displayName = user.slack_display_name || user.slack_real_name || slackUserId;
+      let response = `## ${displayName}\n\n`;
+      response += `**Slack ID:** ${slackUserId}\n`;
+      if (user.slack_email) response += `**Email:** ${user.slack_email}\n`;
+      response += `**Account linked:** ${user.workos_user_id ? 'yes' : 'no'}\n`;
+      response += `**Outreach eligible:** ${eligibility.canContact ? 'yes' : `no (${eligibility.reason})`}\n`;
+      if (user.last_outreach_at) {
+        const days = Math.floor((Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24));
+        response += `**Last contacted:** ${formatDate(new Date(user.last_outreach_at))} (${days} days ago)\n`;
+      }
+      if (user.outreach_opt_out) response += `**Opted out:** yes\n`;
+
+      // Organization
+      if (orgResult.rows.length > 0) {
+        const org = orgResult.rows[0];
+        response += `\n### Organization\n`;
+        response += `**${org.name}** (${org.workos_organization_id})\n`;
+        response += `Status: ${org.subscription_status || 'no subscription'}\n`;
+      }
+
+      // Insights
+      if (insights.length > 0) {
+        response += `\n### Insights (${insights.length})\n`;
+        for (const i of insights.slice(0, 8)) {
+          response += `- **${i.insight_type_name || 'unknown'}**: ${i.value}`;
+          if (i.confidence) response += ` (confidence: ${i.confidence})`;
+          response += '\n';
+        }
+      }
+
+      // Outreach history
+      if (outreachHistory.length > 0) {
+        response += `\n### Outreach history (${outreachHistory.length})\n`;
+        for (const o of outreachHistory) {
+          const date = formatDate(new Date(o.sent_at));
+          const status = o.user_responded ? '✅ responded' : '⏳ no response';
+          response += `- ${date}: ${o.outreach_type} — ${status}`;
+          if (o.response_sentiment) response += ` (${o.response_sentiment})`;
+          response += '\n';
+        }
+      }
+
+      // Goal history
+      if (goalHistory.length > 0) {
+        response += `\n### Goal progress (${goalHistory.length})\n`;
+        for (const g of goalHistory) {
+          response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query: queryStr }, 'Error looking up person');
+      return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_action_items', async (input) => {
+    const status = (input.status as ActionStatus) || 'open';
+    const actionType = input.action_type as ActionType | undefined;
+    const priority = input.priority as ActionPriority | undefined;
+    const limit = (input.limit as number) || 20;
+
+    try {
+      const items = await getActionItemsDb({
+        status,
+        actionType,
+        priority,
+        limit,
+      });
+
+      if (items.length === 0) {
+        return `No ${status} action items found${actionType ? ` of type "${actionType}"` : ''}.`;
+      }
+
+      const summary = items.map(item => {
+        const parts = [
+          `#${item.id} [${item.priority.toUpperCase()}] ${item.action_type}: ${item.title}`,
+        ];
+        if (item.description) parts.push(`  ${item.description}`);
+        if (item.slack_user_id) parts.push(`  User: ${item.slack_user_id}`);
+        if (item.org_id) parts.push(`  Org: ${item.org_id}`);
+        if (item.assigned_to) parts.push(`  Assigned to: ${item.assigned_to}`);
+        if (item.snoozed_until) parts.push(`  Snoozed until: ${new Date(item.snoozed_until).toLocaleDateString()}`);
+        parts.push(`  Created: ${new Date(item.created_at).toLocaleDateString()}`);
+        return parts.join('\n');
+      }).join('\n\n');
+
+      return `${items.length} ${status} action items:\n\n${summary}`;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching action items');
+      return `Failed to fetch action items: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

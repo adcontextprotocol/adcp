@@ -140,13 +140,13 @@
         <div class="card-cta">Manage referrals →</div>
       </a>
 
-      <!-- Pipeline card -->
-      <a href="/manage/prospects" class="summary-card">
+      <!-- Accounts card -->
+      <a href="/manage/accounts" class="summary-card">
         <div class="card-header">
-          <span class="card-icon">🎯</span>
+          <span class="card-icon">📋</span>
           <div>
-            <div class="card-title">Pipeline</div>
-            <div class="card-subtitle">Prospect and account funnel</div>
+            <div class="card-title">Accounts</div>
+            <div class="card-subtitle">Organizations and pipeline</div>
           </div>
         </div>
         <div class="metrics-row">
@@ -159,7 +159,7 @@
             <div class="metric-label">Needs attention</div>
           </div>
         </div>
-        <div class="card-cta">View prospects →</div>
+        <div class="card-cta">View accounts →</div>
       </a>
 
       <!-- Revenue card -->
@@ -220,7 +220,7 @@
         if (viewCountsRes.ok) {
           const counts = await viewCountsRes.json();
           setText('hotProspects', counts.hot ?? '—');
-          setText('needsAttention', counts.needsAttention ?? '—');
+          setText('needsAttention', counts.needs_attention ?? '—');
         }
 
         if (analyticsRes.ok) {

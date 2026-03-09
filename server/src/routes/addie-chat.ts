@@ -565,6 +565,8 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
 
   // GET / - Serve the chat page (mounted at /chat, so this serves /chat)
   pageRouter.get("/", optionalAuth, (req, res) => {
+    // Video call iframe needs camera, microphone, and autoplay permissions
+    res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
     serveHtmlWithConfig(req, res, "chat.html").catch((err) => {
       logger.error({ err }, "Error serving chat page");
       res.status(500).send("Internal server error");
@@ -1145,7 +1147,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const channel = (req.query.channel as string) || 'web';
 
       // Validate channel
-      if (channel !== 'web' && channel !== 'slack') {
+      if (channel !== 'web' && channel !== 'slack' && channel !== 'video') {
         return res.status(400).json({ error: "Invalid channel" });
       }
 
@@ -1159,6 +1161,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         const slackIdPattern = /^[A-Z0-9]{9,12}:\d+\.\d{6}$/;
         if (!slackIdPattern.test(conversationId)) {
           return res.status(400).json({ error: "Invalid Slack conversation ID format" });
+        }
+      } else if (channel === 'video') {
+        const videoIdPattern = /^addie-[0-9a-f-]{36}$/;
+        if (!videoIdPattern.test(conversationId)) {
+          return res.status(400).json({ error: "Invalid video conversation ID format" });
         }
       }
 
@@ -1214,7 +1221,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         user_name: thread.user_display_name,
         message_count: thread.message_count,
         messages,
-        read_only: channel === 'slack', // Slack threads are read-only in web UI
+        read_only: channel === 'slack' || channel === 'video',
       });
     } catch (error) {
       logger.error({ err: error }, "Addie Chat: Error fetching conversation");

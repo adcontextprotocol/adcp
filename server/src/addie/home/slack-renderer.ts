@@ -303,7 +303,7 @@ function renderAdminPanel(panel: AdminPanel): SlackBlock[] {
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: 'View All', emoji: true },
-        url: 'https://agenticadvertising.org/admin/prospects?mine=true',
+        url: 'https://agenticadvertising.org/manage/accounts?view=my_accounts',
         action_id: 'addie_home_view_prospects',
       },
     };

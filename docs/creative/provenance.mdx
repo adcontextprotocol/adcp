@@ -21,11 +21,37 @@ Provenance is an optional object that can attach to creative assets, creative ma
 | `ai_tool` | object | AI system used (`name` required, plus optional `version` and `provider`) |
 | `human_oversight` | enum | Level of human involvement in the creation process |
 | `declared_by` | object | Party attaching this provenance claim (`role` required, plus optional `agent_url`) |
+| `declared_at` | string (date-time) | When this provenance claim was made (ISO 8601), distinct from `created_time` |
 | `created_time` | string (date-time) | When the content was created (ISO 8601) |
 | `c2pa` | object | C2PA Content Credentials reference (`manifest_url` required) |
 | `disclosure` | object | Regulatory disclosure requirements and jurisdiction details |
 | `verification` | array | Third-party verification or detection results |
 | `ext` | object | Standard extension point |
+
+### Minimal example
+
+Most provenance declarations answer one question: **was this AI-generated, and does it need a disclosure label?**
+
+```json
+{
+  "$schema": "/schemas/core/provenance.json",
+  "digital_source_type": "trained_algorithmic_media",
+  "disclosure": {
+    "required": true
+  }
+}
+```
+
+That's it. `digital_source_type` says how the content was produced. `disclosure.required` says whether it needs a label. Everything else — tool details, C2PA references, jurisdiction-specific render guidance, verification results — is optional context that supply-chain participants can add when they need it.
+
+For content with no AI involvement, provenance is even simpler:
+
+```json
+{
+  "$schema": "/schemas/core/provenance.json",
+  "digital_source_type": "digital_capture"
+}
+```
 
 ### Full example
 
@@ -43,6 +69,7 @@ Provenance is an optional object that can attach to creative assets, creative ma
     "agent_url": "https://creative.pinnaclemedia.example.com",
     "role": "agency"
   },
+  "declared_at": "2026-02-15T14:35:00Z",
   "created_time": "2026-02-15T14:30:00Z",
   "c2pa": {
     "manifest_url": "https://cdn.pinnaclemedia.example.com/c2pa/manifests/hero_img_abc123.c2pa"
@@ -54,12 +81,20 @@ Provenance is an optional object that can attach to creative assets, creative ma
         "country": "US",
         "region": "CA",
         "regulation": "ca_sb_942",
-        "label_text": "Created with AI"
+        "label_text": "Created with AI",
+        "render_guidance": {
+          "persistence": "flexible",
+          "positions": ["prominent", "footer"]
+        }
       },
       {
         "country": "DE",
         "regulation": "eu_ai_act_article_50",
-        "label_text": "KI-generiert"
+        "label_text": "KI-generiert",
+        "render_guidance": {
+          "persistence": "continuous",
+          "positions": ["overlay", "subtitle"]
+        }
       }
     ]
   },
@@ -305,9 +340,9 @@ Verification results use one of four outcomes:
 
 ### Example: provenance through a campaign
 
-Acme Brands is running a spring campaign. Their agency, Meridian Media, uses an AI image generator to produce a set of display banners — photorealistic product shots with AI-generated backgrounds. Meridian attaches provenance to the creative manifest: `digital_source_type` is `composite_with_trained_algorithmic_media`, `ai_tool` identifies the generator, and `disclosure.required` is `true` with `eu_ai_act_article_50` and `ca_sb_942` listed as applicable regulations.
+Acme Brands is running a spring campaign. Their agency, Meridian Media, uses an AI image generator to produce a set of display banners — photorealistic product shots with AI-generated backgrounds. Meridian attaches provenance to the creative manifest: `digital_source_type` is `composite_with_trained_algorithmic_media`, `ai_tool` identifies the generator, and `disclosure.required` is `true` with `eu_ai_act_article_50` and `ca_sb_942` listed as applicable regulations. For the EU jurisdiction, Meridian sets `render_guidance.persistence` to `continuous` with `positions` preferring `overlay` — expressing the EU AI Act's requirement for persistent labeling.
 
-The campaign is submitted to Pinnacle Publishing through AdCP. Pinnacle's ad operations platform checks the provenance claim, then runs the creative through its verification pipeline via `get_creative_features`. The AI detection service returns `ai_modified` with 0.94 confidence — consistent with the declared source type. Pinnacle's system confirms the claim, applies the required disclosure label to the ad unit, and clears the creative for serving. The provenance metadata, the detection result, and the disclosure decision are all recorded and auditable.
+The campaign is submitted to Pinnacle Publishing through AdCP. Pinnacle's ad operations platform checks the provenance claim, then runs the creative through its verification pipeline via `get_creative_features`. The AI detection service returns `ai_modified` with 0.94 confidence — consistent with the declared source type. Pinnacle's system confirms the claim, reads the render guidance for the serving jurisdiction, applies the required disclosure label with the specified persistence, and clears the creative for serving. The provenance metadata, the detection result, the render guidance, and the disclosure decision are all recorded and auditable.
 
 If Meridian had declared `digital_capture` instead — claiming no AI involvement — Pinnacle's detection service would have flagged the inconsistency. The creative would be held for review, not served.
 
@@ -349,17 +384,30 @@ The `disclosure` object declares regulatory obligations for AI-generated content
         "country": "US",
         "region": "CA",
         "regulation": "ca_sb_942",
-        "label_text": "Created with AI"
+        "label_text": "Created with AI",
+        "render_guidance": {
+          "persistence": "flexible",
+          "positions": ["prominent", "footer"]
+        }
       },
       {
         "country": "DE",
         "regulation": "eu_ai_act_article_50",
-        "label_text": "KI-generiert"
+        "label_text": "KI-generiert",
+        "render_guidance": {
+          "persistence": "continuous",
+          "positions": ["overlay", "subtitle"]
+        }
       },
       {
         "country": "CN",
         "regulation": "cn_deep_synthesis",
-        "label_text": "AI-generated content"
+        "label_text": "AI-generated content",
+        "render_guidance": {
+          "persistence": "initial",
+          "min_duration_ms": 3000,
+          "positions": ["overlay", "pre_roll"]
+        }
       }
     ]
   }
@@ -374,6 +422,38 @@ The `disclosure` object declares regulatory obligations for AI-generated content
 | `jurisdictions[].region` | No | Sub-national region code (e.g., `CA` for California) |
 | `jurisdictions[].regulation` | Yes | Regulation identifier |
 | `jurisdictions[].label_text` | No | Required disclosure label text in the local language |
+| `jurisdictions[].render_guidance` | No | How the disclosure should be rendered for this jurisdiction |
+| `jurisdictions[].render_guidance.persistence` | No | How long the disclosure must persist: `continuous`, `initial`, or `flexible` |
+| `jurisdictions[].render_guidance.min_duration_ms` | No | Minimum display duration in milliseconds (required context for `initial` persistence) |
+| `jurisdictions[].render_guidance.positions` | No | Preferred disclosure positions in priority order (first supported wins) |
+
+### Render guidance
+
+The `render_guidance` object on each jurisdiction expresses the declaring party's intent for how the disclosure should be rendered based on the regulation's requirements. Different regulations have different persistence requirements:
+
+- **`continuous`** — The disclosure must remain visible or audible throughout the content display duration. For video/audio, the full playback. For static formats (display, DOOH), the full display slot. For DOOH, "content duration" means the ad's display slot within the rotation, not the screen's full rotation cycle.
+- **`initial`** — The disclosure must appear at the start for a minimum duration before it may be removed. Pair with `min_duration_ms` to specify how long — without it, the duration is at the publisher's discretion.
+- **`flexible`** — Disclosure presence is sufficient; the publisher controls timing and duration.
+
+When multiple sources specify persistence for the same jurisdiction (e.g., brief `required_disclosures[].persistence` and provenance `render_guidance.persistence`), the most restrictive mode applies: `continuous` > `initial` > `flexible`.
+
+The `positions` array is an ordered preference list. The first position that the serving format supports should be used. For example, `["overlay", "subtitle"]` means "prefer overlay, fall back to subtitle if overlay is not available."
+
+Not all position-persistence combinations are meaningful. Positions with inherently bounded duration — `end_card`, `pre_roll` — cannot satisfy `continuous` persistence because they appear only for part of the content. Creative agents should not request `continuous` on these positions, and formats should not claim `continuous` support for them.
+
+For audio-only environments (podcast, streaming audio, smart speakers), only `audio`, `pre_roll`, and `companion` positions are applicable. Visual positions (`overlay`, `footer`, `subtitle`) are undefined without a screen. Creative agents building for audio formats should restrict `render_guidance.positions` to audio-compatible values.
+
+Render guidance travels with the creative through the supply chain. At serve time, the publisher reads the guidance from provenance and renders accordingly. Governance agents can audit whether the publisher followed the declared guidance.
+
+### Multi-asset aggregation
+
+When a creative is assembled from multiple assets with different `render_guidance` for the same jurisdiction (common in DCO), the most restrictive persistence applies across the assembled creative: if any asset requires `continuous`, the assembled creative requires `continuous`. This follows the same precedence as conflict resolution: `continuous` > `initial` > `flexible`.
+
+### Enforcement vs self-reported compliance
+
+For formats where the publisher controls the rendering surface (hosted video, display banners, SSAI), the publisher can enforce render guidance directly — rendering an overlay, controlling its duration, and verifying compliance.
+
+For opaque, self-rendering creatives (MRAID, JavaScript tags, VPAID), the creative controls its own viewport. The publisher cannot inject or enforce disclosure rendering inside the creative's sandbox. In these cases, disclosure compliance depends on the creative agent embedding the disclosure during build. The format's `disclosure_capabilities` should reflect this: only claim persistence modes the format's rendering layer can verify or enforce, not modes that rely on creative self-compliance. Governance agents can verify self-rendered disclosures post-hoc via `get_creative_features` by rendering the creative in a headless environment and inspecting for disclosure presence.
 
 ### Known regulation identifiers
 

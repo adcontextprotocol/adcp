@@ -44,7 +44,7 @@
     "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
     "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
     "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension).",
-    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format. Recovery: correctable (choose a format that supports the required disclosure positions, or remove the disclosure requirement).",
+    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format — either the required position or the required persistence mode is not in the format's disclosure_capabilities. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement).",
     "BUDGET_EXHAUSTED": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission). Recovery: terminal (buyer must add funds or increase budget cap).",
     "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state)."
   }

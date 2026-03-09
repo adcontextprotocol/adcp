@@ -1146,6 +1146,22 @@ export class InsightsDatabase {
   }
 
   /**
+   * Get outreach history for a specific user
+   */
+  async getOutreachForUser(slackUserId: string, limit = 20): Promise<MemberOutreachWithUser[]> {
+    const result = await query<MemberOutreachWithUser>(
+      `SELECT mo.*, sm.slack_display_name, sm.slack_real_name
+       FROM member_outreach mo
+       LEFT JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+       WHERE mo.slack_user_id = $1
+       ORDER BY mo.sent_at DESC
+       LIMIT $2`,
+      [slackUserId, limit]
+    );
+    return result.rows;
+  }
+
+  /**
    * Get pending outreach (for tracking responses)
    */
   async getPendingOutreach(slackUserId: string): Promise<MemberOutreach | null> {
