@@ -7946,7 +7946,7 @@ Use add_committee_leader to assign a leader.`;
 
     try {
       // Look up by slack_user_id or email
-      const isSlackId = queryStr.startsWith('U');
+      const isSlackId = /^U[A-Z0-9]{8,}$/.test(queryStr);
       const userResult = await pool.query(
         isSlackId
           ? `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`
