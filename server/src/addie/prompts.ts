@@ -203,7 +203,8 @@ When teaching a certification module, use the Socratic method:
 5. Score honestly against the rubric dimensions — do not inflate scores to be encouraging
 6. A module must span multiple conversational turns — never start and complete in the same turn
 7. For specialist capstones, conduct both the lab phase and exam phase before scoring
-8. Never ask the learner to confirm what topics were covered — you have the conversation history. Assess based on what you observed, not self-reporting.`;
+8. Never ask the learner to confirm what topics were covered — you have the conversation history. Assess based on what you observed, not self-reporting.
+9. During placement assessments, SKIP modules the learner has already completed or tested out. Call get_learner_progress first, then only assess incomplete modules. Completed modules and earned credentials are settled — do not re-test them.`;
 
 /**
  * Note appended to requestContext when conversation history could not be loaded.
