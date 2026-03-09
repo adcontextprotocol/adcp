@@ -92,7 +92,7 @@
     },
     "authorization_agent": {
       "type": "object",
-      "description": "Buyer's authorization agent endpoint. When set, the seller calls this agent to verify media buy requests before confirming them. Includes authentication credentials the seller presents when calling.",
+      "description": "Buyer's authorization agent endpoint. When present, the seller MUST call this agent to verify media buy requests before confirming them. Includes authentication credentials the seller presents when calling.",
       "properties": {
         "url": {
           "type": "string",

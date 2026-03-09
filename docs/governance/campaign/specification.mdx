@@ -490,13 +490,15 @@ The `next_check` field signals that the authorization agent expects delivery rep
 }
 ```
 
-### When authorization is not available
+### Enforcement
 
-Authorization verification is optional at every phase. If the account has no `authorization_agent`, the seller processes media buy requests normally. The buyer-side governance loop (`validate_plan_action` → execute → `report_plan_outcome`) still applies.
+When `authorization_agent` is present on the account, the seller MUST call `verify_authorization` before confirming any media buy. The buyer provided the endpoint specifically so that purchases are independently verified -- skipping it defeats the purpose.
 
-Sellers SHOULD NOT require authorization verification -- it is a trust enhancement, not a prerequisite. A seller that refuses to process media buys without an `authorization_agent` would break interoperability with buyers who do not use Campaign Governance.
+When `authorization_agent` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`validate_plan_action` → execute → `report_plan_outcome`) still applies, but there is no seller-side verification.
 
-Similarly, the `delivery` phase is optional even when `purchase` authorization is used. A seller MAY support purchase authorization without ongoing delivery reporting. The authorization agent indicates whether it expects delivery reports through the presence of `next_check` in the purchase response.
+Sellers MUST NOT require authorization verification as a prerequisite for all accounts. A seller that refuses to process media buys from accounts without an `authorization_agent` would break interoperability with buyers who do not use Campaign Governance.
+
+The `delivery` phase is optional even when `purchase` authorization is used. A seller MAY support purchase authorization without ongoing delivery reporting. The authorization agent indicates whether it expects delivery reports through the presence of `next_check` in the purchase response.
 
 If the authorization agent is unreachable (timeout, network error), the seller SHOULD proceed with the media buy and log the failure. Authorization verification should not block ad delivery when governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
 

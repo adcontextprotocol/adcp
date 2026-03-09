@@ -35,7 +35,7 @@
           },
           "authorization_agent": {
             "type": "object",
-            "description": "Buyer's authorization agent endpoint. When provided, the seller SHOULD call this agent to verify media buy requests before confirming them. Enables seller-side authorization verification -- the seller independently confirms that purchases are authorized by the buyer's governance layer.",
+            "description": "Buyer's authorization agent endpoint. When present, the seller MUST call this agent to verify media buy requests before confirming them. Enables seller-side authorization verification -- the seller independently confirms that purchases are authorized by the buyer's governance layer.",
             "properties": {
               "url": {
                 "type": "string",
