@@ -502,6 +502,12 @@ The `delivery` phase is optional even when `purchase` authorization is used. A s
 
 If the authorization agent is unreachable (timeout, network error), the seller SHOULD proceed with the media buy and log the failure. Authorization verification should not block ad delivery when governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
 
+### Credential expiry and rotation
+
+The `authentication` object on `authorization_agent` supports an optional `expires_at` timestamp. When present, the seller MUST check expiry before calling. After `expires_at`, the seller treats the authorization agent as unavailable -- it SHOULD proceed with the media buy (same as unreachable) and notify the buyer that credentials need rotation.
+
+The buyer rotates credentials by calling `sync_accounts` with updated `authorization_agent.authentication` (new `credentials` and optionally a new `expires_at`). No downtime is required -- the seller picks up the new credentials on the next sync.
+
 ### Authorization and the governance loop
 
 Authorization verification complements the buyer-side governance loop, it does not replace it:

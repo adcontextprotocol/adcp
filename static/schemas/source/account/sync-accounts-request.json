@@ -57,6 +57,11 @@
                     "type": "string",
                     "description": "Credentials for authentication. For Bearer: token sent in Authorization header when calling verify_authorization.",
                     "minLength": 32
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 timestamp when these credentials expire. After this time, the seller MUST reject verify_authorization calls as unauthenticated and treat the authorization_agent as unavailable until the buyer updates credentials via sync_accounts."
                   }
                 },
                 "required": ["schemes", "credentials"],

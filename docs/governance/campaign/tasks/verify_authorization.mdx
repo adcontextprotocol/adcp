@@ -62,9 +62,11 @@ The authorization agent sets the cadence via `next_check` in the response. The s
 
 The presence of `next_check` in a `purchase` phase response is the opt-in signal that the authorization agent expects delivery reporting. If absent, no delivery reporting is expected.
 
-## When the authorization agent is unreachable
+## When the authorization agent is unavailable
 
-If the seller cannot reach the authorization agent (timeout, network error), it SHOULD proceed with the media buy and log the failure. Authorization verification is a trust enhancement -- it should not block ad delivery when the governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
+If the seller cannot reach the authorization agent (timeout, network error), it SHOULD proceed with the media buy and log the failure. Authorization verification should not block ad delivery when the governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
+
+Expired credentials are treated the same way. If the `authentication.expires_at` timestamp has passed, the seller treats the agent as unavailable and notifies the buyer that credentials need rotation. The buyer rotates by calling `sync_accounts` with updated credentials.
 
 ## Request
 
