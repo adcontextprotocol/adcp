@@ -28,6 +28,31 @@ Provenance is an optional object that can attach to creative assets, creative ma
 | `verification` | array | Third-party verification or detection results |
 | `ext` | object | Standard extension point |
 
+### Minimal example
+
+Most provenance declarations answer one question: **was this AI-generated, and does it need a disclosure label?**
+
+```json
+{
+  "$schema": "/schemas/core/provenance.json",
+  "digital_source_type": "trained_algorithmic_media",
+  "disclosure": {
+    "required": true
+  }
+}
+```
+
+That's it. `digital_source_type` says how the content was produced. `disclosure.required` says whether it needs a label. Everything else — tool details, C2PA references, jurisdiction-specific render guidance, verification results — is optional context that supply-chain participants can add when they need it.
+
+For content with no AI involvement, provenance is even simpler:
+
+```json
+{
+  "$schema": "/schemas/core/provenance.json",
+  "digital_source_type": "digital_capture"
+}
+```
+
 ### Full example
 
 ```json
