@@ -461,14 +461,15 @@ export class BrandDatabase {
         'hosted' as source,
         true as has_manifest,
         domain_verified as verified,
-        NULL as house_domain,
-        NULL as keller_type,
+        db.house_domain,
+        COALESCE(db.keller_type, 'master') as keller_type,
         brand_json->'logos'->0->>'url' as logo_url,
         brand_json->'colors'->>'primary' as primary_color,
         brand_json->'company'->>'industry' as industry,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
         COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM hosted_brands
+      LEFT JOIN discovered_brands db ON db.domain = hosted_brands.brand_domain
       WHERE is_public = true
         AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
 
