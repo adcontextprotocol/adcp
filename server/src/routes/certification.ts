@@ -186,7 +186,7 @@ export function createCertificationRouters() {
   // GET /api/me/certification/credentials — earned credentials
   userRouter.get('/certification/credentials', async (req, res) => {
     try {
-      const credentials = await certDb.getPublicUserCredentials(req.user!.id);
+      const credentials = await certDb.getOwnUserCredentials(req.user!.id);
       res.json({ credentials });
     } catch (error) {
       logger.error({ error }, 'Failed to get user credentials');

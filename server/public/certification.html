@@ -688,6 +688,52 @@
       border-color: var(--color-brand);
     }
 
+    .credential-badge-row {
+      display: flex;
+      gap: var(--space-4);
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .credential-badge-link {
+      flex-shrink: 0;
+    }
+
+    .credential-badge-img {
+      height: 100px;
+      width: auto;
+      border-radius: var(--radius-md);
+    }
+
+    .credential-badge-info {
+      flex: 1;
+    }
+
+    .credential-badge-name {
+      font-weight: var(--font-semibold);
+      font-size: var(--text-base);
+      color: var(--color-text-heading);
+    }
+
+    .credential-badge-date {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .credential-badge-verify {
+      display: inline-block;
+      margin-top: var(--space-2);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .credential-badge-verify:hover {
+      text-decoration: underline;
+    }
+
     /* =========================================================================
        Empty / loading states
        ========================================================================= */
@@ -774,10 +820,7 @@
       </div>
     </div>
 
-    <!-- Earned credentials (legacy container, kept for backward compat but hidden — sharing is now inline in tier cards) -->
-    <div id="credentials-section" class="credentials-section" style="display: none;">
-      <div id="credentials-list"></div>
-    </div>
+    <!-- Earned credentials are rendered inline in tier cards -->
   </div>
 
   <script>
@@ -918,85 +961,86 @@
         if (!earnedCreds.length) return '';
 
         var html = '<div class="tier-share-panel">';
-        html += '<h4>Share your credential</h4>';
 
         earnedCreds.forEach(function(credDef) {
           var mc = state.myCredentials.find(function(m) { return m.credential_id === credDef.id; });
           if (!mc) return;
 
           var credName = credDef.name;
-          var certUrl = mc.certifier_public_id ? 'https://cert.io/c/' + mc.certifier_public_id : '';
+          var hasCertifier = !!mc.certifier_public_id;
+          var certUrl = hasCertifier ? 'https://cert.io/c/' + mc.certifier_public_id : '';
           var certPageUrl = window.location.origin + '/certification';
+          var shareUrl = certUrl || certPageUrl;
+          var badgeImgUrl = hasCertifier ? 'https://api.certifier.io/v1/credentials/' + mc.certifier_credential_id + '/badge' : '';
           var dateStr = new Date(mc.awarded_at).toLocaleDateString();
 
-          // Pre-written share text
-          var xText = 'I just earned the ' + credName + ' certification from @AgenticAds! '
-            + 'AI agents are transforming advertising \u2014 learn AdCP and get certified yourself: '
-            + certPageUrl;
-          var linkedInTitle = 'I earned my ' + credName + ' certification!';
-          var linkedInSummary = 'Just completed the ' + credName + ' certification from AgenticAdvertising.org. '
-            + 'AdCP is the open protocol for AI-powered advertising. Get certified: ' + certPageUrl;
-
-          if (earnedCreds.length > 1) {
-            html += '<p style="font-size: var(--text-sm); font-weight: var(--font-medium); margin-bottom: var(--space-2);">' + esc(credName) + ' \u2014 earned ' + dateStr + '</p>';
+          // Certifier badge image + QR code link
+          if (hasCertifier) {
+            html += '<div class="credential-badge-row">';
+            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-link">';
+            html += '<img src="' + certUrl + '/badge" alt="' + esc(credName) + ' credential badge" class="credential-badge-img" onerror="this.style.display=\'none\'" />';
+            html += '</a>';
+            html += '<div class="credential-badge-info">';
+            html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
+            html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
+            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
+            html += '</div>';
+            html += '</div>';
+          } else {
+            if (earnedCreds.length > 1) {
+              html += '<p style="font-size: var(--text-sm); font-weight: var(--font-medium); margin-bottom: var(--space-2);">' + esc(credName) + ' \u2014 earned ' + dateStr + '</p>';
+            }
           }
 
+          // Share buttons
+          html += '<h4>Tell everyone</h4>';
           html += '<div class="share-buttons">';
 
-          // X (Twitter) share
-          html += '<a href="https://x.com/intent/tweet?text=' + encodeURIComponent(xText) + '" target="_blank" rel="noopener" class="share-btn share-btn-x">';
+          // X (Twitter) — separate text and url params for proper card rendering
+          var xText = 'I just earned the ' + credName + ' certification from @AgenticAds! AI agents are transforming advertising \u2014 learn AdCP and get certified yourself.';
+          html += '<a href="https://x.com/intent/tweet?text=' + encodeURIComponent(xText) + '&url=' + encodeURIComponent(shareUrl) + '" target="_blank" rel="noopener" class="share-btn share-btn-x">';
           html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>';
           html += 'Post on X';
           html += '</a>';
 
-          // LinkedIn share
-          var linkedInShareUrl = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(certUrl || certPageUrl);
-          html += '<a href="' + linkedInShareUrl + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+          // LinkedIn — share-offsite only carries the URL; LinkedIn auto-generates a preview card
+          html += '<a href="https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(shareUrl) + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
           html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>';
           html += 'Share on LinkedIn';
           html += '</a>';
 
-          // Add to LinkedIn profile
-          if (certUrl) {
-            var addToLinkedIn = 'https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME'
-              + '&name=' + encodeURIComponent(credName)
-              + '&organizationName=AgenticAdvertising.org'
-              + '&issueYear=' + new Date(mc.awarded_at).getFullYear()
-              + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1)
-              + '&certId=' + encodeURIComponent(mc.certifier_public_id)
-              + '&certUrl=' + encodeURIComponent(certUrl);
-            html += '<a href="' + addToLinkedIn + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
-            html += 'Add to LinkedIn profile';
-            html += '</a>';
+          // Add to LinkedIn profile (certification section)
+          var addToLinkedIn = 'https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME'
+            + '&name=' + encodeURIComponent(credName)
+            + '&organizationName=AgenticAdvertising.org'
+            + '&issueYear=' + new Date(mc.awarded_at).getFullYear()
+            + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1);
+          if (hasCertifier) {
+            addToLinkedIn += '&certId=' + encodeURIComponent(mc.certifier_public_id);
+            addToLinkedIn += '&certUrl=' + encodeURIComponent(certUrl);
           }
-
-          // View credential (cert.io page with QR code)
-          if (certUrl) {
-            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="share-btn share-btn-cert">';
-            html += 'View credential &amp; QR code';
-            html += '</a>';
-          }
+          html += '<a href="' + addToLinkedIn + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+          html += 'Add to LinkedIn profile';
+          html += '</a>';
 
           html += '</div>';
 
-          // Embed section
+          // Embed section — uses the real Certifier badge image
           html += '<details class="embed-section">';
-          html += '<summary>Embed badge on your website or email signature</summary>';
+          html += '<summary>Embed in your email signature or website</summary>';
           html += '<div class="embed-snippet" id="embed-' + credDef.id + '">';
 
-          // Embed tabs
           html += '<div class="embed-tabs">';
           html += '<button class="embed-tab embed-tab-active" onclick="switchEmbed(\'' + credDef.id + '\', \'html\', this)">HTML</button>';
           html += '<button class="embed-tab" onclick="switchEmbed(\'' + credDef.id + '\', \'markdown\', this)">Markdown</button>';
           html += '</div>';
 
-          // HTML embed
-          var badgeUrl = certUrl || certPageUrl;
-          var embedHtml = '<a href="' + badgeUrl + '" target="_blank" rel="noopener">'
-            + '<img src="' + window.location.origin + '/AAo.svg" alt="' + credName + ' - AgenticAdvertising.org" width="120" height="40" style="vertical-align: middle;" />'
-            + ' ' + credName
+          // Use Certifier badge image in embed code, fall back to org logo
+          var embedImgSrc = hasCertifier ? certUrl + '/badge' : window.location.origin + '/AAo.svg';
+          var embedHtml = '<a href="' + shareUrl + '" target="_blank" rel="noopener">'
+            + '<img src="' + embedImgSrc + '" alt="' + credName + ' - AgenticAdvertising.org" height="80" />'
             + '</a>';
-          var embedMarkdown = '[![' + credName + '](' + window.location.origin + '/AAo.svg)](' + badgeUrl + ')';
+          var embedMarkdown = '[![' + credName + '](' + embedImgSrc + ')](' + shareUrl + ')';
 
           html += '<pre class="embed-code" data-type="html">' + esc(embedHtml) + '</pre>';
           html += '<pre class="embed-code" data-type="markdown" style="display:none">' + esc(embedMarkdown) + '</pre>';
@@ -1053,7 +1097,6 @@
         renderHeaderActions();
         renderTiers();
         renderLearningPath();
-        renderEarnedCredentials();
       }
 
       function renderHeaderActions() {
@@ -1298,47 +1341,7 @@
         return html;
       }
 
-      function renderEarnedCredentials() {
-        if (!state.myCredentials.length) return;
-
-        var section = document.getElementById('credentials-section');
-        var list = document.getElementById('credentials-list');
-
-        // Build a lookup for credential definitions
-        var credDefs = {};
-        state.credentials.forEach(function(c) { credDefs[c.id] = c; });
-
-        var html = '';
-        state.myCredentials.forEach(function(mc) {
-          var def = credDefs[mc.credential_id];
-          if (!def) return;
-
-          var tier = def.tier || 1;
-          var dateStr = new Date(mc.awarded_at).toLocaleDateString();
-
-          html += '<div class="credential-card">';
-          html += '  <div class="credential-icon credential-icon-' + tier + '">' + tier + '</div>';
-          html += '  <div class="credential-details">';
-          html += '    <div class="credential-name">' + esc(def.name) + '</div>';
-          html += '    <div class="credential-date">Earned ' + dateStr + '</div>';
-          html += '  </div>';
-          html += '  <div class="credential-actions">';
-          if (mc.certifier_public_id) {
-            html += '    <a href="https://cert.io/c/' + encodeURIComponent(mc.certifier_public_id) + '" target="_blank" rel="noopener" class="credential-link">Share</a>';
-          }
-          html += '    <a href="https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME&name=' + encodeURIComponent(def.name) + '&organizationName=AgenticAdvertising.org&issueYear=' + new Date(mc.awarded_at).getFullYear() + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1);
-          if (mc.certifier_public_id) {
-            html += '&certId=' + encodeURIComponent(mc.certifier_public_id);
-            html += '&certUrl=' + encodeURIComponent('https://cert.io/c/' + mc.certifier_public_id);
-          }
-          html += '" target="_blank" rel="noopener" class="credential-link">Add to LinkedIn</a>';
-          html += '  </div>';
-          html += '</div>';
-        });
-
-        list.innerHTML = html;
-        section.style.display = '';
-      }
+      // Earned credentials are now rendered inline in tier cards via buildSharePanel()
 
       /* =====================================================================
          Global handlers

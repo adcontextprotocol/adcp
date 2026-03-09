@@ -524,6 +524,27 @@ export async function getPublicUserCredentials(userId: string): Promise<PublicUs
   return result.rows;
 }
 
+export interface OwnUserCredential extends PublicUserCredential {
+  certifier_public_id: string | null;
+  certifier_credential_id: string | null;
+}
+
+/**
+ * Get a user's own earned credentials including Certifier IDs for sharing.
+ */
+export async function getOwnUserCredentials(userId: string): Promise<OwnUserCredential[]> {
+  const result = await query<OwnUserCredential>(
+    `SELECT uc.credential_id, cc.name AS credential_name, cc.tier, uc.awarded_at,
+            uc.certifier_public_id, uc.certifier_credential_id
+     FROM user_credentials uc
+     JOIN certification_credentials cc ON cc.id = uc.credential_id
+     WHERE uc.workos_user_id = $1
+     ORDER BY cc.tier, cc.sort_order`,
+    [userId]
+  );
+  return result.rows;
+}
+
 /**
  * Get earned credentials for all members of an organization.
  * Returns the highest tier credential per org for member card badges.
