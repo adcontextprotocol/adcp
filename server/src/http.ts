@@ -3993,10 +3993,13 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
     this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
+    this.app.get('/manage/geo', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-geo.html'));
 
     // Redirect moved admin pages to their new /manage paths
     this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
     this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
+    this.app.get('/admin/geo', (req, res) => res.redirect(301, '/manage/geo'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -4953,9 +4956,6 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
-    this.app.get('/admin/geo', requireAuth, requireManage, async (req, res) => {
-      await this.serveHtmlWithConfig(req, res, 'admin-geo.html');
-    });
 
   }
 
