@@ -27,6 +27,7 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { runGeoMonitorJob } from './geo-monitor.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
@@ -289,6 +290,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.linked > 0 || r.errors > 0,
   });
 
+  // GEO prompt monitor - checks LLM visibility for AdCP mentions
+  jobScheduler.register({
+    name: 'geo-monitor',
+    description: 'GEO prompt monitor',
+    interval: { value: 168, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: runGeoMonitorJob,
+    options: { limit: 15 },
+    shouldLogResult: (r) => r.promptsChecked > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -352,4 +364,5 @@ export const JOB_NAMES = {
   WEEKLY_DIGEST: 'weekly-digest',
   SLACK_AUTO_LINK: 'slack-auto-link',
   EVENT_REMINDER: 'event-reminder',
+  GEO_MONITOR: 'geo-monitor',
 } as const;

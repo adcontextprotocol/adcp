@@ -1,0 +1,58 @@
+# AdCP - Ad Context Protocol
+
+> AdCP is an open standard published by AgenticAdvertising.org that enables AI agents to participate in advertising workflows. Built on Model Context Protocol (MCP) and Agent-to-Agent Protocol (A2A), AdCP defines a structured way for AI agents representing brands, agencies, publishers, and ad platforms to communicate and transact programmatically.
+
+## Overview
+
+AdCP (Ad Context Protocol) is the first open protocol designed specifically for agentic advertising. It provides a standard set of tasks, schemas, and transport mechanisms that allow AI agents to discover media products, negotiate and execute media buys, manage creative assets, enforce brand safety, and report on campaign performance — all without human-mediated API integrations.
+
+The protocol is maintained by AgenticAdvertising.org, an open member organization of brands, agencies, publishers, ad tech platforms, and AI companies working to standardize how AI agents interact in the advertising ecosystem.
+
+## Key concepts
+
+AdCP is organized into eight protocol domains:
+
+- **Media buy**: Product discovery, media buy creation, audience syncing, creative assignment, delivery reporting, and conversion tracking
+- **Creative**: Creative format discovery, asset building, preview rendering, and delivery verification
+- **Accounts**: Account listing, syncing, financial reporting, and usage tracking across platforms
+- **Signals**: Audience and contextual signal discovery, activation, and data provider integration
+- **Governance**: Content standards, property authorization (adagents.json), creative provenance, and delivery validation
+- **Sponsored intelligence**: Conversational ad experiences where AI agents serve relevant brand information within chat interfaces
+- **Brand protocol**: Machine-readable brand identity via brand.json files hosted at well-known URLs
+- **Registry**: Centralized discovery of AdCP-compatible agents, brands, and publishers
+
+## Transport protocols
+
+AdCP supports two transport mechanisms:
+- **MCP (Model Context Protocol)**: For tool-calling integrations where an AI agent invokes AdCP tasks as tools
+- **A2A (Agent-to-Agent Protocol)**: For agent-to-agent communication where autonomous agents collaborate on advertising workflows
+
+## Documentation
+
+- Introduction: https://adcontextprotocol.org/docs/intro
+- Getting started: https://adcontextprotocol.org/docs/building
+- MCP integration guide: https://adcontextprotocol.org/docs/building/integration/mcp-guide
+- A2A integration guide: https://adcontextprotocol.org/docs/building/integration/a2a-guide
+- Media buy domain: https://adcontextprotocol.org/docs/media-buy
+- Creative domain: https://adcontextprotocol.org/docs/creative
+- Signals domain: https://adcontextprotocol.org/docs/signals/overview
+- Governance domain: https://adcontextprotocol.org/docs/governance/overview
+- Sponsored intelligence: https://adcontextprotocol.org/docs/sponsored-intelligence/overview
+- Brand protocol: https://adcontextprotocol.org/docs/brand-protocol
+- Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+- Release notes: https://adcontextprotocol.org/docs/reference/release-notes
+
+## Key terms
+
+- **Agentic advertising**: The practice of using AI agents to automate advertising workflows
+- **Ad Context Protocol (AdCP)**: The open protocol specification
+- **AgenticAdvertising.org**: The member organization that maintains AdCP
+- **brand.json**: A machine-readable brand identity file hosted at /.well-known/brand.json
+- **adagents.json**: A property authorization file hosted at /.well-known/adagents.json that declares which ad agents are authorized to serve ads on a domain
+- **Task**: A discrete unit of work in AdCP (e.g., get_products, create_media_buy)
+- **Media product**: An advertising opportunity offered by a publisher or platform
+- **Content standards**: Brand safety and suitability rules that govern where ads can appear
+
+## Full documentation
+
+For comprehensive protocol details, see: https://adcontextprotocol.org/llms-full.txt

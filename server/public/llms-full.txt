@@ -1,0 +1,182 @@
+# AdCP - Ad Context Protocol (Full Reference)
+
+> AdCP is an open standard published by AgenticAdvertising.org that enables AI agents to participate in advertising workflows. Built on Model Context Protocol (MCP) and Agent-to-Agent Protocol (A2A), AdCP defines a structured way for AI agents representing brands, agencies, publishers, and ad platforms to communicate and transact programmatically.
+
+## About AgenticAdvertising.org
+
+AgenticAdvertising.org is an open member organization that maintains the Ad Context Protocol. Members include brands, agencies, publishers, ad tech platforms, and AI companies committed to building open standards for agentic advertising. The organization publishes the AdCP specification, JSON schemas, and reference implementations.
+
+Website: https://adcontextprotocol.org
+
+## Protocol domains
+
+AdCP is organized into eight domains, each addressing a distinct area of the advertising workflow.
+
+### 1. Media buy
+
+The media buy domain covers the full lifecycle of advertising transactions, from discovering available media products to executing buys and tracking performance.
+
+Tasks:
+- **get_products**: Discover available media products from a publisher or platform, with filtering by format, audience, pricing, and more
+- **create_media_buy**: Submit a media buy order specifying products, budget, targeting, schedule, and creative assignments
+- **update_media_buy**: Modify an existing media buy (budget changes, flight dates, targeting adjustments)
+- **get_media_buys**: Retrieve details and status of existing media buys
+- **get_media_buy_delivery**: Get delivery and performance metrics for active media buys
+- **list_creative_formats**: Discover the creative formats a publisher or platform supports
+- **list_creatives**: List creatives that have been synced or assigned to media buys
+- **sync_creatives**: Upload or sync creative assets to a publisher or platform
+- **sync_audiences**: Share audience segments between platforms for targeting
+- **sync_catalogs**: Sync product catalogs for dynamic creative or commerce media
+- **sync_event_sources**: Configure conversion tracking event sources (pixels, server-side events)
+- **log_event**: Log conversion or engagement events for attribution
+- **provide_performance_feedback**: Send optimization signals back to publishers based on campaign performance
+
+### 2. Creative
+
+The creative domain handles creative asset management, format discovery, rendering, and delivery verification.
+
+Tasks:
+- **list_creative_formats**: Discover supported creative formats with specifications (dimensions, file types, duration limits)
+- **build_creative**: Request generation or assembly of creative assets from components, templates, or briefs
+- **preview_creative**: Generate a preview render of a creative in a specified format
+- **get_creative_delivery**: Verify creative delivery metrics and rendering quality
+
+Key concepts:
+- Creative manifests describe the structure and components of a creative asset
+- Format IDs use structured objects with agent_url and id fields
+- Renders array describes visual output with structured dimensions
+- Supports display, video, audio, carousel, and DOOH channels
+- Creative provenance tracking for AI-generated content
+
+### 3. Accounts
+
+The accounts domain manages platform accounts, financial data, and usage tracking across advertising platforms.
+
+Tasks:
+- **list_accounts**: List all advertising accounts accessible to the agent
+- **sync_accounts**: Synchronize account data between platforms
+- **get_account_financials**: Retrieve financial data (spend, budgets, invoices) for an account
+- **report_usage**: Report resource usage for billing and monitoring purposes
+
+### 4. Signals
+
+The signals domain enables audience and contextual signal sharing between agents for targeting and measurement.
+
+Tasks:
+- **get_signals**: Discover available audience segments, contextual signals, or data products from a data provider
+- **activate_signal**: Activate a signal for use in targeting or measurement within a media buy
+
+### 5. Governance
+
+The governance domain enforces brand safety, content standards, property authorization, and creative compliance.
+
+#### Content standards
+
+Tasks:
+- **create_content_standards**: Define brand safety and suitability rules
+- **get_content_standards**: Retrieve content standards by ID
+- **list_content_standards**: List all content standards for an account
+- **update_content_standards**: Modify existing content standards
+- **delete_content_standards**: Remove content standards
+- **calibrate_content**: Test content against standards to verify classification accuracy
+- **validate_content_delivery**: Verify that delivered impressions comply with content standards
+- **get_media_buy_artifacts**: Retrieve governance artifacts (logs, reports) for a media buy
+
+#### Property authorization
+
+- **adagents.json**: A file hosted at /.well-known/adagents.json on publisher domains that declares which ad agents are authorized to serve ads
+- Property list management tasks for maintaining authorized/blocked property lists
+- **validate_property_delivery**: Verify ads appeared only on authorized properties
+
+#### Creative governance
+
+- **get_creative_features**: Analyze creative assets for compliance features (accessibility, content ratings)
+- Creative provenance verification for AI-generated content
+
+### 6. Sponsored intelligence
+
+Sponsored intelligence enables conversational advertising experiences where AI agents serve relevant brand information within chat and conversational interfaces.
+
+Tasks:
+- **si_get_offering**: Discover available sponsored intelligence offerings from a provider
+- **si_initiate_session**: Start a sponsored intelligence session, establishing context and constraints
+- **si_send_message**: Send a message within an active session, receiving sponsored content in response
+- **si_terminate_session**: End a sponsored intelligence session and receive summary metrics
+
+### 7. Brand protocol
+
+The brand protocol defines machine-readable brand identity through brand.json files.
+
+- **brand.json**: Hosted at /.well-known/brand.json, this file contains structured brand identity data including brand name, logos, colors, guidelines, and authorized agents
+- Enables automated brand verification and consistent brand representation across agentic advertising
+
+Documentation: https://adcontextprotocol.org/docs/brand-protocol
+
+### 8. Registry
+
+The registry provides centralized discovery of AdCP-compatible agents, brands, and publishers. It serves as the directory through which agents find each other and establish connections.
+
+Documentation: https://adcontextprotocol.org/docs/registry
+
+## Transport protocols
+
+AdCP is transport-agnostic and supports two primary mechanisms:
+
+### MCP (Model Context Protocol)
+
+MCP is the primary integration method for tool-calling AI agents. AdCP tasks are exposed as MCP tools that agents can invoke directly. This is the recommended approach for most integrations.
+
+- Each AdCP task maps to an MCP tool
+- Request/response schemas are defined as JSON Schema
+- Supports streaming for long-running operations
+- Guide: https://adcontextprotocol.org/docs/building/integration/mcp-guide
+
+### A2A (Agent-to-Agent Protocol)
+
+A2A enables direct agent-to-agent communication for autonomous advertising workflows. This is used when two AI agents need to collaborate without a human-in-the-loop orchestrator.
+
+- Task-based message exchange between agents
+- Supports asynchronous operations with status callbacks
+- Context sessions maintain state across multi-turn interactions
+- Guide: https://adcontextprotocol.org/docs/building/integration/a2a-guide
+
+## Relationship to existing standards
+
+AdCP is designed to complement, not replace, existing advertising standards:
+
+- **OpenRTB**: AdCP handles the agent-to-agent negotiation layer above real-time bidding. A media buy created through AdCP may ultimately execute via OpenRTB auctions.
+- **IAB Tech Lab standards**: AdCP references IAB taxonomies for content categories, ad formats, and viewability standards where applicable.
+- **ads.txt / sellers.json**: AdCP's adagents.json serves a similar authorization role for AI agents as ads.txt does for programmatic sellers.
+- **VAST/VPAID**: Creative formats in AdCP reference standard video ad serving templates where applicable.
+
+## Schemas
+
+All AdCP request and response payloads are defined as JSON Schema. Schemas are published at:
+
+- Latest (development): https://adcontextprotocol.org/schemas/latest/
+- Version 3.x: https://adcontextprotocol.org/schemas/v3/
+- Version 2.x: https://adcontextprotocol.org/schemas/v2/
+
+## Getting started
+
+1. Read the introduction: https://adcontextprotocol.org/docs/intro
+2. Understand the architecture: https://adcontextprotocol.org/docs/building/understanding
+3. Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/integration
+4. Implement your first task: https://adcontextprotocol.org/docs/building/implementation
+5. Explore schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+
+## Key terms glossary
+
+- **AdCP**: Ad Context Protocol, the open standard for agentic advertising
+- **AgenticAdvertising.org**: The member organization maintaining AdCP
+- **Agentic advertising**: Using AI agents to automate advertising workflows
+- **brand.json**: Machine-readable brand identity file at /.well-known/brand.json
+- **adagents.json**: Property authorization file at /.well-known/adagents.json
+- **Task**: A discrete unit of work in AdCP (e.g., get_products, create_media_buy)
+- **Media product**: An advertising opportunity offered by a publisher or platform
+- **Content standards**: Brand safety and suitability rules governing ad placement
+- **Creative manifest**: Structured description of a creative asset's components and metadata
+- **Context session**: A stateful multi-turn interaction between agents
+- **Sponsored intelligence**: Conversational advertising within AI chat interfaces
+- **Signal**: An audience segment or contextual data product used for targeting
+- **Format ID**: A structured identifier for a creative format, combining agent_url and id

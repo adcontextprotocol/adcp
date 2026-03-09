@@ -4951,6 +4951,10 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
+    this.app.get('/admin/geo', requireAuth, requireManage, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-geo.html');
+    });
+
   }
 
   private setupAuthRoutes(): void {

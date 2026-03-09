@@ -14,7 +14,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
-import { notifyPublishedPost } from '../notifications/slack.js';
+import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from '../db/community-db.js';
 
@@ -323,6 +323,19 @@ export async function proposeContentForUser(
       isMembersOnly: false,
     }).catch(err => {
       logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
+    });
+
+    // DM the author with social media copy (fire-and-forget)
+    sendSocialAmplificationDM({
+      proposerUserId: user.id,
+      title,
+      excerpt: excerpt || undefined,
+      workingGroupSlug: committeeSlug,
+      postSlug: perspective.slug,
+      contentType: content_type,
+      isMembersOnly: false,
+    }).catch(err => {
+      logger.warn({ err }, 'Failed to send social amplification DM for proposed content');
     });
 
     // Award community points + check badges (fire-and-forget)
@@ -641,6 +654,22 @@ export function createContentRouter(): Router {
         }).catch(err => {
           logger.warn({ err }, 'Failed to send Slack channel notification for approved content');
         });
+
+        // DM the author with social media copy (fire-and-forget)
+        if (content.proposer_user_id) {
+          sendSocialAmplificationDM({
+            proposerUserId: content.proposer_user_id,
+            title: content.title,
+            excerpt: content.excerpt || undefined,
+            subtitle: content.subtitle || undefined,
+            workingGroupSlug: content.committee_slug,
+            postSlug: content.slug,
+            contentType: content.content_type || 'article',
+            isMembersOnly: content.is_members_only || false,
+          }).catch(err => {
+            logger.warn({ err }, 'Failed to send social amplification DM for approved content');
+          });
+        }
       }
 
       res.json({
