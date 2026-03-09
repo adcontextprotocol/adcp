@@ -558,63 +558,134 @@
       margin-bottom: var(--space-4);
     }
 
-    .credential-card {
+    /* Credential sharing panel (inside tier cards) */
+    .tier-share-panel {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+
+    .tier-share-panel h4 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+    }
+
+    .share-buttons {
       display: flex;
-      align-items: center;
-      gap: var(--space-4);
-      background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-border);
-      border-radius: var(--card-radius);
-      padding: var(--space-4) var(--space-6);
+      gap: var(--space-2);
+      flex-wrap: wrap;
       margin-bottom: var(--space-3);
     }
 
-    .credential-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: var(--radius-lg);
-      display: flex;
+    .share-btn {
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-size: var(--text-lg);
-      font-weight: var(--font-bold);
-      color: white;
-    }
-
-    .credential-icon-1 { background: var(--color-info-500); }
-    .credential-icon-2 { background: var(--color-warning-500); }
-    .credential-icon-3 { background: var(--color-tier-3); }
-
-    .credential-details { flex: 1; }
-
-    .credential-name {
-      font-weight: var(--font-semibold);
-      color: var(--color-text-heading);
-    }
-
-    .credential-date {
+      gap: var(--space-1);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
       font-size: var(--text-sm);
-      color: var(--color-text-secondary);
-      margin-top: 2px;
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      color: white;
+      transition: opacity var(--duration-fast) var(--ease-in-out);
     }
 
-    .credential-actions {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      flex-shrink: 0;
+    .share-btn:hover {
+      opacity: 0.9;
     }
 
-    .credential-link {
+    .share-btn-x {
+      background: #000;
+    }
+
+    .share-btn-linkedin {
+      background: #0a66c2;
+    }
+
+    .share-btn-cert {
+      background: var(--color-brand);
+    }
+
+    .share-btn-embed {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-primary);
+      border: var(--border-1) solid var(--color-border);
+    }
+
+    .embed-section {
+      margin-top: var(--space-2);
+    }
+
+    .embed-section summary {
       font-size: var(--text-sm);
       font-weight: var(--font-medium);
       color: var(--color-brand);
-      text-decoration: none;
+      cursor: pointer;
+      list-style: none;
     }
 
-    .credential-link:hover {
-      text-decoration: underline;
+    .embed-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .embed-snippet {
+      margin-top: var(--space-2);
+      position: relative;
+    }
+
+    .embed-snippet pre {
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      font-size: var(--text-xs);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .embed-copy-btn {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--color-text-secondary);
+    }
+
+    .embed-copy-btn:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .embed-tabs {
+      display: flex;
+      gap: var(--space-1);
+      margin-bottom: var(--space-2);
+    }
+
+    .embed-tab {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+
+    .embed-tab-active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
     }
 
     /* =========================================================================
@@ -703,9 +774,8 @@
       </div>
     </div>
 
-    <!-- Earned credentials -->
+    <!-- Earned credentials (legacy container, kept for backward compat but hidden — sharing is now inline in tier cards) -->
     <div id="credentials-section" class="credentials-section" style="display: none;">
-      <h2>Your credentials</h2>
       <div id="credentials-list"></div>
     </div>
   </div>
@@ -842,6 +912,104 @@
         return allModules.filter(function(m) { return m.id.startsWith(prefix); });
       }
 
+      function buildSharePanel(creds, tierLevel) {
+        // Find the earned credential(s) with certifier data
+        var earnedCreds = creds.filter(function(c) { return hasCredential(c.id); });
+        if (!earnedCreds.length) return '';
+
+        var html = '<div class="tier-share-panel">';
+        html += '<h4>Share your credential</h4>';
+
+        earnedCreds.forEach(function(credDef) {
+          var mc = state.myCredentials.find(function(m) { return m.credential_id === credDef.id; });
+          if (!mc) return;
+
+          var credName = credDef.name;
+          var certUrl = mc.certifier_public_id ? 'https://cert.io/c/' + mc.certifier_public_id : '';
+          var certPageUrl = window.location.origin + '/certification';
+          var dateStr = new Date(mc.awarded_at).toLocaleDateString();
+
+          // Pre-written share text
+          var xText = 'I just earned the ' + credName + ' certification from @AgenticAds! '
+            + 'AI agents are transforming advertising \u2014 learn AdCP and get certified yourself: '
+            + certPageUrl;
+          var linkedInTitle = 'I earned my ' + credName + ' certification!';
+          var linkedInSummary = 'Just completed the ' + credName + ' certification from AgenticAdvertising.org. '
+            + 'AdCP is the open protocol for AI-powered advertising. Get certified: ' + certPageUrl;
+
+          if (earnedCreds.length > 1) {
+            html += '<p style="font-size: var(--text-sm); font-weight: var(--font-medium); margin-bottom: var(--space-2);">' + esc(credName) + ' \u2014 earned ' + dateStr + '</p>';
+          }
+
+          html += '<div class="share-buttons">';
+
+          // X (Twitter) share
+          html += '<a href="https://x.com/intent/tweet?text=' + encodeURIComponent(xText) + '" target="_blank" rel="noopener" class="share-btn share-btn-x">';
+          html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>';
+          html += 'Post on X';
+          html += '</a>';
+
+          // LinkedIn share
+          var linkedInShareUrl = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(certUrl || certPageUrl);
+          html += '<a href="' + linkedInShareUrl + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+          html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>';
+          html += 'Share on LinkedIn';
+          html += '</a>';
+
+          // Add to LinkedIn profile
+          if (certUrl) {
+            var addToLinkedIn = 'https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME'
+              + '&name=' + encodeURIComponent(credName)
+              + '&organizationName=AgenticAdvertising.org'
+              + '&issueYear=' + new Date(mc.awarded_at).getFullYear()
+              + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1)
+              + '&certId=' + encodeURIComponent(mc.certifier_public_id)
+              + '&certUrl=' + encodeURIComponent(certUrl);
+            html += '<a href="' + addToLinkedIn + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+            html += 'Add to LinkedIn profile';
+            html += '</a>';
+          }
+
+          // View credential (cert.io page with QR code)
+          if (certUrl) {
+            html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="share-btn share-btn-cert">';
+            html += 'View credential &amp; QR code';
+            html += '</a>';
+          }
+
+          html += '</div>';
+
+          // Embed section
+          html += '<details class="embed-section">';
+          html += '<summary>Embed badge on your website or email signature</summary>';
+          html += '<div class="embed-snippet" id="embed-' + credDef.id + '">';
+
+          // Embed tabs
+          html += '<div class="embed-tabs">';
+          html += '<button class="embed-tab embed-tab-active" onclick="switchEmbed(\'' + credDef.id + '\', \'html\', this)">HTML</button>';
+          html += '<button class="embed-tab" onclick="switchEmbed(\'' + credDef.id + '\', \'markdown\', this)">Markdown</button>';
+          html += '</div>';
+
+          // HTML embed
+          var badgeUrl = certUrl || certPageUrl;
+          var embedHtml = '<a href="' + badgeUrl + '" target="_blank" rel="noopener">'
+            + '<img src="' + window.location.origin + '/AAo.svg" alt="' + credName + ' - AgenticAdvertising.org" width="120" height="40" style="vertical-align: middle;" />'
+            + ' ' + credName
+            + '</a>';
+          var embedMarkdown = '[![' + credName + '](' + window.location.origin + '/AAo.svg)](' + badgeUrl + ')';
+
+          html += '<pre class="embed-code" data-type="html">' + esc(embedHtml) + '</pre>';
+          html += '<pre class="embed-code" data-type="markdown" style="display:none">' + esc(embedMarkdown) + '</pre>';
+          html += '<button class="embed-copy-btn" onclick="copyEmbed(\'' + credDef.id + '\')">Copy</button>';
+
+          html += '</div>';
+          html += '</details>';
+        });
+
+        html += '</div>';
+        return html;
+      }
+
       function countCompletedModules(moduleIds) {
         var completed = new Set(
           state.progress.filter(function(p) { return p.status === 'completed' || p.status === 'tested_out'; }).map(function(p) { return p.module_id; })
@@ -971,6 +1139,11 @@
             html += '    </div>';
             html += '    <span class="tier-progress-text">' + prog.completed + ' / ' + prog.total + ' requirements met</span>';
             html += '  </div>';
+          }
+
+          // Sharing panel for earned credentials
+          if (earned) {
+            html += buildSharePanel(creds, meta.level);
           }
 
           html += '</div>';
@@ -1170,6 +1343,33 @@
       /* =====================================================================
          Global handlers
          ===================================================================== */
+      window.switchEmbed = function(credId, type, btn) {
+        var container = document.getElementById('embed-' + credId);
+        if (!container) return;
+        container.querySelectorAll('.embed-code').forEach(function(el) {
+          el.style.display = el.dataset.type === type ? '' : 'none';
+        });
+        container.querySelectorAll('.embed-tab').forEach(function(t) {
+          t.classList.toggle('embed-tab-active', t === btn);
+        });
+      };
+
+      window.copyEmbed = function(credId) {
+        var container = document.getElementById('embed-' + credId);
+        if (!container) return;
+        var visible = container.querySelector('.embed-code[style=""], .embed-code:not([style*="display:none"])');
+        if (!visible) visible = container.querySelector('.embed-code');
+        if (visible) {
+          navigator.clipboard.writeText(visible.textContent).then(function() {
+            var btn = container.querySelector('.embed-copy-btn');
+            if (btn) {
+              btn.textContent = 'Copied!';
+              setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+            }
+          });
+        }
+      };
+
       window.switchTab = function(btn, group) {
         // Deactivate siblings
         var siblings = btn.parentElement.querySelectorAll('.tab');
