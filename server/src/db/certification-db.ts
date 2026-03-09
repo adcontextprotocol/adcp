@@ -33,7 +33,7 @@ export interface CertificationModule {
 
 export interface LessonPlan {
   objectives: string[];
-  key_concepts: Array<{ topic: string; explanation: string }>;
+  key_concepts: Array<{ topic: string; explanation?: string; teaching_notes?: string }>;
   discussion_prompts: string[];
   demo_scenarios?: Array<{ description: string; tools: string[]; expected_outcome: string }>;
 }

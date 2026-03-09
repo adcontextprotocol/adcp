@@ -428,7 +428,10 @@ export function createCertificationToolHandlers(
         lp.objectives?.forEach(o => lines.push(`- ${o}`));
 
         lines.push('', '## Key concepts');
-        lp.key_concepts?.forEach(kc => lines.push(`### ${kc.topic}`, kc.explanation, ''));
+        lp.key_concepts?.forEach(kc => {
+          const detail = kc.teaching_notes || kc.explanation || '';
+          lines.push(`### ${kc.topic}`, detail, '');
+        });
 
         if (lp.discussion_prompts?.length) {
           lines.push('## Discussion prompts');
@@ -516,8 +519,10 @@ export function createCertificationToolHandlers(
         lines.push('');
 
         lines.push('**Key concepts to cover** (use Socratic method — ask probing questions, don\'t just lecture):');
+        lines.push('IMPORTANT: These are teaching notes, not facts to recite. Reference the learning resources and documentation for accurate protocol details. Never state protocol facts from memory — always ground your teaching in the current docs.');
         lp.key_concepts?.forEach(kc => {
-          lines.push(`- **${kc.topic}**: ${kc.explanation}`);
+          const detail = kc.teaching_notes || kc.explanation || '';
+          lines.push(`- **${kc.topic}**: ${detail}`);
         });
         lines.push('');
 
@@ -882,7 +887,7 @@ export function createCertificationToolHandlers(
         lines.push('## Key concepts');
         lessonPlan.key_concepts.forEach(kc => {
           lines.push(`### ${kc.topic}`);
-          lines.push(kc.explanation);
+          lines.push(kc.teaching_notes || kc.explanation || '');
           lines.push('');
         });
       }
