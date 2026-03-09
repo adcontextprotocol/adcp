@@ -48,6 +48,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
+import { markLinkAccountGoalsSucceeded } from "./db/outbound-db.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
@@ -5416,21 +5417,11 @@ Disallow: /api/admin/
             // Mark any pending Link Account outreach goals as succeeded so Addie stops re-sending
             if (accountLinked) {
               try {
-                const pool = getPool();
-                await pool.query(
-                  `UPDATE user_goal_history ugh
-                   SET status = 'success', updated_at = NOW()
-                   FROM outreach_goals og
-                   WHERE ugh.goal_id = og.id
-                     AND og.category = 'admin'
-                     AND og.name = 'Link Account'
-                     AND ugh.slack_user_id = $1
-                     AND ugh.status IN ('sent', 'pending', 'deferred')`,
-                  [slackUserIdToLink]
-                );
+                await markLinkAccountGoalsSucceeded(slackUserIdToLink);
               } catch (historyError) {
                 logger.warn({ error: historyError, slackUserId: slackUserIdToLink }, 'Failed to mark Link Account goal as success');
               }
+              invalidateMemberContextCache(slackUserIdToLink);
             }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
@@ -5454,18 +5445,7 @@ Disallow: /api/admin/
                 // Mark any pending "Link Account" goals as succeeded
                 if (linkResult.slack_user_id) {
                   try {
-                    const pool = getPool();
-                    await pool.query(
-                      `UPDATE user_goal_history ugh
-                       SET status = 'success', updated_at = NOW()
-                       FROM outreach_goals og
-                       WHERE ugh.goal_id = og.id
-                         AND og.category = 'admin'
-                         AND og.name = 'Link Account'
-                         AND ugh.slack_user_id = $1
-                         AND ugh.status IN ('sent', 'pending', 'deferred')`,
-                      [linkResult.slack_user_id]
-                    );
+                    await markLinkAccountGoalsSucceeded(linkResult.slack_user_id);
                   } catch (historyError) {
                     logger.warn({ error: historyError, slackUserId: linkResult.slack_user_id }, 'Failed to mark Link Account goal as success after email auto-link');
                   }

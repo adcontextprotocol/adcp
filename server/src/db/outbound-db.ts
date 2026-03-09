@@ -304,6 +304,24 @@ export async function getUserGoalHistory(
 }
 
 /**
+ * Mark all pending "Link Account" goal_history entries as succeeded for a user.
+ * Called from every code path that links a Slack account to a website account.
+ */
+export async function markLinkAccountGoalsSucceeded(slackUserId: string): Promise<void> {
+  await query(
+    `UPDATE user_goal_history ugh
+     SET status = 'success', updated_at = NOW()
+     FROM outreach_goals og
+     WHERE ugh.goal_id = og.id
+       AND og.category = 'admin'
+       AND og.name = 'Link Account'
+       AND ugh.slack_user_id = $1
+       AND ugh.status IN ('sent', 'pending', 'deferred', 'responded')`,
+    [slackUserId]
+  );
+}
+
+/**
  * Record a new goal attempt
  */
 export async function recordGoalAttempt(params: {

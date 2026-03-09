@@ -236,7 +236,6 @@ async function getGoalsToReconcile(): Promise<ReconcilableGoal[]> {
     JOIN outreach_goals og ON og.id = ugh.goal_id
     JOIN slack_user_mappings sm ON sm.slack_user_id = ugh.slack_user_id
     WHERE ugh.status IN ('sent', 'responded')
-      AND ugh.status != 'success'
     ORDER BY ugh.last_attempt_at DESC
     LIMIT 100`
   );
