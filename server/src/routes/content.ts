@@ -325,19 +325,6 @@ export async function proposeContentForUser(
       logger.warn({ err }, 'Failed to send Slack channel notification for proposed content');
     });
 
-    // DM the author with social media copy (fire-and-forget)
-    sendSocialAmplificationDM({
-      proposerUserId: user.id,
-      title,
-      excerpt: excerpt || undefined,
-      workingGroupSlug: committeeSlug,
-      postSlug: perspective.slug,
-      contentType: content_type,
-      isMembersOnly: false,
-    }).catch(err => {
-      logger.warn({ err }, 'Failed to send social amplification DM for proposed content');
-    });
-
     // Award community points + check badges (fire-and-forget)
     const communityDb = new CommunityDatabase();
     communityDb.awardPoints(user.id, 'content_published', 50, perspective.id, 'perspective').catch(err => {

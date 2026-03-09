@@ -14,7 +14,7 @@ import { ModelConfig } from '../../config/models.js';
 const logger = baseLogger.child({ module: 'geo-monitor' });
 
 const ADCP_PATTERNS = [
-  /adcp/i,
+  /\badcp\b/i,
   /ad context protocol/i,
   /agenticadvertising/i,
   /agentic advertising/i,
@@ -146,6 +146,11 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
         { promptId: prompt.id, category: prompt.category, adcpMentioned, competitorMentioned, sentiment },
         'Prompt checked'
       );
+
+      // Rate limit: 2s between calls to avoid hitting API limits
+      if (checked < prompts.length) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
     } catch (error) {
       logger.error({ error, promptId: prompt.id }, 'Failed to check prompt');
     }

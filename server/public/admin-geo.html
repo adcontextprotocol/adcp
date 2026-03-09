@@ -136,7 +136,7 @@
       color: var(--color-text-heading);
     }
 
-    tr:hover {
+    tbody tr:hover {
       background-color: var(--color-bg-subtle);
     }
 
@@ -166,7 +166,7 @@
 
     .error {
       background-color: var(--color-error-50);
-      color: var(--color-error-800);
+      color: var(--color-error-700);
       padding: 16px;
       border-radius: 8px;
       margin-bottom: 20px;
@@ -304,12 +304,12 @@
       </div>
     </div>
 
-    <div id="loading" class="loading">
-      <div class="loading-spinner"></div>
+    <div id="loading" class="loading" role="status" aria-live="polite">
+      <div class="loading-spinner" aria-hidden="true"></div>
       <p>Loading GEO visibility data...</p>
     </div>
 
-    <div id="error" class="error" style="display: none;"></div>
+    <div id="error" class="error" role="alert" style="display: none;"></div>
 
     <div id="unconfigured" class="unconfigured" style="display: none;">
       <div class="unconfigured-icon">&#128274;</div>
@@ -348,10 +348,10 @@
         <table id="model-table">
           <thead>
             <tr>
-              <th>Model</th>
-              <th>Mention rate</th>
-              <th>Sentiment</th>
-              <th>Trend</th>
+              <th scope="col">Model</th>
+              <th scope="col" class="text-right">Mention rate</th>
+              <th scope="col">Sentiment</th>
+              <th scope="col">Trend</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -365,10 +365,10 @@
           <table id="prompts-table">
             <thead>
               <tr>
-                <th>Prompt</th>
-                <th>AdCP mentioned</th>
-                <th>Competitor mentioned</th>
-                <th>Last checked</th>
+                <th scope="col">Prompt</th>
+                <th scope="col">AdCP mentioned</th>
+                <th scope="col">Competitor mentioned</th>
+                <th scope="col">Last checked</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -383,9 +383,9 @@
           <table id="urls-table">
             <thead>
               <tr>
-                <th>URL</th>
-                <th>Citation count</th>
-                <th>Models citing</th>
+                <th scope="col">URL</th>
+                <th scope="col" class="text-right">Citation count</th>
+                <th scope="col">Models citing</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -399,10 +399,10 @@
         <table id="competitive-table">
           <thead>
             <tr>
-              <th>Entity</th>
-              <th>Mention count</th>
-              <th>Share of voice</th>
-              <th>Trend</th>
+              <th scope="col">Entity</th>
+              <th scope="col" class="text-right">Mention count</th>
+              <th scope="col" class="text-right">Share of voice</th>
+              <th scope="col">Trend</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -525,7 +525,7 @@
           modelTable.innerHTML = models.map(row => `
             <tr>
               <td>${escapeHtml(row.model)}</td>
-              <td>${formatPercent(row.mention_rate)}</td>
+              <td class="text-right">${formatPercent(row.mention_rate)}</td>
               <td>${renderSentiment(row.sentiment)}</td>
               <td>${renderTrend(row.trend)}</td>
             </tr>
@@ -556,8 +556,8 @@
         if (urls.length > 0) {
           urlsTable.innerHTML = urls.map(row => `
             <tr>
-              <td class="url-text"><a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${escapeHtml(row.url)}</a></td>
-              <td>${formatNumber(row.citation_count)}</td>
+              <td class="url-text">${/^https?:\/\//i.test(row.url) ? `<a href="${escapeHtml(row.url)}" target="_blank" rel="noopener">${escapeHtml(row.url)}</a>` : escapeHtml(row.url)}</td>
+              <td class="text-right">${formatNumber(row.citation_count)}</td>
               <td>${escapeHtml(Array.isArray(row.models) ? row.models.join(', ') : (row.models || ''))}</td>
             </tr>
           `).join('');
@@ -572,8 +572,8 @@
           competitiveTable.innerHTML = competitors.map(row => `
             <tr>
               <td>${escapeHtml(row.name)}</td>
-              <td>${formatNumber(row.mention_count)}</td>
-              <td>${formatPercent(row.share_of_voice)}</td>
+              <td class="text-right">${formatNumber(row.mention_count)}</td>
+              <td class="text-right">${formatPercent(row.share_of_voice)}</td>
               <td>${renderTrend(row.trend)}</td>
             </tr>
           `).join('');

@@ -292,8 +292,6 @@ export function setupGeoRoutes(apiRouter: Router): void {
           });
         }
 
-        cache = null;
-
         const data = await fetchVisibilityData();
         cache = { data, timestamp: Date.now() };
 

@@ -12,7 +12,7 @@
         label: 'Overview',
         items: [
           { href: '/admin', label: 'Dashboard', icon: '📊' },
-          { href: '/admin/geo', label: 'GEO Visibility', icon: '🔍' },
+          { href: '/admin/geo', label: 'GEO visibility', icon: '🔍' },
         ]
       },
       {
