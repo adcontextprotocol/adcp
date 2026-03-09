@@ -99,21 +99,21 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'complete_certification_module',
-    description: 'Mark a certification module as completed with scores across assessment dimensions (0-100 each). Call ONLY after: (1) covering all key concepts from the lesson plan, (2) the learner completing any exercises, and (3) a multi-turn discussion where the learner demonstrated understanding. NEVER call this in the same turn as start_certification_module — a module must span multiple conversational turns.',
-    usage_hints: 'use when learner has completed a module\'s content and exercises',
+    description: 'Mark a certification module as completed with scores. Call ONLY when the learner has demonstrated strong understanding of ALL learning objectives — not just "covered" them. The goal is 90%+ in every assessed dimension. If the learner has gaps, do NOT complete with low scores. Instead: (1) identify the weak area, (2) teach it more deeply using different approaches (examples, analogies, multiple-choice questions), (3) share relevant resource links so they can learn outside the chat, (4) re-assess after they engage further. If you are doing your job as a teacher, scores should be high because you kept teaching until the learner understood. Only score dimensions you actually assessed through questions or exercises.',
+    usage_hints: 'use when learner has demonstrated understanding of ALL objectives, not just participated in discussion',
     input_schema: {
       type: 'object',
       properties: {
         module_id: { type: 'string', description: 'Module ID to complete' },
         scores: {
           type: 'object',
-          description: 'Scores per assessment dimension (0-100 each)',
+          description: 'Scores per assessment dimension (0-100 each). Only include dimensions you actually assessed through direct questions or exercises. Omit dimensions that were not tested.',
           properties: {
-            conceptual_understanding: { type: 'number', description: 'Understanding of core concepts (0-100)' },
-            practical_knowledge: { type: 'number', description: 'Ability to apply concepts to realistic scenarios (0-100)' },
-            problem_solving: { type: 'number', description: 'Can diagnose issues and propose solutions (0-100)' },
-            communication_clarity: { type: 'number', description: 'Can explain AdCP concepts clearly to others (0-100)' },
-            protocol_fluency: { type: 'number', description: 'Proper use of AdCP terminology and patterns (0-100)' },
+            conceptual_understanding: { type: 'number', description: 'Understanding of core concepts — did the learner explain them in their own words? (0-100)' },
+            practical_knowledge: { type: 'number', description: 'Can the learner apply concepts to realistic scenarios? Did you test this? (0-100)' },
+            problem_solving: { type: 'number', description: 'Can the learner diagnose issues and propose solutions? Did you present a problem? (0-100)' },
+            communication_clarity: { type: 'number', description: 'Can the learner explain AdCP concepts clearly to others? (0-100)' },
+            protocol_fluency: { type: 'number', description: 'Proper use of AdCP terminology — only score if the module covered protocol-specific terms and you asked about them (0-100)' },
           },
         },
       },
@@ -190,6 +190,85 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
     },
   },
 ];
+
+// =====================================================
+// LEARNING RESOURCES — links Addie can share with learners
+// =====================================================
+
+const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
+  A1: [
+    { label: 'Module A1 study guide', url: '/docs/learning/foundations/a1-agentic-advertising' },
+    { label: 'Introduction to AdCP', url: '/docs/intro' },
+    { label: 'Why AdCP — the fragmentation problem', url: '/docs/building/understanding' },
+    { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
+  ],
+  A2: [
+    { label: 'Module A2 study guide', url: '/docs/learning/foundations/a2-protocol-architecture' },
+    { label: 'AdCP quickstart (5-minute code example)', url: '/docs/quickstart' },
+    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
+    { label: 'Agent-to-Agent protocol', url: '/docs/building/integration/a2a-guide' },
+  ],
+  A3: [
+    { label: 'Module A3 study guide', url: '/docs/learning/foundations/a3-ecosystem-governance' },
+    { label: 'Governance protocol overview', url: '/docs/governance/overview' },
+    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+  ],
+  B1: [
+    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
+    { label: 'Media buy protocol', url: '/docs/media-buy' },
+  ],
+  B2: [
+    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
+    { label: 'Creative protocol', url: '/docs/creative' },
+    { label: 'List creative formats task', url: '/docs/creative/task-reference/list_creative_formats' },
+  ],
+  B3: [
+    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
+    { label: 'Signals protocol', url: '/docs/signals/overview' },
+  ],
+  C1: [
+    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
+    { label: 'Media buy protocol', url: '/docs/media-buy' },
+  ],
+  C2: [
+    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
+    { label: 'Brand protocol and brand.json', url: '/docs/brand-protocol' },
+    { label: 'Governance protocol', url: '/docs/governance/overview' },
+  ],
+  C3: [
+    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
+    { label: 'Creative protocol', url: '/docs/creative' },
+    { label: 'Sponsored Intelligence', url: '/docs/sponsored-intelligence' },
+  ],
+  D1: [
+    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
+    { label: 'MCP server implementation', url: '/docs/building/integration/mcp-guide' },
+  ],
+  D2: [
+    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
+    { label: 'Agent-to-Agent protocol', url: '/docs/building/integration/a2a-guide' },
+  ],
+  D3: [
+    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
+    { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
+  ],
+  E1: [
+    { label: 'Media buy capstone guide', url: '/docs/learning/specialist/media-buy' },
+    { label: 'Media buy task reference', url: '/docs/media-buy/task-reference/create_media_buy' },
+  ],
+  E2: [
+    { label: 'Creative capstone guide', url: '/docs/learning/specialist/creative' },
+    { label: 'Creative task reference', url: '/docs/creative/task-reference/build_creative' },
+  ],
+  E3: [
+    { label: 'Signals capstone guide', url: '/docs/learning/specialist/signals' },
+    { label: 'Signals task reference', url: '/docs/signals/tasks' },
+  ],
+  E4: [
+    { label: 'Governance capstone guide', url: '/docs/learning/specialist/governance' },
+    { label: 'Governance task reference', url: '/docs/governance/content-standards/tasks' },
+  ],
+};
 
 // =====================================================
 // HANDLER CREATION
@@ -450,7 +529,30 @@ export function createCertificationToolHandlers(
         lines.push('');
       }
 
-      lines.push('Begin teaching this module now. Start by welcoming the learner and giving a brief overview of what they\'ll learn. Use the Socratic method — ask questions to draw out understanding rather than just explaining. Score honestly against the rubric — do not inflate scores to be encouraging.');
+      // Add learning resources
+      const resources = MODULE_RESOURCES[moduleId] || [];
+      if (resources.length > 0) {
+        lines.push('**Learning resources** (share these with the learner — they can study outside the chat):');
+        for (const r of resources) {
+          lines.push(`- [${r.label}](${r.url})`);
+        }
+        lines.push('');
+      }
+
+      lines.push('## Teaching approach — you are a private tutor');
+      lines.push('');
+      lines.push('Think of yourself as a private tutor, not a proctor. Your job is to help every learner succeed.');
+      lines.push('');
+      lines.push('1. **Start by understanding the learner.** Ask: "What do you already know about [topic]? Tell me anything — what you\'ve heard, what you\'re curious about, what you\'ve worked with." Build on what they bring.');
+      lines.push('2. **Teach from where they are, not from the beginning.** If they already know something, acknowledge it and go deeper. If they\'re starting fresh, start simple.');
+      lines.push('3. **Mix question formats.** Open-ended questions, multiple-choice, "which of these is correct" comparisons, scenario-based problems, "spot the error" exercises. Variety keeps learners engaged and tests understanding differently.');
+      lines.push('4. **Cover ALL key concepts and learning objectives.** Do not rush to completion.');
+      lines.push('5. **When the learner has a gap, go deeper.** Try a different explanation, use an analogy, give a multiple-choice question, or share a resource link for further reading. Never move on from a concept the learner doesn\'t understand.');
+      lines.push('6. **Share learning resource links throughout the conversation.** Not just at the end. If discussing a concept, link to the relevant doc page so they can explore on their own.');
+      lines.push('7. **Do NOT call complete_certification_module until the learner has demonstrated understanding of every learning objective.** If they have gaps, keep teaching.');
+      lines.push('8. **Only score dimensions you actually assessed.** If you didn\'t ask protocol terminology questions, omit protocol_fluency.');
+      lines.push('9. **The goal is 90%+ in every dimension.** If you would score below 90, that means you need to teach more — not that the learner failed. Keep going until they get it.');
+      lines.push('10. **The learner can pause and come back later.** If they need to leave, tell them where they can continue reading on their own and which concepts to focus on.');
 
       return lines.join('\n');
     } catch (error) {
@@ -783,13 +885,24 @@ export function createCertificationToolHandlers(
       lines.push(`**Passing threshold**: ${criteria?.passing_threshold || 70}% in each dimension and overall`);
       lines.push('');
 
+      // Add learning resources
+      const capResources = MODULE_RESOURCES[moduleId] || [];
+      if (capResources.length > 0) {
+        lines.push('**Learning resources** (share with learner for reference during or after the capstone):');
+        for (const r of capResources) {
+          lines.push(`- [${r.label}](${r.url})`);
+        }
+        lines.push('');
+      }
+
       // Teaching instructions
       lines.push('## Instructions');
       lines.push('Conduct this capstone now. It combines a hands-on lab and adaptive exam:');
       lines.push('1. **Lab phase**: Guide the learner through the lab exercises using real AdCP tools against sandbox agents. Monitor their competence as they work.');
-      lines.push('2. **Exam phase**: Ask 6-10 follow-up questions covering assessment dimensions. Adjust difficulty based on responses.');
+      lines.push('2. **Exam phase**: Ask 6-10 follow-up questions covering assessment dimensions. Mix formats: open-ended, multiple-choice, scenario-based, "spot the error" comparisons. Adjust difficulty based on responses.');
       lines.push('3. Use the Socratic method throughout — ask probing questions rather than lecturing.');
-      lines.push('4. Score honestly against the rubric — do not inflate scores to be encouraging.');
+      lines.push('4. If the learner struggles in an area, teach it before moving on. Share relevant resource links. The goal is mastery, not just assessment.');
+      lines.push('5. Score honestly against the rubric — do not inflate scores to be encouraging.');
       lines.push('');
       lines.push(`After completing both phases, use complete_certification_exam with attempt_id "${attempt.id}" and your assessed scores.`);
 

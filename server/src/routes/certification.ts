@@ -169,48 +169,8 @@ export function createCertificationRouters() {
     }
   });
 
-  // POST /api/me/certification/modules/:id/complete — mark module complete + auto-award credentials
-  userRouter.post('/certification/modules/:id/complete', async (req, res) => {
-    try {
-      const userId = req.user!.id;
-      const moduleId = req.params.id;
-      const { score } = req.body;
-
-      if (!score || typeof score !== 'object') {
-        return res.status(400).json({ error: 'Score object is required' });
-      }
-
-      // Validate score values are numbers in 0-100 range
-      const scoreValues = Object.values(score);
-      if (scoreValues.length === 0 || !scoreValues.every((v): v is number => typeof v === 'number' && v >= 0 && v <= 100)) {
-        return res.status(400).json({ error: 'All score values must be numbers between 0 and 100' });
-      }
-
-      // Verify the module was started by this user
-      const existing = await certDb.getModuleProgress(userId, moduleId);
-      if (!existing) {
-        return res.status(400).json({ error: 'You must start this module before completing it' });
-      }
-      if (existing.status === 'completed') {
-        return res.status(400).json({ error: 'Module already completed' });
-      }
-
-      const progress = await certDb.completeModule(userId, moduleId, score);
-
-      // Auto-award any credentials the user is now eligible for
-      let awardedCredentials: string[] = [];
-      try {
-        awardedCredentials = await certDb.checkAndAwardCredentials(userId);
-      } catch (credError) {
-        logger.error({ error: credError, userId }, 'Failed to check credential eligibility (continuing)');
-      }
-
-      res.json({ ...progress, awarded_credentials: awardedCredentials });
-    } catch (error) {
-      logger.error({ error, moduleId: req.params.id }, 'Failed to complete module');
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
+  // Module completion is only available through Addie's tool calls (complete_certification_module).
+  // No REST API endpoint — prevents users from self-reporting scores without assessment.
 
   // GET /api/me/certification/certificates — issued certificates (legacy exam-based)
   userRouter.get('/certification/certificates', async (req, res) => {
@@ -278,86 +238,11 @@ export function createCertificationRouters() {
     }
   });
 
-  // POST /api/me/certification/exam/:id/complete — submit exam results
-  userRouter.post('/certification/exam/:id/complete', async (req, res) => {
-    try {
-      const attemptId = req.params.id;
-      const { scores } = req.body;
-
-      if (!scores || typeof scores !== 'object') {
-        return res.status(400).json({ error: 'scores object is required' });
-      }
-
-      // Validate and compute scores server-side
-      const scoreValues = Object.values(scores).filter(
-        (v): v is number => typeof v === 'number'
-      );
-      if (scoreValues.length === 0 || !scoreValues.every(v => v >= 0 && v <= 100)) {
-        return res.status(400).json({ error: 'All score values must be numbers between 0 and 100' });
-      }
-
-      const overall_score = Math.round(
-        scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length
-      );
-      const passing = scoreValues.every(s => s >= 70) && overall_score >= 70;
-
-      const attempt = await certDb.getAttempt(attemptId);
-      if (!attempt) {
-        return res.status(404).json({ error: 'Attempt not found' });
-      }
-
-      if (attempt.workos_user_id !== req.user!.id) {
-        return res.status(403).json({ error: 'Not authorized' });
-      }
-
-      if (attempt.status !== 'in_progress') {
-        return res.status(400).json({ error: 'Attempt is already completed' });
-      }
-
-      // Issue credential via Certifier if passing
-      let certifierCredentialId: string | undefined;
-      let certifierPublicId: string | undefined;
-
-      if (passing) {
-        const track = await certDb.getTrack(attempt.track_id);
-        if (track?.certifier_group_id) {
-          try {
-            const { issueCredential, isCertifierConfigured } = await import('../services/certifier-client.js');
-            if (isCertifierConfigured()) {
-              const twoYearsFromNow = new Date();
-              twoYearsFromNow.setFullYear(twoYearsFromNow.getFullYear() + 2);
-
-              const credential = await issueCredential({
-                groupId: track.certifier_group_id,
-                recipient: {
-                  name: `${req.user!.firstName} ${req.user!.lastName}`,
-                  email: req.user!.email,
-                },
-                expiryDate: twoYearsFromNow.toISOString().split('T')[0],
-                customAttributes: {
-                  'custom.track': track.name,
-                  'custom.score': String(overall_score),
-                },
-              });
-              certifierCredentialId = credential.id;
-              certifierPublicId = credential.publicId;
-            }
-          } catch (certError) {
-            logger.error({ error: certError, attemptId }, 'Failed to issue Certifier credential (continuing without it)');
-          }
-        }
-      }
-
-      const completed = await certDb.completeAttempt(
-        attemptId, scores, overall_score, passing,
-        certifierCredentialId, certifierPublicId
-      );
-
-      res.json(completed);
-    } catch (error) {
-      logger.error({ error, attemptId: req.params.id }, 'Failed to complete exam');
-      res.status(500).json({ error: 'Internal server error' });
-    }
+  // Exam completion is only available through Addie's tool calls (complete_certification_exam).
+  // No REST API endpoint — prevents users from self-reporting exam scores without assessment.
+  // Legacy endpoint removed; Certifier badge issuance handled in certification-tools.ts.
+  userRouter.post('/certification/exam/:id/complete', (_req, res) => {
+    res.status(410).json({ error: 'Exam completion is conducted through Addie. Start a chat and ask to take the capstone.' });
   });
 
   // =====================================================
