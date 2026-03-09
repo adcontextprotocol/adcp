@@ -181,6 +181,8 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - Creative agents MAY use AI/LLM processing for generation tasks
 - When `creative_id` is provided, creative agents MUST resolve the creative from their library
 - When `macro_values` is provided, creative agents SHOULD substitute the specified macros in the output manifest's assets and leave unresolved macros as `{MACRO}` placeholders
+- Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
+- Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
 
 ### preview_creative
 
@@ -230,6 +232,7 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 - Agents MUST return validation errors for non-compliant creatives
 - Agents MAY require approval before creatives are available for use
 - Agents SHOULD support `dry_run` for validation without applying changes
+- Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
 - Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
 - Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field
 
@@ -356,6 +359,10 @@ The format definition determines what type each asset_id should be. Asset type i
 Both work identically—the `agent_url` field identifies which agent is authoritative for each format.
 
 ## Schema reference
+
+<Note>
+Some creative protocol schemas (`build_creative`, `list_creative_formats`, `preview_creative`) have paths under `media-buy/` because they were originally released as part of the media-buy protocol. The schema paths are stable identifiers and do not affect which protocol the task belongs to.
+</Note>
 
 | Schema | Description |
 |--------|-------------|

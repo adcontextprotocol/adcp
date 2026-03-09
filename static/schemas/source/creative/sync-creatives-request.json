@@ -70,7 +70,7 @@
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement."
+      "description": "When true, creatives not included in this sync will be archived. Use with caution for full library replacement. Invalid when creative_ids is provided — delete_missing applies to the entire library scope, not a filtered subset."
     },
     "dry_run": {
       "type": "boolean",

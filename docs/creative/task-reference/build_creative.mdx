@@ -177,6 +177,10 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
 
 The `CLICK_URL` macro was substituted with the provided value; `CACHEBUSTER` remains as a placeholder for the sales agent to resolve at serve time.
 
+<Note>
+**Cross-agent workflow**: When the creative agent and sales agent are different systems, use `build_creative` on the creative agent to produce a manifest with tags, then [`sync_creatives`](/docs/creative/task-reference/sync_creatives) on the sales agent to upload it. For example: `list_creatives` on Flashtalking → `build_creative` on Flashtalking → `sync_creatives` on the DSP.
+</Note>
+
 ## Response format
 
 The response contains the transformed or generated creative manifest:
