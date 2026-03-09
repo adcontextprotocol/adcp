@@ -722,6 +722,24 @@ export async function autoLinkUnmappedSlackUsers(): Promise<{
       // Clear cached admin status so Addie recognizes newly linked admins immediately.
       invalidateAdminStatusCache(slackUser.slack_user_id);
 
+      // Mark any pending "Link Account" goals as succeeded so Addie stops following up
+      try {
+        const pool = getPool();
+        await pool.query(
+          `UPDATE user_goal_history ugh
+           SET status = 'success', updated_at = NOW()
+           FROM outreach_goals og
+           WHERE ugh.goal_id = og.id
+             AND og.category = 'admin'
+             AND og.name = 'Link Account'
+             AND ugh.slack_user_id = $1
+             AND ugh.status IN ('sent', 'pending', 'deferred')`,
+          [slackUser.slack_user_id]
+        );
+      } catch (goalErr) {
+        logger.warn({ error: goalErr, slackUserId: slackUser.slack_user_id }, 'Failed to mark Link Account goal as success during auto-link');
+      }
+
       const chapterResult = await syncUserToChaptersFromSlackChannels(workosUserId, slackUser.slack_user_id);
       chaptersJoined += chapterResult.chapters_joined;
 

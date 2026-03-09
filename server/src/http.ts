@@ -5450,6 +5450,27 @@ Disallow: /api/admin/
                   { workosUserId: user.id, slackUserId: linkResult.slack_user_id },
                   'Email-based auto-link on login'
                 );
+
+                // Mark any pending "Link Account" goals as succeeded
+                if (linkResult.slack_user_id) {
+                  try {
+                    const pool = getPool();
+                    await pool.query(
+                      `UPDATE user_goal_history ugh
+                       SET status = 'success', updated_at = NOW()
+                       FROM outreach_goals og
+                       WHERE ugh.goal_id = og.id
+                         AND og.category = 'admin'
+                         AND og.name = 'Link Account'
+                         AND ugh.slack_user_id = $1
+                         AND ugh.status IN ('sent', 'pending', 'deferred')`,
+                      [linkResult.slack_user_id]
+                    );
+                  } catch (historyError) {
+                    logger.warn({ error: historyError, slackUserId: linkResult.slack_user_id }, 'Failed to mark Link Account goal as success after email auto-link');
+                  }
+                  invalidateMemberContextCache(linkResult.slack_user_id);
+                }
               }
             }
           } catch (linkError) {

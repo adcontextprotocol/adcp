@@ -121,6 +121,11 @@ export class OutboundPlanner {
       return false;
     }
 
+    // Skip "Link Account" for users who are already linked
+    if (goal.category === 'admin' && goal.name === 'Link Account' && ctx.user.is_mapped && ctx.capabilities?.account_linked) {
+      return false;
+    }
+
     // Check company type requirement
     if (goal.requires_company_type.length > 0) {
       if (!ctx.company?.type) return false;

@@ -90,6 +90,8 @@ async function getGoalsNeedingFollowUp(): Promise<PendingFollowUp[]> {
       AND sm.outreach_opt_out = FALSE
       AND sm.slack_is_bot = FALSE
       AND sm.slack_is_deleted = FALSE
+      -- Skip "Link Account" follow-ups for users who have since linked
+      AND NOT (og.category = 'admin' AND og.name = 'Link Account' AND sm.workos_user_id IS NOT NULL)
     ORDER BY ugh.last_attempt_at ASC
     LIMIT 20`
   );
@@ -235,7 +237,6 @@ async function getGoalsToReconcile(): Promise<ReconcilableGoal[]> {
     JOIN slack_user_mappings sm ON sm.slack_user_id = ugh.slack_user_id
     WHERE ugh.status IN ('sent', 'responded')
       AND ugh.status != 'success'
-      AND ugh.last_attempt_at >= NOW() - INTERVAL '30 days'
     ORDER BY ugh.last_attempt_at DESC
     LIMIT 100`
   );
@@ -373,7 +374,33 @@ export async function runGoalFollowUpJob(options: {
   let goalsReconciled = 0;
   let goalsStillPending = 0;
 
-  // Part 1: Send follow-up messages
+  // Part 1: Reconcile goal outcomes FIRST so achieved goals don't get follow-ups
+  if (!options.skipReconciliation) {
+    const goalsToReconcile = await getGoalsToReconcile();
+    if (goalsToReconcile.length > 0) {
+      logger.debug({ count: goalsToReconcile.length }, 'Found goals to reconcile');
+    }
+
+    for (const goal of goalsToReconcile) {
+      if (options.dryRun) {
+        // In dry run, still check but don't update
+        logger.debug({
+          slackUserId: goal.slack_user_id,
+          goalName: goal.goal_name,
+        }, 'DRY RUN: Would check goal reconciliation');
+        goalsStillPending++;
+      } else {
+        const achieved = await reconcileGoal(goal);
+        if (achieved) {
+          goalsReconciled++;
+        } else {
+          goalsStillPending++;
+        }
+      }
+    }
+  }
+
+  // Part 2: Send follow-up messages (after reconciliation marks achieved goals)
   if (!options.skipFollowUps) {
     const pendingFollowUps = await getGoalsNeedingFollowUp();
     if (pendingFollowUps.length > 0) {
@@ -399,32 +426,6 @@ export async function runGoalFollowUpJob(options: {
 
         // Small delay between messages
         await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-  }
-
-  // Part 2: Reconcile goal outcomes
-  if (!options.skipReconciliation) {
-    const goalsToReconcile = await getGoalsToReconcile();
-    if (goalsToReconcile.length > 0) {
-      logger.debug({ count: goalsToReconcile.length }, 'Found goals to reconcile');
-    }
-
-    for (const goal of goalsToReconcile) {
-      if (options.dryRun) {
-        // In dry run, still check but don't update
-        logger.debug({
-          slackUserId: goal.slack_user_id,
-          goalName: goal.goal_name,
-        }, 'DRY RUN: Would check goal reconciliation');
-        goalsStillPending++;
-      } else {
-        const achieved = await reconcileGoal(goal);
-        if (achieved) {
-          goalsReconciled++;
-        } else {
-          goalsStillPending++;
-        }
       }
     }
   }
