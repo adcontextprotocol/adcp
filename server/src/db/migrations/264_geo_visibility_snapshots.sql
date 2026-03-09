@@ -35,4 +35,17 @@ INSERT INTO geo_prompts (prompt_text, category) VALUES
   ('How to let AI buyer agents discover and purchase my ad inventory', 'intent'),
   ('Best way to standardize creative specs for AI campaign execution', 'intent'),
   ('How to make ad products machine-readable for autonomous agents', 'intent'),
-  ('What protocol should I implement for agent-to-agent ad transactions?', 'intent');
+  ('What protocol should I implement for agent-to-agent ad transactions?', 'intent'),
+  -- buyer: media buyer and agency planner perspective
+  ('How do I automate media buying across multiple DSPs with AI?', 'buyer'),
+  ('What tools exist for AI-assisted campaign planning and optimization?', 'buyer'),
+  ('How to reduce manual work in programmatic ad operations?', 'buyer'),
+  -- executive: decision-maker evaluating the space
+  ('What are the emerging standards in programmatic advertising for 2026?', 'executive'),
+  ('How is AI changing the ad buying and selling process?', 'executive'),
+  ('What should my company know about agentic advertising?', 'executive'),
+  -- canary: detect hallucination and misinformation
+  ('Is AdCP owned by Google?', 'canary'),
+  ('What companies are behind the Ad Context Protocol?', 'canary'),
+  ('Is AgenticAdvertising.org a subsidiary of IAB Tech Lab?', 'canary'),
+  ('How much does AdCP cost to license?', 'canary');
