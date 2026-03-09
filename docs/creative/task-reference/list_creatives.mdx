@@ -30,7 +30,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `filters` | object | No | Filter criteria for querying creatives |
+| `filters` | object | No | Filter criteria — see [filtering options](#filtering-options) below |
 | `sort` | object | No | Sorting parameters |
 | `pagination` | object | No | Pagination controls |
 
@@ -39,22 +39,41 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `include_assignments` | boolean | No | Include package assignment information (default: true) |
-| `include_performance` | boolean | No | Include performance metrics (default: false) |
-| `include_sub_assets` | boolean | No | Include sub-assets for carousel/native formats (default: false) |
+| `include_performance` | boolean | No | Include aggregated historical performance metrics — impressions, clicks, CTR, conversions (default: false) |
+| `include_sub_assets` | boolean | No | Include individual assets within multi-asset creatives like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
 | `fields` | array | No | Specific fields to return (omit for all fields) |
 
 ## Filtering options
 
-The `filters` object supports format, status, tag, date, concept, variable, and assignment filtering. All filters are optional and composable.
+The `filters` object supports these optional, composable filters:
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| `accounts` | array | Filter by owning accounts |
+| `formats` | string[] | Filter by format type (e.g., `"video"`, `"display"`) |
+| `format_ids` | format_id[] | Filter by structured format IDs |
+| `statuses` | string[] | Filter by approval status |
+| `tags` | string[] | Filter by tags (all must match) |
+| `tags_any` | string[] | Filter by tags (any must match) |
+| `name_contains` | string | Case-insensitive name search |
+| `creative_ids` | string[] | Filter by specific creative IDs (max 100) |
+| `concept_ids` | string[] | Filter by concept groupings |
+| `has_variables` | boolean | Filter for DCO creatives with dynamic variables |
+| `created_after` / `created_before` | date-time | Filter by creation date range |
+| `updated_after` / `updated_before` | date-time | Filter by last-modified date range |
+| `assigned_to_packages` | string[] | Filter by package assignments * |
+| `media_buy_ids` | string[] | Filter by media buy assignments * |
+| `buyer_refs` | string[] | Filter by buyer reference IDs * |
+| `unassigned` | boolean | Filter for unassigned creatives * |
+| `has_performance_data` | boolean | Filter for creatives with performance data * |
+
+\* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
 
 <Note>
 **Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array.
 </Note>
 
-<Note>
-Assignment-related filters (`assigned_to_packages`, `media_buy_ids`, `buyer_refs`, `unassigned`, `has_performance_data`) are specific to sales agents that track media buy assignments. Standalone creative agents will ignore these filters.
-</Note>
 
 ## Sorting options
 
@@ -238,7 +257,7 @@ Get minimal creative data for a selection dropdown:
 
 ```json
 {
-  "fields": ["creative_id", "name", "format", "status"],
+  "fields": ["creative_id", "name", "format_id", "status"],
   "include_assignments": false,
   "filters": {
     "statuses": ["approved"]

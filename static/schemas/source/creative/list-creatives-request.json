@@ -57,7 +57,7 @@
         "enum": [
           "creative_id",
           "name",
-          "format",
+          "format_id",
           "status",
           "created_date",
           "updated_date",

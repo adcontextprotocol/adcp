@@ -6,14 +6,14 @@ testable: true
 
 Upload and manage creative assets in a creative library. Supports bulk uploads, upsert semantics, and generative creatives. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
 
-**Response Time**: Instant to days (returns `completed`, or `submitted` for review that takes hours/days)
+**Response time**: Instant to days (returns `completed`, or `submitted` for review that takes hours/days)
 
 {/* Using latest because these schemas are not yet released in any version.
      Update to correct version alias after the next release. */}
 **Request Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json)
 **Response Schema**: [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
 
-## Quick Start
+## Quick start
 
 Upload creative assets:
 
@@ -96,9 +96,9 @@ asyncio.run(main())
 
 </CodeGroup>
 
-**Note:** When creatives require approval, the response returns `status: "submitted"` with a `task_id`. See [Async Approval Workflow](#async-approval-workflow) for handling these cases.
+**Note:** When creatives require approval, the response returns `status: "submitted"` with a `task_id`. See [Async approval workflow](#async-approval-workflow) for handling these cases.
 
-## Request Parameters
+## Request parameters
 
 | Parameter         | Type       | Required | Description                                                                                                                                                              |
 | ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -109,7 +109,7 @@ asyncio.run(main())
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot delete creatives assigned to active, non-paused packages.                                  |
 
-### Creative Object
+### Creative object
 
 | Field         | Type     | Required | Description                                                        |
 | ------------- | -------- | -------- | ------------------------------------------------------------------ |
@@ -119,7 +119,7 @@ asyncio.run(main())
 | `assets`      | object   | Yes      | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
 | `tags`        | string[] | No       | Searchable tags for creative organization                          |
 
-### Asset Structure
+### Asset structure
 
 Assets are keyed by role name. Each role contains the asset details:
 
@@ -178,9 +178,9 @@ Assignments are at the request level, mapping creative IDs to package IDs. Stand
 
 **See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
 
-## Common Scenarios
+## Common scenarios
 
-### Bulk Upload
+### Bulk upload
 
 Upload multiple creatives in one call:
 
@@ -328,7 +328,7 @@ asyncio.run(main())
 
 </CodeGroup>
 
-### Generative Creatives
+### Generative creatives
 
 Use the creative agent to generate creatives from brand identity data. See the [Generative Creatives guide](/docs/creative/generative-creative) for complete workflow details.
 
@@ -406,7 +406,7 @@ asyncio.run(main())
 
 </CodeGroup>
 
-### Dry Run Validation
+### Dry run validation
 
 Validate creative configuration without uploading:
 
@@ -488,7 +488,7 @@ asyncio.run(main())
 
 </CodeGroup>
 
-### Scoped Update with creative_ids Filter
+### Scoped update with creative_ids filter
 
 Update only specific creatives from a large library without affecting others:
 
@@ -613,7 +613,7 @@ asyncio.run(main())
 - Performance: Publisher can optimize processing when scope is known upfront
 - Safety: Explicit targeting reduces risk of unintended changes
 
-## Async Approval Workflow
+## Async approval workflow
 
 When creatives require review (brand safety, policy compliance), the initial response is `status: "submitted"`. Use webhooks or polling to get the outcome.
 
@@ -628,7 +628,7 @@ The operation status (`completed`) means the review process finished. Individual
 
 **See:** [Webhooks](/docs/building/implementation/webhooks) for webhook configuration.
 
-## Sync Modes
+## Sync modes
 
 ### Upsert (default)
 
@@ -637,14 +637,14 @@ The operation status (`completed`) means the review process finished. Individual
 - Updates provided fields, leaves others unchanged
 - Use `creative_ids` filter to limit scope to specific creatives
 
-### Dry Run
+### Dry run
 
 - Validates request without making changes
 - Returns errors and warnings
 - Does not process assets or create creatives
 - Use for pre-flight validation checks
 
-## Error Handling
+## Error handling
 
 | Error Code                | Description                                       | Resolution                                                           |
 | ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
@@ -655,7 +655,7 @@ The operation status (`completed`) means the review process finished. Individual
 | `FORMAT_MISMATCH`         | Assets don't match format requirements            | Verify asset types and specifications match format definition        |
 | `CREATIVE_IN_ACTIVE_DELIVERY` | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
-## Best Practices
+## Best practices
 
 1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
 
