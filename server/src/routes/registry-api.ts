@@ -2361,6 +2361,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         enforcement: req.query.enforcement as any,
         jurisdiction: req.query.jurisdiction as string,
         vertical: req.query.vertical as string,
+        domain: req.query.domain as string,
         limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 1000) : undefined,
         offset: parseInt(req.query.offset as string) || 0,
       };

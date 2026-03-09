@@ -9,7 +9,7 @@ sidebarTitle: Overview
 
 # Campaign Governance tasks
 
-Campaign Governance has four tasks.
+Campaign Governance has five tasks.
 
 | Task | Direction | Description |
 |------|-----------|-------------|
@@ -17,5 +17,6 @@ Campaign Governance has four tasks.
 | [`validate_plan_action`](./validate_plan_action) | Orchestrator → Gov | Pre-action check: "can I do this?" Returns a verdict |
 | [`report_plan_outcome`](./report_plan_outcome) | Orchestrator → Gov | Post-action report: "here's what happened." Gov updates state and returns any findings |
 | [`get_plan_audit_logs`](./get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
+| [`verify_authorization`](./verify_authorization) | Seller → Authorization Agent | Seller-side check: "is this planned delivery authorized?" Confirms or denies |
 
-`sync_plans` configures the rules. `validate_plan_action` and `report_plan_outcome` are the before/after pair that the orchestrator calls on every seller interaction. `get_plan_audit_logs` is read-only, for monitoring and reporting.
+`sync_plans` configures the rules. `validate_plan_action` and `report_plan_outcome` are the buyer-side before/after pair. `verify_authorization` is the seller-side verification call -- the seller calls it to independently confirm that a media buy matches the campaign plan. `get_plan_audit_logs` is read-only, for monitoring and reporting.

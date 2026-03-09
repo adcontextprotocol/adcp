@@ -90,6 +90,38 @@
       "enum": ["operator", "brand", "operator_brand", "agent"],
       "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
     },
+    "authorization_agent": {
+      "type": "object",
+      "description": "Buyer's authorization agent endpoint. When set, the seller calls this agent to verify media buy requests before confirming them. Includes authentication credentials the seller presents when calling.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the authorization agent endpoint."
+        },
+        "authentication": {
+          "type": "object",
+          "description": "Authentication the seller presents when calling the authorization agent.",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/auth-scheme.json" },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for authentication. For Bearer: token sent in Authorization header.",
+              "minLength": 32
+            }
+          },
+          "required": ["schemes", "credentials"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["url", "authentication"],
+      "additionalProperties": false
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."

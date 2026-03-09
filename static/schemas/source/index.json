@@ -46,6 +46,10 @@
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"
         },
+        "planned-delivery": {
+          "$ref": "/schemas/core/planned-delivery.json",
+          "description": "The seller's interpreted delivery parameters for a media buy"
+        },
         "geo-breakdown-support": {
           "$ref": "/schemas/core/geo-breakdown-support.json",
           "description": "Geographic breakdown capability declaration for reporting"
@@ -711,6 +715,14 @@
         "digital-source-type": {
           "$ref": "/schemas/enums/digital-source-type.json",
           "description": "IPTC-aligned classification of AI involvement in content creation (digital_capture, trained_algorithmic_media, composite_with_trained_algorithmic_media, etc.)"
+        },
+        "authorization-phase": {
+          "$ref": "/schemas/enums/authorization-phase.json",
+          "description": "Media buy lifecycle phase for authorization verification (purchase, modification, delivery)"
+        },
+        "governance-domain": {
+          "$ref": "/schemas/enums/governance-domain.json",
+          "description": "Governance sub-domains a registry policy applies to (campaign, property, creative, content_standards)"
         }
       }
     },
@@ -1248,6 +1260,16 @@
           "response": {
             "$ref": "/schemas/governance/get-plan-audit-logs-response.json",
             "description": "Plan state with budget tracking, validation history, and compliance summary"
+          }
+        },
+        "verify-authorization": {
+          "request": {
+            "$ref": "/schemas/governance/verify-authorization-request.json",
+            "description": "Seller calls the buyer's authorization agent to verify that a media buy's planned delivery is authorized"
+          },
+          "response": {
+            "$ref": "/schemas/governance/verify-authorization-response.json",
+            "description": "Authorization decision with findings and conditions"
           }
         }
       }

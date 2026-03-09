@@ -232,31 +232,290 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
 
 ## Integration with `create_media_buy`
 
-Orchestrators MAY reference their governance validation when sending requests to sellers. This allows the seller to know that governance was applied (useful for audit trails) without needing to interact with the governance agent.
+The buyer includes `plan_id` and `buyer_campaign_ref` as first-class fields on the `create_media_buy` request. These fields tell the seller which governance plan applies, enabling seller-side authorization verification.
 
 ```json
 {
   "tool": "create_media_buy",
   "arguments": {
     "buyer_ref": "q1-launch-pinnacle-001",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "plan_id": "plan_q1_2026_launch",
     "account": { "agent_url": "https://seller.example.com", "id": "acc_123" },
     "brand": { "domain": "acmecorp.com" },
     "start_time": "2026-03-15T00:00:00Z",
     "end_time": "2026-06-15T00:00:00Z",
-    "packages": ["..."],
-    "ext": {
-      "campaign_governance": {
-        "plan_id": "plan_q1_2026_launch",
-        "buyer_campaign_ref": "q1-2026-spring-launch",
-        "action_id": "act_xyz789",
-        "verdict": "approved"
+    "packages": ["..."]
+  }
+}
+```
+
+The seller's response includes `planned_delivery` -- what the seller will actually run:
+
+```json
+{
+  "media_buy_id": "mb_seller_456",
+  "buyer_ref": "q1-launch-pinnacle-001",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "packages": ["..."],
+  "planned_delivery": {
+    "geo": { "countries": ["US"] },
+    "channels": ["olv"],
+    "start_time": "2026-03-15T00:00:00Z",
+    "end_time": "2026-06-15T00:00:00Z",
+    "total_budget": 150000,
+    "currency": "USD",
+    "frequency_cap": { "max_impressions": 3, "per": "user", "window": { "interval": 1, "unit": "days" } },
+    "audience_summary": "Adults 25-54, US, premium video inventory",
+    "enforced_policies": ["us_coppa"]
+  }
+}
+```
+
+`planned_delivery` is the seller's interpretation of the request -- the actual delivery parameters they will use. It serves two purposes:
+
+1. **Authorization verification** -- When the account has an `authorization_agent`, the seller sends `planned_delivery` to the authorization agent for verification before confirming the media buy.
+2. **Transparency** -- The buyer can compare `planned_delivery` against what they requested to catch discrepancies early, before delivery begins.
+
+## Authorization verification
+
+Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Authorization webhooks close this gap by giving sellers an independent way to confirm that purchases are authorized.
+
+The seller POSTs to the buyer's `authorization_agent` URL when media buy events occur. The authorization agent maintains all state and correlates requests by `plan_id` + `media_buy_id` -- the seller does not need to track authorization history or chain IDs across calls.
+
+### Setup
+
+The buyer registers an `authorization_agent` when syncing accounts with the seller. The agent includes authentication credentials so the authorization agent can verify the seller's identity:
+
+```json
+{
+  "tool": "sync_accounts",
+  "arguments": {
+    "accounts": [
+      {
+        "brand": { "domain": "acmecorp.com" },
+        "operator": "pinnacle-media.com",
+        "billing": "operator",
+        "authorization_agent": {
+          "url": "https://governance.pinnacle-media.com",
+          "authentication": {
+            "schemes": ["Bearer"],
+            "credentials": "gov_token_acme_pinnacle_2026_xyz..."
+          }
+        }
       }
+    ]
+  }
+}
+```
+
+The seller stores this endpoint and presents the credentials when calling `verify_authorization`. This ensures only authorized sellers can make authorization requests -- the authorization agent rejects calls without valid credentials.
+
+### Authorization phases
+
+Authorization covers the full media buy lifecycle through three phases:
+
+| Phase | Trigger | What's validated |
+|-------|---------|------------------|
+| `purchase` | `create_media_buy` | Budget, geo, channels, flight dates, policies |
+| `modification` | `update_media_buy` | Change magnitude, reallocation, new parameters |
+| `delivery` | Periodic (seller-initiated) | Pacing, spend rate, geo drift, channel distribution |
+
+The `phase` field defaults to `purchase` if omitted, so existing implementations continue to work without changes.
+
+The authorization agent maintains all state and correlates requests by `plan_id` + `media_buy_id`. The seller does not chain authorization IDs or track conversation history -- it posts what happened, and the authorization agent looks up context.
+
+### Purchase phase
+
+When the seller receives a `create_media_buy` request on an account with an `authorization_agent`:
+
+1. The seller interprets the request and determines its `planned_delivery`.
+2. The seller calls `verify_authorization` with `phase: "purchase"`, the `plan_id`, and `planned_delivery`.
+3. The authorization agent validates the planned delivery against the campaign plan.
+4. If `authorized`, the seller confirms the media buy.
+5. If `denied`, the seller rejects the media buy with an `AUTHORIZATION_DENIED` error.
+6. If `conditions`, the seller adjusts its planned delivery to meet the conditions and re-verifies, or rejects.
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant S as Seller
+    participant A as Authorization Agent
+
+    O->>S: create_media_buy(plan_id, packages, ...)
+    S->>S: Interpret request → planned_delivery
+    S->>A: POST verify_authorization(phase: purchase)
+    A->>A: Validate against plan
+    A-->>S: authorized
+    S-->>O: media_buy confirmed (planned_delivery)
+```
+
+### Modification phase
+
+When the seller receives an `update_media_buy` request:
+
+1. The seller interprets the update and determines the new `planned_delivery`.
+2. The seller POSTs to the `authorization_agent` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`.
+3. The authorization agent looks up the media buy by `plan_id` + `media_buy_id` and evaluates the changes against the plan.
+4. If `authorized`, the seller confirms the update.
+5. If `denied` or `conditions`, the seller follows the same flow as purchase phase.
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant S as Seller
+    participant A as Authorization Agent
+
+    O->>S: update_media_buy(budget: $200K, end: Jul 15)
+    S->>S: Determine new planned_delivery
+    S->>A: POST verify_authorization(phase: modification)
+    A->>A: Look up media buy, evaluate changes
+    A-->>S: authorized
+    S-->>O: media_buy updated
+```
+
+The authorization agent can apply different logic to modifications than to initial purchases. For example, a small budget increase within `reallocation_threshold` might be auto-approved, while a large budget increase or new geo market might require stricter scrutiny.
+
+### Delivery phase
+
+The seller calls `verify_authorization` with `phase: "delivery"` periodically during active delivery. This creates a direct reporting channel between the seller and the buyer's authorization agent.
+
+1. The seller collects delivery metrics for the reporting period.
+2. The seller POSTs to the `authorization_agent` with `phase: "delivery"`, the current `planned_delivery`, and `delivery_metrics`.
+3. If `authorized`, the response includes `next_check` -- when the seller should report again.
+4. If `denied`, the seller pauses delivery immediately.
+5. If `conditions`, the seller adjusts delivery (e.g., slow pacing, shift geo targeting) and re-verifies immediately.
+
+The authorization agent opts in to delivery reporting by including `next_check` in the purchase authorization response. If the purchase response has no `next_check`, the authorization agent does not expect delivery reports.
+
+```mermaid
+sequenceDiagram
+    participant S as Seller
+    participant A as Authorization Agent
+
+    loop Every reporting period
+        S->>A: verify_authorization(phase: delivery, metrics)
+        A->>A: Check pacing, geo drift, spend rate
+        A-->>S: authorized (next_check: +7d)
+    end
+
+    Note over S,A: If drift detected
+    S->>A: verify_authorization(phase: delivery, metrics)
+    A-->>S: conditions (slow pacing)
+    S->>S: Adjust delivery
+    S->>A: verify_authorization(phase: delivery, updated metrics)
+    A-->>S: authorized (next_check: +3d)
+```
+
+The authorization agent controls the reporting cadence through `next_check`. It can tighten the cadence (shorter intervals) when it detects drift or conditions, and relax it (longer intervals) when delivery is stable. The authorization agent MAY treat a missed `next_check` deadline as a finding on the next delivery check.
+
+### Verification examples
+
+**Purchase request:**
+
+```json
+{
+  "tool": "verify_authorization",
+  "arguments": {
+    "plan_id": "plan_q1_2026_launch",
+    "buyer_campaign_ref": "q1-2026-spring-launch",
+    "seller": "https://seller.example.com",
+    "media_buy_id": "mb_seller_456",
+    "buyer_ref": "q1-launch-pinnacle-001",
+    "phase": "purchase",
+    "planned_delivery": {
+      "geo": { "countries": ["US"] },
+      "channels": ["olv"],
+      "start_time": "2026-03-15T00:00:00Z",
+      "end_time": "2026-06-15T00:00:00Z",
+      "total_budget": 150000,
+      "currency": "USD",
+      "frequency_cap": { "max_impressions": 3, "per": "user", "window": { "interval": 1, "unit": "days" } },
+      "audience_summary": "Adults 25-54, US, premium video inventory",
+      "enforced_policies": ["us_coppa"]
     }
   }
 }
 ```
 
-The `ext.campaign_governance` block is informational. Sellers MAY log it for transparency but MUST NOT reject requests based on governance data. Governance is the buyer's concern.
+**Authorized (purchase with delivery opt-in):**
+
+```json
+{
+  "authorization_id": "auth_001",
+  "status": "authorized",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Planned delivery is within authorized parameters. Budget: $150,000 of $500,000 authorized. Geo: US (authorized). Channel: OLV (within 40-70% target range).",
+  "expires_at": "2026-03-15T01:00:00Z",
+  "next_check": "2026-03-22T00:00:00Z"
+}
+```
+
+The `next_check` field signals that the authorization agent expects delivery reporting. If absent, no delivery reports are expected.
+
+**Denied (purchase):**
+
+```json
+{
+  "authorization_id": "auth_002",
+  "status": "denied",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
+  "findings": [
+    {
+      "category_id": "strategic_alignment",
+      "severity": "critical",
+      "explanation": "Geo targeting includes CA but plan only authorizes US.",
+      "details": {
+        "authorized_countries": ["US"],
+        "planned_countries": ["US", "CA"]
+      }
+    }
+  ]
+}
+```
+
+**Authorized (delivery):**
+
+```json
+{
+  "authorization_id": "auth_004",
+  "status": "authorized",
+  "plan_id": "plan_q1_2026_launch",
+  "buyer_campaign_ref": "q1-2026-spring-launch",
+  "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
+  "next_check": "2026-03-29T00:00:00Z"
+}
+```
+
+### When authorization is not available
+
+Authorization verification is optional at every phase. If the account has no `authorization_agent`, the seller processes media buy requests normally. The buyer-side governance loop (`validate_plan_action` → execute → `report_plan_outcome`) still applies.
+
+Sellers SHOULD NOT require authorization verification -- it is a trust enhancement, not a prerequisite. A seller that refuses to process media buys without an `authorization_agent` would break interoperability with buyers who do not use Campaign Governance.
+
+Similarly, the `delivery` phase is optional even when `purchase` authorization is used. A seller MAY support purchase authorization without ongoing delivery reporting. The authorization agent indicates whether it expects delivery reports through the presence of `next_check` in the purchase response.
+
+If the authorization agent is unreachable (timeout, network error), the seller SHOULD proceed with the media buy and log the failure. Authorization verification should not block ad delivery when governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
+
+### Authorization and the governance loop
+
+Authorization verification complements the buyer-side governance loop, it does not replace it:
+
+| Concern | Buyer-side (`validate_plan_action`) | Seller-side (`verify_authorization`) |
+|---------|--------------------------------------|---------------------------------------|
+| **Who checks** | Buyer's governance agent | Buyer's authorization agent, called by seller |
+| **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
+| **What's validated** | The buyer's intended action | The seller's planned and actual delivery |
+| **Trust model** | Self-attested | Independently verified |
+| **Budget tracking** | Yes (plan state) | Authorization agent maintains state |
+| **Ongoing monitoring** | Via `report_plan_outcome` | Via `delivery` phase |
+
+The `delivery` phase gives the authorization agent real-time visibility into what sellers are actually delivering. The buyer-side `report_plan_outcome` depends on the orchestrator reporting honestly; the `delivery` phase gets reports directly from the seller.
+
+The authorization agent MAY be the same agent as the governance agent, or a separate agent. The protocol does not prescribe the relationship -- only that the seller can call the `authorization_agent` URL registered on the account.
 
 ## Orchestrator integration pattern
 
@@ -265,26 +524,43 @@ flowchart TD
     A[Sync plan] --> B[Agent decides to act]
     B --> C["validate_plan_action(plan_id, ref, tool, payload)"]
     C --> D{Verdict?}
-    D -->|approved| E[Execute action with seller]
+    D -->|approved| E[Send create_media_buy to seller]
     D -->|modification_required| F[Apply modifications]
     F --> C
     D -->|rejected| G[Log rejection, skip action]
     D -->|escalated| H{Severity?}
     H -->|info| E
-    H -->|warning| I[Execute but flag for review]
+    H -->|warning| I[Send to seller, flag for review]
     H -->|critical| J[Pause, notify human]
     J --> K[Human resolves]
     K --> C
-    E --> L[Receive seller response]
+    E --> L{Authorization agent?}
     I --> L
-    L --> M["report_plan_outcome(plan_id, action_id, outcome)"]
-    M --> N{Status?}
-    N -->|accepted| O[Continue]
-    N -->|findings| P[Review findings, decide next action]
-    P --> O
+    L -->|yes| M["Seller calls verify_authorization (purchase)"]
+    L -->|no| N[Seller processes normally]
+    M --> O{Authorization?}
+    O -->|authorized| N
+    O -->|denied| P[Seller rejects media buy]
+    O -->|conditions| Q[Seller adjusts or rejects]
+    N --> R[Receive seller response with planned_delivery]
+    R --> S["report_plan_outcome(plan_id, action_id, outcome)"]
+    S --> T{Status?}
+    T -->|accepted| U[Continue]
+    T -->|findings| V[Review findings, decide next action]
+    V --> U
+    U --> W{Update needed?}
+    W -->|yes| X["validate_plan_action(update_media_buy)"]
+    X --> Y["Seller calls verify_authorization (modification)"]
+    W -->|no| Z{Delivery active?}
+    Z -->|yes| AA["Seller calls verify_authorization (delivery) periodically"]
+    AA --> AB{Delivery authorized?}
+    AB -->|authorized| Z
+    AB -->|denied| AC[Seller pauses delivery]
+    AB -->|conditions| AD[Seller adjusts delivery]
+    AD --> Z
 ```
 
-The governance agent is a synchronous call in the orchestrator's action loop. For latency-sensitive operations, implementations MAY cache governance decisions for repeated similar actions within the same campaign.
+The governance agent is a synchronous call in the orchestrator's action loop. Authorization verification happens on the seller side and is transparent to the orchestrator -- the orchestrator sends the same `create_media_buy` request regardless of whether authorization verification is configured. Modification and delivery phase authorization happen between the seller and authorization agent, independent of the orchestrator's governance loop.
 
 ## Audit trail
 

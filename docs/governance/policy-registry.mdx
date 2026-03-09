@@ -59,6 +59,7 @@ Each policy in the registry follows the [policy-entry schema](https://adcontextp
   "enforcement": "must",
   "jurisdictions": ["GB"],
   "verticals": ["food", "beverage"],
+  "governance_domains": ["campaign", "property", "content_standards"],
   "effective_date": "2025-10-01",
   "source_url": "https://www.legislation.gov.uk/ukpga/2022/17/contents",
   "source_name": "UK Parliament",
@@ -79,6 +80,21 @@ Each policy in the registry follows the [policy-entry schema](https://adcontextp
   }
 }
 ```
+
+## Temporal enforcement
+
+Policies have optional `effective_date` and `sunset_date` fields. Governance agents use these dates to determine enforcement behavior automatically:
+
+| Condition | Behavior |
+|-----------|----------|
+| Before `effective_date` | Evaluate but treat as informational. Findings are reported at `info` severity regardless of the policy's declared enforcement level. |
+| Between `effective_date` and `sunset_date` (or no `sunset_date`) | Enforce at the declared level (`must` = reject, `should` = warn). |
+| After `sunset_date` | Stop evaluating. The policy no longer applies. |
+| No `effective_date` | Enforce immediately (the policy has always been in effect). |
+
+This means brands can reference upcoming regulations before they take effect. The governance agent evaluates them and reports what *would* have been flagged, without blocking campaigns. Once the effective date passes, enforcement activates automatically -- no configuration change needed.
+
+For example, the EU AI Act Article 50 has `effective_date: "2026-08-01"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
 
 ## Three tiers of policy application
 
@@ -115,9 +131,65 @@ The registry is a shared resource consumed by all governance domains:
 |--------|------------------------------|
 | **[Campaign Governance](/docs/governance/campaign/index)** | Resolves policies via brand compliance config, evaluates actions against policy text in `validate_plan_action` |
 | **[Content Standards](/docs/governance/content-standards/index)** | Creates content standards from registry policies using `registry_policy_ids` |
-| **[Property Governance](/docs/governance/property/index)** | Declares `policy:` prefixed features in `get_adcp_capabilities`, evaluates properties against policy text |
-| **[Creative Governance](/docs/governance/creative/index)** | Declares `policy:` prefixed creative features, evaluates creatives for AI disclosure and content compliance |
+| **[Property Governance](/docs/governance/property/index)** | Declares `registry:` prefixed features in `get_adcp_capabilities`, evaluates properties against policy text |
+| **[Creative Governance](/docs/governance/creative/index)** | Declares `registry:` prefixed creative features, evaluates creatives for AI disclosure and content compliance |
 | **[Media Buy](/docs/media-buy/index)** | Sellers declare `enforced_policies` on products, buyers send `required_policies` in requests |
+
+## Governance domains
+
+Each policy declares which governance sub-domains it applies to via `governance_domains`. This determines which types of governance agents can evaluate and declare the policy as a feature.
+
+| Domain | Description |
+|--------|-------------|
+| `campaign` | Campaign governance agents evaluate this policy during `validate_plan_action` |
+| `property` | Property governance agents can declare this policy as a property feature |
+| `creative` | Creative governance agents can evaluate creatives against this policy |
+| `content_standards` | Content standards agents can create standards from this policy |
+
+For example, `eu_ai_act_article_50` has `governance_domains: ["creative", "content_standards"]` because it's about AI-generated content disclosure -- relevant to creative evaluation and content standards, but not to property or campaign-level governance.
+
+Filter by domain via the API: `GET /api/policies/registry?domain=creative`
+
+## The `registry:` prefix
+
+Governance agents declare standardized capabilities using `registry:` prefixed feature IDs. This creates a shared vocabulary so buyers searching for "EU AI Act compliance" find agents using the same terminology.
+
+**Convention:** `registry:{policy_id}` maps a feature ID to a registry policy. Unprefixed feature IDs are agent-defined.
+
+**Property governance agent declares:**
+```json
+{
+  "governance": {
+    "property_features": [
+      { "feature_id": "registry:us_coppa", "type": "binary", "name": "COPPA compliance" },
+      { "feature_id": "registry:uk_hfss", "type": "binary", "name": "UK HFSS compliance" }
+    ]
+  }
+}
+```
+
+**Creative governance agent declares:**
+```json
+{
+  "governance": {
+    "creative_features": [
+      { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "name": "EU AI Act Article 50 compliance" },
+      { "feature_id": "registry:ca_sb_942", "type": "binary", "name": "California SB 942 compliance" }
+    ]
+  }
+}
+```
+
+**Buyer filters by feature:**
+```json
+{
+  "feature_requirements": [
+    { "feature_id": "registry:us_coppa", "allowed_values": [true] }
+  ]
+}
+```
+
+The governance agent fetches the policy text and exemplars from the registry to evaluate against. The buyer just references the policy ID. The `governance_domains` field on the policy validates that the agent type is appropriate for the policy.
 
 ## Buyer-seller transparency
 
@@ -151,7 +223,7 @@ The registry is served via the AgenticAdvertising.org API:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/policies/registry` | GET | List policies with filtering by category, jurisdiction, vertical |
+| `/api/policies/registry` | GET | List policies with filtering by category, jurisdiction, vertical, domain |
 | `/api/policies/resolve` | GET | Resolve a single policy by ID (+ optional version) |
 | `/api/policies/resolve/bulk` | POST | Bulk resolve multiple policy IDs |
 | `/api/policies/history` | GET | Revision history for a policy |

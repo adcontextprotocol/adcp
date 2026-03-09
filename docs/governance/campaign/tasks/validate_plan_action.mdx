@@ -99,6 +99,8 @@ All checks passed. The orchestrator may proceed.
 
 ### rejected
 
+Budget exceeded:
+
 ```json
 {
   "action_id": "act_rej_001",
@@ -112,6 +114,47 @@ All checks passed. The orchestrator may proceed.
         "total_committed": 450000,
         "this_action": 150000,
         "authorized_total": 500000
+      }
+    }
+  ]
+}
+```
+
+Regulatory violation (COPPA -- targeting children under 13):
+
+```json
+{
+  "action_id": "act_rej_002",
+  "verdict": "rejected",
+  "categories": [
+    {
+      "category_id": "regulatory_compliance",
+      "status": "failed",
+      "explanation": "COPPA (us_coppa) prohibits behavioral targeting of audiences under 13. The targeting overlay includes age range 6-17, which includes children under 13.",
+      "details": {
+        "policy_id": "us_coppa",
+        "policy_source": "registry",
+        "violation": "behavioral_targeting_under_13"
+      }
+    }
+  ]
+}
+```
+
+Geo-authorization violation (targeting outside authorized markets):
+
+```json
+{
+  "action_id": "act_rej_003",
+  "verdict": "rejected",
+  "categories": [
+    {
+      "category_id": "strategic_alignment",
+      "status": "failed",
+      "explanation": "Media buy targets CA (Canada) but the plan only authorizes US markets. Targeting must be restricted to authorized countries.",
+      "details": {
+        "authorized_countries": ["US"],
+        "targeting_countries": ["US", "CA"]
       }
     }
   ]

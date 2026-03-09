@@ -11,7 +11,9 @@ export interface Policy {
   region_aliases: Record<string, string[]>;
   verticals: string[];
   channels: string[] | null;
+  governance_domains: string[];
   effective_date: string | null;
+  sunset_date: string | null;
   source_url: string | null;
   source_name: string | null;
   policy: string;
@@ -44,6 +46,7 @@ export interface ListPoliciesOptions {
   enforcement?: 'must' | 'should' | 'may';
   jurisdiction?: string;
   vertical?: string;
+  domain?: string;
   limit?: number;
   offset?: number;
 }
@@ -60,6 +63,7 @@ export interface SavePolicyInput {
   verticals?: string[];
   channels?: string[];
   effective_date?: string;
+  sunset_date?: string;
   source_url?: string;
   source_name?: string;
   policy: string;
@@ -81,6 +85,7 @@ function deserializePolicy(row: any): Policy {
     region_aliases: typeof row.region_aliases === 'string' ? JSON.parse(row.region_aliases) : (row.region_aliases || {}),
     verticals: typeof row.verticals === 'string' ? JSON.parse(row.verticals) : (row.verticals || []),
     channels: row.channels == null ? null : (typeof row.channels === 'string' ? JSON.parse(row.channels) : row.channels),
+    governance_domains: typeof row.governance_domains === 'string' ? JSON.parse(row.governance_domains) : (row.governance_domains || []),
     exemplars: row.exemplars == null ? null : (typeof row.exemplars === 'string' ? JSON.parse(row.exemplars) : row.exemplars),
     ext: row.ext == null ? null : (typeof row.ext === 'string' ? JSON.parse(row.ext) : row.ext),
     created_at: new Date(row.created_at),
@@ -125,6 +130,11 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
   if (options.vertical) {
     conditions.push(`verticals @> $${paramIndex}::jsonb`);
     values.push(JSON.stringify([options.vertical]));
+    paramIndex++;
+  }
+  if (options.domain) {
+    conditions.push(`governance_domains @> $${paramIndex}::jsonb`);
+    values.push(JSON.stringify([options.domain]));
     paramIndex++;
   }
 

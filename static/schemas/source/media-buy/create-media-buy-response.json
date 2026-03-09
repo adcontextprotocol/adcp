@@ -38,6 +38,10 @@
             "$ref": "/schemas/core/package.json"
           }
         },
+        "planned_delivery": {
+          "$ref": "/schemas/core/planned-delivery.json",
+          "description": "The seller's interpreted delivery parameters. Describes what the seller will actually run -- geo, channels, flight dates, frequency caps, and budget. Present when the account has an authorization_agent or when the seller chooses to provide delivery transparency."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."

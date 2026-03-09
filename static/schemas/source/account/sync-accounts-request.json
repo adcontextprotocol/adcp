@@ -32,6 +32,39 @@
           "sandbox": {
             "type": "boolean",
             "description": "When true, provision this as a sandbox account. No real platform calls or billing. Sandbox accounts are identified by account_id in subsequent requests."
+          },
+          "authorization_agent": {
+            "type": "object",
+            "description": "Buyer's authorization agent endpoint. When provided, the seller SHOULD call this agent to verify media buy requests before confirming them. Enables seller-side authorization verification -- the seller independently confirms that purchases are authorized by the buyer's governance layer.",
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the authorization agent endpoint."
+              },
+              "authentication": {
+                "type": "object",
+                "description": "Authentication the seller presents when calling the authorization agent.",
+                "properties": {
+                  "schemes": {
+                    "type": "array",
+                    "description": "Authentication scheme. Supported: ['Bearer'] for token auth.",
+                    "items": { "$ref": "/schemas/enums/auth-scheme.json" },
+                    "minItems": 1,
+                    "maxItems": 1
+                  },
+                  "credentials": {
+                    "type": "string",
+                    "description": "Credentials for authentication. For Bearer: token sent in Authorization header when calling verify_authorization.",
+                    "minLength": 32
+                  }
+                },
+                "required": ["schemes", "credentials"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["url", "authentication"],
+            "additionalProperties": false
           }
         },
         "required": [

@@ -255,6 +255,16 @@
               <option value="may">May</option>
             </select>
           </div>
+          <div class="filter-group">
+            <label for="domain">Governance domain</label>
+            <select id="domain">
+              <option value="">All</option>
+              <option value="campaign">Campaign</option>
+              <option value="property">Property</option>
+              <option value="creative">Creative</option>
+              <option value="content_standards">Content standards</option>
+            </select>
+          </div>
         </div>
 
         <div id="policies-list">
@@ -280,9 +290,11 @@
         const search = document.getElementById('search').value;
         const category = document.getElementById('category').value;
         const enforcement = document.getElementById('enforcement').value;
+        const domain = document.getElementById('domain').value;
         if (search) params.set('search', search);
         if (category) params.set('category', category);
         if (enforcement) params.set('enforcement', enforcement);
+        if (domain) params.set('domain', domain);
         params.set('limit', '1000');
 
         const res = await fetch(`/api/policies/registry?${params}`);
@@ -331,6 +343,9 @@
         const verticals = (p.verticals || []).map(v =>
           `<span class="jurisdiction-tag">${v}</span>`
         ).join('');
+        const domains = (p.governance_domains || []).map(d =>
+          `<span class="jurisdiction-tag">${d}</span>`
+        ).join('');
 
         return `<tr onclick="showDetail('${p.policy_id}')">
           <td><span class="policy-id">${p.policy_id}</span></td>
@@ -338,7 +353,7 @@
           <td><span class="badge badge-${p.category}">${p.category}</span></td>
           <td><span class="badge badge-${p.enforcement}">${p.enforcement}</span></td>
           <td>${jurisdictions || regions || '<span style="color: var(--color-text-secondary)">global</span>'}</td>
-          <td>${verticals || '<span style="color: var(--color-text-secondary)">all</span>'}</td>
+          <td>${domains || '<span style="color: var(--color-text-secondary)">all</span>'}</td>
           <td><span class="badge badge-${p.source_type}">${p.source_type}</span></td>
         </tr>`;
       }).join('');
@@ -351,7 +366,7 @@
             <th>Category</th>
             <th>Enforcement</th>
             <th>Jurisdictions</th>
-            <th>Verticals</th>
+            <th>Domains</th>
             <th>Source</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -366,6 +381,7 @@
       const jurisdictions = (p.jurisdictions || []).join(', ') ||
         Object.keys(p.region_aliases || {}).join(', ') || 'Global';
       const verticals = (p.verticals || []).join(', ') || 'All';
+      const domains = (p.governance_domains || []).join(', ') || 'All';
 
       let exemplarsHtml = '';
       if (p.exemplars) {
@@ -412,12 +428,20 @@
               <p>${escapeHtml(verticals)}</p>
             </div>
             <div class="meta-item">
+              <label>Governance domains</label>
+              <p>${escapeHtml(domains)}</p>
+            </div>
+            <div class="meta-item">
               <label>Source</label>
               <p>${p.source_name ? escapeHtml(p.source_name) : 'N/A'}${p.source_url ? ` (<a href="${escapeHtml(p.source_url)}" target="_blank">link</a>)` : ''}</p>
             </div>
             <div class="meta-item">
               <label>Effective date</label>
               <p>${p.effective_date || 'N/A'}</p>
+            </div>
+            <div class="meta-item">
+              <label>Sunset date</label>
+              <p>${p.sunset_date || 'None'}</p>
             </div>
           </div>
         </div>
@@ -461,6 +485,7 @@
     });
     document.getElementById('category').addEventListener('change', loadPolicies);
     document.getElementById('enforcement').addEventListener('change', loadPolicies);
+    document.getElementById('domain').addEventListener('change', loadPolicies);
 
     loadPolicies();
   </script>

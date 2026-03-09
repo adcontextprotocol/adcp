@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/verify-authorization-request.json",
+  "title": "Verify Authorization Request",
+  "description": "Seller calls the buyer's authorization agent to verify that a media buy is authorized under the campaign plan. The seller sends its planned delivery parameters so the authorization agent can confirm they match the plan. Supports initial purchase authorization, modification authorization for update_media_buy, and ongoing delivery authorization for periodic reporting.",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Campaign governance plan identifier from the create_media_buy request."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Buyer's campaign reference from the create_media_buy request."
+    },
+    "seller": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL of the seller agent requesting authorization."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "The seller's identifier for the media buy being verified."
+    },
+    "buyer_ref": {
+      "type": "string",
+      "description": "The buyer's reference identifier from the create_media_buy request."
+    },
+    "phase": {
+      "$ref": "/schemas/enums/authorization-phase.json",
+      "description": "The phase of the media buy lifecycle. 'purchase': initial create_media_buy. 'modification': update_media_buy. 'delivery': periodic delivery reporting. Defaults to 'purchase' if omitted.",
+      "default": "purchase"
+    },
+    "planned_delivery": {
+      "$ref": "/schemas/core/planned-delivery.json",
+      "description": "What the seller will actually deliver. For 'purchase' and 'modification' phases, this is the seller's interpreted delivery parameters. For 'delivery' phase, this is the current delivery plan (which may have drifted from the original)."
+    },
+    "delivery_metrics": {
+      "type": "object",
+      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The authorization agent compares these metrics against the planned delivery to detect drift. Currency is the same as planned_delivery.currency.",
+      "properties": {
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          },
+          "required": ["start", "end"],
+          "additionalProperties": false
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend during the reporting period."
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend since the media buy started."
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions delivered during the reporting period."
+        },
+        "cumulative_impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total impressions since the media buy started."
+        },
+        "geo_distribution": {
+          "type": "object",
+          "description": "Actual geographic distribution of delivery. Keys are ISO 3166-1 alpha-2 country codes, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "channel_distribution": {
+          "type": "object",
+          "description": "Actual channel distribution of delivery. Keys MUST be values from the channels enum, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "pacing": {
+          "type": "string",
+          "enum": ["ahead", "on_track", "behind"],
+          "description": "Whether delivery is ahead of, on track with, or behind the planned pace."
+        }
+      },
+      "required": ["reporting_period"],
+      "additionalProperties": false
+    },
+    "modification_summary": {
+      "type": "string",
+      "description": "Human-readable summary of what changed in this modification. SHOULD be present for 'modification' phase. Helps the authorization agent understand the nature of the change."
+    }
+  },
+  "required": ["plan_id", "buyer_campaign_ref", "seller", "media_buy_id", "buyer_ref", "planned_delivery"],
+  "additionalProperties": false
+}

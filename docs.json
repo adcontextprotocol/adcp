@@ -182,6 +182,7 @@
                       "docs/governance/campaign/tasks/sync_plans",
                       "docs/governance/campaign/tasks/validate_plan_action",
                       "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/verify_authorization",
                       "docs/governance/campaign/tasks/get_plan_audit_logs"
                     ]
                   }
@@ -529,6 +530,7 @@
                       "docs/governance/campaign/tasks/sync_plans",
                       "docs/governance/campaign/tasks/validate_plan_action",
                       "docs/governance/campaign/tasks/report_plan_outcome",
+                      "docs/governance/campaign/tasks/verify_authorization",
                       "docs/governance/campaign/tasks/get_plan_audit_logs"
                     ]
                   }

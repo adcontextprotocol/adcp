@@ -95,6 +95,7 @@ asyncio.run(main())
 | `operator` | string | Yes | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
 | `billing` | string | Yes | Who should be invoiced: `operator` or `agent`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts. The seller must either accept this billing model or reject the request. |
 | `sandbox` | boolean | No | When true, set up a sandbox account. No real platform calls or billing. |
+| `authorization_agent` | object | No | Buyer's authorization agent endpoint with authentication. When set, the seller calls this agent to [verify media buy authorization](/docs/governance/campaign/tasks/verify_authorization) before confirming purchases. Contains `url` (agent endpoint) and `authentication` (credentials the seller presents when calling). Follows the same authentication pattern as `push_notification_config`. |
 
 **Natural key**: The tuple `(brand, operator)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency).
 
@@ -127,6 +128,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
+| `authorization_agent` | Authorization agent endpoint (url + authentication), echoed from request when provided. |
 | `sandbox` | Whether this is a sandbox account, echoed from request. |
 
 ### Account status

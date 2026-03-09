@@ -52,10 +52,20 @@
       "items": { "$ref": "/schemas/enums/channels.json" },
       "description": "Advertising channels this policy applies to. If omitted or null, the policy applies to all channels."
     },
+    "governance_domains": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/governance-domain.json" },
+      "description": "Governance sub-domains this policy applies to. Determines which types of governance agents can declare registry:{policy_id} features. For example, a policy with domains [\"creative\", \"property\"] can be declared as a feature by both creative and property governance agents."
+    },
     "effective_date": {
       "type": "string",
       "format": "date",
-      "description": "ISO 8601 date when the regulation or standard takes effect."
+      "description": "ISO 8601 date when the regulation or standard takes effect. Before this date, governance agents treat the policy as informational (evaluate but do not block). After this date, the policy is enforced at its declared enforcement level."
+    },
+    "sunset_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date when the regulation or standard is no longer enforced. After this date, governance agents stop evaluating this policy. Omit if the policy has no expiration."
     },
     "source_url": {
       "type": "string",

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/authorization-phase.json",
+  "title": "Authorization Phase",
+  "description": "The phase of the media buy lifecycle that triggered the authorization verification request.",
+  "type": "string",
+  "enum": ["purchase", "modification", "delivery"]
+}

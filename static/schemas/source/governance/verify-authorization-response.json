@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/verify-authorization-response.json",
+  "title": "Verify Authorization Response",
+  "description": "Authorization agent's response to a seller's verification request. Returns whether the planned delivery is authorized under the campaign plan.",
+  "type": "object",
+  "properties": {
+    "authorization_id": {
+      "type": "string",
+      "description": "Unique identifier for this authorization record. For audit logging only -- the seller does not need to store or reference this in subsequent calls. The authorization agent correlates requests by plan_id + media_buy_id."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["authorized", "denied", "conditions"],
+      "description": "Whether the planned delivery is authorized. 'authorized': proceed as planned. 'denied': do not proceed. 'conditions': authorized with conditions the seller must accept."
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Echoed from request."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Echoed from request."
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Human-readable explanation of the authorization decision."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Specific issues found during authorization verification. Present when status is 'denied' or 'conditions'.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "description": "Validation category that flagged the issue."
+          },
+          "severity": {
+            "$ref": "/schemas/enums/escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "details": {
+            "type": "object",
+            "description": "Structured details.",
+            "additionalProperties": true
+          }
+        },
+        "required": ["category_id", "severity", "explanation"],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Present when status is 'conditions'. Specific adjustments the seller must make to proceed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Dot-path to the planned_delivery field that needs adjustment."
+          },
+          "required_value": {
+            "description": "The value the field must have for authorization. May be any JSON type matching the target field's schema. When present, the condition is machine-actionable -- the seller can programmatically apply the value. When absent, the condition is advisory -- the seller should interpret the reason and adjust accordingly."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this condition is required."
+          }
+        },
+        "required": ["field", "reason"],
+        "additionalProperties": false
+      }
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this authorization expires. Present for 'purchase' and 'modification' phases when status is 'authorized' or 'conditions'. The seller must confirm the media buy or apply conditions before this time. Not used for 'delivery' phase -- use next_check instead."
+    },
+    "next_check": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller should next call verify_authorization with delivery metrics. Present in any phase response when the authorization agent expects ongoing delivery reporting. In a 'purchase' response, the presence of next_check is the opt-in signal that the authorization agent expects delivery-phase reports. The authorization agent MAY treat a missed next_check deadline as a finding on the next delivery check."
+    }
+  },
+  "required": ["authorization_id", "status", "plan_id", "buyer_campaign_ref"],
+  "additionalProperties": false
+}
