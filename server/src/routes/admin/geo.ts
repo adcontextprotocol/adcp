@@ -10,10 +10,10 @@ import { Router } from "express";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireManage } from "../../middleware/auth.js";
 import { query } from "../../db/client.js";
+import { fetchLLMPulse, getLLMPulseApiKey } from "../../services/llmpulse-client.js";
 
 const logger = createLogger("admin-geo");
 
-const LLMPULSE_BASE_URL = "https://api.llmpulse.ai/api/v1";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // LLM Pulse API response types
@@ -111,41 +111,6 @@ let projectId: number | null = null;
 
 function isCacheValid(): boolean {
   return cache !== null && Date.now() - cache.timestamp < CACHE_TTL_MS;
-}
-
-function getApiKey(): string | undefined {
-  return process.env.LLMPULSE_API_KEY;
-}
-
-function getBaseUrl(): string {
-  return process.env.LLMPULSE_API_URL || LLMPULSE_BASE_URL;
-}
-
-async function fetchLLMPulse(path: string, params: Record<string, string> = {}): Promise<unknown> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("LLMPULSE_API_KEY not configured");
-  }
-
-  const searchParams = new URLSearchParams(params);
-  const url = `${getBaseUrl()}${path}?${searchParams.toString()}`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-    },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `LLM Pulse API error: ${response.status} ${response.statusText}${body ? ` - ${body}` : ""}`
-    );
-  }
-
-  return response.json();
 }
 
 async function getProjectId(): Promise<number> {
@@ -271,13 +236,36 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     : 0;
 
   // Build per-model breakdown from prompt_summary with model breakdown
+  // Query stored snapshots for trend computation (last 14+ days)
+  const modelTrends = new Map<string, "up" | "down" | "flat">();
+  try {
+    const snapshotsResult = await query<{ model: string; snapshot_date: string; mention_rate: number }>(
+      `SELECT model, snapshot_date, mention_rate
+       FROM geo_visibility_snapshots
+       WHERE snapshot_date >= CURRENT_DATE - INTERVAL '30 days'
+       ORDER BY model, snapshot_date`
+    );
+    // Group by model and compute trend from snapshot history
+    const byModelSnapshots = new Map<string, Array<{ date: string; value: number }>>();
+    for (const row of snapshotsResult.rows) {
+      const arr = byModelSnapshots.get(row.model) || [];
+      arr.push({ date: row.snapshot_date, value: Number(row.mention_rate) });
+      byModelSnapshots.set(row.model, arr);
+    }
+    for (const [model, data] of byModelSnapshots) {
+      modelTrends.set(model, computeTrend(data));
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to query snapshot trends, using flat");
+  }
+
   const byModel: GeoVisibilityData["by_model"] = (modelSummaryResult.data || []).map((row) => ({
     model: row.model,
     mention_rate: Math.round(row.mention_rate * 10) / 10,
     sentiment: row.net_sentiment > 0.2 ? "positive" as const
       : row.net_sentiment < -0.2 ? "negative" as const
       : "neutral" as const,
-    trend: "flat" as const,
+    trend: modelTrends.get(row.model) || "flat" as const,
   }));
 
   // Build per-prompt mention lookup from answers (sticky-true: once mentioned, stays mentioned)
@@ -354,7 +342,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
     requireManage,
     async (_req, res) => {
       try {
-        const apiKey = getApiKey();
+        const apiKey = getLLMPulseApiKey();
         if (!apiKey) {
           return res.json({
             configured: false,
@@ -397,7 +385,7 @@ export function setupGeoRoutes(apiRouter: Router): void {
     requireManage,
     async (_req, res) => {
       try {
-        const apiKey = getApiKey();
+        const apiKey = getLLMPulseApiKey();
         if (!apiKey) {
           return res.json({
             configured: false,

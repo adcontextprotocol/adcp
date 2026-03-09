@@ -28,6 +28,7 @@ import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { runGeoMonitorJob } from './geo-monitor.js';
+import { runGeoSnapshotJob } from './geo-snapshot.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
@@ -310,6 +311,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.promptsChecked > 0,
   });
 
+  // GEO visibility snapshot - saves daily per-model metrics from LLM Pulse
+  jobScheduler.register({
+    name: 'geo-snapshot',
+    description: 'GEO visibility daily snapshot',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runGeoSnapshotJob,
+    shouldLogResult: (r) => r.modelsSnapped > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -375,4 +386,5 @@ export const JOB_NAMES = {
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   EVENT_REMINDER: 'event-reminder',
   GEO_MONITOR: 'geo-monitor',
+  GEO_SNAPSHOT: 'geo-snapshot',
 } as const;
