@@ -87,7 +87,7 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 
 `countries` and `regions` serve two purposes:
 
-1. **Geo authorization** -- The governance agent rejects media buys targeting outside the authorized markets. A plan with `regions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
+1. **Geo enforcement** -- The governance agent rejects media buys targeting outside the plan's markets. A plan with `regions: ["US-MA"]` blocks buys that don't explicitly target Massachusetts.
 2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
 These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
@@ -102,7 +102,7 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].plan_id` | string | Yes | Unique identifier for this plan. |
 | `plans[].brand` | BrandRef | Yes | Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies. |
 | `plans[].objectives` | string | Yes | Natural language campaign objectives. Used for strategic alignment validation. |
-| `plans[].budget` | object | Yes | Budget authorization parameters. |
+| `plans[].budget` | object | Yes | Budget parameters. |
 | `plans[].budget.total` | number | Yes | Total authorized budget. |
 | `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
 | `plans[].budget.authority_level` | enum | Yes | `agent_full`, `agent_limited`, or `human_required`. See [specification](/docs/governance/campaign/specification#budget-authority-levels). |

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/governance/verify-authorization-request.json",
-  "title": "Verify Authorization Request",
-  "description": "Seller calls the buyer's authorization agent to verify that a media buy is authorized under the campaign plan. The seller sends its planned delivery parameters so the authorization agent can confirm they match the plan. Supports initial purchase authorization, modification authorization for update_media_buy, and ongoing delivery authorization for periodic reporting.",
+  "$id": "/schemas/governance/check-governance-request.json",
+  "title": "Check Governance Request",
+  "description": "Seller calls the buyer's governance agent to get approval for a media buy action. The seller sends its planned delivery parameters so the governance agent can validate against the campaign plan. Supports initial purchase approval, modification approval for update_media_buy, and ongoing delivery checks for periodic reporting.",
   "type": "object",
   "properties": {
     "plan_id": {
@@ -16,18 +16,18 @@
     "seller": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the seller agent requesting authorization."
+      "description": "URL of the seller agent requesting approval."
     },
     "media_buy_id": {
       "type": "string",
-      "description": "The seller's identifier for the media buy being verified."
+      "description": "The seller's identifier for the media buy being checked."
     },
     "buyer_ref": {
       "type": "string",
       "description": "The buyer's reference identifier from the create_media_buy request."
     },
     "phase": {
-      "$ref": "/schemas/enums/authorization-phase.json",
+      "$ref": "/schemas/enums/governance-phase.json",
       "description": "The phase of the media buy lifecycle. 'purchase': initial create_media_buy. 'modification': update_media_buy. 'delivery': periodic delivery reporting. Defaults to 'purchase' if omitted.",
       "default": "purchase"
     },
@@ -37,7 +37,7 @@
     },
     "delivery_metrics": {
       "type": "object",
-      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The authorization agent compares these metrics against the planned delivery to detect drift. Currency is the same as planned_delivery.currency.",
+      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compares these metrics against the planned delivery to detect drift. Currency is the same as planned_delivery.currency.",
       "properties": {
         "reporting_period": {
           "type": "object",
@@ -98,7 +98,7 @@
     },
     "modification_summary": {
       "type": "string",
-      "description": "Human-readable summary of what changed in this modification. SHOULD be present for 'modification' phase. Helps the authorization agent understand the nature of the change."
+      "description": "Human-readable summary of what changed in this modification. SHOULD be present for 'modification' phase. Helps the governance agent understand the nature of the change."
     }
   },
   "required": ["plan_id", "buyer_campaign_ref", "seller", "media_buy_id", "buyer_ref", "planned_delivery"],

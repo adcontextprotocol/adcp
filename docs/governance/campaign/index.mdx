@@ -25,7 +25,7 @@ Without a governance layer on the buy side:
 - Seller responses could differ from what was requested, with no automated verification
 - Compliance policies are fragmented -- copy-pasted as natural language strings into every campaign plan, with no standard library and no separation between who defines policies and who executes campaigns
 
-Campaign Governance fills this gap with three mechanisms: **plans** that define what's authorized (independent of the agent), **seller-side authorization webhooks** that verify purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
+Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance webhooks** that check purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
 
 ## How it works
 
@@ -47,7 +47,7 @@ flowchart LR
     end
 
     orchestrator -->|"3. create_media_buy<br/>(plan_id)"| seller["Seller Agent"]
-    seller -->|"4. verify_authorization<br/>(planned_delivery)"| gov
+    seller -->|"4. check_governance<br/>(planned_delivery)"| gov
     seller -->|"confirmed + planned_delivery"| orchestrator
     gov -.->|"escalation"| human["Human approver"]
 ```
@@ -55,10 +55,10 @@ flowchart LR
 Three parties participate in campaign governance:
 
 - The **orchestrator** validates actions against the plan before sending them to sellers (buyer-side governance loop).
-- The **seller** independently verifies purchases by calling the buyer's authorization agent with its planned delivery parameters (seller-side authorization verification).
-- The **authorization agent** validates both the orchestrator's intended actions and the seller's planned delivery against the same campaign plan.
+- The **seller** independently checks purchases by calling the buyer's governance agent with its planned delivery parameters (seller-side governance check).
+- The **governance agent** validates both the orchestrator's intended actions and the seller's planned delivery against the same campaign plan.
 
-This creates a trust model where neither the buyer nor the seller can unilaterally misrepresent what was authorized. The orchestrator cannot skip governance (the seller verifies independently), and the seller cannot deliver something different from what was authorized (the authorization agent has a record of the planned delivery).
+This creates a trust model where neither the buyer nor the seller can unilaterally misrepresent what was approved. The orchestrator cannot skip governance (the seller checks independently), and the seller cannot deliver something different from what was approved (the governance agent has a record of the planned delivery).
 
 ## Separation of duties
 
@@ -89,7 +89,7 @@ Every seller interaction follows a before/after pattern:
 
 1. **Before**: The orchestrator calls `validate_plan_action` with the tool and payload it intends to send. The governance agent returns a verdict.
 2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `buyer_campaign_ref`.
-3. **Verify**: If the account has an `authorization_agent`, the seller calls it with its `planned_delivery` -- what it will actually run. The authorization agent confirms or denies.
+3. **Check**: If the account has a `governance_agent`, the seller calls it with its `planned_delivery` -- what it will actually run. The governance agent approves or denies.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 
 This pattern applies to discovery (`get_products`), purchase (`create_media_buy`, `update_media_buy`), and periodic delivery reporting.
@@ -100,26 +100,26 @@ When a seller confirms a media buy, it returns a `planned_delivery` object descr
 
 `planned_delivery` serves two purposes:
 
-1. **Authorization verification**: The seller sends `planned_delivery` to the buyer's authorization agent, which confirms it matches the campaign plan. This prevents the seller from delivering something the buyer didn't authorize.
+1. **Governance check**: The seller sends `planned_delivery` to the buyer's governance agent, which confirms it matches the campaign plan. This prevents the seller from delivering something the buyer didn't approve.
 2. **Discrepancy detection**: The buyer can compare `planned_delivery` against the original request and flag differences via `report_plan_outcome`, catching configuration drift before delivery begins.
 
-## Authorization webhooks
+## Governance webhooks
 
 Buyer-side governance has a trust limitation: the orchestrator attests to its own compliance. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. You can't trust the agent that's spending money to also be the one that checks whether spending that money is OK.
 
-Authorization webhooks solve this by telling the seller: "call this URL when things happen." The buyer registers an `authorization_agent` URL (with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it POSTs to the authorization agent with what it plans to deliver. The authorization agent checks against the plan and returns `authorized`, `denied`, or `conditions`.
+Governance webhooks solve this by telling the seller: "call this URL when things happen." The buyer registers a `governance_agent` URL (with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it POSTs to the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
 
-This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the authorization agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
+This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the governance agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
 
 The webhook covers the full media buy lifecycle:
 
-- **Purchase**: POST before confirming `create_media_buy` -- is this buy authorized?
+- **Purchase**: POST before confirming `create_media_buy` -- is this buy approved?
 - **Modification**: POST before confirming `update_media_buy` -- is this change OK?
 - **Delivery**: POST periodically during delivery -- is delivery still on track?
 
-The authorization agent maintains all state. The seller just posts what's happening -- no chaining, no conversation history, no state to track across servers.
+The governance agent maintains all state. The seller just posts what's happening -- no chaining, no conversation history, no state to track across servers.
 
-Authorization is optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#authorization-verification) for the full protocol.
+Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-webhooks) for the full protocol.
 
 ## Lifecycle phases
 

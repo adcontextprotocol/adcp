@@ -1,18 +1,18 @@
 ---
-title: verify_authorization
+title: check_governance
 ---
 
 <Warning>
 **Draft for AdCP 3.0** - Campaign Governance is under active development. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
 </Warning>
 
-# verify_authorization
+# check_governance
 
-Seller-side authorization webhook. The seller POSTs to the buyer's `authorization_agent` URL when media buy events occur -- purchases, modifications, and delivery milestones. The authorization agent validates against the campaign plan and returns authorized/denied/conditions.
+Seller-side governance webhook. The seller POSTs to the buyer's `governance_agent` URL when media buy events occur -- purchases, modifications, and delivery milestones. The governance agent validates against the campaign plan and returns approved/denied/conditions.
 
-The authorization agent maintains all state. The seller does not chain authorization IDs or track conversation history -- it posts what happened, and the authorization agent correlates by `plan_id` + `media_buy_id`.
+The governance agent maintains all state. The seller does not chain check IDs or track conversation history -- it posts what happened, and the governance agent correlates by `plan_id` + `media_buy_id`.
 
-Authorization covers the full media buy lifecycle through three phases:
+Governance checks cover the full media buy lifecycle through three phases:
 
 | Phase | When | What's checked |
 |-------|------|----------------|
@@ -22,22 +22,22 @@ Authorization covers the full media buy lifecycle through three phases:
 
 ## Implementation levels
 
-Sellers can adopt authorization verification incrementally:
+Sellers can adopt governance checks incrementally:
 
-- **Level 1: Purchase only** -- One outbound call per `create_media_buy`. The seller verifies the initial purchase. This is the minimum viable integration.
-- **Level 2: + Modification** -- One outbound call per `update_media_buy`. The seller verifies changes before confirming them.
-- **Level 3: + Delivery reporting** -- Periodic outbound calls during active delivery. The seller reports delivery metrics and the authorization agent monitors for drift.
+- **Level 1: Purchase only** -- One outbound call per `create_media_buy`. The seller checks the initial purchase. This is the minimum viable integration.
+- **Level 2: + Modification** -- One outbound call per `update_media_buy`. The seller checks changes before confirming them.
+- **Level 3: + Delivery reporting** -- Periodic outbound calls during active delivery. The seller reports delivery metrics and the governance agent monitors for drift.
 
 ## When to call
 
-The seller calls `verify_authorization` when processing a request on an account that has an `authorization_agent` (set during [`sync_accounts`](/docs/accounts/tasks/sync_accounts)). The seller presents the authentication credentials from the `authorization_agent` configuration -- the authorization agent rejects calls without valid credentials.
+The seller calls `check_governance` when processing a request on an account that has a `governance_agent` (set during [`sync_accounts`](/docs/accounts/tasks/sync_accounts)). The seller presents the authentication credentials from the `governance_agent` configuration -- the governance agent rejects calls without valid credentials.
 
 ### Purchase phase
 
 The seller calls with `phase: "purchase"` (or omits `phase`, since it defaults to `purchase`) when processing a `create_media_buy` request:
 
 1. Interprets the `create_media_buy` request and determines what it will actually deliver
-2. Calls the `authorization_agent` with the `plan_id` from the request and its `planned_delivery`
+2. Calls the `governance_agent` with the `plan_id` from the request and its `planned_delivery`
 3. Proceeds, rejects, or adjusts based on the response
 
 ### Modification phase
@@ -45,7 +45,7 @@ The seller calls with `phase: "purchase"` (or omits `phase`, since it defaults t
 The seller calls with `phase: "modification"` when processing an `update_media_buy` request:
 
 1. Interprets the `update_media_buy` request and determines the new `planned_delivery`
-2. POSTs to the `authorization_agent` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`
+2. POSTs to the `governance_agent` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`
 3. Proceeds, rejects, or adjusts based on the response
 
 ### Delivery phase
@@ -53,20 +53,18 @@ The seller calls with `phase: "modification"` when processing an `update_media_b
 The seller calls with `phase: "delivery"` periodically during active delivery:
 
 1. Collects delivery metrics for the reporting period (spend, impressions, geo/channel distribution, pacing)
-2. POSTs to the `authorization_agent` with `phase: "delivery"`, `planned_delivery`, and `delivery_metrics`
-3. If `authorized`, continues delivery and schedules the next check at `next_check`
+2. POSTs to the `governance_agent` with `phase: "delivery"`, `planned_delivery`, and `delivery_metrics`
+3. If `approved`, continues delivery and schedules the next check at `next_check`
 4. If `denied`, pauses delivery immediately and notifies the buyer
-5. If `conditions`, adjusts delivery to meet conditions and re-verifies immediately
+5. If `conditions`, adjusts delivery to meet conditions and re-checks immediately
 
-The authorization agent sets the cadence via `next_check` in the response. The seller SHOULD call no later than the `next_check` time. The authorization agent MAY treat a missed deadline as a finding on the next delivery check.
+The governance agent sets the cadence via `next_check` in the response. The seller SHOULD call no later than the `next_check` time. The governance agent MAY treat a missed deadline as a finding on the next delivery check.
 
-The presence of `next_check` in a `purchase` phase response is the opt-in signal that the authorization agent expects delivery reporting. If absent, no delivery reporting is expected.
+The presence of `next_check` in a `purchase` phase response is the opt-in signal that the governance agent expects delivery reporting. If absent, no delivery reporting is expected.
 
-## When the authorization agent is unavailable
+## When the governance agent is unavailable
 
-If the seller cannot reach the authorization agent (timeout, network error), it SHOULD proceed with the media buy and log the failure. Authorization verification should not block ad delivery when the governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
-
-Expired credentials are treated the same way. If the `authentication.expires_at` timestamp has passed, the seller treats the agent as unavailable and notifies the buyer that credentials need rotation. The buyer rotates by calling `sync_accounts` with updated credentials.
+If the seller cannot reach the governance agent (timeout, network error), it SHOULD proceed with the media buy and log the failure. Governance checks should not block ad delivery when the governance infrastructure is unavailable. The seller SHOULD retry on the next scheduled check.
 
 ## Request
 
@@ -74,7 +72,7 @@ Expired credentials are treated the same way. If the `authentication.expires_at`
 
 ```json
 {
-  "tool": "verify_authorization",
+  "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "buyer_campaign_ref": "q1-2026-spring-launch",
@@ -101,7 +99,7 @@ Expired credentials are treated the same way. If the `authentication.expires_at`
 
 ```json
 {
-  "tool": "verify_authorization",
+  "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "buyer_campaign_ref": "q1-2026-spring-launch",
@@ -129,7 +127,7 @@ Expired credentials are treated the same way. If the `authentication.expires_at`
 
 ```json
 {
-  "tool": "verify_authorization",
+  "tool": "check_governance",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "buyer_campaign_ref": "q1-2026-spring-launch",
@@ -167,68 +165,68 @@ Expired credentials are treated the same way. If the `authentication.expires_at`
 
 ## Response
 
-### authorized
+### approved
 
 ```json
 {
-  "authorization_id": "auth_001",
-  "status": "authorized",
+  "check_id": "chk_001",
+  "status": "approved",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Planned delivery is within authorized parameters. Budget: $150,000 of $500,000 authorized. Geo: US (authorized). Channel: OLV (within 40-70% target range).",
+  "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z"
 }
 ```
 
 The seller proceeds with the media buy.
 
-### authorized (purchase with delivery opt-in)
+### approved (purchase with delivery opt-in)
 
 ```json
 {
-  "authorization_id": "auth_001",
-  "status": "authorized",
+  "check_id": "chk_001",
+  "status": "approved",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Planned delivery is within authorized parameters. Budget: $150,000 of $500,000 authorized. Geo: US (authorized). Channel: OLV (within 40-70% target range).",
+  "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
   "next_check": "2026-03-22T00:00:00Z"
 }
 ```
 
-The presence of `next_check` signals that the authorization agent expects delivery reporting. The seller should begin sending `delivery` phase requests at the indicated time.
+The presence of `next_check` signals that the governance agent expects delivery reporting. The seller should begin sending `delivery` phase requests at the indicated time.
 
-### authorized (delivery phase)
+### approved (delivery phase)
 
 ```json
 {
-  "authorization_id": "auth_004",
-  "status": "authorized",
+  "check_id": "chk_004",
+  "status": "approved",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match authorized parameters.",
+  "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
   "next_check": "2026-03-29T00:00:00Z"
 }
 ```
 
-The seller continues delivery and schedules the next authorization check for the `next_check` time.
+The seller continues delivery and schedules the next governance check for the `next_check` time.
 
 ### denied
 
 ```json
 {
-  "authorization_id": "auth_002",
+  "check_id": "chk_002",
   "status": "denied",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
+  "explanation": "Planned delivery targets CA (Canada) which is not within the plan's geography.",
   "findings": [
     {
       "category_id": "strategic_alignment",
       "severity": "critical",
-      "explanation": "Geo targeting includes CA but plan only authorizes US.",
+      "explanation": "Geo targeting includes CA but plan only covers US.",
       "details": {
-        "authorized_countries": ["US"],
+        "plan_countries": ["US"],
         "planned_countries": ["US", "CA"]
       }
     }
@@ -236,24 +234,24 @@ The seller continues delivery and schedules the next authorization check for the
 }
 ```
 
-The seller MUST NOT proceed with the media buy. It SHOULD return an `AUTHORIZATION_DENIED` error to the buyer's orchestrator.
+The seller MUST NOT proceed with the media buy. It SHOULD return a `GOVERNANCE_DENIED` error to the buyer's orchestrator.
 
 ### denied (delivery phase -- geo drift)
 
 ```json
 {
-  "authorization_id": "auth_005",
+  "check_id": "chk_005",
   "status": "denied",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Delivery has drifted outside authorized parameters. 12% of impressions delivered in CA (Canada) which is not an authorized market.",
+  "explanation": "Delivery has drifted outside plan parameters. 12% of impressions delivered in CA (Canada) which is not within the plan's geography.",
   "findings": [
     {
       "category_id": "strategic_alignment",
       "severity": "critical",
-      "explanation": "Geo distribution shows 12% delivery in CA, but plan only authorizes US.",
+      "explanation": "Geo distribution shows 12% delivery in CA, but plan only covers US.",
       "details": {
-        "authorized_countries": ["US"],
+        "plan_countries": ["US"],
         "actual_distribution": { "US": 88, "CA": 12 }
       }
     }
@@ -267,11 +265,11 @@ The seller MUST pause delivery immediately. It SHOULD notify the buyer's orchest
 
 ```json
 {
-  "authorization_id": "auth_003",
+  "check_id": "chk_003",
   "status": "conditions",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Budget authorized but frequency cap must be applied per brand policy.",
+  "explanation": "Budget approved but frequency cap must be applied per brand policy.",
   "conditions": [
     {
       "field": "frequency_cap",
@@ -283,7 +281,7 @@ The seller MUST pause delivery immediately. It SHOULD notify the buyer's orchest
 }
 ```
 
-The seller can either adjust its planned delivery to meet the conditions and re-verify, or reject the media buy. The seller MUST NOT proceed without meeting the conditions.
+The seller can either adjust its planned delivery to meet the conditions and re-check, or reject the media buy. The seller MUST NOT proceed without meeting the conditions.
 
 Conditions with a `required_value` are machine-actionable -- the seller can programmatically apply the value. Conditions without a `required_value` are advisory -- the seller should interpret the `reason` and adjust accordingly.
 
@@ -291,7 +289,7 @@ Conditions with a `required_value` are machine-actionable -- the seller can prog
 
 ```json
 {
-  "authorization_id": "auth_006",
+  "check_id": "chk_006",
   "status": "conditions",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
@@ -306,7 +304,7 @@ Conditions with a `required_value` are machine-actionable -- the seller can prog
 }
 ```
 
-The seller MUST adjust its pacing to meet the condition and re-verify immediately. The `next_check` is set closer than normal so the authorization agent can verify the correction.
+The seller MUST adjust its pacing to meet the condition and re-check immediately. The `next_check` is set closer than normal so the governance agent can verify the correction.
 
 ## Fields
 
@@ -316,8 +314,8 @@ The seller MUST adjust its pacing to meet the condition and re-verify immediatel
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | Campaign governance plan identifier from the `create_media_buy` request. |
 | `buyer_campaign_ref` | string | Yes | Buyer's campaign reference from the `create_media_buy` request. |
-| `seller` | string | Yes | URL of the seller agent requesting authorization. |
-| `media_buy_id` | string | Yes | The seller's identifier for the media buy being verified. |
+| `seller` | string | Yes | URL of the seller agent requesting approval. |
+| `media_buy_id` | string | Yes | The seller's identifier for the media buy being checked. |
 | `buyer_ref` | string | Yes | The buyer's reference identifier from the `create_media_buy` request. |
 | `phase` | enum | No | `purchase`, `modification`, or `delivery`. Defaults to `purchase` if omitted. |
 | `planned_delivery` | object | Yes | What the seller will actually deliver. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
@@ -341,15 +339,15 @@ The seller MUST adjust its pacing to meet the condition and re-verify immediatel
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `authorization_id` | string | Unique identifier for this authorization record. For audit purposes only -- the seller does not need to store or reference this in subsequent calls. |
-| `status` | enum | `authorized`, `denied`, or `conditions`. |
+| `check_id` | string | Unique identifier for this governance check. For audit purposes only -- the seller does not need to store or reference this in subsequent calls. |
+| `status` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed from request. |
 | `buyer_campaign_ref` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
 | `findings` | array | Present when status is `denied` or `conditions`. Per-category issues found. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the seller must make. |
-| `expires_at` | string | Present for `purchase` and `modification` phases when status is `authorized` or `conditions`. The seller must act before this time. |
-| `next_check` | string | When the seller should next report delivery metrics. Present in any phase when the authorization agent expects ongoing delivery reporting. |
+| `expires_at` | string | Present for `purchase` and `modification` phases when status is `approved` or `conditions`. The seller must act before this time. |
+| `next_check` | string | When the seller should next report delivery metrics. Present in any phase when the governance agent expects ongoing delivery reporting. |
 
 ## Error codes
 
@@ -361,6 +359,6 @@ The seller MUST adjust its pacing to meet the condition and re-verify immediatel
 
 ## Related tasks
 
-- [`sync_plans`](./sync_plans) -- The plan this authorization validates against
+- [`sync_plans`](./sync_plans) -- The plan this governance check validates against
 - [`validate_plan_action`](./validate_plan_action) -- Buyer-side pre-action validation (the other half of the trust model)
 - [`report_plan_outcome`](./report_plan_outcome) -- Report what happened after the media buy was confirmed

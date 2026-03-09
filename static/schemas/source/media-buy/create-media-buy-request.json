@@ -15,7 +15,7 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. When the account has an authorization_agent, the seller includes this in the authorization verification request so the governance agent can validate against the correct plan."
+      "description": "Campaign governance plan identifier. When the account has a governance_agent, the seller includes this in the check_governance request so the governance agent can validate against the correct plan."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",

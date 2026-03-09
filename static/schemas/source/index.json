@@ -720,9 +720,9 @@
           "$ref": "/schemas/enums/digital-source-type.json",
           "description": "IPTC-aligned classification of AI involvement in content creation (digital_capture, trained_algorithmic_media, composite_with_trained_algorithmic_media, etc.)"
         },
-        "authorization-phase": {
-          "$ref": "/schemas/enums/authorization-phase.json",
-          "description": "Media buy lifecycle phase for authorization verification (purchase, modification, delivery)"
+        "governance-phase": {
+          "$ref": "/schemas/enums/governance-phase.json",
+          "description": "Media buy lifecycle phase for governance checks (purchase, modification, delivery)"
         },
         "governance-domain": {
           "$ref": "/schemas/enums/governance-domain.json",
@@ -1266,14 +1266,14 @@
             "description": "Plan state with budget tracking, validation history, and compliance summary"
           }
         },
-        "verify-authorization": {
+        "check-governance": {
           "request": {
-            "$ref": "/schemas/governance/verify-authorization-request.json",
-            "description": "Seller calls the buyer's authorization agent to verify that a media buy's planned delivery is authorized"
+            "$ref": "/schemas/governance/check-governance-request.json",
+            "description": "Seller calls the buyer's governance agent to get approval for a media buy action"
           },
           "response": {
-            "$ref": "/schemas/governance/verify-authorization-response.json",
-            "description": "Authorization decision with findings and conditions"
+            "$ref": "/schemas/governance/check-governance-response.json",
+            "description": "Governance decision with findings and conditions"
           }
         }
       }

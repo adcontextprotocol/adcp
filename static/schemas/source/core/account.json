@@ -90,18 +90,18 @@
       "enum": ["operator", "brand", "operator_brand", "agent"],
       "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
     },
-    "authorization_agent": {
+    "governance_agent": {
       "type": "object",
-      "description": "Buyer's authorization agent endpoint. When present, the seller MUST call this agent to verify media buy requests before confirming them. Includes authentication credentials the seller presents when calling.",
+      "description": "Buyer's governance agent endpoint. When present, the seller MUST call this agent to get governance approval before confirming media buy requests. Includes authentication credentials the seller presents when calling.",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
-          "description": "URL of the authorization agent endpoint."
+          "description": "URL of the governance agent endpoint."
         },
         "authentication": {
           "type": "object",
-          "description": "Authentication the seller presents when calling the authorization agent.",
+          "description": "Authentication the seller presents when calling the governance agent.",
           "properties": {
             "schemes": {
               "type": "array",
@@ -113,11 +113,6 @@
               "type": "string",
               "description": "Credentials for authentication. For Bearer: token sent in Authorization header.",
               "minLength": 32
-            },
-            "expires_at": {
-              "type": "string",
-              "format": "date-time",
-              "description": "ISO 8601 timestamp when these credentials expire. After this time, the seller MUST reject verify_authorization calls as unauthenticated and treat the authorization_agent as unavailable until the buyer updates credentials via sync_accounts."
             }
           },
           "required": ["schemes", "credentials"],
