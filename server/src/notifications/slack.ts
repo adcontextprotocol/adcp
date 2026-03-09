@@ -3,7 +3,8 @@
  */
 
 import { logger } from '../logger.js';
-import { sendChannelMessage, isSlackConfigured } from '../slack/client.js';
+import { sendChannelMessage, sendDirectMessage, isSlackConfigured } from '../slack/client.js';
+import { SlackDatabase } from '../db/slack-db.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
@@ -648,6 +649,137 @@ export async function notifyMeetingEnded(data: {
     }
   } catch (error) {
     logger.error({ error, channelId: data.slackChannelId }, 'Error sending meeting ended notification');
+    return false;
+  }
+}
+
+/**
+ * Send a DM to the author of a published perspective with ready-to-post
+ * social media copy for LinkedIn and X/Twitter.
+ *
+ * Skips silently when:
+ * - The author has no mapped Slack user ID
+ * - The content is a link post (not an article)
+ * - The content is members-only
+ * - Slack is not configured
+ */
+export async function sendSocialAmplificationDM(data: {
+  proposerUserId: string;
+  title: string;
+  excerpt?: string;
+  subtitle?: string;
+  workingGroupSlug: string;
+  postSlug: string;
+  contentType: 'article' | 'link';
+  isMembersOnly: boolean;
+}): Promise<boolean> {
+  // Only articles, not link posts
+  if (data.contentType === 'link') {
+    logger.debug({ postSlug: data.postSlug }, 'Skipping social amplification DM for link post');
+    return false;
+  }
+
+  // Not for members-only content
+  if (data.isMembersOnly) {
+    logger.debug({ postSlug: data.postSlug }, 'Skipping social amplification DM for members-only post');
+    return false;
+  }
+
+  if (!isSlackConfigured()) {
+    logger.debug('Slack not configured, skipping social amplification DM');
+    return false;
+  }
+
+  // Look up the author's Slack user ID via the mapping table
+  const slackDb = new SlackDatabase();
+  const mapping = await slackDb.getByWorkosUserId(data.proposerUserId);
+
+  if (!mapping?.slack_user_id) {
+    logger.debug(
+      { proposerUserId: data.proposerUserId, postSlug: data.postSlug },
+      'No Slack user mapping for author, skipping social amplification DM'
+    );
+    return false;
+  }
+
+  const postUrl = `${APP_URL}/working-groups/${data.workingGroupSlug}#post-${data.postSlug}`;
+  const socialText = data.excerpt || data.subtitle || '';
+
+  // LinkedIn: use excerpt/subtitle with URL and hashtags
+  const linkedInPost = `"${socialText}"\n\nRead more: ${postUrl}\n\n#AgenticAdvertising #AdCP #AdTech #AI`;
+
+  // Twitter: title + short excerpt, keep under 280 chars
+  const tweetBase = `${data.title} — `;
+  const tweetHashtags = `\n\n${postUrl}\n\n#AgenticAdvertising #AdCP`;
+  const tweetBudget = 280 - tweetBase.length - tweetHashtags.length;
+  const tweetExcerpt = tweetBudget > 0 && socialText
+    ? socialText.length <= tweetBudget
+      ? socialText
+      : socialText.slice(0, tweetBudget - 1) + '\u2026'
+    : '';
+  const tweetPost = tweetExcerpt
+    ? `${tweetBase}${tweetExcerpt}${tweetHashtags}`
+    : `${data.title}${tweetHashtags}`;
+
+  const message: SlackBlockMessage = {
+    text: `Your perspective "${data.title}" is live!`,
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text' as const,
+          text: `Your perspective "${data.title}" is live! \ud83c\udf89`,
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: "Here's ready-to-post copy for social media:",
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*LinkedIn:*\n\`\`\`${linkedInPost}\`\`\``,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*X/Twitter:*\n\`\`\`${tweetPost}\`\`\``,
+        },
+      },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn' as const,
+          text: 'Share it to help spread the word about agentic advertising and AdCP!',
+        },
+      },
+    ],
+  };
+
+  try {
+    const result = await sendDirectMessage(mapping.slack_user_id, message);
+    if (result.ok) {
+      logger.info(
+        { slackUserId: mapping.slack_user_id, postSlug: data.postSlug },
+        'Sent social amplification DM to author'
+      );
+      return true;
+    } else {
+      logger.warn(
+        { slackUserId: mapping.slack_user_id, error: result.error },
+        'Failed to send social amplification DM'
+      );
+      return false;
+    }
+  } catch (error) {
+    logger.error({ error, slackUserId: mapping.slack_user_id }, 'Error sending social amplification DM');
     return false;
   }
 }

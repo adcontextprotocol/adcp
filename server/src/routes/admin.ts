@@ -31,6 +31,7 @@ import { setupMembersRoutes } from "./admin/members.js";
 import { setupAccountRoutes } from "./admin/accounts.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
 import { setupBanRoutes } from "./admin/bans.js";
+import { setupGeoRoutes } from "./admin/geo.js";
 
 const logger = createLogger("admin-routes");
 
@@ -114,6 +115,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Ban management and registry activity routes
   setupBanRoutes(pageRouter, apiRouter);
+
+  // GEO visibility routes (LLM Pulse integration)
+  setupGeoRoutes(apiRouter);
 
   // =========================================================================
   // USER CONTEXT API (for viewing member context like Addie sees it)

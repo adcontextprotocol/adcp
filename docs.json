@@ -59,6 +59,7 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/agentic-advertising",
               "docs/protocol/architecture",
               "docs/quickstart",
               {
@@ -389,6 +390,7 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/agentic-advertising",
               "docs/protocol/architecture",
               "docs/quickstart",
               {

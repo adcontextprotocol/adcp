@@ -22,3 +22,4 @@ export { setupDiscountRoutes } from './discounts.js';
 export { setupMembersRoutes } from './members.js';
 export { setupAccountRoutes } from './accounts.js';
 export { setupBrandEnrichmentRoutes } from './brand-enrichment.js';
+export { setupGeoRoutes } from './geo.js';
