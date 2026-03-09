@@ -11,6 +11,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireManage } from "../../middleware/auth.js";
 import { query } from "../../db/client.js";
 import { fetchLLMPulse, getLLMPulseApiKey } from "../../services/llmpulse-client.js";
+import { fetchAiReferrerData, getPostHogQueryConfig } from "../../services/posthog-query.js";
 
 const logger = createLogger("admin-geo");
 
@@ -403,6 +404,37 @@ export function setupGeoRoutes(apiRouter: Router): void {
         res.status(502).json({
           error: "LLM Pulse API unavailable",
           message: "Unable to refresh GEO visibility data",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/geo-referrers - AI referrer traffic from PostHog
+  apiRouter.get(
+    "/geo-referrers",
+    requireAuth,
+    requireManage,
+    async (_req, res) => {
+      try {
+        if (!getPostHogQueryConfig()) {
+          return res.json({
+            configured: false,
+            message: "PostHog query API not configured (set POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID)",
+          });
+        }
+
+        const data = await fetchAiReferrerData();
+        if (!data) {
+          return res.status(502).json({
+            error: "Failed to fetch AI referrer data from PostHog",
+          });
+        }
+
+        res.json(data);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching AI referrer data");
+        res.status(500).json({
+          error: "Failed to fetch AI referrer data",
         });
       }
     }
