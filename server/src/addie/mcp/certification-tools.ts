@@ -42,11 +42,7 @@ async function issueCertifierBadge(
         email: memberContext.workos_user.email,
       },
       ...(expiryDate ? { expiryDate } : {}),
-      customAttributes: {
-        'custom.credential': cred.name,
-        'custom.tier': String(cred.tier),
-        ...extraAttributes,
-      },
+      ...(extraAttributes ? { customAttributes: extraAttributes } : {}),
     });
 
     await certDb.awardCredential(userId, credId, credential.id, credential.publicId);
@@ -1009,9 +1005,7 @@ export function createCertificationToolHandlers(
               if (cred) {
                 lines.push('');
                 lines.push(`**Credential earned: ${cred.name}!**`);
-                const publicId = await issueCertifierBadge(userId, credId, cred, memberContext, {
-                  'custom.score': String(overallScore),
-                });
+                const publicId = await issueCertifierBadge(userId, credId, cred, memberContext);
                 lines.push(...buildShareLinks(cred.name, publicId));
               }
             }
