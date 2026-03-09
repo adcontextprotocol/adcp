@@ -1,0 +1,140 @@
+---
+title: AI advertising standards landscape
+sidebarTitle: Industry landscape
+description: An overview of the protocols, standards bodies, and initiatives shaping AI-powered advertising. How AdCP, OpenRTB, MCP, and A2A fit together.
+keywords: [AI advertising standards, programmatic advertising AI, advertising protocol standards, MCP advertising, AgenticAdvertising.org, agentic advertising, AI ad tech 2026]
+---
+
+The key standards shaping AI-powered advertising are AdCP (agent workflow coordination), OpenRTB (impression auctions), MCP (AI tool calling), and A2A (agent-to-agent communication). Advertising is moving from programmatic (machine-executed auctions) to agentic (AI agents managing full campaign lifecycles), and these protocols define how the pieces connect.
+
+This page maps the landscape: what exists, who maintains it, and how they fit together.
+
+## Active protocols
+
+### Ad Context Protocol (AdCP)
+
+AdCP defines how AI agents interact with advertising platforms. It covers the full campaign lifecycle: product discovery, media buying, creative generation, audience activation, brand governance, and delivery reporting.
+
+| | |
+|---|---|
+| **Scope** | Agent-level advertising workflows |
+| **Transport** | MCP (tool calling) or A2A (agent-to-agent) |
+| **Maintained by** | [AgenticAdvertising.org](https://agenticadvertising.org) |
+| **License** | Apache 2.0 (open source) |
+| **Current version** | 3.0 release candidate |
+| **Key tasks** | `get_products`, `create_media_buy`, `build_creative`, `activate_signal` |
+
+AdCP is transport-agnostic: the same task definitions work over both MCP and A2A. A platform implements once; agents connect via either transport.
+
+### OpenRTB
+
+OpenRTB handles real-time impression auctions — the bid request / bid response cycle that powers most programmatic display and video advertising.
+
+| | |
+|---|---|
+| **Scope** | Impression-level transactions |
+| **Transport** | HTTP POST |
+| **Maintained by** | [IAB Tech Lab](https://iabtechlab.com) |
+| **Current version** | 2.6 / 3.0 |
+| **Key objects** | Bid request, bid response, win notice, billing notice |
+
+OpenRTB and AdCP are complementary. OpenRTB handles "should I bid on this impression?"; AdCP handles "create a campaign with this budget and targeting." See [AdCP and OpenRTB](/docs/building/understanding/adcp-vs-openrtb) for details.
+
+### Model Context Protocol (MCP)
+
+MCP defines how AI models call external tools. Developed by Anthropic, it's the standard for connecting AI assistants to APIs, databases, and services.
+
+| | |
+|---|---|
+| **Scope** | AI tool calling |
+| **Transport** | JSON-RPC over stdio or SSE |
+| **Maintained by** | [Anthropic](https://modelcontextprotocol.io) |
+| **Used by** | Claude, Cursor, Windsurf, and other AI assistants |
+
+AdCP uses MCP as one of its transport layers. An AdCP MCP server exposes advertising tasks (like `get_products` or `create_media_buy`) as tools that any MCP-compatible AI assistant can call.
+
+### Agent-to-Agent Protocol (A2A)
+
+A2A defines how autonomous agents communicate with each other. Developed by Google, it enables multi-agent workflows where specialized agents collaborate.
+
+| | |
+|---|---|
+| **Scope** | Agent-to-agent collaboration |
+| **Transport** | HTTP + JSON-RPC with SSE streaming |
+| **Maintained by** | [Google](https://google.github.io/A2A/) |
+| **Used by** | Multi-agent orchestration frameworks |
+
+AdCP uses A2A as its other transport layer. In an A2A setup, a buyer agent sends AdCP tasks to a seller agent as structured messages, with support for long-running operations via streaming.
+
+## Standards bodies and organizations
+
+| Organization | Focus | Key outputs |
+|---|---|---|
+| **[AgenticAdvertising.org](https://agenticadvertising.org)** | AI agent advertising standards | AdCP specification, JSON schemas, reference implementations |
+| **[IAB Tech Lab](https://iabtechlab.com)** | Digital advertising standards | OpenRTB, VAST, ads.txt, sellers.json, content taxonomy |
+| **[Anthropic](https://anthropic.com)** | AI safety and research | MCP specification |
+| **[Google](https://google.github.io/A2A/)** | AI and cloud | A2A specification |
+| **[W3C](https://www.w3.org)** | Web standards | Privacy Sandbox APIs, Topics API |
+
+AgenticAdvertising.org is an independent member organization. It is not a subsidiary or working group of IAB Tech Lab, Anthropic, Google, or any other company. Its members include platform providers, advertisers, agencies, and developers.
+
+## Other standards in the ecosystem
+
+| Standard | Purpose | Maintained by |
+|---|---|---|
+| **VAST** / **VPAID** | Video ad serving and interactive video | IAB Tech Lab |
+| **ads.txt** / **sellers.json** | Supply chain transparency | IAB Tech Lab |
+| **Open Measurement SDK** | Viewability and attention measurement | IAB Tech Lab |
+| **Unified ID 2.0** | Privacy-preserving identity | The Trade Desk / Prebid |
+| **Privacy Sandbox** | Cookie-less targeting APIs | Google / W3C |
+
+## How the layers fit together
+
+These protocols operate at different layers of the stack:
+
+```
+┌──────────────────────────────────────────────┐
+│  Strategy layer (AdCP)                       │
+│  Campaign planning, budget allocation,       │
+│  cross-platform coordination                 │
+├──────────────────────────────────────────────┤
+│  Transport layer (MCP / A2A)                 │
+│  How agents call tools and exchange data     │
+├──────────────────────────────────────────────┤
+│  Execution layer (OpenRTB / platform APIs)   │
+│  Impression-level auctions, ad serving,      │
+│  creative rendering                          │
+├──────────────────────────────────────────────┤
+│  Measurement layer (OMSDK / UID2 / Privacy)  │
+│  Viewability, attribution, identity          │
+└──────────────────────────────────────────────┘
+```
+
+A typical workflow: an AI agent uses **MCP** to call **AdCP** tasks on a publisher's platform, creating a campaign. The publisher's ad server uses **OpenRTB** to execute impression-level delivery. **OMSDK** measures viewability. **ads.txt** verifies the supply chain.
+
+## What's changing
+
+Three trends are reshaping how these standards interact:
+
+**Agent-mediated buying.** Instead of humans navigating dashboards, AI agents will manage campaigns across platforms. This creates demand for standardized agent interfaces — which is what AdCP provides.
+
+**Protocol convergence.** MCP and A2A are establishing the transport layer for agent communication. Domain-specific protocols like AdCP build on top of them. This mirrors how HTTP became the transport layer and domain-specific APIs built on top.
+
+**Vertical specialization.** Generic agent protocols (MCP, A2A) handle communication. Vertical protocols handle domain logic. AdCP handles advertising. The same transport-plus-domain pattern may emerge in other verticals as agent adoption grows.
+
+## Getting involved
+
+<CardGroup cols={2}>
+  <Card title="Introduction to AdCP" icon="book" href="/docs/intro">
+    Understand the protocol architecture and core concepts.
+  </Card>
+  <Card title="Join AgenticAdvertising.org" icon="users" href="https://agenticadvertising.org/membership">
+    Participate in working groups that shape protocol direction.
+  </Card>
+  <Card title="AdCP and OpenRTB" icon="arrows-left-right" href="/docs/building/understanding/adcp-vs-openrtb">
+    Detailed comparison of AdCP and OpenRTB — how they complement each other.
+  </Card>
+  <Card title="Protocol comparison" icon="code-compare" href="/docs/building/understanding/protocol-comparison">
+    Technical comparison of MCP and A2A as AdCP transport layers.
+  </Card>
+</CardGroup>

@@ -29,6 +29,7 @@ import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
 import { runGeoMonitorJob } from './geo-monitor.js';
 import { runGeoSnapshotJob } from './geo-snapshot.js';
+import { runGeoContentPlannerJob } from './geo-content-planner.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
@@ -321,6 +322,17 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.modelsSnapped > 0,
   });
 
+  // GEO content planner - generates content briefs from monitoring gaps
+  jobScheduler.register({
+    name: 'geo-content-planner',
+    description: 'GEO content planner',
+    interval: { value: 168, unit: 'hours' },
+    initialDelay: { value: 30, unit: 'minutes' },
+    runner: runGeoContentPlannerJob,
+    options: { limit: 10 },
+    shouldLogResult: (r) => r.briefsCreated > 0,
+  });
+
   // Event reminder - sends notifications ~24h before events start
   jobScheduler.register({
     name: 'event-reminder',
@@ -387,4 +399,5 @@ export const JOB_NAMES = {
   EVENT_REMINDER: 'event-reminder',
   GEO_MONITOR: 'geo-monitor',
   GEO_SNAPSHOT: 'geo-snapshot',
+  GEO_CONTENT_PLANNER: 'geo-content-planner',
 } as const;
