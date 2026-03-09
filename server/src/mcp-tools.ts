@@ -334,21 +334,6 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: "validate_brand_agent",
-    description:
-      "Validate that a brand agent is reachable and responding via MCP protocol",
-    inputSchema: {
-      type: "object" as const,
-      properties: {
-        agent_url: {
-          type: "string",
-          description: "Brand agent URL to validate (e.g., 'https://agent.nike.com/mcp')",
-        },
-      },
-      required: ["agent_url"],
-    },
-  },
-  {
     name: "enrich_brand",
     description:
       "Fetch brand data (logo, colors, company info) from Brandfetch API when no brand.json exists. Returns enriched brand manifest.",
@@ -1104,7 +1089,6 @@ export class MCPToolHandler {
                       brand_name: discovered.brand_name,
                       house_domain: discovered.house_domain,
                       keller_type: discovered.keller_type,
-                      brand_agent_url: discovered.brand_agent_url,
                       has_manifest: discovered.has_brand_manifest,
                     }, null, 2),
                   },
@@ -1171,34 +1155,6 @@ export class MCPToolHandler {
               type: "resource",
               resource: {
                 uri: `brand://validation/${encodeURIComponent(domain)}`,
-                mimeType: "application/json",
-                text: JSON.stringify(validation, null, 2),
-              },
-            },
-          ],
-        };
-      }
-
-      case "validate_brand_agent": {
-        const agentUrl = args?.agent_url as string;
-        if (!agentUrl) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({ error: "Missing required parameter: agent_url" }),
-              },
-            ],
-            isError: true,
-          };
-        }
-        const validation = await this.brandManager.validateBrandAgent(agentUrl);
-        return {
-          content: [
-            {
-              type: "resource",
-              resource: {
-                uri: `brand://agent/${encodeURIComponent(agentUrl)}/validation`,
                 mimeType: "application/json",
                 text: JSON.stringify(validation, null, 2),
               },

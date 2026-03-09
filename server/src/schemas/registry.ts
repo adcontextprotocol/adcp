@@ -125,7 +125,6 @@ export const ResolvedBrandSchema = z
     parent_brand: z.string().optional(),
     house_domain: z.string().optional(),
     house_name: z.string().optional(),
-    brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
     source: z.enum(["brand_json", "community", "enriched"]),
   })
@@ -141,7 +140,6 @@ export const CompanySearchResultSchema = z
       .enum(["master", "sub_brand", "endorsed", "independent"])
       .optional(),
     parent_brand: z.string().optional(),
-    brand_agent_url: z.string().optional(),
     source: z.string().openapi({ example: "community" }),
   })
   .openapi("CompanySearchResult");

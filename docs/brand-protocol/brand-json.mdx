@@ -2,7 +2,7 @@
 title: brand.json Specification
 ---
 
-The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports four mutually exclusive variants to accommodate different use cases.
+The `brand.json` file provides a standardized way for brands to claim their identity and establish discoverable brand information. It supports three mutually exclusive variants to accommodate different use cases.
 
 <Info>
 `brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/docs/registry/index).
@@ -20,7 +20,7 @@ Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known U
 
 ## Variants
 
-The brand.json file supports four mutually exclusive variants:
+The brand.json file supports three mutually exclusive variants:
 
 ### 1. Authoritative Location Redirect
 
@@ -59,27 +59,7 @@ Use this when:
 - Regional/localized domains point to main house
 - Legacy domains redirect to canonical
 
-### 3. Brand Agent
-
-Designates an MCP agent that provides brand information:
-
-```json
-{
-  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
-  "version": "1.0",
-  "brand_agent": {
-    "url": "https://agent.acme.com/mcp",
-    "id": "acme_brand_agent"
-  }
-}
-```
-
-Optional fields:
-- `contact`: Contact information
-
-When a brand has an agent, the agent is the authoritative source for brand identity data.
-
-### 4. House Portfolio
+### 3. House Portfolio
 
 Contains the full brand hierarchy with all brands and properties:
 
@@ -127,7 +107,6 @@ Each brand in the `brands` array:
 | `keller_type` | enum | No | `master`, `sub_brand`, `endorsed`, `independent` |
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
-| `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
 | `logos` | array | No | Brand logo assets |
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
@@ -194,7 +173,6 @@ To resolve a domain to a canonical brand:
 2. Check variant:
    - **authoritative_location**: Fetch from that URL, continue from step 2
    - **house** (string): Fetch from house domain, continue from step 2
-   - **brand_agent**: Return agent URL (agent provides brand info)
    - **house** (object) + **brands**: Search for domain in properties
 3. For house portfolio, find the brand whose properties contain the query domain
 4. Return canonical brand information
@@ -227,23 +205,6 @@ Maximum redirect depth: 3 hops.
       "colors": { "primary": "#FF6B35" }
     }
   ]
-}
-```
-
-### Enterprise with Agent
-
-```json
-{
-  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
-  "version": "1.0",
-  "brand_agent": {
-    "url": "https://brand-agent.enterprise.com/mcp",
-    "id": "enterprise_brand_agent"
-  },
-  "contact": {
-    "name": "Enterprise Brand Team",
-    "email": "brand@enterprise.com"
-  }
 }
 ```
 
@@ -321,4 +282,3 @@ Recommended cache TTLs:
 2. **Use redirects for subsidiaries**: Point brand domains to house domain
 3. **List all properties**: Include regional domains, apps, and legacy domains
 4. **Keep names current**: Include localized names and common aliases
-5. **Use brand agents for dynamic data**: If brand info changes frequently, use an agent

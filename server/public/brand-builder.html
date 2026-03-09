@@ -1224,13 +1224,6 @@
                   </div>
                 </button>
 
-                <button class="decision-option" onclick="selectVariant('agent')">
-                  <div class="option-icon">🤖</div>
-                  <div class="option-content">
-                    <strong>I have an MCP agent</strong>
-                    <span>My brand info is served dynamically by an AI agent</span>
-                  </div>
-                </button>
               </div>
             </div>
 
@@ -1484,31 +1477,6 @@
             </div>
           </div>
 
-          <!-- Brand Agent Form -->
-          <div id="form-agent" class="hidden">
-            <button class="back-link" onclick="goBackTo('step-single-hosting')">← Back</button>
-            <div class="form-group">
-              <label>Agent URL</label>
-              <input
-                type="url"
-                id="agent-url"
-                placeholder="https://agent.example.com/mcp"
-                oninput="updatePreview()"
-              />
-              <p class="hint">The MCP endpoint URL for the brand agent</p>
-            </div>
-            <div class="form-group">
-              <label>Agent ID</label>
-              <input
-                type="text"
-                id="agent-id"
-                placeholder="my_brand_agent"
-                oninput="updatePreview()"
-              />
-              <p class="hint">Unique identifier for the agent</p>
-            </div>
-          </div>
-
           <!-- Contact Information (root-level, shown for single + portfolio) -->
           <div id="contact-section" class="hidden" style="margin-top: var(--space-5);">
             <details class="brand-section-toggle">
@@ -1611,7 +1579,7 @@
       // ============================================================================
 
       let currentDomain = '';
-      let currentVariant = 'single'; // single, portfolio, redirect, agent
+      let currentVariant = 'single'; // single, portfolio, redirect
       let brands = [];
       let brandIdCounter = 0;
       let singleBrandProperties = [];
@@ -1659,10 +1627,6 @@
           },
           redirect: {
             houseDomain: document.getElementById('redirect-house-domain')?.value || ''
-          },
-          agent: {
-            url: document.getElementById('agent-url')?.value || '',
-            id: document.getElementById('agent-id')?.value || ''
           }
         };
       }
@@ -1703,16 +1667,11 @@
         if (state.redirect) {
           document.getElementById('redirect-house-domain').value = state.redirect.houseDomain || '';
         }
-        if (state.agent) {
-          document.getElementById('agent-url').value = state.agent.url || '';
-          document.getElementById('agent-id').value = state.agent.id || '';
-        }
         // Show the correct form, hide decision tree
         document.getElementById('decision-tree').classList.add('hidden');
         document.getElementById('form-single').classList.toggle('hidden', currentVariant !== 'single');
         document.getElementById('form-portfolio').classList.toggle('hidden', currentVariant !== 'portfolio');
         document.getElementById('form-redirect').classList.toggle('hidden', currentVariant !== 'redirect');
-        document.getElementById('form-agent').classList.toggle('hidden', currentVariant !== 'agent');
 
         // Re-render dynamic parts
         if (currentVariant === 'single') {
@@ -1861,7 +1820,6 @@
         document.getElementById('form-single').classList.add('hidden');
         document.getElementById('form-portfolio').classList.remove('hidden');
         document.getElementById('form-redirect').classList.add('hidden');
-        document.getElementById('form-agent').classList.add('hidden');
 
         // Show contact section and viewer link
         document.getElementById('contact-section').classList.remove('hidden');
@@ -2020,7 +1978,6 @@
         document.getElementById('form-single').classList.add('hidden');
         document.getElementById('form-portfolio').classList.add('hidden');
         document.getElementById('form-redirect').classList.add('hidden');
-        document.getElementById('form-agent').classList.add('hidden');
 
         updatePreview();
         updateRegistryButton();
@@ -2067,7 +2024,6 @@
         document.getElementById('form-single').classList.toggle('hidden', variant !== 'single');
         document.getElementById('form-portfolio').classList.toggle('hidden', variant !== 'portfolio');
         document.getElementById('form-redirect').classList.toggle('hidden', variant !== 'redirect');
-        document.getElementById('form-agent').classList.toggle('hidden', variant !== 'agent');
 
         // Show contact section for single/portfolio
         const showContact = variant === 'single' || variant === 'portfolio';
@@ -2146,7 +2102,7 @@
                 ⚠️ <strong>Found a file, but it doesn't match the AdCP brand.json format.</strong><br>
                 <span style="font-size: var(--text-sm); opacity: 0.8;">
                   Your domain has a brand.json file, but it doesn't use one of the recognized variants
-                  (house portfolio, house redirect, brand agent, or authoritative location).
+                  (house portfolio, house redirect, or authoritative location).
                 </span><br>
                 <span style="font-size: var(--text-sm); margin-top: var(--space-1); display: inline-block;">
                   Use the Brand Builder to generate a compatible file, then re-upload.
@@ -3442,15 +3398,6 @@
             }
             break;
 
-          case 'agent':
-            // Brand agent reference - schema requires both url and id
-            const agentUrl = document.getElementById('agent-url').value.trim();
-            const agentId = document.getElementById('agent-id').value.trim();
-            if (agentUrl && agentId) {
-              json.version = "1.0";
-              json.brand_agent = { url: agentUrl, id: agentId };
-            }
-            break;
         }
 
         // Add contact info for single/portfolio variants

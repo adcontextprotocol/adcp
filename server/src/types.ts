@@ -339,15 +339,6 @@ export interface HouseDefinition {
 }
 
 /**
- * Brand agent configuration
- */
-export interface BrandAgentConfig {
-  url: string;
-  id: string;
-  capabilities?: string[];
-}
-
-/**
  * Hosted brand record
  */
 export interface HostedBrand {
@@ -377,8 +368,6 @@ export interface DiscoveredBrand {
   brand_names?: LocalizedName[];
   keller_type?: KellerType;
   parent_brand?: string;
-  brand_agent_url?: string;
-  brand_agent_capabilities?: string[];
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
   source_type: 'brand_json' | 'community' | 'enriched';
@@ -400,7 +389,6 @@ export interface ResolvedBrand {
   parent_brand?: string;
   house_domain?: string;
   house_name?: string;
-  brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
   source: 'brand_json' | 'community' | 'enriched';
 }
