@@ -25,6 +25,7 @@
         label: 'Analytics',
         items: [
           { href: '/manage/analytics', label: 'Revenue analytics', icon: '📈' },
+          { href: '/manage/geo', label: 'GEO visibility', icon: '🔍' },
         ]
       }
     ]
