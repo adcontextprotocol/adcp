@@ -211,11 +211,11 @@
               "SNAPSHOT_PERMISSION_DENIED"
             ]
           },
-          "sub_assets": {
+          "items": {
             "type": "array",
-            "description": "Sub-assets for multi-asset formats (included when include_sub_assets=true)",
+            "description": "Items for multi-asset formats like carousels and native ads (included when include_items=true)",
             "items": {
-              "$ref": "/schemas/core/sub-asset.json"
+              "$ref": "/schemas/core/creative-item.json"
             }
           }
         },

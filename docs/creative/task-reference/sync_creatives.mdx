@@ -102,9 +102,10 @@ asyncio.run(main())
 
 | Parameter         | Type       | Required | Description                                                                                                                                                              |
 | ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `account`         | object     | Yes      | Account reference identifying the advertiser/workspace for this sync ([account-ref](/docs/accounts/overview)) |
 | `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
-| `assignments`     | object     | No       | Map of creative_id to array of package_ids for bulk assignment                                                                                                           |
+| `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
 | `dry_run`         | boolean    | No       | When true, preview changes without applying them (default: false)                                                                                                        |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
@@ -254,7 +255,7 @@ if ("errors" in validated && validated.errors) {
 if ("creatives" in validated) {
   console.log(`Successfully synced ${validated.creatives.length} creatives`);
   validated.creatives.forEach((creative) => {
-    console.log(`  ${creative.name}: ${creative.platform_creative_id}`);
+    console.log(`  ${creative.name}: ${creative.platform_id}`);
   });
 }
 ```
@@ -321,7 +322,7 @@ async def main():
 
     print(f"Successfully synced {len(result.creatives)} creatives")
     for creative in result.creatives:
-        print(f"  {creative.name}: {creative.platform_creative_id}")
+        print(f"  {creative.name}: {creative.platform_id}")
 
 asyncio.run(main())
 ```

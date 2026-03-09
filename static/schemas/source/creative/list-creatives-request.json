@@ -38,10 +38,10 @@
       "default": false,
       "description": "Include a lightweight delivery snapshot per creative (lifetime impressions and last-served date). For detailed performance analytics, use get_creative_delivery."
     },
-    "include_sub_assets": {
+    "include_items": {
       "type": "boolean",
       "default": false,
-      "description": "Include sub-assets (for carousel/native formats) in response"
+      "description": "Include items for multi-asset formats like carousels and native ads"
     },
     "include_variables": {
       "type": "boolean",
@@ -50,7 +50,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific fields to include in response (omit for all fields)",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -64,7 +64,7 @@
           "tags",
           "assignments",
           "snapshot",
-          "sub_assets",
+          "items",
           "variables",
           "concept"
         ]

@@ -15,7 +15,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 - Filter by format, status, tags, dates, assignments, concepts, and variables
 - Sort by creation date, update date, name, status, or assignment count
 - Cursor-based pagination for large libraries
-- Optionally include assignments, delivery snapshots, sub-assets, and dynamic creative optimization (DCO) variables
+- Optionally include assignments, delivery snapshots, items, and dynamic creative optimization (DCO) variables
 - Return only specific fields to reduce response size
 - Filter by creative concept (groups of related creatives across sizes/formats)
 - Find DCO creatives and inspect their dynamic content slots
@@ -40,7 +40,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 |-----------|------|----------|-------------|
 | `include_assignments` | boolean | No | Include package assignment information (default: true) |
 | `include_snapshot` | boolean | No | Include a lightweight delivery snapshot — lifetime impressions and last-served date (default: false). For detailed analytics, use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). |
-| `include_sub_assets` | boolean | No | Include individual assets within multi-asset creatives like carousels and native ads (default: false) |
+| `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
 | `fields` | array | No | Specific fields to return (omit for all fields) |
 
@@ -154,15 +154,10 @@ The response provides creative data with optional enrichment:
     }
   ],
   "format_summary": {
-    "display_static_300x250": 15,
-    "display_static_728x90": 8,
-    "video_30s_vast": 2
+    "display_static_300x250": 1
   },
   "status_summary": {
-    "approved": 20,
-    "pending_review": 3,
-    "rejected": 2,
-    "archived": 5
+    "approved": 1
   }
 }
 ```
@@ -177,13 +172,15 @@ The response provides creative data with optional enrichment:
 | `status` | string | Approval status |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
+| `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `tags` | string[] | Tags for categorization |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
 | `variables` | array | DCO variable definitions (when `include_variables=true`) |
 | `assignments` | object | Package assignments (when `include_assignments=true`) |
 | `snapshot` | object | Delivery snapshot (when `include_snapshot=true`) |
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
-| `sub_assets` | array | Sub-assets for multi-asset formats (when `include_sub_assets=true`) |
+| `items` | array | Items for multi-asset formats (when `include_items=true`) |
 
 ### Delivery snapshot
 

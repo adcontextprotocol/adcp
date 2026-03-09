@@ -94,9 +94,9 @@
           "$ref": "/schemas/core/datetime-range.json",
           "description": "Datetime range with inclusive start and end timestamps"
         },
-        "sub-asset": {
-          "$ref": "/schemas/core/sub-asset.json",
-          "description": "Sub-asset for multi-asset creative formats"
+        "creative-item": {
+          "$ref": "/schemas/core/creative-item.json",
+          "description": "Item within a multi-asset creative format"
         },
         "creative-assignment": {
           "$ref": "/schemas/core/creative-assignment.json",
