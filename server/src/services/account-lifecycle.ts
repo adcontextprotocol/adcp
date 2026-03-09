@@ -172,3 +172,9 @@ export function isHotProspect(org: {
 
 export const GOING_COLD_DAYS = 30;
 export const GOING_COLD_MIN_SCORE = 30;
+
+// ============================================================================
+// Churned subscription statuses
+// ============================================================================
+
+export const CHURNED_STATUSES = ['canceled', 'past_due', 'unpaid', 'incomplete_expired'] as const;

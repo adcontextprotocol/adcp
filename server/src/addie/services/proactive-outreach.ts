@@ -18,6 +18,7 @@ import { getOutboundPlanner } from './outbound-planner.js';
 import { getThreadService } from '../thread-service.js';
 import type { PlannerContext, PlannedAction } from '../types.js';
 import type { SlackUserMapping } from '../../slack/types.js';
+import { captureEvent } from '../../utils/posthog.js';
 
 const insightsDb = new InsightsDatabase();
 
@@ -433,7 +434,10 @@ async function resolveThreadAndSendMessage(
 /**
  * Initiate outreach using the OutboundPlanner for intelligent goal selection
  */
-async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promise<OutreachResult> {
+async function initiateOutreachWithPlanner(
+  candidate: OutreachCandidate,
+  options?: { skipClaim?: boolean }
+): Promise<OutreachResult> {
   const planner = getOutboundPlanner();
 
   // Build context for the planner
@@ -450,11 +454,14 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
   }
 
   // Atomically claim this user before sending to prevent concurrent sends
-  // from multiple app instances both seeing them as eligible
-  const claimed = await claimUserForOutreach(candidate.slack_user_id);
-  if (!claimed) {
-    logger.debug({ slack_user_id: candidate.slack_user_id }, 'User already claimed by another instance, skipping');
-    return { success: false, error: 'Already claimed' };
+  // from multiple app instances both seeing them as eligible.
+  // Skip if caller already claimed (e.g. admin-triggered outreach).
+  if (!options?.skipClaim) {
+    const claimed = await claimUserForOutreach(candidate.slack_user_id);
+    if (!claimed) {
+      logger.debug({ slack_user_id: candidate.slack_user_id }, 'User already claimed by another instance, skipping');
+      return { success: false, error: 'Already claimed' };
+    }
   }
 
   // Build the message from the goal template
@@ -489,6 +496,13 @@ async function initiateOutreachWithPlanner(candidate: OutreachCandidate): Promis
     goal_id: plannedAction.goal.id,
     planner_reason: plannedAction.reason,
     planner_score: plannedAction.priority_score,
+    decision_method: plannedAction.decision_method,
+    outreach_id: outreach.id,
+  });
+
+  captureEvent(candidate.slack_user_id, 'outreach_sent', {
+    goal_id: plannedAction.goal.id,
+    goal_name: plannedAction.goal.name,
     decision_method: plannedAction.decision_method,
     outreach_id: outreach.id,
   });
@@ -615,13 +629,15 @@ export async function manualOutreach(
     priority: calculatePriority(user),
   };
 
-  // Admin-triggered outreach bypasses the rate limit (claim unconditionally)
+  // Admin-triggered outreach bypasses the rate limit: claim first, then send
+  // We claim unconditionally (not through claimUserForOutreach which checks rate limits)
+  // and then call the planner with skipClaim=true to avoid double-claiming
   await query(
     `UPDATE slack_user_mappings SET last_outreach_at = NOW(), updated_at = NOW() WHERE slack_user_id = $1`,
     [slackUserId]
   );
 
-  const outreachResult = await initiateOutreachWithPlanner(candidate);
+  const outreachResult = await initiateOutreachWithPlanner(candidate, { skipClaim: true });
 
   // If outreach was successful and we know who triggered it, auto-assign them as owner
   if (outreachResult.success && triggeredBy) {

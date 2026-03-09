@@ -93,6 +93,13 @@ import {
   ENGAGEMENT_LABELS,
   type PipelineStage,
 } from '../../services/account-lifecycle.js';
+import {
+  manualOutreach,
+  manualOutreachWithGoal,
+  canContactUser,
+} from '../services/proactive-outreach.js';
+import * as outboundDb from '../../db/outbound-db.js';
+import { captureEvent } from '../../utils/posthog.js';
 
 const logger = createLogger('addie-admin-tools');
 const orgDb = new OrganizationDatabase();
@@ -1360,6 +1367,90 @@ For logo changes, use update_member_logo instead.`,
         },
       },
       required: ['domain'],
+    },
+  },
+
+  // ============================================
+  // OUTREACH TOOLS
+  // ============================================
+  {
+    name: 'get_outreach_stats',
+    description: 'Get outreach performance metrics: messages sent, response rates, and per-goal breakdown. Use this when asked "how is outreach going?" or about SDR performance.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal_id: {
+          type: 'number',
+          description: 'Filter to a specific goal ID (optional — omit for all goals)',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_outreach_history',
+    description: 'Get outreach message history. With a slack_user_id, returns that person\'s full outreach timeline with goals and responses. Without, returns recent system-wide outreach.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID to get history for (optional — omit for recent system-wide)',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum results (default: 20)',
+        },
+      },
+    },
+  },
+  {
+    name: 'send_outreach',
+    description: 'Send a DM outreach message to a Slack user. Uses the outbound planner to select the best goal, or specify a goal_id to override. Checks eligibility first. Use check_outreach_eligibility to preview without sending.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID to contact',
+        },
+        goal_id: {
+          type: 'number',
+          description: 'Specific outreach goal ID to use (optional — planner selects if omitted)',
+        },
+        context: {
+          type: 'string',
+          description: 'Admin context to record before sending (e.g., "Met at conference, interested in working groups")',
+        },
+      },
+      required: ['slack_user_id'],
+    },
+  },
+  {
+    name: 'check_outreach_eligibility',
+    description: 'Check if a Slack user can be contacted for outreach. Returns eligibility status, reason, and last contact date. Use before send_outreach to preview.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        slack_user_id: {
+          type: 'string',
+          description: 'Slack user ID to check',
+        },
+      },
+      required: ['slack_user_id'],
+    },
+  },
+  {
+    name: 'lookup_person',
+    description: 'Look up a person by Slack user ID or email. Returns their org, insights, outreach history, goal progress, and capabilities. Use for person-level context (vs get_account for org-level).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Slack user ID (U...) or email address',
+        },
+      },
+      required: ['query'],
     },
   },
 ];
@@ -7629,6 +7720,315 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, orgName, slug }, 'Error updating member profile');
       return `❌ Failed to update profile: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // OUTREACH HANDLERS
+  // ============================================
+
+  handlers.set('get_outreach_stats', async (input) => {
+    const goalIdFilter = input.goal_id as number | undefined;
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      const [timeStats, goalStats] = await Promise.all([
+        insightsDb.getOutreachTimeStats(),
+        insightsDb.getOutreachGoalStats(),
+      ]);
+
+      let response = '## Outreach performance\n\n';
+      response += `**Today:** ${timeStats.sent_today} sent, ${timeStats.responded_today} responded\n`;
+      response += `**This week:** ${timeStats.sent_this_week} sent, ${timeStats.responded_this_week} responded\n`;
+      response += `**This month:** ${timeStats.sent_this_month} sent, ${timeStats.responded_this_month} responded\n`;
+      response += `**All time:** ${timeStats.total_sent} sent, ${timeStats.total_responded} responded`;
+      if (timeStats.overall_response_rate_pct !== null) {
+        response += ` (${timeStats.overall_response_rate_pct}% response rate)`;
+      }
+      response += `\n**Insights gathered:** ${timeStats.total_insights}\n`;
+
+      const activeGoals = goalIdFilter
+        ? goalStats.filter(g => g.goal_id === goalIdFilter)
+        : goalStats.filter(g => g.total_sent > 0);
+
+      if (activeGoals.length > 0) {
+        response += '\n## Per-goal breakdown\n\n';
+        for (const g of activeGoals) {
+          response += `### ${g.goal_name} (${g.goal_type})\n`;
+          response += `- Sent: ${g.total_sent} | Responded: ${g.total_responded} | Rate: ${g.response_rate_pct ?? 0}%\n`;
+          response += `- Insights: ${g.total_insights} | Conversions: ${g.converted_count} | Interested: ${g.interested_count}\n`;
+          if (g.positive_responses || g.negative_responses || g.refusal_responses) {
+            response += `- Sentiment: ${g.positive_responses} positive, ${g.neutral_responses} neutral, ${g.negative_responses} negative, ${g.refusal_responses} refusal\n`;
+          }
+          if (g.last_outreach_at) {
+            response += `- Last sent: ${formatDate(new Date(g.last_outreach_at))}\n`;
+          }
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error }, 'Error fetching outreach stats');
+      return '❌ Failed to fetch outreach stats.';
+    }
+  });
+
+  handlers.set('get_outreach_history', async (input) => {
+    const slackUserId = input.slack_user_id as string | undefined;
+    const limit = (input.limit as number) || 20;
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      if (slackUserId) {
+        // Per-user timeline: outreach + goal history
+        const [outreachHistory, goalHistory] = await Promise.all([
+          insightsDb.getRecentOutreach(100),
+          outboundDb.getUserGoalHistory(slackUserId),
+        ]);
+
+        const userOutreach = outreachHistory.filter(o => o.slack_user_id === slackUserId).slice(0, limit);
+
+        let response = `## Outreach timeline for ${userOutreach[0]?.slack_display_name || userOutreach[0]?.slack_real_name || slackUserId}\n\n`;
+
+        if (userOutreach.length === 0 && goalHistory.length === 0) {
+          return response + 'No outreach history found for this user.';
+        }
+
+        if (userOutreach.length > 0) {
+          response += '### Messages sent\n';
+          for (const o of userOutreach) {
+            const date = formatDate(new Date(o.sent_at));
+            const responded = o.user_responded ? '✅ responded' : '⏳ no response';
+            response += `- **${date}** (${o.outreach_type}): ${responded}`;
+            if (o.response_sentiment) response += ` | sentiment: ${o.response_sentiment}`;
+            if (o.response_intent) response += ` | intent: ${o.response_intent}`;
+            response += '\n';
+            if (o.initial_message) {
+              const preview = o.initial_message.substring(0, 120);
+              response += `  > ${preview}${o.initial_message.length > 120 ? '...' : ''}\n`;
+            }
+          }
+        }
+
+        if (goalHistory.length > 0) {
+          response += '\n### Goal history\n';
+          for (const g of goalHistory) {
+            response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)`;
+            if (g.planner_reason) response += ` — ${g.planner_reason}`;
+            if (g.response_sentiment) response += ` | ${g.response_sentiment}`;
+            response += '\n';
+          }
+        }
+
+        return response;
+      } else {
+        // System-wide recent outreach
+        const recent = await insightsDb.getRecentOutreach(limit);
+
+        let response = `## Recent outreach (last ${recent.length})\n\n`;
+        for (const o of recent) {
+          const name = o.slack_display_name || o.slack_real_name || o.slack_user_id;
+          const date = formatDate(new Date(o.sent_at));
+          const responded = o.user_responded ? '✅' : '⏳';
+          response += `- ${responded} **${name}** — ${date} (${o.outreach_type})`;
+          if (o.response_sentiment) response += ` | ${o.response_sentiment}`;
+          response += '\n';
+        }
+
+        return response;
+      }
+    } catch (error) {
+      logger.error({ error }, 'Error fetching outreach history');
+      return '❌ Failed to fetch outreach history.';
+    }
+  });
+
+  handlers.set('send_outreach', async (input) => {
+    const slackUserId = input.slack_user_id as string;
+    const goalId = input.goal_id as number | undefined;
+    const context = input.context as string | undefined;
+
+    if (!slackUserId) {
+      return '❌ slack_user_id is required.';
+    }
+
+    // Build triggeredBy from member context
+    const triggeredBy = memberContext?.workos_user ? {
+      id: memberContext.workos_user.workos_user_id,
+      name: memberContext.workos_user.first_name
+        ? `${memberContext.workos_user.first_name} ${memberContext.workos_user.last_name || ''}`.trim()
+        : memberContext.workos_user.email,
+      email: memberContext.workos_user.email,
+    } : undefined;
+
+    try {
+      // Check eligibility first
+      const eligibility = await canContactUser(slackUserId);
+      if (!eligibility.canContact) {
+        return `❌ Cannot contact this user: ${eligibility.reason}`;
+      }
+
+      let result;
+      if (goalId) {
+        result = await manualOutreachWithGoal(slackUserId, goalId, context, triggeredBy);
+      } else {
+        result = await manualOutreach(slackUserId, triggeredBy);
+      }
+
+      if (result.success) {
+        captureEvent(triggeredBy?.id || 'addie', 'admin_tool_used', {
+          tool_name: 'send_outreach',
+          target_user: slackUserId,
+          goal_id: goalId,
+          is_manual: true,
+        });
+        let response = `✅ Outreach sent to ${slackUserId}`;
+        if (result.outreach_id) response += ` (outreach #${result.outreach_id})`;
+        if (goalId) response += ` using goal #${goalId}`;
+        if (triggeredBy) response += `\nAuto-assigned ${triggeredBy.name} as account owner.`;
+        return response;
+      } else {
+        return `❌ Outreach failed: ${result.error}`;
+      }
+    } catch (error) {
+      logger.error({ error, slackUserId }, 'Error sending outreach');
+      return `❌ Failed to send outreach: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('check_outreach_eligibility', async (input) => {
+    const slackUserId = input.slack_user_id as string;
+
+    if (!slackUserId) {
+      return '❌ slack_user_id is required.';
+    }
+
+    try {
+      const [eligibility, capabilities] = await Promise.all([
+        canContactUser(slackUserId),
+        outboundDb.getMemberCapabilities(slackUserId).catch(() => null),
+      ]);
+
+      let response = `## Outreach eligibility for ${slackUserId}\n\n`;
+      response += eligibility.canContact
+        ? '✅ **Eligible** for outreach\n'
+        : `❌ **Not eligible**: ${eligibility.reason}\n`;
+
+      if (capabilities) {
+        response += '\n### Capabilities\n';
+        response += `- Profile complete: ${capabilities.profile_complete ? 'yes' : 'no'}\n`;
+        response += `- Working groups: ${capabilities.working_group_count}\n`;
+        response += `- Slack messages (30d): ${capabilities.slack_message_count_30d}\n`;
+        response += `- Account linked: ${capabilities.account_linked ? 'yes' : 'no'}\n`;
+        if (capabilities.is_committee_leader) response += `- Committee leader: yes\n`;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, slackUserId }, 'Error checking outreach eligibility');
+      return `❌ Failed to check eligibility: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('lookup_person', async (input) => {
+    const queryStr = input.query as string;
+
+    if (!queryStr) {
+      return '❌ query is required (Slack user ID or email).';
+    }
+
+    const pool = getPool();
+    const insightsDb = new InsightsDatabase();
+
+    try {
+      // Look up by slack_user_id or email
+      const isSlackId = queryStr.startsWith('U');
+      const userResult = await pool.query(
+        isSlackId
+          ? `SELECT * FROM slack_user_mappings WHERE slack_user_id = $1`
+          : `SELECT * FROM slack_user_mappings WHERE slack_email = $1`,
+        [queryStr]
+      );
+
+      if (userResult.rows.length === 0) {
+        return `No person found for "${queryStr}".`;
+      }
+
+      const user = userResult.rows[0];
+      const slackUserId = user.slack_user_id;
+
+      // Parallel lookups
+      const [orgResult, insights, goalHistory, outreachHistory, eligibility] = await Promise.all([
+        user.workos_user_id
+          ? pool.query(
+              `SELECT o.name, o.workos_organization_id, o.subscription_status
+               FROM organizations o
+               JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+               WHERE om.workos_user_id = $1
+               LIMIT 1`,
+              [user.workos_user_id]
+            )
+          : Promise.resolve({ rows: [] }),
+        insightsDb.getInsightsForUser(slackUserId),
+        outboundDb.getUserGoalHistory(slackUserId),
+        insightsDb.getRecentOutreach(100).then(all => all.filter(o => o.slack_user_id === slackUserId).slice(0, 10)),
+        canContactUser(slackUserId),
+      ]);
+
+      const displayName = user.slack_display_name || user.slack_real_name || slackUserId;
+      let response = `## ${displayName}\n\n`;
+      response += `**Slack ID:** ${slackUserId}\n`;
+      if (user.slack_email) response += `**Email:** ${user.slack_email}\n`;
+      response += `**Account linked:** ${user.workos_user_id ? 'yes' : 'no'}\n`;
+      response += `**Outreach eligible:** ${eligibility.canContact ? 'yes' : `no (${eligibility.reason})`}\n`;
+      if (user.last_outreach_at) {
+        const days = Math.floor((Date.now() - new Date(user.last_outreach_at).getTime()) / (1000 * 60 * 60 * 24));
+        response += `**Last contacted:** ${formatDate(new Date(user.last_outreach_at))} (${days} days ago)\n`;
+      }
+      if (user.outreach_opt_out) response += `**Opted out:** yes\n`;
+
+      // Organization
+      if (orgResult.rows.length > 0) {
+        const org = orgResult.rows[0];
+        response += `\n### Organization\n`;
+        response += `**${org.name}** (${org.workos_organization_id})\n`;
+        response += `Status: ${org.subscription_status || 'no subscription'}\n`;
+      }
+
+      // Insights
+      if (insights.length > 0) {
+        response += `\n### Insights (${insights.length})\n`;
+        for (const i of insights.slice(0, 8)) {
+          response += `- **${i.insight_type_name || 'unknown'}**: ${i.value}`;
+          if (i.confidence) response += ` (confidence: ${i.confidence})`;
+          response += '\n';
+        }
+      }
+
+      // Outreach history
+      if (outreachHistory.length > 0) {
+        response += `\n### Outreach history (${outreachHistory.length})\n`;
+        for (const o of outreachHistory) {
+          const date = formatDate(new Date(o.sent_at));
+          const status = o.user_responded ? '✅ responded' : '⏳ no response';
+          response += `- ${date}: ${o.outreach_type} — ${status}`;
+          if (o.response_sentiment) response += ` (${o.response_sentiment})`;
+          response += '\n';
+        }
+      }
+
+      // Goal history
+      if (goalHistory.length > 0) {
+        response += `\n### Goal progress (${goalHistory.length})\n`;
+        for (const g of goalHistory) {
+          response += `- Goal #${g.goal_id}: ${g.status} (${g.attempt_count} attempts)\n`;
+        }
+      }
+
+      return response;
+    } catch (error) {
+      logger.error({ error, query: queryStr }, 'Error looking up person');
+      return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

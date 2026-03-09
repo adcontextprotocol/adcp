@@ -38,6 +38,7 @@ import {
   HOT_PROSPECT_INTEREST_LEVELS,
   GOING_COLD_DAYS,
   GOING_COLD_MIN_SCORE,
+  CHURNED_STATUSES,
 } from "../../services/account-lifecycle.js";
 
 const orgDb = new OrganizationDatabase();
@@ -111,6 +112,8 @@ export function setupAccountRoutes(
         const pool = getPool();
         const currentUserId = req.user?.id;
 
+        const churnedStatusList = CHURNED_STATUSES.map(s => `'${s}'`).join(', ');
+
         const [
           needsAttention,
           newInsights,
@@ -123,6 +126,7 @@ export function setupAccountRoutes(
           disqualified,
           missingOwner,
           openInvoices,
+          churned,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -269,6 +273,13 @@ export function setupAccountRoutes(
             INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
             WHERE oi.status IN ('draft', 'open')
           `),
+
+          // Churned - canceled, past due, unpaid, or expired subscriptions
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status IN (${churnedStatusList})
+          `),
         ]);
 
         res.json({
@@ -283,6 +294,7 @@ export function setupAccountRoutes(
           disqualified: parseInt(disqualified.rows[0].count),
           missing_owner: parseInt(missingOwner.rows[0].count),
           open_invoices: parseInt(openInvoices.rows[0].count),
+          churned: parseInt(churned.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
@@ -838,6 +850,7 @@ export function setupAccountRoutes(
           // OR members with real problems (expiring soon, missing owner)
           query = `
             ${selectFields},
+            na.id as attention_activity_id,
             na.next_step_due_date as next_step_due,
             na.description as next_step_description,
             CASE
@@ -1096,6 +1109,16 @@ export function setupAccountRoutes(
           orderBy = ` ORDER BY o.name ASC`;
           break;
 
+        case "churned":
+          // Churned members — canceled, past due, unpaid, or expired subscriptions
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE o.subscription_status IN (${CHURNED_STATUSES.map(s => `'${s}'`).join(', ')})
+          `;
+          orderBy = ` ORDER BY o.updated_at DESC`;
+          break;
+
         default:
           // All accounts (except disqualified)
           query = `
@@ -1138,7 +1161,7 @@ export function setupAccountRoutes(
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
       // Fetch related data in parallel
-      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts] =
+      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts, addieActivityResult] =
         await Promise.all([
           pool.query(
             `
@@ -1197,6 +1220,19 @@ export function setupAccountRoutes(
           `,
             [orgIds]
           ),
+
+          // Addie outreach activity (orgs with outreach in last 30 days)
+          pool.query(
+            `
+            SELECT DISTINCT om.workos_organization_id
+            FROM member_outreach mo
+            JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+            JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+            WHERE om.workos_organization_id = ANY($1)
+              AND mo.sent_at >= NOW() - INTERVAL '30 days'
+          `,
+            [orgIds]
+          ),
         ]);
 
       // Build maps
@@ -1235,6 +1271,10 @@ export function setupAccountRoutes(
           r.workos_organization_id,
           parseInt(r.count),
         ])
+      );
+
+      const addieActivitySet = new Set(
+        addieActivityResult.rows.map((r) => r.workos_organization_id)
       );
 
       // Transform results
@@ -1297,9 +1337,13 @@ export function setupAccountRoutes(
           next_step_due: row.next_step_due,
           next_step_description: row.next_step_description,
           attention_reason: row.attention_reason,
+          attention_activity_id: row.attention_activity_id,
           invoice_amount: row.invoice_amount,
           invoice_status: row.invoice_status,
           stakeholder_role: row.stakeholder_role,
+
+          // Addie activity
+          has_addie_activity: addieActivitySet.has(row.workos_organization_id),
 
           // Legacy (for transition)
           workos_organization_id: row.workos_organization_id,
@@ -1315,6 +1359,36 @@ export function setupAccountRoutes(
       });
     }
   });
+
+  // POST /api/admin/accounts/:orgId/activities/:activityId/complete - Mark a task complete
+  apiRouter.post(
+    "/accounts/:orgId/activities/:activityId/complete",
+    requireAuth,
+    requireManage,
+    async (req, res) => {
+      try {
+        const { orgId, activityId } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `UPDATE org_activities
+           SET next_step_completed_at = NOW()
+           WHERE id = $1 AND organization_id = $2 AND is_next_step = TRUE
+           RETURNING id, description, next_step_completed_at`,
+          [activityId, orgId]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: "Activity not found" });
+        }
+
+        res.json({ success: true, activity: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, "Error completing activity");
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
 
   // GET /api/admin/activity-feed - Unified activity stream across all sources
   apiRouter.get(

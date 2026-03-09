@@ -75,6 +75,68 @@
       color: var(--color-text-secondary);
     }
 
+    /* More dropdown */
+    .more-dropdown {
+      position: relative;
+      display: inline-flex;
+    }
+    .more-panel {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      z-index: 10;
+      background: var(--color-surface);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-2);
+      box-shadow: var(--shadow-lg);
+      flex-direction: column;
+      gap: var(--space-1);
+      min-width: 180px;
+      margin-top: var(--space-1);
+    }
+    .more-panel.open { display: flex; }
+    .more-panel .view-tab { width: 100%; text-align: left; }
+
+    /* Addie indicator */
+    .addie-indicator {
+      font-size: 0.7rem;
+      margin-left: 4px;
+      opacity: 0.7;
+      cursor: help;
+    }
+
+    /* Bulk actions */
+    .bulk-actions {
+      padding: var(--space-3) var(--space-4);
+      background: var(--color-gray-50);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      font-size: var(--text-sm);
+    }
+    .btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+
+    /* Inline task complete */
+    .inline-complete {
+      background: none;
+      border: var(--border-1) solid var(--color-gray-300);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+    .inline-complete:hover {
+      background: var(--color-success);
+      color: var(--aao-white);
+      border-color: var(--color-success);
+    }
+
     /* Filters */
     .filters-bar {
       display: flex;
@@ -696,42 +758,62 @@
       <button class="view-tab active" data-view="needs_attention">
         Needs attention <span class="badge" id="count-needs_attention">-</span>
       </button>
-      <button class="view-tab" data-view="new_insights">
-        New insights <span class="badge" id="count-new_insights">-</span>
-      </button>
       <button class="view-tab" data-view="hot">
         Hot prospects <span class="badge" id="count-hot">-</span>
       </button>
       <button class="view-tab" data-view="open_invoices">
         Open invoices <span class="badge" id="count-open_invoices">-</span>
       </button>
-      <button class="view-tab" data-view="new_prospects">
-        New prospects <span class="badge" id="count-new_prospects">-</span>
-      </button>
-      <button class="view-tab" data-view="going_cold">
-        Going cold <span class="badge" id="count-going_cold">-</span>
-      </button>
       <button class="view-tab" data-view="my_accounts">
         My accounts <span class="badge" id="count-my_accounts">-</span>
-      </button>
-      <button class="view-tab" data-view="renewals">
-        Renewals <span class="badge" id="count-renewals">-</span>
       </button>
       <button class="view-tab" data-view="members">
         Members <span class="badge" id="count-members">-</span>
       </button>
-      <button class="view-tab" data-view="most_users">
-        Most users
-      </button>
-      <button class="view-tab" data-view="missing_owner">
-        No owner <span class="badge" id="count-missing_owner">-</span>
+      <button class="view-tab" data-view="churned">
+        Churned <span class="badge" id="count-churned">-</span>
       </button>
       <button class="view-tab" data-view="all">
         All
       </button>
-      <button class="view-tab" data-view="disqualified">
-        Disqualified <span class="badge" id="count-disqualified">-</span>
-      </button>
+      <div class="more-dropdown">
+        <button class="view-tab more-trigger" onclick="toggleMoreTabs()">
+          More ▾
+        </button>
+        <div class="more-panel" id="morePanel">
+          <button class="view-tab" data-view="new_insights">
+            New insights <span class="badge" id="count-new_insights">-</span>
+          </button>
+          <button class="view-tab" data-view="new_prospects">
+            New prospects <span class="badge" id="count-new_prospects">-</span>
+          </button>
+          <button class="view-tab" data-view="going_cold">
+            Going cold <span class="badge" id="count-going_cold">-</span>
+          </button>
+          <button class="view-tab" data-view="renewals">
+            Renewals <span class="badge" id="count-renewals">-</span>
+          </button>
+          <button class="view-tab" data-view="most_users">
+            Most users
+          </button>
+          <button class="view-tab" data-view="missing_owner">
+            No owner <span class="badge" id="count-missing_owner">-</span>
+          </button>
+          <button class="view-tab" data-view="disqualified">
+            Disqualified <span class="badge" id="count-disqualified">-</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk actions bar -->
+    <div class="bulk-actions" id="bulkActions" style="display: none;">
+      <span id="selectedCount">0</span> selected
+      <select id="bulkOwnerSelect" class="filter-select" style="margin-left: var(--space-2); min-width: 160px;">
+        <option value="">Assign owner...</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="bulkAssignOwner()">Assign</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearSelection()">Cancel</button>
     </div>
 
     <!-- Filters -->
@@ -746,6 +828,7 @@
       <table>
         <thead>
           <tr>
+            <th style="width: 30px;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
             <th>Account</th>
             <th>Status</th>
             <th>Users</th>
@@ -757,7 +840,7 @@
           </tr>
         </thead>
         <tbody id="accountsTable">
-          <tr><td colspan="8" class="loading">Loading accounts...</td></tr>
+          <tr><td colspan="9" class="loading">Loading accounts...</td></tr>
         </tbody>
       </table>
     </div>
@@ -1044,6 +1127,7 @@
       members: 'All paying member organizations',
       most_users: 'Organizations ranked by number of active users',
       missing_owner: 'Organizations with members but no designated owner',
+      churned: 'Former members with canceled or lapsed subscriptions',
       all: 'All accounts',
       disqualified: 'Accounts marked as not viable'
     };
@@ -1059,6 +1143,7 @@
           teamMembers = await teamResponse.json();
           populateOwnerFilter();
           populateProspectOwnerDropdown();
+          populateBulkOwnerDropdown();
         }
 
         if (orgsResponse.ok) {
@@ -1163,7 +1248,7 @@
       if (searchValue) url += `&search=${encodeURIComponent(searchValue)}`;
       if (ownerValue) url += `&owner=${encodeURIComponent(ownerValue)}`;
 
-      document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
+      document.getElementById('accountsTable').innerHTML = '<tr><td colspan="9" class="loading">Loading...</td></tr>';
 
       try {
         const response = await manageFetch(url);
@@ -1174,13 +1259,13 @@
         renderAccounts();
       } catch (e) {
         console.error('Error loading accounts:', e);
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">Error loading accounts</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="9" class="empty-state">Error loading accounts</td></tr>';
       }
     }
 
     function renderAccounts() {
       if (accounts.length === 0) {
-        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="8" class="empty-state">No accounts found</td></tr>';
+        document.getElementById('accountsTable').innerHTML = '<tr><td colspan="9" class="empty-state">No accounts found</td></tr>';
         return;
       }
 
@@ -1226,7 +1311,11 @@
             expiring_soon: 'Expiring',
             missing_owner: 'No Owner'
           };
-          extraColumnHtml = `<td><span class="attention-badge attention-${account.attention_reason}">${reasonLabels[account.attention_reason] || account.attention_reason}</span></td>`;
+          const canComplete = account.attention_reason === 'overdue' || account.attention_reason === 'due_soon';
+          const completeBtn = canComplete && account.attention_activity_id
+            ? ` <button class="inline-complete" onclick="completeTask('${escapeHtml(account.id)}', '${escapeHtml(account.attention_activity_id)}')" title="Mark complete">✓</button>`
+            : '';
+          extraColumnHtml = `<td><span class="attention-badge attention-${account.attention_reason}">${reasonLabels[account.attention_reason] || account.attention_reason}</span>${completeBtn}</td>`;
         } else if (showExtraColumn) {
           extraColumnHtml = '<td>-</td>';
         }
@@ -1234,9 +1323,14 @@
         const userCount = account.user_count || account.member_count || 0;
         const userCountHtml = userCount > 0 ? userCount : '<span style="color: var(--color-text-muted);">0</span>';
 
+        const addieHtml = account.has_addie_activity
+          ? '<span class="addie-indicator" title="Addie outreach in last 30 days">🤖</span>'
+          : '';
+
         html += `<tr>
+          <td><input type="checkbox" class="row-checkbox" value="${escapeHtml(account.id)}" onchange="updateBulkSelection()"></td>
           <td>
-            <a href="/manage/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>
+            <a href="/manage/accounts/${account.id}" class="account-name">${escapeHtml(account.name)}</a>${addieHtml}
             ${account.domain ? `<div class="account-domain">${escapeHtml(account.domain)}</div>` : ''}
           </td>
           <td><span class="status-badge status-${statusClass}">${statusLabel}</span></td>
@@ -1967,6 +2061,103 @@
       document.getElementById('invoiceModal').style.display = 'none';
       invoiceOrgId = null;
       selectedInvoiceProduct = null;
+    }
+
+    // --- More tabs dropdown ---
+    function toggleMoreTabs() {
+      const panel = document.getElementById('morePanel');
+      panel.classList.toggle('open');
+    }
+    document.addEventListener('click', function(event) {
+      const dropdown = document.querySelector('.more-dropdown');
+      if (dropdown && !dropdown.contains(event.target)) {
+        document.getElementById('morePanel').classList.remove('open');
+      }
+    });
+
+    // --- Bulk selection ---
+    function populateBulkOwnerDropdown() {
+      const select = document.getElementById('bulkOwnerSelect');
+      if (!select) return;
+      let options = '<option value="">Assign owner...</option>';
+      for (const member of teamMembers) {
+        options += `<option value="${escapeHtml(member.user_id)}">${escapeHtml(member.user_name || member.user_email)}</option>`;
+      }
+      select.innerHTML = options;
+    }
+
+    function toggleSelectAll(checkbox) {
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.checked = checkbox.checked;
+      });
+      updateBulkSelection();
+    }
+
+    function updateBulkSelection() {
+      const checked = document.querySelectorAll('.row-checkbox:checked');
+      const bar = document.getElementById('bulkActions');
+      const countEl = document.getElementById('selectedCount');
+      if (checked.length > 0) {
+        bar.style.display = 'flex';
+        countEl.textContent = checked.length;
+      } else {
+        bar.style.display = 'none';
+        document.getElementById('selectAll').checked = false;
+      }
+    }
+
+    async function bulkAssignOwner() {
+      const ownerId = document.getElementById('bulkOwnerSelect').value;
+      if (!ownerId) {
+        alert('Please select an owner to assign.');
+        return;
+      }
+      const checked = document.querySelectorAll('.row-checkbox:checked');
+      const orgIds = Array.from(checked).map(cb => cb.value);
+      const teamMember = teamMembers.find(m => m.user_id === ownerId);
+
+      const results = await Promise.allSettled(orgIds.map(orgId =>
+        manageFetch(`/api/admin/organizations/${orgId}/stakeholders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: ownerId,
+            user_name: teamMember?.user_name || ownerId,
+            user_email: teamMember?.user_email,
+            role: 'owner'
+          })
+        })
+      ));
+
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        alert(`Assigned ${orgIds.length - failed} of ${orgIds.length} accounts. ${failed} failed.`);
+      }
+
+      clearSelection();
+      loadAccounts();
+    }
+
+    function clearSelection() {
+      document.querySelectorAll('.row-checkbox').forEach(cb => { cb.checked = false; });
+      document.getElementById('selectAll').checked = false;
+      document.getElementById('bulkActions').style.display = 'none';
+      document.getElementById('bulkOwnerSelect').value = '';
+    }
+
+    // --- Inline task completion ---
+    async function completeTask(orgId, activityId) {
+      try {
+        const response = await manageFetch(`/api/admin/accounts/${orgId}/activities/${activityId}/complete`, {
+          method: 'POST'
+        });
+        if (!response.ok) throw new Error('Failed to complete task');
+        loadAccounts();
+        loadViewCounts();
+      } catch (error) {
+        console.error('Error completing task:', error);
+        alert('Failed to complete task. Please try again.');
+      }
     }
 
     // Close modal when clicking outside (use named close functions for proper state cleanup)
