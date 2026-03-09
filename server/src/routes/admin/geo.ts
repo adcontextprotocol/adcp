@@ -40,15 +40,41 @@ interface LLMPulseCompetitor {
   domain: string;
 }
 
+interface LLMPulseModelSummary {
+  model: string;
+  mentions: number;
+  mention_rate: number;
+  citations: number;
+  citation_rate: number;
+  net_sentiment: number;
+  visibility: number;
+}
+
+interface LLMPulseAnswer {
+  prompt_id: number;
+  mentions_count: number;
+  citations_count: number;
+  competitor_name?: string;
+}
+
+interface LLMPulseCompetitorMention {
+  competitor_id: number;
+  mentions_count: number;
+}
+
 // Dashboard output types
 interface GeoVisibilityData {
   configured: true;
   updated_at: string;
   summary: {
     brand_mention_rate: number;
+    brand_mention_rate_change: number | null;
     share_of_voice: number;
+    share_of_voice_change: number | null;
     total_prompts: number;
+    total_prompts_change: number | null;
     citation_rate: number;
+    citation_rate_change: number | null;
   };
   by_model: Array<{
     model: string;
@@ -154,12 +180,21 @@ function computeTrend(data: Array<{ date: string; value: number }>): "up" | "dow
   return "flat";
 }
 
+function computeChange(data: Array<{ date: string; value: number }>): number | null {
+  if (!data || data.length < 14) return null;
+  const recent = data.slice(-7);
+  const previous = data.slice(-14, -7);
+  const recentAvg = recent.reduce((sum, d) => sum + d.value, 0) / recent.length;
+  const previousAvg = previous.reduce((sum, d) => sum + d.value, 0) / previous.length;
+  return Math.round((recentAvg - previousAvg) * 10) / 10;
+}
+
 async function fetchVisibilityData(): Promise<GeoVisibilityData> {
   const pid = await getProjectId();
   const pidStr = String(pid);
 
-  // Fetch all data in parallel
-  const [metricsResult, sovResult, topSourcesResult, competitorsResult, promptsResult, modelsResult] =
+  // Core metrics (required for dashboard)
+  const [metricsResult, sovResult, topSourcesResult, competitorsResult, promptsResult] =
     await Promise.all([
       fetchLLMPulse("/metrics/summary", {
         project_id: pidStr,
@@ -182,10 +217,34 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
         project_id: pidStr,
         per_page: "100",
       }) as Promise<{ data: Array<{ id: number; prompt_text: string; last_executed_at: string }>; total: number }>,
-      fetchLLMPulse("/dimensions/models", {
-        project_id: pidStr,
-      }) as Promise<{ models: string[] }>,
     ]);
+
+  // Enrichment calls — degrade gracefully if any fail
+  const [modelSummaryResult, answersResult, competitorMentionsResult] = await Promise.all([
+    fetchLLMPulse("/metrics/prompt_summary", {
+      project_id: pidStr,
+      breakdown: "model",
+      sort: "mentions",
+      sort_dir: "desc",
+      per_page: "20",
+    }).catch((err) => {
+      logger.warn({ err }, "Failed to fetch model summary from LLM Pulse");
+      return { data: [] };
+    }) as Promise<{ data: LLMPulseModelSummary[] }>,
+    fetchLLMPulse("/answers", {
+      project_id: pidStr,
+      per_page: "500",
+    }).catch((err) => {
+      logger.warn({ err }, "Failed to fetch answers from LLM Pulse");
+      return { data: [] };
+    }) as Promise<{ data: LLMPulseAnswer[] }>,
+    fetchLLMPulse("/dimensions/competitor_mentions", {
+      project_id: pidStr,
+    }).catch((err) => {
+      logger.warn({ err }, "Failed to fetch competitor mentions from LLM Pulse");
+      return { data: [] };
+    }) as Promise<{ data: LLMPulseCompetitorMention[] }>,
+  ]);
 
   // Extract brand mention rate from visibility metric
   const visibilitySeries = metricsResult.series?.visibility?.find(
@@ -211,27 +270,36 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     ? getLatestValue(projectSov.data)
     : 0;
 
-  // Build per-model breakdown using per-model metrics
-  const mentionsSeries = metricsResult.series?.mentions || [];
-  const byModel: GeoVisibilityData["by_model"] = (modelsResult.models || []).map((model) => {
-    const modelMentions = mentionsSeries.find(
-      (s) => s.actor.type === "project"
-    );
+  // Build per-model breakdown from prompt_summary with model breakdown
+  const byModel: GeoVisibilityData["by_model"] = (modelSummaryResult.data || []).map((row) => ({
+    model: row.model,
+    mention_rate: Math.round(row.mention_rate * 10) / 10,
+    sentiment: row.net_sentiment > 0.2 ? "positive" as const
+      : row.net_sentiment < -0.2 ? "negative" as const
+      : "neutral" as const,
+    trend: "flat" as const,
+  }));
+
+  // Build per-prompt mention lookup from answers (sticky-true: once mentioned, stays mentioned)
+  const answersByPrompt = new Map<number, { mentioned: boolean; competitor: string | null }>();
+  for (const answer of answersResult.data || []) {
+    const existing = answersByPrompt.get(answer.prompt_id);
+    answersByPrompt.set(answer.prompt_id, {
+      mentioned: (existing?.mentioned ?? false) || answer.mentions_count > 0,
+      competitor: answer.competitor_name || existing?.competitor || null,
+    });
+  }
+
+  // Transform prompts with real mention data
+  const prompts: GeoVisibilityData["prompts"] = (promptsResult.data || []).map((p) => {
+    const answerData = answersByPrompt.get(p.id);
     return {
-      model,
-      mention_rate: modelMentions ? getLatestValue(modelMentions.data) : 0,
-      sentiment: "neutral" as const,
-      trend: modelMentions ? computeTrend(modelMentions.data) : "flat" as const,
+      text: p.prompt_text,
+      adcp_mentioned: answerData?.mentioned ?? false,
+      competitor_mentioned: answerData?.competitor ?? null,
+      last_checked: p.last_executed_at,
     };
   });
-
-  // Transform prompts
-  const prompts: GeoVisibilityData["prompts"] = (promptsResult.data || []).map((p) => ({
-    text: p.prompt_text,
-    adcp_mentioned: false, // LLM Pulse tracks this at aggregate level, not per-prompt
-    competitor_mentioned: null,
-    last_checked: p.last_executed_at,
-  }));
 
   // Transform top sources
   const topCitedUrls: GeoVisibilityData["top_cited_urls"] = (topSourcesResult.data || []).map((s) => ({
@@ -240,17 +308,19 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     avg_visibility: Math.round(s.avg_visibility * 10) / 10,
   }));
 
-  // Build competitor data from SOV time series
+  // Build competitor data from SOV time series + dedicated mention counts
+  const competitorMentionMap = new Map<number, number>();
+  for (const cm of competitorMentionsResult.data || []) {
+    competitorMentionMap.set(cm.competitor_id, cm.mentions_count);
+  }
+
   const competitors: GeoVisibilityData["competitors"] = (competitorsResult.competitors || []).map((c) => {
     const competitorSov = sovResult.over_time?.find(
       (s) => s.actor.type === "competitor" && s.actor.id === c.id
     );
-    const competitorMentions = mentionsSeries.find(
-      (s) => s.actor.type === "competitor" && s.actor.id === (c.id as unknown as number)
-    );
     return {
       name: c.name,
-      mention_count: competitorMentions ? getLatestValue(competitorMentions.data) : 0,
+      mention_count: competitorMentionMap.get(c.id) || 0,
       share_of_voice: competitorSov ? Math.round(getLatestValue(competitorSov.data) * 10) / 10 : 0,
       trend: competitorSov ? computeTrend(competitorSov.data) : "flat" as const,
     };
@@ -261,9 +331,13 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     updated_at: new Date().toISOString(),
     summary: {
       brand_mention_rate: Math.round(brandMentionRate * 10) / 10,
+      brand_mention_rate_change: visibilitySeries ? computeChange(visibilitySeries.data) : null,
       share_of_voice: Math.round(shareOfVoice * 10) / 10,
+      share_of_voice_change: projectSov ? computeChange(projectSov.data) : null,
       total_prompts: promptsResult.total || prompts.length,
+      total_prompts_change: null,
       citation_rate: Math.round(citationRate * 10) / 10,
+      citation_rate_change: citationsSeries ? computeChange(citationsSeries.data) : null,
     },
     by_model: byModel,
     prompts,
