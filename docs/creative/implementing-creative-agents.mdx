@@ -322,15 +322,26 @@ If you're wrapping an existing ad server or creative management platform, this s
 
 ### Tag generation models
 
-Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates both common models:
+Ad servers differ in how they produce serving tags. The creative protocol's `build_creative` accommodates all common models through the combination of `creative_id`, `target_format_id`, and optional `media_buy_id`/`package_id`:
 
-**Creative-level tags** (Flashtalking, Celtra) — The platform can produce a tag for any creative in its library without placement context. `build_creative(creative_id)` maps directly: the agent resolves the creative and returns a manifest with the tag as an asset. Celtra's `GET /tags?creativeId=X&adServer=Y` is a direct analog — the ad server parameter scopes the output tag format, just as `target_format_id` does in `build_creative`.
+**Universal tags** (Celtra, Flashtalking) — A single tag that adapts to multiple environments (web, in-app). No placement context is needed — `build_creative(creative_id, target_format_id)` produces a tag that works wherever it's trafficked. Best for agency/programmatic use cases where the final destination is unpredictable, reducing trafficking errors.
 
-**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. The caller passes `media_buy_id` and optionally `package_id` to provide the trafficking context. A CM360 adapter has two options for `build_creative` with a `creative_id`:
-1. Return the creative's `htmlCode` or `redirectUrl` directly as a manifest asset
-2. Use internal trafficking with the `media_buy_id` to produce a tag scoped to the target format
+**Single-placement tags** (Celtra, Flashtalking, CM360) — A tag scoped to one specific size and placement. The `target_format_id` specifies the exact dimensions (e.g., 300x250 web). For publisher template use cases where the destination is known, this is the most common choice.
 
-In both cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
+**Multi-placement tags** (Celtra) — A tag covering multiple sizes within one environment. The `target_format_id` references a format whose `renders` array defines the supported sizes. Useful for publisher templates that need several sizes (e.g., 300x250 + 320x50 + 728x90 web) but want a single tag to traffic.
+
+**Placement-level tags** (CM360) — The platform generates tags per placement, not per creative. The caller passes `media_buy_id` and optionally `package_id` to provide the trafficking context. A CM360 adapter uses the media buy context to produce a tag scoped to the target format.
+
+The choice between these models is often a campaign context decision, not a platform constraint. The same creative agent may produce different tag types depending on the caller's needs:
+
+| Use case | Tag type | `build_creative` parameters |
+|---|---|---|
+| Agency/programmatic (unknown destination) | Universal | `creative_id` + `target_format_id` (universal format) |
+| Publisher template (known placement) | Single placement | `creative_id` + `target_format_id` (specific size) |
+| Publisher template (multiple sizes) | Multi-placement | `creative_id` + `target_format_id` (multi-render format) |
+| Ad server with trafficking context | Placement-level | `creative_id` + `target_format_id` + `media_buy_id` + `package_id` |
+
+In all cases the output is the same: a creative manifest with the serving code in an `html` or `javascript` asset.
 
 ### Variable models
 
