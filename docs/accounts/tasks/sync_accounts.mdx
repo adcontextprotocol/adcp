@@ -5,7 +5,7 @@ testable: false
 
 Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning per-account status and any setup instructions. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
 
-`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For explicit accounts (`require_operator_auth: true`), discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts).
+`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For explicit accounts (`require_operator_auth: true`), discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts). For sandbox operations, use the natural key with `sandbox: true` regardless of account model.
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
@@ -96,7 +96,7 @@ asyncio.run(main())
 | `billing` | string | Yes | Who should be invoiced: `operator` or `agent`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts. The seller must either accept this billing model or reject the request. |
 | `sandbox` | boolean | No | When true, set up a sandbox account. No real platform calls or billing. |
 
-**Natural key**: The tuple `(brand, operator)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency).
+**Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` references the sandbox account for the same brand/operator pair.
 
 ## Response
 

@@ -31,7 +31,7 @@
           },
           "sandbox": {
             "type": "boolean",
-            "description": "When true, provision this as a sandbox account. No real platform calls or billing. Sandbox accounts are identified by account_id in subsequent requests."
+            "description": "When true, provision this as a sandbox account. No real platform calls or billing. The sandbox flag is part of the natural key — use brand + operator + sandbox: true in subsequent account references."
           }
         },
         "required": [
