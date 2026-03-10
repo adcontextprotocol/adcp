@@ -508,6 +508,8 @@ The `delivery` phase is optional even when `purchase` phase governance is used. 
 
 If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with a registered `governance_agent`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
 
+When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD retry the `create_media_buy` after a delay. If the governance agent remains unavailable, the orchestrator SHOULD escalate to a human rather than attempting alternative sellers -- the governance outage affects all sellers on the same account. A prior `proposed` approval from the orchestrator does not substitute for the seller's `committed` check; the seller validates independently and cannot use the orchestrator's approval.
+
 ### Governance checks and the governance loop
 
 Governance checks complements the buyer-side governance loop, it does not replace it:
@@ -536,14 +538,10 @@ flowchart TD
     D -->|conditions| F[Apply conditions]
     F --> C
     D -->|denied| G[Log denial, skip action]
-    D -->|escalated| H{Severity?}
-    H -->|info| E
-    H -->|warning| I[Send to seller, flag for review]
-    H -->|critical| J[Pause, notify human]
+    D -->|escalated| J[Pause, notify human]
     J --> K[Human resolves]
     K --> C
     E --> L{Governance agent?}
-    I --> L
     L -->|yes| M["Seller calls check_governance (purchase)"]
     L -->|no| N[Seller processes normally]
     M --> O{Approved?}

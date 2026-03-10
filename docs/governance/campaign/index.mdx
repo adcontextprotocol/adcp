@@ -157,11 +157,13 @@ Every governance check returns a structured status:
 | `conditions` | Could pass with specific changes | Apply conditions, re-call `check_governance` |
 | `escalated` | Requires human review | Pause and notify human approver |
 
-Escalations use severity levels:
+Finding severity levels indicate urgency:
 
-- **`info`** -- Logged for audit, no action required
-- **`warning`** -- Agent may proceed but human should review within a deadline
-- **`critical`** -- Agent must not proceed until human approves
+- **`info`** -- Logged for audit. Used on `approved` responses for advisory findings.
+- **`warning`** -- Human should review. Used on `approved` responses when action is allowed but attention is needed.
+- **`critical`** -- Action is blocked. Used on `escalated` responses when human approval is required.
+
+When the status is `escalated`, the caller MUST NOT proceed regardless of severity. Non-blocking concerns use `approved` status with `findings` attached.
 
 Human escalation integrates with the existing AdCP HITL mechanism. An escalated action returns `input-required` status in the protocol envelope, and the orchestrator pauses until the human resolves it via the standard `context_id` continuation.
 

@@ -33,7 +33,7 @@
     },
     "findings": {
       "type": "array",
-      "description": "Specific issues found during the governance check. Present when status is 'denied', 'conditions', or 'escalated'.",
+      "description": "Specific issues found during the governance check. Present when status is 'denied', 'conditions', or 'escalated'. MAY also be present on 'approved' for advisory findings (e.g., budget approaching limit).",
       "items": {
         "type": "object",
         "properties": {
@@ -111,6 +111,6 @@
       "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
     }
   },
-  "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref"],
+  "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref", "explanation"],
   "additionalProperties": false
 }

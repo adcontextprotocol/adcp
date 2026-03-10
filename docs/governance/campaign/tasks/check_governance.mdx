@@ -433,7 +433,7 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `plan_id` | string | Echoed from request. |
 | `buyer_campaign_ref` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Present when status is `denied`, `conditions`, or `escalated`. Per-category issues found. |
+| `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
 | `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, and `requires_human`. |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
