@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-ref.json",
   "title": "Account Reference",
-  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the buyer manages accounts (e.g., picked from list_accounts). Use the natural key (brand + operator) when the seller resolves accounts internally.",
+  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id for explicit accounts (require_operator_auth: true, discovered via list_accounts). Use the natural key (brand + operator) for implicit accounts (require_operator_auth: false, declared via sync_accounts).",
   "type": "object",
   "oneOf": [
     {
