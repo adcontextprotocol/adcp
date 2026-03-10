@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": minor
 ---
 
-Add shared policy registry for governance domains. Includes database-backed registry with 11 seeded policies (6 regulations, 5 standards), API endpoints for listing/resolving/saving policies, admin UI, campaign governance task schemas, and documentation.
+Campaign Governance and Policy Registry. Includes unified check_governance with binding discriminator, 14 seeded policies (8 regulations, 6 standards including Scope3 Common Sense brand safety), policy_id on findings, resolved_policies on sync_plans, multi-agent governance composition, batch-ready check_governance, and enforced_policies simplified to string arrays.

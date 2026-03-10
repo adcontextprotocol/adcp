@@ -280,21 +280,9 @@
     },
     "enforced_policies": {
       "type": "array",
-      "description": "Registry policies that the seller already enforces for this product. Prevents duplication -- if the seller handles COPPA, the buyer's governance agent does not need to separately filter for it.",
+      "description": "Registry policy IDs the seller enforces for this product. Enforcement level comes from the policy registry. Buyers can filter products by required policies.",
       "items": {
-        "type": "object",
-        "properties": {
-          "policy_id": {
-            "type": "string",
-            "description": "Registry policy ID (e.g., 'us_coppa', 'eu_gdpr_advertising')."
-          },
-          "enforcement": {
-            "$ref": "/schemas/enums/policy-enforcement.json",
-            "description": "How the seller enforces this policy."
-          }
-        },
-        "required": ["policy_id", "enforcement"],
-        "additionalProperties": false
+        "type": "string"
       }
     },
     "ext": {

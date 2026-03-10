@@ -9,6 +9,30 @@ sidebarTitle: Policy Registry
 
 The Policy Registry is a community-maintained library of standardized, machine-readable advertising policies. It provides a shared vocabulary of regulations and industry standards that any governance domain can reference by ID.
 
+## Quick start
+
+Fetch a policy by ID:
+
+```bash
+curl https://adcontextprotocol.org/api/policies/resolve?policy_id=us_coppa
+```
+
+List all regulation-category policies:
+
+```bash
+curl https://adcontextprotocol.org/api/policies/registry?category=regulation
+```
+
+Bulk-resolve policies for an LLM evaluation prompt:
+
+```bash
+curl -X POST https://adcontextprotocol.org/api/policies/resolve/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"policy_ids": ["us_coppa", "eu_gdpr_advertising", "uk_hfss"]}'
+```
+
+Use the `policy` text and `exemplars` from the response in your governance agent's evaluation prompt. The exemplars calibrate the agent's interpretation of the policy -- include them as few-shot examples.
+
 ## Why a shared registry
 
 Advertising compliance involves the same regulations and standards across many campaigns, brands, and governance agents. Without a shared registry, every governance agent would independently define policies for COPPA, GDPR, HFSS, and other well-known regulations -- creating inconsistency and duplication.
@@ -210,10 +234,7 @@ Buyers list enforced policies in media buy requests. Sellers declare which polic
 ```json
 {
   "product_id": "premium_video_uk",
-  "enforced_policies": [
-    { "policy_id": "uk_hfss", "enforcement": "must" },
-    { "policy_id": "eu_gdpr_advertising", "enforcement": "must" }
-  ]
+  "enforced_policies": ["uk_hfss", "eu_gdpr_advertising"]
 }
 ```
 
@@ -233,7 +254,7 @@ Registry-sourced policies (authoritative) cannot be edited via the community sav
 
 ## Seeded policies
 
-The registry ships with 11 seeded policies covering common advertising regulations and standards:
+The registry ships with 14 seeded policies covering common advertising regulations and standards:
 
 ### Regulations
 
@@ -245,6 +266,8 @@ The registry ships with 11 seeded policies covering common advertising regulatio
 | `eu_ai_act_article_50` | EU | AI-generated content disclosure and C2PA provenance |
 | `ca_sb_942` | US | California AI Transparency Act for large platforms |
 | `us_cannabis` | US | Cannabis advertising restrictions (state-by-state) |
+| `tobacco_nicotine` | tobacco, nicotine, vaping | Tobacco and nicotine advertising restrictions -- most jurisdictions ban tobacco advertising outright |
+| `political_advertising` | Global | Political advertising transparency and disclosure (EU DSA, US state-level AI disclosure laws) |
 
 ### Standards
 
@@ -254,7 +277,12 @@ The registry ships with 11 seeded policies covering common advertising regulatio
 | `pharma_us_fda` | pharmaceutical, healthcare | FDA-aligned pharmaceutical advertising |
 | `gambling_advertising` | gambling, gaming | Responsible gambling advertising |
 | `financial_services` | financial_services, insurance | Financial product advertising disclosure |
-| `tobacco_nicotine` | tobacco, nicotine, vaping | Tobacco and nicotine advertising standards |
+| `scope3_brand_safety` | All | Scope3 Common Sense brand safety framework -- content adjacency baseline donated to AgenticAdvertising.org |
+| `childrens_advertising` | All | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
+
+<Note>
+The Scope3 Common Sense brand safety framework was donated to AgenticAdvertising.org as the industry baseline for brand safety, replacing the defunct GARM framework. It defines common-sense content adjacency standards applicable to all verticals and channels.
+</Note>
 
 ## Contributing policies
 

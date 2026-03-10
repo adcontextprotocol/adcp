@@ -41,6 +41,10 @@
             "type": "string",
             "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety')."
           },
+          "policy_id": {
+            "type": "string",
+            "description": "Registry policy ID that triggered this finding. Present when the finding originates from a specific registry policy. Enables programmatic routing of compliance failures."
+          },
           "severity": {
             "$ref": "/schemas/enums/escalation-severity.json"
           },
@@ -109,6 +113,32 @@
       "type": "string",
       "format": "date-time",
       "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
+    },
+    "results": {
+      "type": "array",
+      "description": "Batch results, one per action in the request's actions array, in the same order. Present only when the request used the actions array. Reserved for future batch support.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check_id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["approved", "denied", "conditions", "escalated"]
+          },
+          "binding": {
+            "type": "string",
+            "enum": ["proposed", "committed"]
+          },
+          "explanation": { "type": "string" },
+          "findings": { "type": "array" },
+          "conditions": { "type": "array" },
+          "escalation": { "type": "object" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "next_check": { "type": "string", "format": "date-time" }
+        },
+        "required": ["check_id", "status", "binding", "explanation"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref", "explanation"],

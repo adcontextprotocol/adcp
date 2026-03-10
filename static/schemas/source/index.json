@@ -1233,7 +1233,7 @@
           },
           "response": {
             "$ref": "/schemas/governance/sync-plans-response.json",
-            "description": "Sync result with active validation categories per plan"
+            "description": "Sync result with active validation categories and resolved policies per plan"
           }
         },
         "report-plan-outcome": {

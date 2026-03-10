@@ -475,6 +475,7 @@ The `next_check` field signals that the governance agent expects delivery report
   "findings": [
     {
       "category_id": "strategic_alignment",
+      "policy_id": "eu_gdpr_advertising",
       "severity": "critical",
       "explanation": "Geo targeting includes CA but plan only authorizes US.",
       "details": {
@@ -513,6 +514,22 @@ The `delivery` phase is optional even when `purchase` phase governance is used. 
 If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with a registered `governance_agent`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
 
 When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD retry the `create_media_buy` after a delay. If the governance agent remains unavailable, the orchestrator SHOULD escalate to a human rather than attempting alternative sellers -- the governance outage affects all sellers on the same account. A prior `proposed` approval from the orchestrator does not substitute for the seller's `committed` check; the seller validates independently and cannot use the orchestrator's approval.
+
+### Performance expectations
+
+Governance agent implementations SHOULD respond to `check_governance` calls within 5 seconds for `proposed` checks and 10 seconds for `committed` checks. Sellers SHOULD configure appropriate timeouts and treat timeouts the same as unavailability (retry, then reject with `GOVERNANCE_UNAVAILABLE`).
+
+### Wire format
+
+The seller calls the governance agent at the registered `governance_agent.url` using MCP over HTTP (Streamable HTTP transport). The request is an MCP `tools/call` invocation with tool name `check_governance` and the request arguments as the tool input. Authentication uses the Bearer token from `governance_agent.authentication.credentials` in the `Authorization` header.
+
+### Multi-agent composition
+
+Accounts MAY register multiple governance agents via the `governance_agents` array on `sync_accounts`, each responsible for different validation categories. For example, one agent handles budget authority and strategic alignment while another handles regulatory compliance and brand policy.
+
+When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied` or `escalated`, the action is blocked.
+
+When `governance_agents` is present, it takes precedence over the singular `governance_agent` field. The singular field remains as a convenience for accounts with a single governance agent.
 
 ### Governance checks and the governance loop
 
@@ -585,3 +602,19 @@ Every plan maintains an ordered audit trail of all validated actions and reporte
 - Delivery metrics over time
 
 This audit trail serves compliance and reporting needs. For regulated categories (political advertising, financial services), the trail provides evidence that governance was applied to every transaction.
+
+## Conformance testing
+
+A conformance test suite for governance agent implementations is planned. Test vectors provide structured input/output pairs -- a plan, a set of policies, a `check_governance` request, and the expected response status and findings. Governance agents can run these vectors to verify that their policy evaluation produces consistent results.
+
+The policy registry's exemplars (pass/fail scenarios per policy) provide the raw material. Test vectors formalize these into executable assertions that any governance agent can validate against. The AdCP client test library will include these vectors as part of its standard test suite.
+
+## Batch validation
+
+The `check_governance` schema reserves an `actions` array field for batch validation. An orchestrator building a multi-seller media plan can submit multiple proposed actions as a group, allowing the governance agent to evaluate aggregate constraints (total budget across all actions, channel mix across the set) in a single round-trip.
+
+The response includes a corresponding `results` array with one result per action, in the same order. Each result follows the same structure as the single-action response. Until batch support is widely implemented, orchestrators call `check_governance` sequentially for each action.
+
+## Property list governance
+
+Campaign governance intersects with property governance when media buys reference property lists. A governance agent MAY validate that property lists referenced in media buy requests meet the plan's brand safety and compliance requirements. The community governance agent integrates with the property registry to provide this validation, ensuring that property lists align with the brand's compliance configuration and enforced policies.

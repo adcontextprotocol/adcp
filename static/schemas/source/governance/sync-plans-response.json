@@ -43,6 +43,34 @@
               "required": ["category_id", "status"],
               "additionalProperties": false
             }
+          },
+          "resolved_policies": {
+            "type": "array",
+            "description": "Policies the governance agent will enforce for this plan. Includes explicitly referenced policies from the brand compliance configuration and auto-applied policies matched by jurisdiction or vertical. Present when the governance agent supports policy resolution.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "policy_id": {
+                  "type": "string",
+                  "description": "Registry policy ID."
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["explicit", "auto_applied"],
+                  "description": "How this policy was included. 'explicit': referenced in the brand compliance configuration. 'auto_applied': matched automatically by jurisdiction, vertical, or category."
+                },
+                "enforcement": {
+                  "$ref": "/schemas/enums/policy-enforcement.json",
+                  "description": "Enforcement level for this policy."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why this policy was included (e.g., 'Matched jurisdiction US and vertical pharmaceutical')."
+                }
+              },
+              "required": ["policy_id", "source", "enforcement"],
+              "additionalProperties": false
+            }
           }
         },
         "required": ["plan_id", "status", "version"],

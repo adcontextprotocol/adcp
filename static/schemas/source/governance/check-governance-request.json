@@ -113,6 +113,49 @@
     "modification_summary": {
       "type": "string",
       "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase."
+    },
+    "actions": {
+      "type": "array",
+      "description": "Batch of governance checks to evaluate together. Each item contains the fields for one check. The governance agent evaluates the batch as a group, checking aggregate constraints (e.g., total budget across all actions). The top-level plan_id and buyer_campaign_ref apply to all actions unless overridden per-action. Reserved for future batch support.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "type": "string",
+            "enum": ["proposed", "committed"]
+          },
+          "caller": {
+            "type": "string",
+            "format": "uri"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "media_buy_id": {
+            "type": "string"
+          },
+          "buyer_ref": {
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "/schemas/enums/governance-phase.json",
+            "default": "purchase"
+          },
+          "planned_delivery": {
+            "$ref": "/schemas/core/planned-delivery.json"
+          },
+          "delivery_metrics": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["binding", "caller"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["plan_id", "buyer_campaign_ref", "binding", "caller"],

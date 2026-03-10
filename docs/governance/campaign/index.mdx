@@ -27,6 +27,18 @@ Without a governance layer on the buy side:
 
 Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance webhooks** that check purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
 
+### Industry precedent
+
+Campaign Governance formalizes patterns that exist in ad tech today as manual processes:
+
+| Manual process | Campaign Governance equivalent |
+|---------------|-------------------------------|
+| Agency trading desk QA | Automated validation against the IO |
+| DSP pre-bid rules | Budget authority and targeting compliance checks |
+| Advertiser approval workflows | Human escalation for high-risk actions |
+| Post-campaign audit | Seller verification and delivery validation |
+| Compliance review | Regulatory checks by jurisdiction |
+
 ## How it works
 
 The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `binding: "proposed"` before every action it sends to a seller. The seller independently calls `check_governance` with `binding: "committed"` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
@@ -121,6 +133,8 @@ The governance agent maintains all state. The seller just posts what's happening
 
 Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-webhooks) for the full protocol.
 
+Sellers that implement governance checks gain a competitive advantage: they can prove to buyers that purchases were independently verified before execution. This reduces dispute risk, automates compliance verification, and signals trust to buyers with strict oversight requirements.
+
 ## Lifecycle phases
 
 Campaign Governance is stateful across three phases:
@@ -178,17 +192,17 @@ Campaign Governance composes with the existing domains -- it does not duplicate 
 | **[Creative Governance](/docs/governance/creative/index)** | Campaign Governance validates that creative assignments match format requirements. Creative Governance scans the creatives themselves. |
 | **[Brand Protocol](/docs/brand-protocol/index)** | Campaign Governance resolves the brand's compliance configuration via the Brand Protocol. The brand's policy team configures compliance policies in brand.json; the governance agent applies them automatically. |
 
-## Industry precedent
+## Community governance agent
 
-Campaign Governance formalizes patterns that exist in ad tech today as manual processes:
+AgenticAdvertising.org operates a community governance agent that implements the registry's seeded policies. Brands that do not need a custom governance agent can point their `governance_agent` URL to the community agent for baseline policy compliance checks and basic budget guardrails. This provides a zero-setup entry point for governance without requiring brands to build or procure a dedicated agent.
 
-| Manual process | Campaign Governance equivalent |
-|---------------|-------------------------------|
-| Agency trading desk QA | Automated validation against the IO |
-| DSP pre-bid rules | Budget authority and targeting compliance checks |
-| Advertiser approval workflows | Human escalation for high-risk actions |
-| Post-campaign audit | Seller verification and delivery validation |
-| Compliance review | Regulatory checks by jurisdiction |
+The community agent supports:
+- Policy compliance checks against all registry policies
+- Basic budget threshold guardrails (reject or escalate above configurable limits)
+- Property list validation against the property registry
+- Geo and vertical alignment checks
+
+For full budget tracking, delivery monitoring, and custom validation logic, brands should use a dedicated governance agent.
 
 ## Next steps
 

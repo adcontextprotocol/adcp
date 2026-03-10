@@ -288,10 +288,10 @@ Terms accessibility: Full terms and conditions must be accessible from the ad (l
  '{"pass": [{"scenario": "A bank runs display ads for a savings account showing the APR prominently, stating ''Rates may vary'' and linking to full terms and conditions.", "explanation": "The APR is prominently displayed, variable rate nature is disclosed, and full terms are accessible via link."}, {"scenario": "An investment platform runs video ads that include ''Past performance does not guarantee future results'' and ''Capital at risk'' disclaimers with the same visual prominence as return figures.", "explanation": "Appropriate risk disclaimers are presented with comparable prominence to performance claims, following fair disclosure standards."}], "fail": [{"scenario": "A lending app advertises ''0% interest!'' in large text without disclosing that this is an introductory rate that increases to 24.9% APR after 6 months.", "explanation": "Advertising an introductory rate without disclosing the standard APR with equal prominence is misleading and violates disclosure requirements."}, {"scenario": "A crypto exchange runs ads stating ''Guaranteed 20% annual returns'' on their staking product.", "explanation": "Guaranteeing investment returns is misleading. Crypto products carry significant risk that must be disclosed, and returns cannot be guaranteed."}]}'::jsonb,
  'registry', 'approved'),
 
--- Tobacco/Nicotine
-('tobacco_nicotine', '1.0.0', 'Tobacco and Nicotine Advertising Standards',
- 'Best practices for tobacco, nicotine, and vaping product advertising.',
- 'standard', 'should',
+-- Tobacco/Nicotine (regulation — most jurisdictions ban tobacco advertising outright)
+('tobacco_nicotine', '1.0.0', 'Tobacco and nicotine advertising restrictions',
+ 'Tobacco and nicotine advertising restrictions across jurisdictions. Most markets ban tobacco advertising entirely.',
+ 'regulation', 'must',
  '[]'::jsonb, '{}'::jsonb,
  '["tobacco", "nicotine", "vaping", "e-cigarettes"]'::jsonb, NULL,
  '2024-01-01',
@@ -308,6 +308,75 @@ Health warnings: Health warning placement and content must comply with jurisdict
 
 Flavor restrictions: In jurisdictions where flavored products are restricted, advertising should not emphasize flavoring as a primary selling point. No imagery suggesting candy, fruit, or dessert flavors when such products are restricted.',
  '{"pass": [{"scenario": "A vaping company runs age-verified display ads in a US state where vaping ads are permitted, with a prominent Surgeon General warning and no youth-appeal imagery.", "explanation": "Ads are age-verified (21+), include required health warnings, and avoid youth-appeal content, meeting responsible advertising standards."}, {"scenario": "A tobacco company excludes all content categories associated with minors and uses verified 21+ audience segments for their US digital campaigns.", "explanation": "Strict age gating and exclusion of minor-associated content follows responsible tobacco advertising standards."}], "fail": [{"scenario": "A vaping brand runs social media ads featuring colorful candy-themed imagery and popular youth slang with no age gate.", "explanation": "Candy-themed imagery, youth slang, and no age verification all violate tobacco/nicotine advertising standards. The ad appeals to minors."}, {"scenario": "An e-cigarette company runs programmatic display ads with no health warnings and no age-verification requirements.", "explanation": "Missing health warnings and no age verification violate basic tobacco/nicotine advertising standards across all markets."}]}'::jsonb,
+ 'registry', 'approved'),
+
+-- Scope3 Common Sense Brand Safety (donated to AgenticAdvertising.org)
+('scope3_brand_safety', '1.0.0', 'Scope3 Common Sense brand safety',
+ 'Brand safety baseline framework donated by Scope3 to AgenticAdvertising.org. Defines common-sense content adjacency standards for digital advertising.',
+ 'standard', 'should',
+ '[]'::jsonb, '{}'::jsonb,
+ '[]'::jsonb, NULL,
+ '2026-01-01',
+ '["campaign", "property", "content_standards"]'::jsonb,
+ 'https://agenticadvertising.org',
+ 'Scope3 / AgenticAdvertising.org',
+ 'The Scope3 Common Sense brand safety framework establishes a baseline for content adjacency in digital advertising. It defines categories of content where advertising placement poses unacceptable risk to brand reputation, and distinguishes between content that should never carry ads and content requiring brand-by-brand judgment.
+
+Content that must be excluded from all advertising: illegal content (CSAM, trafficking, illegal drug sales), terrorist and violent extremist propaganda, content promoting self-harm or suicide, and deliberately deceptive health misinformation designed to cause physical harm.
+
+Content requiring graduated assessment: political opinion and social commentary, coverage of conflict and violence in journalism, mature themes in entertainment, and user-generated content on mixed-quality platforms. For these categories, context matters — a news article reporting on terrorism is fundamentally different from terrorist propaganda. Legitimate journalism, educational content, and documentary coverage should not be automatically excluded.
+
+This framework is a floor, not a ceiling. Brands MAY layer additional restrictions based on their values, risk tolerance, and category-specific concerns. The exemplars below calibrate the boundary between common-sense exclusion and context-dependent judgment.',
+ 'Evaluate content adjacency, not content existence. A news article about terrorism is not the same as terrorist propaganda. Use the exemplars to calibrate severity. When uncertain, flag as warning rather than blocking.',
+ '{"pass": [{"scenario": "A consumer electronics brand runs display ads on a news site that has published articles about political protests, including some with images of property damage.", "explanation": "News coverage of civil unrest is journalism, not advocacy for violence. The content is editorially supervised and provides context. Brand safety baseline does not exclude news reporting."}, {"scenario": "A travel brand runs video ads adjacent to a documentary about climate change that includes disturbing imagery of environmental damage.", "explanation": "Documentary content with editorial oversight is educational, not harmful. The imagery serves informational purposes. Common-sense brand safety does not exclude legitimate documentaries."}, {"scenario": "A food brand advertises on a lifestyle blog that includes an article about responsible alcohol consumption.", "explanation": "Content about alcohol in an educational or responsible-consumption context is not brand-unsafe for non-alcohol brands. The content is not promoting harmful behavior."}], "fail": [{"scenario": "A children''s toy brand runs programmatic display ads on a website hosting user-generated content that includes unmoderated hate speech targeting ethnic minorities.", "explanation": "Unmoderated hate speech is excluded under common-sense brand safety regardless of brand category. This content poses reputational risk to any advertiser."}, {"scenario": "A financial services brand runs ads adjacent to content promoting a cryptocurrency pump-and-dump scheme with fabricated endorsements.", "explanation": "Deliberately deceptive financial content designed to defraud readers violates the common-sense baseline. This is not journalism or opinion — it is fraud."}, {"scenario": "A healthcare brand runs ads on a site that publishes anti-vaccination content claiming vaccines cause autism, with no editorial oversight or fact-checking.", "explanation": "Deliberately deceptive health misinformation designed to cause physical harm (vaccine avoidance) is excluded under the common-sense baseline."}]}'::jsonb,
+ 'registry', 'approved'),
+
+-- Political Advertising Transparency
+('political_advertising', '1.0.0', 'Political advertising transparency',
+ 'Transparency and disclosure requirements for political advertising across jurisdictions.',
+ 'regulation', 'must',
+ '[]'::jsonb, '{"EU": ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"]}'::jsonb,
+ '["political", "advocacy", "government"]'::jsonb, NULL,
+ '2024-02-17',
+ '["campaign", "creative", "content_standards"]'::jsonb,
+ 'https://eur-lex.europa.eu/eli/reg/2022/2065',
+ 'European Union / Various national authorities',
+ 'Political advertising is subject to transparency and disclosure requirements that vary by jurisdiction but share common principles. These requirements apply to candidate advertising, issue advocacy, ballot measures, and government communications.
+
+EU Digital Services Act (DSA): Very large online platforms must label political ads with clear identification that the content is advertising. Platforms must provide transparency about who paid for the ad and why a specific user was targeted. Political ad repositories must be maintained and made publicly accessible. These provisions apply to platforms with 45 million or more EU users.
+
+US requirements: Federal law requires "paid for by" disclosures identifying the sponsor of political advertising. A growing number of states require additional disclosure when political ads use AI-generated or AI-manipulated content (California, Texas, Washington, and others). The FEC requires disclaimers on digital political ads that meet certain size and spending thresholds.
+
+General principles: political advertising must clearly identify the funding source. Micro-targeting criteria should be available to users upon request. AI-generated or manipulated content in political ads must be disclosed with clear labeling. During election periods, heightened scrutiny applies, and some jurisdictions impose blackout periods before elections.',
+ 'Political advertising is defined broadly — it includes issue advocacy, ballot measures, and government communications, not just candidate advertising. When uncertain whether content qualifies as political advertising, err on the side of applying transparency requirements.',
+ '{"pass": [{"scenario": "A political action committee runs digital display ads with clear ''Paid for by Citizens for Clean Energy PAC'' disclosure, AI-generated imagery labeled as such, and the ad is registered in the platform''s political ad library.", "explanation": "The ad includes sponsor identification, AI content disclosure, and platform transparency requirements. Compliant across US federal and EU DSA requirements."}, {"scenario": "A government agency runs informational ads about a new public health program with clear ''Official government communication'' labeling and no micro-targeting beyond geographic relevance.", "explanation": "Government communications identified as such, with geographic (not behavioral) targeting, meet transparency requirements."}], "fail": [{"scenario": "A dark money group runs issue ads about immigration policy with no sponsor identification, using AI-generated deepfake imagery of a public official, with no AI disclosure.", "explanation": "Missing sponsor identification violates federal ''paid for by'' requirements. AI-generated deepfake of a public official without disclosure violates state-level AI transparency laws. The ad is non-compliant on multiple grounds."}, {"scenario": "A political campaign runs micro-targeted ads on a major EU platform with no entry in the platform''s ad library and no information about why specific users were targeted.", "explanation": "Missing political ad library entry and targeting transparency violate EU DSA requirements for very large platforms."}]}'::jsonb,
+ 'registry', 'approved'),
+
+-- Children''s Advertising Standards
+('childrens_advertising', '1.0.0', 'Children''s advertising standards',
+ 'Global standards for advertising directed at or likely to be seen by children, covering protections beyond US COPPA.',
+ 'standard', 'should',
+ '[]'::jsonb, '{}'::jsonb,
+ '[]'::jsonb, NULL,
+ '2025-01-01',
+ '["campaign", "property", "creative", "content_standards"]'::jsonb,
+ 'https://www.asa.org.uk/codes-and-rulings/advertising-codes.html',
+ 'Multiple: UK ASA/CAP, EU AVMSD, ICC, UNICEF',
+ 'Advertising directed at or likely to be seen by children requires additional protections beyond standard advertising practices. These standards complement the US-specific us_coppa regulation with broader international consensus on protecting children in advertising.
+
+Age-appropriate advertising: Ads directed at children must not exploit their credulity, lack of experience, or sense of loyalty. No high-pressure sales tactics, no urgency language (''buy now or miss out''), and no blurring of advertising and editorial content. Children should be able to distinguish advertising from entertainment or educational content.
+
+UK CAP/BCAP Code: Specific rules for audiences under 16 include restrictions on food and drink advertising to children (see uk_hfss for HFSS-specific rules), prohibition on direct exhortations to buy (''ask your parents to buy...''), and no suggesting that children will be inferior or unpopular for not purchasing a product. Ads must not condone or encourage unsafe behavior.
+
+EU Audiovisual Media Services Directive (AVMSD): Member states must ensure advertising does not cause moral or physical detriment to minors. Product placement is restricted in children''s programming. Sponsorship of children''s programs must not directly encourage purchase of products or services.
+
+Digital-specific protections: No behavioral targeting of children below jurisdiction-specific age thresholds (13 in the US under COPPA, 16 in some EU member states under GDPR). Data collection from children should be minimized. Age-gating mechanisms are required before serving age-restricted product advertising. This standard applies to ALL advertising likely to be seen by children, not just advertising explicitly targeted at them.',
+ 'This standard applies to ALL advertising that is likely to be seen by children, not just advertising targeted at children. Consider the audience composition of the media where ads will appear. Use us_coppa for US-specific legal requirements.',
+ '{"pass": [{"scenario": "A toy company runs display ads on a family-friendly streaming platform with no behavioral targeting, age-appropriate creative, and clear separation between ad content and programming.", "explanation": "No behavioral targeting of children, age-appropriate creative, and clear ad labeling meet the standards for child-directed advertising."}, {"scenario": "A cereal brand runs TV spots during children''s programming that present the product without exhortation to purchase, include no celebrity endorsements by youth-appeal figures, and carry no urgency messaging.", "explanation": "The ad avoids direct purchase exhortation, celebrity influence tactics, and urgency language, meeting UK CAP and EU AVMSD standards."}], "fail": [{"scenario": "A mobile game company runs behaviorally targeted ads to users identified as under 13 on a children''s content platform, using animated characters that blur the line between game content and advertising.", "explanation": "Behavioral targeting of under-13 users violates COPPA and GDPR age thresholds. Blurring advertising and entertainment content exploits children''s inability to distinguish ads from content."}, {"scenario": "A fashion brand runs ads on a youth-oriented social platform featuring language like ''Don''t be the only one without it — get yours before they''re gone!'' with no age-gating.", "explanation": "Direct exhortation with social pressure (''only one without it'') and urgency tactics (''before they''re gone'') violate children''s advertising standards. No age-gating on a youth platform compounds the violation."}]}'::jsonb,
  'registry', 'approved')
 
 ON CONFLICT (policy_id) DO NOTHING;
+
+-- Promote tobacco_nicotine to regulation with must enforcement on existing databases
+UPDATE policies SET category = 'regulation', enforcement = 'must', updated_at = now()
+WHERE policy_id = 'tobacco_nicotine' AND category = 'standard';
