@@ -21,12 +21,37 @@ const ADCP_PATTERNS = [
 ];
 
 const COMPETITOR_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /\baamp\b/i, name: 'AAMP' },
+  { pattern: /agentic advertising management protocols/i, name: 'AAMP' },
+  { pattern: /\bartf\b/i, name: 'ARTF' },
+  { pattern: /agentic rtb framework/i, name: 'ARTF' },
+  { pattern: /agentic audiences/i, name: 'Agentic Audiences' },
+  { pattern: /iab tech lab agent registry/i, name: 'IAB Agent Registry' },
   { pattern: /iab tech lab/i, name: 'IAB Tech Lab' },
   { pattern: /\biab\b/i, name: 'IAB' },
   { pattern: /openrtb/i, name: 'OpenRTB' },
+  { pattern: /prebid/i, name: 'Prebid' },
+  { pattern: /google ads api/i, name: 'Google Ads API' },
+  { pattern: /amazon ads api/i, name: 'Amazon Ads API' },
+  { pattern: /unified id 2\.0|uid2/i, name: 'Unified ID 2.0' },
+  { pattern: /the trade desk/i, name: 'The Trade Desk' },
 ];
 
 const SYSTEM_PROMPT = 'Answer the user\'s question directly and concisely. Do not add disclaimers.';
+
+/**
+ * Rotate between Claude tiers on alternating weeks to get a broader
+ * picture of how different model capabilities represent AdCP.
+ */
+function getModelForCurrentWeek(): string {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNumber = Math.ceil(
+    ((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
+  );
+  // Even weeks: fast (Haiku), odd weeks: primary (Sonnet)
+  return weekNumber % 2 === 0 ? ModelConfig.fast : ModelConfig.primary;
+}
 
 let client: Anthropic | null = null;
 
@@ -37,8 +62,22 @@ function getClient(): Anthropic {
   return client;
 }
 
+/**
+ * Phrases that contain "agentic advertising" but refer to competitors,
+ * not AdCP. Stripped before running ADCP_PATTERNS to avoid false positives.
+ */
+const COMPETITOR_PHRASES_TO_STRIP = [
+  /agentic advertising management protocols/gi,
+  /agentic audiences/gi,
+  /agentic rtb framework/gi,
+];
+
 function detectAdcpMention(text: string): boolean {
-  return ADCP_PATTERNS.some((pattern) => pattern.test(text));
+  const cleaned = COMPETITOR_PHRASES_TO_STRIP.reduce(
+    (t, p) => t.replace(p, ''),
+    text
+  );
+  return ADCP_PATTERNS.some((pattern) => pattern.test(cleaned));
 }
 
 function detectCompetitor(text: string): string | null {
@@ -107,9 +146,8 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
     return { promptsChecked: 0, mentions: 0 };
   }
 
-  logger.info({ count: prompts.length }, 'Checking GEO prompts');
-
-  const model = ModelConfig.fast;
+  const model = getModelForCurrentWeek();
+  logger.info({ count: prompts.length, model }, 'Checking GEO prompts');
   const anthropic = getClient();
   let mentions = 0;
   let checked = 0;
