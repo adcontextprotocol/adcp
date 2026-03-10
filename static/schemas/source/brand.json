@@ -594,7 +594,7 @@
       "properties": {
         "style": {
           "type": "string",
-          "enum": ["outline", "filled", "duotone", "flat", "glyph"],
+          "enum": ["outline", "filled", "duotone", "flat", "glyph", "hand_drawn"],
           "description": "Icon rendering style"
         },
         "stroke_weight": {
@@ -696,7 +696,12 @@
         "accent": { "$ref": "#/definitions/hex_color" },
         "border": { "$ref": "#/definitions/hex_color" },
         "cta_foreground": { "$ref": "#/definitions/hex_color", "description": "CTA text/icon color, if different from foreground" },
-        "cta_background": { "$ref": "#/definitions/hex_color", "description": "CTA button/container color, if different from accent" }
+        "cta_background": { "$ref": "#/definitions/hex_color", "description": "CTA button/container color, if different from accent" },
+        "channels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Channels or contexts where this colorway applies (e.g., 'online', 'print', 'pos', 'social', 'outdoor'). Omit for universal colorways."
+        }
       },
       "required": ["name", "foreground", "background"],
       "additionalProperties": true
@@ -786,6 +791,41 @@
       },
       "additionalProperties": true
     },
+    "graphic_element": {
+      "type": "object",
+      "description": "A reusable decorative or structural visual element that is part of the brand identity (e.g., torn paper edges, watermarks, dividers, background patterns)",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Element name (e.g., 'Paper Tear', 'Brand Watermark', 'Section Divider')"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["border", "divider", "frame", "watermark", "pattern", "texture_overlay", "decorative"],
+          "description": "Element type"
+        },
+        "description": {
+          "type": "string",
+          "description": "How the element is used in layouts"
+        },
+        "orientation": {
+          "type": "string",
+          "enum": ["horizontal", "vertical", "any"],
+          "description": "Preferred orientation when used in layouts"
+        },
+        "colors": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/hex_color" },
+          "description": "Colors this element may appear in"
+        },
+        "max_per_layout": {
+          "type": "integer",
+          "description": "Maximum instances per layout"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": true
+    },
     "asset_library": {
       "type": "object",
       "description": "A managed asset library (icon set, illustration system, image collection). The URL is for human access; agent-facing DAM integration is under investigation.",
@@ -853,6 +893,11 @@
         "shapes": { "$ref": "#/definitions/brand_shapes" },
         "iconography": { "$ref": "#/definitions/iconography" },
         "composition": { "$ref": "#/definitions/composition_rules" },
+        "graphic_elements": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/graphic_element" },
+          "description": "Reusable decorative elements that are part of the brand visual identity (e.g., torn paper edges, watermarks, dividers)"
+        },
         "motion": { "$ref": "#/definitions/motion_guidelines" },
         "logo_placement": { "$ref": "#/definitions/logo_placement" },
         "colorways": {

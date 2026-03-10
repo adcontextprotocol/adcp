@@ -282,7 +282,7 @@ Icon style system and usage rules:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `style` | enum | `outline`, `filled`, `duotone`, `flat`, `glyph` |
+| `style` | enum | `outline`, `filled`, `duotone`, `flat`, `glyph`, `hand_drawn` |
 | `stroke_weight` | string | Icon stroke weight (e.g., `2px`) |
 | `corner_style` | enum | `rounded`, `square`, `mixed` |
 | `usage.max_per_frame` | integer | Maximum icons per creative frame |
@@ -314,6 +314,40 @@ Layout rules for overlays, textures, and backgrounds:
 Texture styles: `none`, `subtle_grain`, `noise`, `paper`, `fabric`, `concrete`. Intensity: `low`, `medium`, `high`.
 
 Background types: `solid_color`, `gradient`, `blurred_photo`, `image`, `video`, `pattern`, `transparent`.
+
+### Graphic elements
+
+Reusable decorative or structural visual elements that are part of the brand identity — torn paper edges, watermarks, dividers, background patterns:
+
+```json
+{
+  "graphic_elements": [
+    {
+      "name": "Paper Tear",
+      "type": "frame",
+      "description": "Torn paper edge used as section dividers and photo frames. Use primarily vertical orientation.",
+      "orientation": "vertical",
+      "colors": ["#a75230", "#f6f1f1", "#fba007"],
+      "max_per_layout": 2
+    },
+    {
+      "name": "Location Sketch Watermark",
+      "type": "watermark",
+      "description": "Light hand-drawn building sketch behind content, visible through the logo area",
+      "colors": ["#a75230"]
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Element name |
+| `type` | enum | No | `border`, `divider`, `frame`, `watermark`, `pattern`, `texture_overlay`, `decorative` |
+| `description` | string | No | How the element is used in layouts |
+| `orientation` | enum | No | `horizontal`, `vertical`, `any` |
+| `colors` | array | No | Colors this element may appear in |
+| `max_per_layout` | integer | No | Maximum instances per layout |
 
 ### Motion
 
@@ -399,6 +433,7 @@ Named color pairings that define how colors work together. Allows a creative bri
 | `cta_foreground` | hex color | No | Call-to-action text color |
 | `cta_background` | hex color | No | Call-to-action button color |
 | `border` | hex color | No | Border color |
+| `channels` | array | No | Channels where this colorway applies (e.g., `["online"]`, `["print", "pos"]`). Omit for universal colorways. |
 
 ### Type scale
 
