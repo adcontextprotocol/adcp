@@ -78,6 +78,16 @@
       },
       "minItems": 1
     },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time."
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package is paused by the buyer. Paused packages do not deliver impressions. Defaults to false.",

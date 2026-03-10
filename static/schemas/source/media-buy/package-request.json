@@ -43,6 +43,16 @@
       "description": "Impression goal for this package",
       "minimum": 0
     },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
+    },
     "paused": {
       "type": "boolean",
       "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",

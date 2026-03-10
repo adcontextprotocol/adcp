@@ -31,6 +31,16 @@
       "description": "Updated impression goal for this package",
       "minimum": 0
     },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Updated flight start date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Updated flight end date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
+    },
     "paused": {
       "type": "boolean",
       "description": "Pause/resume specific package (true = paused, false = active)"

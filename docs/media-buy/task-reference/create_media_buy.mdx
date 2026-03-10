@@ -197,6 +197,8 @@ npx adcp \
 | `bid_price` | number | No | Bid price for auction pricing. This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Optimization targets for this package. Each goal is either `kind: "event"` (conversion events with `event_sources` array, optional `cost_per`, `per_ad_spend`, or `maximize_value` target) or `kind: "metric"` (seller-native metric with optional `cost_per` or `threshold_rate` target). Event goals require `conversion_tracking.supported_targets` on the product; metric goals require `metric_optimization.supported_metrics`. |
 | `targeting_overlay` | TargetingOverlay | No | Additional targeting criteria (see [Targeting](/docs/media-buy/advanced-topics/targeting)) |
+| `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
+| `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
 | `creatives` | CreativeAsset[] | No | Upload new creative assets and assign (`creative_id` must not already exist in library) |
 
@@ -905,6 +907,20 @@ Invalid format example:
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
       { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
     ]
+  }]
+}
+```
+
+### Flight date validation
+
+When a package specifies `start_time` or `end_time`, sellers SHOULD validate that both dates fall within the media buy's date range. Out-of-range dates SHOULD return a `validation_error`:
+
+```json
+{
+  "errors": [{
+    "code": "validation_error",
+    "message": "Package 'week_5' end_time 2026-04-05T23:59:59Z is after media buy end_time 2026-03-31T23:59:59Z",
+    "field": "packages[3].end_time"
   }]
 }
 ```
