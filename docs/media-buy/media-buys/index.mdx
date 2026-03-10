@@ -100,13 +100,14 @@ Packages are the building blocks of media buys:
 
 Packages can have independent flight dates within a media buy. This enables weekly (or any cadence) flight patterns where the same product appears as multiple packages with different date windows and budgets.
 
-- **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates
-- **Validation**: Package dates must fall within the parent media buy's date range
-- **Format**: Plain ISO 8601 date-time (not `start-timing.json` — packages do not support `"asap"`)
+- **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates. Each field inherits independently — a package may specify `start_time` while inheriting the media buy's `end_time`, or vice versa.
+- **Validation**: Package dates must fall within the parent media buy's date range. Sellers SHOULD reject packages where `start_time` is equal to or after `end_time`.
+- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. Each package maintains its own independent budget.
+- **Format**: Plain ISO 8601 date-time — packages do not support `"asap"`
 
 **Weekly flights example:**
 
-A display campaign running March 1-31, broken into weekly $2,000 flights with a dark period for lift measurement:
+A display campaign running March 1-31, broken into weekly $2,000 flights with a dark period for lift measurement (abbreviated — see [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for the full request shape):
 
 ```json
 {

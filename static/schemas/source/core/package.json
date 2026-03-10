@@ -81,12 +81,13 @@
     "start_time": {
       "type": "string",
       "format": "date-time",
-      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time."
+      "not": { "const": "asap" },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
     },
     "end_time": {
       "type": "string",
       "format": "date-time",
-      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time."
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
     },
     "paused": {
       "type": "boolean",

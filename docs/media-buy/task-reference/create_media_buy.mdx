@@ -913,12 +913,16 @@ Invalid format example:
 
 ### Flight date validation
 
-When a package specifies `start_time` or `end_time`, sellers SHOULD validate that both dates fall within the media buy's date range. Out-of-range dates SHOULD return a `validation_error`:
+When a package specifies `start_time` or `end_time`, sellers SHOULD validate that:
+- Both dates fall within the media buy's date range
+- `start_time` is before `end_time`
+
+Out-of-range or inverted dates SHOULD return an `INVALID_REQUEST` error:
 
 ```json
 {
   "errors": [{
-    "code": "validation_error",
+    "code": "INVALID_REQUEST",
     "message": "Package 'week_5' end_time 2026-04-05T23:59:59Z is after media buy end_time 2026-03-31T23:59:59Z",
     "field": "packages[3].end_time"
   }]
