@@ -70,7 +70,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`. The buyer must pass one of these values as `billing` in every `sync_accounts` entry. |
-| `require_operator_auth` | boolean | Default: `false`. Determines the account model. When `true` (explicit accounts): each operator authenticates independently, buyer discovers accounts via `list_accounts`. When `false` (implicit accounts): agent is trusted, buyer declares accounts via `sync_accounts`. In either model, subsequent requests can use a natural key (`brand` + `operator` + optional `sandbox`) or a seller-assigned `account_id`. |
+| `require_operator_auth` | boolean | Default: `false`. Determines the account model. When `true` (explicit accounts): each operator authenticates independently, buyer discovers accounts via `list_accounts`, passes `account_id`. When `false` (implicit accounts): agent is trusted, buyer declares accounts via `sync_accounts`, passes natural key (`brand` + `operator`). For sandbox operations, use the natural key with `sandbox: true` regardless of account model. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
@@ -78,11 +78,11 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 
 #### Auth models
 
-**Implicit accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`.
+**Implicit accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).
 
-**Explicit accounts** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and discovers accounts via `list_accounts`.
+**Explicit accounts** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and discovers accounts via `list_accounts`. The buyer passes seller-assigned `account_id` values on all subsequent requests.
 
-In both models, subsequent requests accept either a natural key (`brand` + `operator` + optional `sandbox`) or a seller-assigned `account_id`. The seller resolves the reference internally.
+For sandbox operations, use the natural key with `sandbox: true` regardless of account model — no account provisioning or discovery needed.
 
 See [Accounts and Agents](/docs/building/integration/accounts-and-agents#what-sellers-declare) for full workflows and [seller patterns](/docs/building/integration/accounts-and-agents#seller-patterns) for common combinations of auth model and billing support.
 
