@@ -975,7 +975,7 @@
 
           var credName = credDef.name;
           var hasCertifier = !!mc.certifier_public_id;
-          var certUrl = hasCertifier ? 'https://cert.io/c/' + mc.certifier_public_id : '';
+          var certUrl = hasCertifier ? 'https://credsverse.com/credentials/' + mc.certifier_public_id : '';
           var certPageUrl = window.location.origin + '/certification';
           var shareUrl = certUrl || certPageUrl;
           var badgeImgUrl = mc.certifier_badge_url || '';

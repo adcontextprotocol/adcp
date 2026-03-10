@@ -63,7 +63,7 @@ async function issueCertifierBadge(
 
 /**
  * Build share links for an earned credential.
- * Returns markdown lines with cert.io share URL, LinkedIn "Add to profile" URL,
+ * Returns markdown lines with credential share URL, LinkedIn "Add to profile" URL,
  * and a link to the certification dashboard.
  */
 function buildShareLinks(
@@ -76,7 +76,7 @@ function buildShareLinks(
   const month = awardedDate.getMonth() + 1;
 
   if (certifierPublicId) {
-    const certUrl = `https://cert.io/c/${certifierPublicId}`;
+    const certUrl = `https://credsverse.com/credentials/${certifierPublicId}`;
     const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
       + `&name=${encodeURIComponent(credName)}`
       + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
