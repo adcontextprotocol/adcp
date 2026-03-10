@@ -94,6 +94,56 @@ Packages are the building blocks of media buys:
 - **Pricing option** selection from product's available pricing models
 - **Pacing strategy** for budget delivery (even, asap, or front_loaded)
 - **Bid price** for auction-based pricing models (when applicable)
+- **Flight scheduling** with optional `start_time` and `end_time` per package
+
+### Flight scheduling
+
+Packages can have independent flight dates within a media buy. This enables weekly (or any cadence) flight patterns where the same product appears as multiple packages with different date windows and budgets.
+
+- **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates. Each field inherits independently — a package may specify `start_time` while inheriting the media buy's `end_time`, or vice versa.
+- **Validation**: Package dates must fall within the parent media buy's date range. Sellers SHOULD reject packages where `start_time` is equal to or after `end_time`.
+- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. Each package maintains its own independent budget.
+- **Format**: Plain ISO 8601 date-time — packages do not support `"asap"`
+
+**Weekly flights example:**
+
+A display campaign running March 1-31, broken into weekly $2,000 flights with a dark period for lift measurement (abbreviated — see [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for the full request shape):
+
+```json
+{
+  "buyer_ref": "nova_march_display",
+  "start_time": "2026-03-01T00:00:00Z",
+  "end_time": "2026-03-31T23:59:59Z",
+  "packages": [
+    {
+      "buyer_ref": "week_1",
+      "product_id": "prod_premium_display",
+      "pricing_option_id": "cpm_usd_fixed",
+      "budget": 2000,
+      "start_time": "2026-03-01T00:00:00Z",
+      "end_time": "2026-03-07T23:59:59Z"
+    },
+    {
+      "buyer_ref": "week_2",
+      "product_id": "prod_premium_display",
+      "pricing_option_id": "cpm_usd_fixed",
+      "budget": 2000,
+      "start_time": "2026-03-08T00:00:00Z",
+      "end_time": "2026-03-14T23:59:59Z"
+    },
+    {
+      "buyer_ref": "week_4",
+      "product_id": "prod_premium_display",
+      "pricing_option_id": "cpm_usd_fixed",
+      "budget": 2000,
+      "start_time": "2026-03-22T00:00:00Z",
+      "end_time": "2026-03-28T23:59:59Z"
+    }
+  ]
+}
+```
+
+Week 3 is intentionally omitted — a dark period for lift measurement. Each flight gets its own budget, so pacing and spend are controlled per week. To adjust mid-campaign, update individual package budgets without affecting other flights.
 
 ### Creative Assignment and Placement Targeting
 

@@ -35,6 +35,16 @@
         "type": "string"
       }
     },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Recommended flight start date/time for this allocation in ISO 8601 format. Allows publishers to propose per-flight scheduling within a proposal. When omitted, the allocation applies to the full campaign date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Recommended flight end date/time for this allocation in ISO 8601 format. Allows publishers to propose per-flight scheduling within a proposal. When omitted, the allocation applies to the full campaign date range."
+    },
     "daypart_targets": {
       "type": "array",
       "description": "Recommended time windows for this allocation in spot-plan proposals.",
