@@ -83,7 +83,7 @@
       "description": "List all approved video creatives",
       "data": {
         "filters": {
-          "formats": ["video"],
+          "format_types": ["video"],
           "statuses": ["approved"]
         }
       }

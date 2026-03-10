@@ -13,9 +13,9 @@
       },
       "minItems": 1
     },
-    "formats": {
+    "format_types": {
       "type": "array",
-      "description": "Filter by creative format types (e.g., video, audio, display)",
+      "description": "Filter by high-level format types (e.g., 'video', 'audio', 'display'). For specific format matching, use format_ids instead.",
       "items": {
         "type": "string"
       },
@@ -80,7 +80,7 @@
     },
     "assigned_to_packages": {
       "type": "array",
-      "description": "Filter creatives assigned to any of these packages",
+      "description": "Filter creatives assigned to any of these packages. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -88,7 +88,7 @@
     },
     "media_buy_ids": {
       "type": "array",
-      "description": "Filter creatives assigned to any of these media buys",
+      "description": "Filter creatives assigned to any of these media buys. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -96,7 +96,7 @@
     },
     "buyer_refs": {
       "type": "array",
-      "description": "Filter creatives assigned to media buys with any of these buyer references",
+      "description": "Filter creatives assigned to media buys with any of these buyer references. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -104,7 +104,7 @@
     },
     "unassigned": {
       "type": "boolean",
-      "description": "Filter for unassigned creatives when true, assigned creatives when false"
+      "description": "Filter for unassigned creatives when true, assigned creatives when false. Sales-agent-specific — standalone creative agents SHOULD ignore this filter."
     },
     "has_served": {
       "type": "boolean",

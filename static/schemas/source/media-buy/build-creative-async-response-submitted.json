@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/build-creative-async-response-submitted.json",
+  "title": "Build Creative - Submitted",
+  "description": "Payload acknowledging the build_creative task is queued.",
+  "type": "object",
+  "properties": {
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

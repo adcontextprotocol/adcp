@@ -183,6 +183,7 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - When `macro_values` is provided, creative agents SHOULD substitute the specified macros in the output manifest's assets and leave unresolved macros as `{MACRO}` placeholders
 - Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
 - Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
+- `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.
 
 ### preview_creative
 

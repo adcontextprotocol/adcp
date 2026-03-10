@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/build-creative-async-response-working.json",
+  "title": "Build Creative - Working",
+  "description": "Progress payload for active build_creative task. Returned during AI generation, format transformation, or complex library retrieval with macro resolution.",
+  "type": "object",
+  "properties": {
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Completion percentage (0-100)"
+    },
+    "current_step": {
+      "type": "string",
+      "description": "Current step or phase of the operation (e.g., 'generating_assets', 'resolving_macros', 'rendering_preview')"
+    },
+    "total_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of steps in the operation"
+    },
+    "step_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current step number"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

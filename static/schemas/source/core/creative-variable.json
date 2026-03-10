@@ -15,12 +15,12 @@
     },
     "variable_type": {
       "type": "string",
-      "enum": ["text", "image", "video", "audio", "url", "number", "boolean", "color"],
-      "description": "Data type of the variable. Each type represents a semantic content slot: text (headlines, body copy), image/video/audio (media URLs), url (clickthrough or tracking URLs), number (prices, counts), boolean (conditional flags like show_discount or is_raining), color (hex color values)."
+      "enum": ["text", "image", "video", "audio", "url", "number", "boolean", "color", "date"],
+      "description": "Data type of the variable. Each type represents a semantic content slot: text (headlines, body copy), image/video/audio (media URLs), url (clickthrough or tracking URLs), number (prices, counts), boolean (conditional flags like show_discount or is_raining), color (hex color values), date (ISO 8601 date-time for countdowns and offer expirations)."
     },
     "default_value": {
       "type": "string",
-      "description": "Default value used when no dynamic value is provided at serve time. All types are string-encoded (e.g., numbers as \"42\", booleans as \"true\")."
+      "description": "Default value used when no dynamic value is provided at serve time. All types are string-encoded: text/image/video/audio/url as literal strings, number as decimal (e.g., \"42.99\"), boolean as \"true\"/\"false\", color as \"#RRGGBB\", date as ISO 8601 (e.g., \"2026-12-25T00:00:00Z\")."
     },
     "required": {
       "type": "boolean",

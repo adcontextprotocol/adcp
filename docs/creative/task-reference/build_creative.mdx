@@ -249,6 +249,42 @@ If the manifest includes a brief asset with `compliance` requirements that the c
 
 Creative agents MUST validate that all `required_disclosures` can be satisfied in the target format before generating the creative. If any disclosure cannot be placed as specified, the entire request fails. This ensures regulated creatives are never served without required legal text.
 
+## Async support
+
+Generation and transformation can take significant time (10-30+ seconds for AI-generated creatives). When the creative agent cannot return a result immediately, it returns `status: "working"` with a `context_id` for polling.
+
+### Progress updates
+
+While working, the agent provides progress data:
+
+```json
+{
+  "percentage": 60,
+  "current_step": "generating_assets",
+  "total_steps": 3,
+  "step_number": 2
+}
+```
+
+### Human-in-the-loop
+
+The agent may pause for human input during generation — for example, when brand guidelines require creative approval or when the agent needs clarification on creative direction:
+
+```json
+{
+  "reason": "CREATIVE_DIRECTION_NEEDED"
+}
+```
+
+**Reason codes:**
+- `APPROVAL_REQUIRED` — Creative needs human approval before finalizing
+- `CREATIVE_DIRECTION_NEEDED` — Agent needs clarification on creative brief or direction
+- `ASSET_SELECTION_NEEDED` — Agent needs the caller to choose between asset options
+
+<Note>
+Library retrieval mode (using `creative_id`) is typically synchronous — the creative already exists and just needs tag generation. Generation and transformation modes are where async is most common.
+</Note>
+
 ## Workflow integration
 
 ### Typical generation workflow
