@@ -6,9 +6,9 @@ title: Sandbox mode
 
 Sandbox mode lets buyers test the full media buying lifecycle — discovery, campaign creation, creatives, and delivery — without real platform calls or spending real money. Responses contain simulated but realistic data.
 
-Sandbox is **account-level**, not per-request. The seller provisions a dedicated sandbox account, and every request referencing that account is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
+Sandbox is **account-level**, not per-request. Every request with `sandbox: true` in the account reference is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
 
-Sandbox is part of the account's **natural key**. The same brand/operator pair can have both a production and a sandbox account — distinguished by `sandbox: true` in the account reference.
+Sandbox is part of the account's **natural key**. The same brand/operator pair can have both a production and a sandbox account — distinguished by `sandbox: true` in the account reference. No separate provisioning step is needed — just include `sandbox: true` and the seller handles it.
 
 ## Capabilities discovery
 
@@ -22,55 +22,14 @@ Sellers declare sandbox support in `get_adcp_capabilities`:
 }
 ```
 
-Check this before requesting a sandbox account. If `account.sandbox` is not declared or is `false`, the seller does not support sandbox mode.
-
-## Setting up a sandbox account
-
-Request a sandbox account via `sync_accounts` using `"sandbox": true`:
-
-```json
-// sync_accounts request
-{
-  "accounts": [{
-    "brand": { "domain": "acme-corp.com" },
-    "operator": "acme-corp.com",
-    "billing": "operator",
-    "sandbox": true
-  }]
-}
-```
-
-The seller provisions a sandbox account. From the protocol's perspective, a sandbox account behaves identically to a real account — the seller suppresses real platform calls and billing.
-
-## Identifying sandbox accounts
-
-Sandbox accounts appear in `list_accounts` with `sandbox: true`. Use the `sandbox` filter to list only sandbox or only production accounts:
-
-```json
-// list_accounts - sandbox only
-{
-  "sandbox": true
-}
-```
-
-Response:
-```json
-{
-  "accounts": [{
-    "account_id": "acct_sandbox_acme_001",
-    "name": "Acme (sandbox)",
-    "status": "active",
-    "sandbox": true
-  }]
-}
-```
+Check this before using sandbox mode. If `account.sandbox` is not declared or is `false`, the seller does not support sandbox mode.
 
 ## Usage
 
-Reference your sandbox account in requests using either the natural key with `sandbox: true` or a seller-assigned `account_id`:
+Include `sandbox: true` in the account reference. No provisioning or account discovery is required — just add the flag:
 
 ```json
-// get_products — natural key (implicit accounts)
+// get_products — sandbox via natural key
 {
   "account": {
     "brand": { "domain": "acme-corp.com" },
@@ -82,7 +41,7 @@ Reference your sandbox account in requests using either the natural key with `sa
 ```
 
 ```json
-// get_products — account_id (explicit accounts)
+// get_products — sandbox via account_id
 {
   "account": { "account_id": "acct_sandbox_acme_001" },
   "brief": "Premium CTV inventory for Q2 campaign"
@@ -196,7 +155,7 @@ Some tasks (e.g., `sync_creatives`) also support a `dry_run` parameter. These se
 
 ## Seller implementation
 
-When a request arrives referencing a sandbox account (via `sandbox: true` in the natural key or a sandbox `account_id`):
+When a request arrives with `sandbox: true` in the account reference:
 
 - **Do not** make real ad platform API calls (no real orders, line items, etc.)
 - **Do not** charge real money or create real billing records
@@ -208,9 +167,9 @@ Sandbox errors are real validation errors. If a buyer sends an invalid budget us
 
 ## Protocol compliance
 
-Sellers that declare `features.sandbox: true` in capabilities MUST:
+Sellers that declare `account.sandbox: true` in capabilities MUST:
 
-- Support provisioning sandbox accounts on request
+- Accept `sandbox: true` in account references
 - Apply sandbox semantics to all requests referencing a sandbox account
 - Apply normal input validation (sandbox does not bypass validation)
 
