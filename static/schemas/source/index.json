@@ -1236,16 +1236,6 @@
             "description": "Sync result with active validation categories per plan"
           }
         },
-        "validate-plan-action": {
-          "request": {
-            "$ref": "/schemas/governance/validate-plan-action-request.json",
-            "description": "Validate an orchestrator action against a campaign plan"
-          },
-          "response": {
-            "$ref": "/schemas/governance/validate-plan-action-response.json",
-            "description": "Validation verdict with per-category results"
-          }
-        },
         "report-plan-outcome": {
           "request": {
             "$ref": "/schemas/governance/report-plan-outcome-request.json",
@@ -1269,7 +1259,7 @@
         "check-governance": {
           "request": {
             "$ref": "/schemas/governance/check-governance-request.json",
-            "description": "Seller calls the buyer's governance agent to get approval for a media buy action"
+            "description": "Orchestrator or seller calls the governance agent to validate an action against the campaign plan"
           },
           "response": {
             "$ref": "/schemas/governance/check-governance-response.json",

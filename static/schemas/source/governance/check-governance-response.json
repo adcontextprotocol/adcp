@@ -2,17 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-response.json",
   "title": "Check Governance Response",
-  "description": "Governance agent's response to a seller's check request. Returns whether the planned delivery is approved under the campaign plan.",
+  "description": "Governance agent's response to a check request. Returns whether the action is approved under the campaign plan.",
   "type": "object",
   "properties": {
     "check_id": {
       "type": "string",
-      "description": "Unique identifier for this governance check record. For audit logging only -- the seller does not need to store or reference this in subsequent calls. The governance agent correlates requests by plan_id + media_buy_id."
+      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them."
     },
     "status": {
       "type": "string",
-      "enum": ["approved", "denied", "conditions"],
-      "description": "Whether the planned delivery is approved. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved with conditions the seller must accept."
+      "enum": ["approved", "denied", "conditions", "escalated"],
+      "description": "Governance decision. 'approved': proceed as planned. 'denied': do not proceed. 'conditions': approved if the caller accepts the listed conditions, then re-calls check_governance with the adjusted parameters. 'escalated': halted pending human review."
+    },
+    "binding": {
+      "type": "string",
+      "enum": ["proposed", "committed"],
+      "description": "Echoed from request. Lets the caller confirm the governance agent understood the commitment level."
     },
     "plan_id": {
       "type": "string",
@@ -28,13 +33,13 @@
     },
     "findings": {
       "type": "array",
-      "description": "Specific issues found during the governance check. Present when status is 'denied' or 'conditions'.",
+      "description": "Specific issues found during the governance check. Present when status is 'denied', 'conditions', or 'escalated'.",
       "items": {
         "type": "object",
         "properties": {
           "category_id": {
             "type": "string",
-            "description": "Validation category that flagged the issue."
+            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety')."
           },
           "severity": {
             "$ref": "/schemas/enums/escalation-severity.json"
@@ -45,7 +50,7 @@
           },
           "details": {
             "type": "object",
-            "description": "Structured details.",
+            "description": "Structured details for programmatic consumption.",
             "additionalProperties": true
           }
         },
@@ -55,16 +60,16 @@
     },
     "conditions": {
       "type": "array",
-      "description": "Present when status is 'conditions'. Specific adjustments the seller must make to proceed.",
+      "description": "Present when status is 'conditions'. Specific adjustments the caller must make. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters before proceeding.",
       "items": {
         "type": "object",
         "properties": {
           "field": {
             "type": "string",
-            "description": "Dot-path to the planned_delivery field that needs adjustment."
+            "description": "Dot-path to the field that needs adjustment (in payload for proposed, in planned_delivery for committed)."
           },
           "required_value": {
-            "description": "The value the field must have for approval. May be any JSON type matching the target field's schema. When present, the condition is machine-actionable -- the seller can programmatically apply the value. When absent, the condition is advisory -- the seller should interpret the reason and adjust accordingly."
+            "description": "The value the field must have for approval. When present, the condition is machine-actionable. When absent, the condition is advisory."
           },
           "reason": {
             "type": "string",
@@ -75,17 +80,37 @@
         "additionalProperties": false
       }
     },
+    "escalation": {
+      "type": "object",
+      "description": "Present when status is 'escalated'. The action is halted pending human review.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Human-readable explanation of why the action was escalated."
+        },
+        "severity": {
+          "$ref": "/schemas/enums/escalation-severity.json",
+          "description": "Escalation severity level."
+        },
+        "requires_human": {
+          "type": "boolean",
+          "description": "Whether human approval is required before proceeding."
+        }
+      },
+      "required": ["reason", "severity", "requires_human"],
+      "additionalProperties": false
+    },
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this approval expires. Present for 'purchase' and 'modification' phases when status is 'approved' or 'conditions'. The seller must confirm the media buy or apply conditions before this time. Not used for 'delivery' phase -- use next_check instead."
+      "description": "When this approval expires. Present when status is 'approved' or 'conditions'. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
     },
     "next_check": {
       "type": "string",
       "format": "date-time",
-      "description": "When the seller should next call check_governance with delivery metrics. Present in any phase response when the governance agent expects ongoing delivery reporting. In a 'purchase' response, the presence of next_check is the opt-in signal that the governance agent expects delivery-phase reports. The governance agent MAY treat a missed next_check deadline as a finding on the next delivery check."
+      "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
     }
   },
-  "required": ["check_id", "status", "plan_id", "buyer_campaign_ref"],
+  "required": ["check_id", "status", "binding", "plan_id", "buyer_campaign_ref"],
   "additionalProperties": false
 }

@@ -17,7 +17,7 @@ Report the outcome of an action to the governance agent. This is the "after" hal
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "action_id": "act_xyz789",
+    "check_id": "chk_xyz789",
     "buyer_campaign_ref": "q1-2026-spring-launch",
     "outcome": "completed",
     "seller_response": {
@@ -160,7 +160,7 @@ If the seller rejected the request, report it so the governance agent can releas
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "action_id": "act_xyz789",
+    "check_id": "chk_xyz789",
     "buyer_campaign_ref": "q1-2026-spring-launch",
     "outcome": "failed",
     "error": {
@@ -190,13 +190,14 @@ If the seller rejected the request, report it so the governance agent can releas
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
-| `action_id` | string | No | The `action_id` from `validate_plan_action`. Links the outcome to the validated request. Required for `completed` and `failed` outcomes. |
+| `check_id` | string | No | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
 | `buyer_campaign_ref` | string | Yes | Campaign identifier. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
 | `seller_response.media_buy_id` | string | No | Seller's media buy identifier. |
 | `seller_response.buyer_ref` | string | No | The buyer reference echoed back by the seller. |
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
+| `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
 | `seller_response.creative_deadline` | string | No | ISO 8601 deadline for creative submission. |
 | `delivery` | object | No | Delivery metrics. Required when outcome is `delivery`. |
 | `delivery.media_buy_id` | string | No | The media buy being reported on. |
@@ -229,12 +230,12 @@ If the seller rejected the request, report it so the governance agent can releas
 | Code | Recovery | Description |
 |------|----------|-------------|
 | `PLAN_NOT_FOUND` | correctable | No plan with this ID. |
-| `ACTION_NOT_FOUND` | correctable | No validated action with this `action_id`. |
+| `CHECK_NOT_FOUND` | correctable | No governance check with this `check_id`. |
 | `CAMPAIGN_NOT_FOUND` | correctable | No campaign with this `buyer_campaign_ref` in the plan. |
 | `CAMPAIGN_SUSPENDED` | correctable | Plan is suspended pending human review. Outcome reporting is blocked until the escalation is resolved. |
 
 ## Related tasks
 
-- [`validate_plan_action`](./validate_plan_action) -- The "before" half: validate an action before executing it
+- [`check_governance`](./check_governance) -- The governance check that authorized the action
 - [`sync_plans`](./sync_plans) -- Push or update the plan
 - [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail

@@ -64,7 +64,7 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
 
 ### Channel mix targets
 
-The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `modification_required` or `escalated` verdict.
+The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `conditions` or `escalated` status.
 
 ## Brand compliance configuration
 
@@ -129,7 +129,7 @@ When a plan is synced, the governance agent resolves applicable policies through
 
 The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject media buys targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects buys not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
-The resolved policy set is what the governance agent evaluates during [`validate_plan_action`](/docs/governance/campaign/tasks/validate_plan_action). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
+The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
 If the brand has no compliance configuration, the governance agent operates with an empty policy set for the `brand_policy` and `regulatory_compliance` categories. Other categories (`budget_authority`, `strategic_alignment`, etc.) still apply based on the plan's parameters.
 
@@ -142,7 +142,7 @@ The governance agent tracks state at two levels:
 - **Plan level**: Total budget committed, channel allocation percentages, plan status
 - **Campaign level**: Per-`buyer_campaign_ref` committed budget, active media buy references, validation history
 
-A single plan can span multiple campaigns. When [`validate_plan_action`](/docs/governance/campaign/tasks/validate_plan_action) checks budget authority, it considers all campaigns tied to the plan. When [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) reports a seller confirmation, the governance agent commits the budget from the seller's actual amount -- not the requested amount.
+A single plan can span multiple campaigns. When [`check_governance`](/docs/governance/campaign/tasks/check_governance) checks budget authority, it considers all campaigns tied to the plan. When [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) reports a seller confirmation, the governance agent commits the budget from the seller's actual amount -- not the requested amount.
 
 ### Plan status
 
@@ -152,32 +152,38 @@ A single plan can span multiple campaigns. When [`validate_plan_action`](/docs/g
 | `suspended` | Paused pending human review of a critical escalation |
 | `completed` | Plan finished; read-only |
 
-When status is `suspended`, the governance agent MUST reject all `validate_plan_action` and `report_plan_outcome` requests with a `CAMPAIGN_SUSPENDED` error until the escalation is resolved.
+When status is `suspended`, the governance agent MUST reject all `check_governance` and `report_plan_outcome` requests with a `CAMPAIGN_SUSPENDED` error until the escalation is resolved.
 
 ### Budget tracking
 
 Budget is committed based on **confirmed outcomes**, not validated actions. The flow:
 
-1. `validate_plan_action` checks whether the proposed spend fits within the plan. No budget is committed yet.
+1. `check_governance` with `binding: "proposed"` checks whether the proposed spend fits within the plan. No budget is committed yet.
 2. The orchestrator executes the action with the seller.
 3. `report_plan_outcome` reports the seller's confirmed amount. The governance agent commits this amount to the plan budget.
 
 This ensures budget tracking reflects reality. If a seller reduces the budget from $150K to $120K, the governance agent commits $120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits $0 and releases any reservation.
 
+A `committed` approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
+
+### Plan amendments
+
+Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). If an amendment reduces the budget below the currently committed amount, the governance agent flags this as a finding on the next governance check.
+
 ## Validation logic
 
 The governance agent evaluates each [validation category](/docs/governance/campaign/index#validation-categories) independently:
 
-- If **any** category has status `failed` and the failure is correctable, the verdict is `modification_required` with suggested fixes
-- If **any** category has status `failed` and the failure is not correctable by the agent, the verdict is `rejected`
-- If all categories pass but the overall risk profile warrants human review, the verdict is `escalated`
-- If all categories pass, the verdict is `approved`
+- If **any** category has status `failed` and the failure is correctable, the status is `conditions` with suggested fixes
+- If **any** category has status `failed` and the failure is not correctable by the caller, the status is `denied`
+- If all categories pass but the overall risk profile warrants human review, the status is `escalated`
+- If all categories pass, the status is `approved`
 
-The `modifications` array is only present when the verdict is `modification_required`. Each modification identifies a specific field, its current value, a suggested value, and the reason for the change.
+The `conditions` array is only present when the status is `conditions`. Each condition identifies a specific field, its current value, a suggested value, and the reason for the change.
 
 ### Phase inference
 
-The governance agent infers the validation phase from the `tool` parameter in `validate_plan_action`:
+The governance agent infers the validation phase from the `tool` parameter in `check_governance`:
 
 | tool | Phase |
 |------|-------|
@@ -187,7 +193,7 @@ The governance agent infers the validation phase from the `tool` parameter in `v
 
 Phase context is cumulative. During **purchase**, the governance agent considers what was discovered during **discovery**.
 
-The `action_id` returned by `validate_plan_action` is used by `report_plan_outcome` to link the seller's response back to the validated action.
+The `check_id` returned by `check_governance` is used by `report_plan_outcome` to link the seller's response back to the validated action.
 
 ## Capability declaration
 
@@ -419,7 +425,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "buyer_campaign_ref": "q1-2026-spring-launch",
-    "seller": "https://seller.example.com",
+    "caller": "https://seller.example.com",
     "media_buy_id": "mb_seller_456",
     "buyer_ref": "q1-launch-pinnacle-001",
     "phase": "purchase",
@@ -494,21 +500,21 @@ The `next_check` field signals that the governance agent expects delivery report
 
 When `governance_agent` is present on the account, the seller MUST call `check_governance` before confirming any media buy. The buyer provided the endpoint specifically so that purchases are independently verified -- skipping it defeats the purpose.
 
-When `governance_agent` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`validate_plan_action` → execute → `report_plan_outcome`) still applies, but there is no seller-side verification.
+When `governance_agent` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`check_governance(binding: proposed)` -> execute -> `report_plan_outcome`) still applies, but there is no seller-side verification.
 
 Sellers MUST NOT require governance checks as a prerequisite for all accounts. A seller that refuses to process media buys from accounts without an `governance_agent` would break interoperability with buyers who do not use Campaign Governance.
 
 The `delivery` phase is optional even when `purchase` phase governance is used. A seller MAY support purchase approval without ongoing delivery reporting. The governance agent indicates whether it expects delivery reports through the presence of `next_check` in the purchase response.
 
-If the governance agent is unreachable (timeout, network error), the seller SHOULD proceed with the media buy and log the failure. Governance checks should not block ad delivery when governance infrastructure is unavailable. The seller SHOULD retry verification on the next scheduled check.
+If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with a registered `governance_agent`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
 
 ### Governance checks and the governance loop
 
 Governance checks complements the buyer-side governance loop, it does not replace it:
 
-| Concern | Buyer-side (`validate_plan_action`) | Seller-side (`check_governance`) |
+| Concern | Buyer-side (`check_governance`, `binding: "proposed"`) | Seller-side (`check_governance`, `binding: "committed"`) |
 |---------|--------------------------------------|---------------------------------------|
-| **Who checks** | Buyer's governance agent | Buyer's governance agent, called by seller |
+| **Who checks** | Buyer's governance agent, called by orchestrator | Buyer's governance agent, called by seller |
 | **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
 | **What's validated** | The buyer's intended action | The seller's planned and actual delivery |
 | **Trust model** | Self-attested | Independently verified |
@@ -524,12 +530,12 @@ The governance agent MAY be the same agent as the governance agent, or a separat
 ```mermaid
 flowchart TD
     A[Sync plan] --> B[Agent decides to act]
-    B --> C["validate_plan_action(plan_id, ref, tool, payload)"]
-    C --> D{Verdict?}
+    B --> C["check_governance(binding: proposed, plan_id, ref, tool, payload)"]
+    C --> D{Status?}
     D -->|approved| E[Send create_media_buy to seller]
-    D -->|modification_required| F[Apply modifications]
+    D -->|conditions| F[Apply conditions]
     F --> C
-    D -->|rejected| G[Log rejection, skip action]
+    D -->|denied| G[Log denial, skip action]
     D -->|escalated| H{Severity?}
     H -->|info| E
     H -->|warning| I[Send to seller, flag for review]
@@ -545,14 +551,14 @@ flowchart TD
     O -->|denied| P[Seller rejects media buy]
     O -->|conditions| Q[Seller adjusts or rejects]
     N --> R[Receive seller response with planned_delivery]
-    R --> S["report_plan_outcome(plan_id, action_id, outcome)"]
+    R --> S["report_plan_outcome(plan_id, check_id, outcome)"]
     S --> T{Status?}
     T -->|accepted| U[Continue]
     T -->|findings| V[Review findings, decide next action]
     V --> U
     U --> W{Update needed?}
-    W -->|yes| X["validate_plan_action(update_media_buy)"]
-    X --> Y["Seller calls check_governance (modification)"]
+    W -->|yes| X["check_governance(binding: proposed, update_media_buy)"]
+    X --> Y["Seller calls check_governance(binding: committed, modification)"]
     W -->|no| Z{Delivery active?}
     Z -->|yes| AA["Seller calls check_governance (delivery) periodically"]
     AA --> AB{Delivery approved?}
@@ -562,14 +568,14 @@ flowchart TD
     AD --> Z
 ```
 
-The governance agent is a synchronous call in the orchestrator's action loop. Governance checks happens on the seller side and is transparent to the orchestrator -- the orchestrator sends the same `create_media_buy` request regardless of whether governance checks is configured. Modification and delivery phase checks happen between the seller and governance agent, independent of the orchestrator's governance loop.
+The governance check is a synchronous call in the orchestrator's action loop. The orchestrator calls `check_governance` with `binding: "proposed"` before sending requests to sellers. Seller-side governance checks use `binding: "committed"` and are transparent to the orchestrator -- the orchestrator sends the same `create_media_buy` request regardless of whether governance checks are configured. Modification and delivery phase checks happen between the seller and governance agent, independent of the orchestrator's governance loop.
 
 ## Audit trail
 
 Every plan maintains an ordered audit trail of all validated actions and reported outcomes, retrievable via [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs). The trail includes:
 
-- Action ID, timestamp, and tool
-- The verdict and category evaluations
+- Check ID, timestamp, and tool
+- The status and category evaluations
 - Outcome status and committed budget
 - Any findings from outcome reports
 - Any escalations and their resolutions

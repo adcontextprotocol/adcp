@@ -94,7 +94,7 @@ Policies have optional `effective_date` and `sunset_date` fields. Governance age
 
 This means brands can reference upcoming regulations before they take effect. The governance agent evaluates them and reports what *would* have been flagged, without blocking campaigns. Once the effective date passes, enforcement activates automatically -- no configuration change needed.
 
-For example, the EU AI Act Article 50 has `effective_date: "2026-08-01"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
+For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
 
 ## Three tiers of policy application
 
@@ -129,7 +129,7 @@ The registry is a shared resource consumed by all governance domains:
 
 | Domain | How it uses registry policies |
 |--------|------------------------------|
-| **[Campaign Governance](/docs/governance/campaign/index)** | Resolves policies via brand compliance config, evaluates actions against policy text in `validate_plan_action` |
+| **[Campaign Governance](/docs/governance/campaign/index)** | Resolves policies via brand compliance config, evaluates actions against policy text in `check_governance` |
 | **[Content Standards](/docs/governance/content-standards/index)** | Creates content standards from registry policies using `registry_policy_ids` |
 | **[Property Governance](/docs/governance/property/index)** | Declares `registry:` prefixed features in `get_adcp_capabilities`, evaluates properties against policy text |
 | **[Creative Governance](/docs/governance/creative/index)** | Declares `registry:` prefixed creative features, evaluates creatives for AI disclosure and content compliance |
@@ -141,7 +141,7 @@ Each policy declares which governance sub-domains it applies to via `governance_
 
 | Domain | Description |
 |--------|-------------|
-| `campaign` | Campaign governance agents evaluate this policy during `validate_plan_action` |
+| `campaign` | Campaign governance agents evaluate this policy during `check_governance` |
 | `property` | Property governance agents can declare this policy as a property feature |
 | `creative` | Creative governance agents can evaluate creatives against this policy |
 | `content_standards` | Content standards agents can create standards from this policy |

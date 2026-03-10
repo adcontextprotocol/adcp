@@ -9,14 +9,13 @@ sidebarTitle: Overview
 
 # Campaign Governance tasks
 
-Campaign Governance has five tasks.
+Campaign Governance has four tasks.
 
 | Task | Direction | Description |
 |------|-----------|-------------|
 | [`sync_plans`](./sync_plans) | Orchestrator → Gov | Push campaign plans with budget, channels, flight dates, and authorized markets |
-| [`validate_plan_action`](./validate_plan_action) | Orchestrator → Gov | Pre-action check: "can I do this?" Returns a verdict |
+| [`check_governance`](./check_governance) | Orchestrator or Seller → Gov | Universal governance check. Orchestrator calls with `binding: "proposed"` before sending to a seller. Seller calls with `binding: "committed"` before executing. |
 | [`report_plan_outcome`](./report_plan_outcome) | Orchestrator → Gov | Post-action report: "here's what happened." Gov updates state and returns any findings |
 | [`get_plan_audit_logs`](./get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
-| [`check_governance`](./check_governance) | Seller → Governance Agent | Seller-side check: "is this planned delivery approved?" Approves, denies, or sets conditions |
 
-`sync_plans` configures the rules. `validate_plan_action` and `report_plan_outcome` are the buyer-side before/after pair. `check_governance` is the seller-side governance call -- the seller calls it to independently confirm that a media buy matches the campaign plan. `get_plan_audit_logs` is read-only, for monitoring and reporting.
+`sync_plans` configures the rules. `check_governance` is the universal governance gate — both the orchestrator (proposed) and the seller (committed) call it to validate actions against the plan. `report_plan_outcome` closes the loop after execution. `get_plan_audit_logs` is read-only, for monitoring and reporting.

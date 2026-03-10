@@ -9,9 +9,9 @@
       "type": "string",
       "description": "The plan this outcome is for."
     },
-    "action_id": {
+    "check_id": {
       "type": "string",
-      "description": "The action_id from validate_plan_action. Links the outcome to the validated request. Required for 'completed' and 'failed' outcomes."
+      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
     },
     "buyer_campaign_ref": {
       "type": "string",
@@ -40,6 +40,10 @@
             "type": "object",
             "additionalProperties": true
           }
+        },
+        "planned_delivery": {
+          "$ref": "/schemas/core/planned-delivery.json",
+          "description": "What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters."
         },
         "creative_deadline": {
           "type": "string",

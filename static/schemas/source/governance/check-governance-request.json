@@ -2,25 +2,39 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-request.json",
   "title": "Check Governance Request",
-  "description": "Seller calls the buyer's governance agent to get approval for a media buy action. The seller sends its planned delivery parameters so the governance agent can validate against the campaign plan. Supports initial purchase approval, modification approval for update_media_buy, and ongoing delivery checks for periodic reporting.",
+  "description": "Universal governance check for campaign actions. Called by the orchestrator before sending to a seller (proposed) or by the seller before executing (committed). The governance agent evaluates the action against the campaign plan and returns a status.",
   "type": "object",
   "properties": {
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier from the create_media_buy request."
+      "description": "Campaign governance plan identifier."
     },
     "buyer_campaign_ref": {
       "type": "string",
-      "description": "Buyer's campaign reference from the create_media_buy request."
+      "description": "Buyer's campaign identifier. The governance agent tracks state per campaign within a plan."
     },
-    "seller": {
+    "binding": {
+      "type": "string",
+      "enum": ["proposed", "committed"],
+      "description": "Whether this is an advisory check or a binding commitment. 'proposed': the orchestrator is checking before sending to a seller — no budget is committed. 'committed': the seller is about to execute — the governance agent validates the planned delivery against the plan. Budget is committed later via report_plan_outcome, not on approval."
+    },
+    "caller": {
       "type": "string",
       "format": "uri",
-      "description": "URL of the seller agent requesting approval."
+      "description": "URL of the agent making the request (orchestrator for proposed, seller for committed)."
+    },
+    "tool": {
+      "type": "string",
+      "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'get_products'). Expected for proposed checks. The governance agent uses this to apply tool-specific validation rules."
+    },
+    "payload": {
+      "type": "object",
+      "description": "The full tool arguments as they would be sent to the seller. Expected for proposed checks. The governance agent can inspect any field to validate against the plan.",
+      "additionalProperties": true
     },
     "media_buy_id": {
       "type": "string",
-      "description": "The seller's identifier for the media buy being checked."
+      "description": "The seller's identifier for the media buy. Expected for committed checks."
     },
     "buyer_ref": {
       "type": "string",
@@ -33,11 +47,11 @@
     },
     "planned_delivery": {
       "$ref": "/schemas/core/planned-delivery.json",
-      "description": "What the seller will actually deliver. For 'purchase' and 'modification' phases, this is the seller's interpreted delivery parameters. For 'delivery' phase, this is the current delivery plan (which may have drifted from the original)."
+      "description": "What the seller will actually deliver. For committed checks, this is the seller's interpreted delivery parameters. For proposed checks, the orchestrator may include this if it has computed delivery expectations."
     },
     "delivery_metrics": {
       "type": "object",
-      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compares these metrics against the planned delivery to detect drift. Currency is the same as planned_delivery.currency.",
+      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compares these metrics against the planned delivery to detect drift.",
       "properties": {
         "reporting_period": {
           "type": "object",
@@ -71,7 +85,7 @@
         },
         "geo_distribution": {
           "type": "object",
-          "description": "Actual geographic distribution of delivery. Keys are ISO 3166-1 alpha-2 country codes, values are percentages.",
+          "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
           "additionalProperties": {
             "type": "number",
             "minimum": 0,
@@ -80,7 +94,7 @@
         },
         "channel_distribution": {
           "type": "object",
-          "description": "Actual channel distribution of delivery. Keys MUST be values from the channels enum, values are percentages.",
+          "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
           "additionalProperties": {
             "type": "number",
             "minimum": 0,
@@ -98,9 +112,38 @@
     },
     "modification_summary": {
       "type": "string",
-      "description": "Human-readable summary of what changed in this modification. SHOULD be present for 'modification' phase. Helps the governance agent understand the nature of the change."
+      "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase."
     }
   },
-  "required": ["plan_id", "buyer_campaign_ref", "seller", "media_buy_id", "buyer_ref", "planned_delivery"],
-  "additionalProperties": false
+  "required": ["plan_id", "buyer_campaign_ref", "binding", "caller"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "binding": { "const": "proposed" } },
+        "required": ["binding"]
+      },
+      "then": {
+        "required": ["tool", "payload"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "binding": { "const": "committed" } },
+        "required": ["binding"]
+      },
+      "then": {
+        "required": ["planned_delivery", "media_buy_id", "phase"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "phase": { "const": "delivery" } },
+        "required": ["phase"]
+      },
+      "then": {
+        "required": ["delivery_metrics"]
+      }
+    }
+  ]
 }
