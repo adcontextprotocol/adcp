@@ -230,26 +230,36 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
 // =====================================================
 
 const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
+  // Track A: Foundations
   A1: [
-    { label: 'Module A1 study guide', url: '/docs/learning/foundations/a1-agentic-advertising' },
     { label: 'Introduction to AdCP', url: '/docs/intro' },
     { label: 'Why AdCP — the fragmentation problem', url: '/docs/building/understanding' },
-    { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
+    { label: 'Media channel taxonomy', url: '/docs/reference/media-channel-taxonomy' },
   ],
   A2: [
-    { label: 'Module A2 study guide', url: '/docs/learning/foundations/a2-protocol-architecture' },
-    { label: 'AdCP quickstart (5-minute code example)', url: '/docs/quickstart' },
-    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
-    { label: 'Agent-to-Agent protocol', url: '/docs/building/integration/a2a-guide' },
+    { label: 'AdCP quickstart', url: '/docs/quickstart' },
+    { label: 'Media buy protocol', url: '/docs/media-buy' },
+    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
   ],
   A3: [
-    { label: 'Module A3 study guide', url: '/docs/learning/foundations/a3-ecosystem-governance' },
-    { label: 'Governance protocol overview', url: '/docs/governance/overview' },
-    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+    { label: 'Catalogs and product data', url: '/docs/creative/catalogs' },
+    { label: 'Sync catalogs task', url: '/docs/media-buy/task-reference/sync_catalogs' },
+    { label: 'List creative formats task', url: '/docs/creative/task-reference/list_creative_formats' },
   ],
+  A4: [
+    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+    { label: 'Brand protocol and brand.json', url: '/docs/brand-protocol' },
+    { label: 'Capability discovery', url: '/docs/building/integration/capability-discovery' },
+  ],
+  A5: [
+    { label: 'Governance protocol overview', url: '/docs/governance/overview' },
+    { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
+  ],
+  // Track B: Publisher / Seller
   B1: [
     { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
     { label: 'Media buy protocol', url: '/docs/media-buy' },
+    { label: 'Get products task', url: '/docs/media-buy/task-reference/get_products' },
   ],
   B2: [
     { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
@@ -259,48 +269,75 @@ const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   B3: [
     { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
     { label: 'Signals protocol', url: '/docs/signals/overview' },
+    { label: 'Delivery reporting', url: '/docs/media-buy/task-reference/get_media_buy_delivery' },
   ],
+  B4: [
+    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
+    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
+  ],
+  // Track C: Buyer / Brand
   C1: [
     { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
     { label: 'Media buy protocol', url: '/docs/media-buy' },
+    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
   ],
   C2: [
     { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
     { label: 'Brand protocol and brand.json', url: '/docs/brand-protocol' },
-    { label: 'Governance protocol', url: '/docs/governance/overview' },
+    { label: 'Content standards', url: '/docs/governance/content-standards' },
   ],
   C3: [
     { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
     { label: 'Creative protocol', url: '/docs/creative' },
-    { label: 'Sponsored Intelligence', url: '/docs/sponsored-intelligence' },
+    { label: 'Build creative task', url: '/docs/creative/task-reference/build_creative' },
   ],
+  C4: [
+    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
+    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
+  ],
+  // Track D: Platform / Infrastructure
   D1: [
     { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
     { label: 'MCP server implementation', url: '/docs/building/integration/mcp-guide' },
+    { label: 'Capability discovery', url: '/docs/building/integration/capability-discovery' },
   ],
   D2: [
     { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
     { label: 'Agent-to-Agent protocol', url: '/docs/building/integration/a2a-guide' },
+    { label: 'Property governance', url: '/docs/governance/property-lists' },
   ],
   D3: [
     { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
     { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
   ],
-  E1: [
-    { label: 'Media buy capstone guide', url: '/docs/learning/specialist/media-buy' },
-    { label: 'Media buy task reference', url: '/docs/media-buy/task-reference/create_media_buy' },
+  D4: [
+    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
+    { label: 'MCP server implementation', url: '/docs/building/integration/mcp-guide' },
   ],
-  E2: [
-    { label: 'Creative capstone guide', url: '/docs/learning/specialist/creative' },
-    { label: 'Creative task reference', url: '/docs/creative/task-reference/build_creative' },
+  // Track S: Specialist deep dives
+  S1: [
+    { label: 'Media buy protocol', url: '/docs/media-buy' },
+    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
+    { label: 'Targeting strategies', url: '/docs/media-buy/targeting' },
   ],
-  E3: [
-    { label: 'Signals capstone guide', url: '/docs/learning/specialist/signals' },
-    { label: 'Signals task reference', url: '/docs/signals/tasks' },
+  S2: [
+    { label: 'Creative protocol', url: '/docs/creative' },
+    { label: 'Build creative task', url: '/docs/creative/task-reference/build_creative' },
+    { label: 'Catalogs and product data', url: '/docs/creative/catalogs' },
   ],
-  E4: [
-    { label: 'Governance capstone guide', url: '/docs/learning/specialist/governance' },
-    { label: 'Governance task reference', url: '/docs/governance/content-standards/tasks' },
+  S3: [
+    { label: 'Signals protocol', url: '/docs/signals/overview' },
+    { label: 'Signal activation', url: '/docs/signals/tasks' },
+    { label: 'Event tracking', url: '/docs/media-buy/task-reference/sync_event_sources' },
+  ],
+  S4: [
+    { label: 'Governance protocol', url: '/docs/governance/overview' },
+    { label: 'Content standards', url: '/docs/governance/content-standards' },
+    { label: 'Property governance', url: '/docs/governance/property-lists' },
+  ],
+  S5: [
+    { label: 'Sponsored Intelligence', url: '/docs/sponsored-intelligence' },
+    { label: 'A2UI component system', url: '/docs/building/integration/a2ui' },
   ],
 };
 

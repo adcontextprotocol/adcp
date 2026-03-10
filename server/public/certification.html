@@ -852,10 +852,11 @@
 
 
       var CAPSTONE_META = {
-        E1: { title: 'Media buy', desc: 'Deep dive into the create_media_buy workflow, rate negotiation, and flight management.' },
-        E2: { title: 'Creative', desc: 'Creative asset management, format compliance, and sync workflows across platforms.' },
-        E3: { title: 'Signals', desc: 'Reporting signals, event taxonomy, attribution, and performance measurement.' },
-        E4: { title: 'Governance', desc: 'Protocol governance, voting, proposal process, and organizational compliance.' },
+        S1: { title: 'Media buy mastery', desc: 'Full media buy lifecycle: proposals, forecasting, refinement, advanced targeting, and delivery analysis.' },
+        S2: { title: 'Creative mastery', desc: 'Creative protocol across 19 channels: AI-powered generation, compliance, disclosures, and feature evaluation.' },
+        S3: { title: 'Signals and audiences', desc: 'Audience activation, privacy compliance, signal pricing, conversion tracking, and attribution.' },
+        S4: { title: 'Governance and brand safety', desc: 'Content standards, property governance, the Oracle model, and compliance artifacts.' },
+        S5: { title: 'Sponsored Intelligence', desc: 'Conversational brand experiences: session lifecycle, A2UI components, and offering discovery.' },
       };
 
       async function init() {
@@ -1269,11 +1270,11 @@
           html += '</div>';
         }
 
-        // 3. Specialist capstones (E-track)
-        var capstoneModules = getModulesByPrefix('E');
+        // 3. Specialist deep dives (S-track)
+        var capstoneModules = getModulesByPrefix('S');
         if (capstoneModules.length > 0) {
           html += '<div class="module-group">';
-          html += '  <div class="section-label">Specialist capstones</div>';
+          html += '  <div class="section-label">Specialist deep dives</div>';
           html += '  <div class="capstone-grid">';
           capstoneModules.forEach(function(mod) {
             var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);
