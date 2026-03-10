@@ -133,6 +133,7 @@ Each brand in the `brands` array:
 | `fonts` | object | No | Brand typography |
 | `tone` | string | No | Brand voice and messaging tone |
 | `tagline` | string | No | Brand tagline or slogan |
+| `visual_guidelines` | object | No | Structured visual rules for generative creative systems |
 
 ### Names Array
 
@@ -161,6 +162,348 @@ Brand architecture classifications from marketing theory:
 | `sub_brand` | Carries parent brand name | Nike SB |
 | `endorsed` | Independent identity, endorsed by parent | Air Jordan "by Nike" |
 | `independent` | Operates separately from house | Converse |
+
+## Visual guidelines
+
+The `visual_guidelines` object provides structured rules that generative creative systems can use to produce on-brand assets consistently. These are brand constants — they don't change campaign to campaign.
+
+<Info>
+Visual guidelines complement the basic identity fields (`colors`, `fonts`, `logos`). Colors define *what* the brand palette is; visual guidelines define *how* to use it. Fonts define font families; visual guidelines define the type scale.
+</Info>
+
+### Photography
+
+Controls how brand photography should look when selected or generated:
+
+```json
+{
+  "photography": {
+    "realism": "natural",
+    "lighting": "soft daylight",
+    "color_temperature": "warm",
+    "contrast": "medium",
+    "depth_of_field": "medium",
+    "subject": {
+      "people": {
+        "age_range": "25-45",
+        "diversity": "mixed",
+        "mood": ["confident", "relaxed"]
+      },
+      "product_focus": "in-use",
+      "setting": "outdoor"
+    },
+    "framing": {
+      "subject_position": "center-left",
+      "crop_style": "waist-up",
+      "perspective": "eye-level"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `realism` | enum | `natural`, `stylized`, `hyperreal`, `abstract` |
+| `lighting` | string | Lighting style description |
+| `color_temperature` | enum | `warm`, `neutral`, `cool` |
+| `contrast` | enum | `low`, `medium`, `high` |
+| `depth_of_field` | enum | `shallow`, `medium`, `deep` |
+| `subject` | object | Subject matter guidelines (people, product focus, setting) |
+| `framing` | object | Camera framing rules (position, crop, perspective) |
+| `preferred_aspect_ratios` | array | Preferred aspect ratios (e.g., `["16:9", "4:5", "1:1"]`) |
+| `tags` | array | Additional style descriptors |
+
+### Graphic style
+
+Defines the visual language for brand graphics and illustrations:
+
+```json
+{
+  "graphic_style": {
+    "style_type": "flat_illustration",
+    "stroke_style": "rounded",
+    "stroke_weight": "2px",
+    "corner_radius": "12px"
+  }
+}
+```
+
+Style types: `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_collage`, `hand_drawn`, `minimal_line_art`, `3d_render`, `isometric`, `photographic_composite`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `style_type` | enum | `flat_illustration`, `geometric`, `gradient_mesh`, `editorial_collage`, `hand_drawn`, `minimal_line_art`, `3d_render`, `isometric`, `photographic_composite` |
+| `stroke_style` | enum | `rounded`, `square`, `mixed`, `none` |
+| `stroke_weight` | string | Stroke weight (e.g., `2px`) |
+| `corner_radius` | string | Corner radius for rounded elements (e.g., `12px`) |
+| `tags` | array | Additional style descriptors |
+
+### Shapes
+
+Brand shapes used as part of visual identity:
+
+```json
+{
+  "shapes": {
+    "primary_shape": "circle",
+    "secondary_shapes": ["rounded_rectangle", "diagonal_wave"],
+    "usage": {
+      "max_per_layout": 2,
+      "overlap_allowed": true
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `primary_shape` | string | Primary brand shape (e.g., `circle`, `rounded_rectangle`, `hexagon`) |
+| `secondary_shapes` | array | Secondary shapes in the brand vocabulary |
+| `usage.max_per_layout` | integer | Maximum distinct shapes per layout |
+| `usage.overlap_allowed` | boolean | Whether shapes may overlap |
+
+### Iconography
+
+Icon style system and usage rules:
+
+```json
+{
+  "iconography": {
+    "style": "outline",
+    "stroke_weight": "2px",
+    "corner_style": "rounded",
+    "usage": {
+      "max_per_frame": 3,
+      "size_ratio": "1:8"
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `style` | enum | `outline`, `filled`, `duotone`, `flat`, `glyph` |
+| `stroke_weight` | string | Icon stroke weight (e.g., `2px`) |
+| `corner_style` | enum | `rounded`, `square`, `mixed` |
+| `usage.max_per_frame` | integer | Maximum icons per creative frame |
+| `usage.size_ratio` | string | Icon-to-layout size ratio (e.g., `1:8`) |
+
+### Composition
+
+Layout rules for overlays, textures, and backgrounds:
+
+```json
+{
+  "composition": {
+    "overlays": {
+      "gradient_style": "linear",
+      "gradient_direction": "45deg",
+      "opacity": "70%"
+    },
+    "texture": {
+      "style": "subtle_grain",
+      "intensity": "low"
+    },
+    "backgrounds": {
+      "types_allowed": ["solid_color", "gradient", "image"]
+    }
+  }
+}
+```
+
+Texture styles: `none`, `subtle_grain`, `noise`, `paper`, `fabric`, `concrete`. Intensity: `low`, `medium`, `high`.
+
+Background types: `solid_color`, `gradient`, `blurred_photo`, `image`, `video`, `pattern`, `transparent`.
+
+### Motion
+
+Motion and animation rules for video, animated display, and interactive formats:
+
+```json
+{
+  "motion": {
+    "transition_style": "dissolve",
+    "animation_speed": "moderate",
+    "easing": "ease-in-out",
+    "text_entrance": "fade",
+    "pacing": "lingering",
+    "kinetic_typography": false
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `transition_style` | enum | `cut`, `dissolve`, `slide`, `wipe`, `zoom`, `fade` |
+| `animation_speed` | enum | `slow`, `moderate`, `fast` |
+| `easing` | string | Default easing function (e.g., `ease-in-out`, `spring`, `linear`) |
+| `text_entrance` | enum | `fade`, `typewriter`, `slide_up`, `slide_left`, `scale`, `none` |
+| `pacing` | enum | `lingering`, `moderate`, `fast_cuts` |
+| `kinetic_typography` | boolean | Whether animated/kinetic typography is allowed |
+| `tags` | array | Additional motion style descriptors |
+
+### Logo placement
+
+Logo placement and clear space rules for automated creative production:
+
+```json
+{
+  "logo_placement": {
+    "preferred_position": "bottom-left",
+    "min_clear_space": "0.5x",
+    "min_height": "40px",
+    "background_contrast": "any"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `preferred_position` | enum | `top-left`, `top-center`, `top-right`, `bottom-left`, `bottom-center`, `bottom-right`, `center` |
+| `min_clear_space` | string | Minimum clear space as a multiple of logo height (e.g., `0.5x`, `1x`) or fixed value (e.g., `16px`) |
+| `min_height` | string | Minimum logo height for legibility (e.g., `40px`) |
+| `background_contrast` | enum | `light_only`, `dark_only`, `any` |
+
+### Colorways
+
+Named color pairings that define how colors work together. Allows a creative brief to reference "use my primary colorway" without specifying every color:
+
+```json
+{
+  "colorways": [
+    {
+      "name": "primary",
+      "foreground": "#FFFFFF",
+      "background": "#FF6600",
+      "accent": "#0066CC",
+      "cta_foreground": "#FFFFFF",
+      "cta_background": "#0066CC"
+    },
+    {
+      "name": "inverted",
+      "foreground": "#FF6600",
+      "background": "#FFFFFF",
+      "accent": "#0066CC",
+      "border": "#FF6600"
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Colorway name (e.g., `"primary"`, `"inverted"`, `"dark"`) |
+| `foreground` | hex color | Yes | Text/foreground color |
+| `background` | hex color | Yes | Background color |
+| `accent` | hex color | No | Accent color |
+| `cta_foreground` | hex color | No | Call-to-action text color |
+| `cta_background` | hex color | No | Call-to-action button color |
+| `border` | hex color | No | Border color |
+
+### Type scale
+
+Typography scale defining sizes and weights for different text roles:
+
+```json
+{
+  "type_scale": {
+    "base_width": "1080px",
+    "heading": {
+      "font": "primary",
+      "size": "48px",
+      "weight": "700",
+      "line_height": "1.1"
+    },
+    "subheading": {
+      "font": "primary",
+      "size": "24px",
+      "weight": "600",
+      "line_height": "1.3"
+    },
+    "body": {
+      "font": "secondary",
+      "size": "16px",
+      "weight": "400",
+      "line_height": "1.5"
+    },
+    "caption": {
+      "font": "secondary",
+      "size": "12px",
+      "weight": "400",
+      "line_height": "1.4"
+    },
+    "cta": {
+      "font": "primary",
+      "size": "18px",
+      "weight": "700",
+      "text_transform": "uppercase",
+      "letter_spacing": "0.05em"
+    }
+  }
+}
+```
+
+The `font` field references font roles defined in the brand's `fonts` object (`"primary"`, `"secondary"`), or can specify a font family name directly.
+
+When sizes are in pixels, use `base_width` to indicate the reference canvas these sizes were designed for. Generative systems should scale proportionally for other canvas sizes — a `48px` heading designed for `1080px` width would scale to `14px` on a `320px` mobile leaderboard.
+
+### Asset libraries
+
+References to managed asset libraries (icon sets, illustration systems, image collections). URLs are for human access — a brand portal, press kit, or DAM landing page that a person can open in a browser.
+
+```json
+{
+  "asset_libraries": [
+    {
+      "name": "Brand Illustrations v2",
+      "type": "illustration_system",
+      "url": "https://brand.example.com/illustrations",
+      "description": "Flat illustration system with defined color guide",
+      "color_guide": {
+        "roles": ["base", "shadow_1", "shadow_2", "highlight_1", "highlight_2", "stroke"],
+        "palettes": [
+          {
+            "name": "orange",
+            "colors": {
+              "base": "#FF6600",
+              "shadow_1": "#CC5200",
+              "shadow_2": "#993D00",
+              "highlight_1": "#FF8533",
+              "highlight_2": "#FFB380",
+              "stroke": "#662900"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Display name of the asset library |
+| `type` | enum | Recommended | `icon_set`, `illustration_system`, `image_library`, `video_library`, `template_library` |
+| `url` | string (URI) | Yes | URL to the asset library (for human access) |
+| `description` | string | No | Description of library contents and usage |
+| `color_guide` | object | No | Color roles and palettes used in the library |
+
+The `color_guide` provides generative systems with the color palettes used in the library — useful for producing on-brand illustrations or icons without accessing the library itself.
+
+### Restrictions
+
+Visual prohibitions and guardrails — the visual equivalent of `tone.donts`. These tell generative systems what to avoid:
+
+```json
+{
+  "restrictions": [
+    "Never place text over the product",
+    "Do not use black backgrounds",
+    "No stock photography of people on phones",
+    "No split-screen layouts"
+  ]
+}
+```
 
 ## Property definition
 
@@ -321,4 +664,5 @@ Recommended cache TTLs:
 2. **Use redirects for subsidiaries**: Point brand domains to house domain
 3. **List all properties**: Include regional domains, apps, and legacy domains
 4. **Keep names current**: Include localized names and common aliases
-5. **Use brand agents for dynamic data**: If brand info changes frequently, use an agent
+5. **Visual guidelines are optional**: Add them when you need generative systems to produce on-brand assets consistently. Start with colorways and restrictions — they have the highest immediate impact.
+6. **Keep portfolios lean**: For house portfolios with many brands, include visual guidelines only on brands that need them. Full visual guidelines on every brand in a large portfolio increases file size significantly.
