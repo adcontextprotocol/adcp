@@ -289,6 +289,72 @@
     .text-right {
       text-align: right;
     }
+
+    .section-subtitle {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+      margin-top: -12px;
+      margin-bottom: 20px;
+    }
+
+    .referrer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+
+    @media (max-width: 768px) {
+      .referrer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .referrer-grid h3 {
+      color: var(--color-text-heading);
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .referrer-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .referrer-bar-label {
+      flex: 0 0 160px;
+      font-size: 13px;
+      color: var(--color-text-heading);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .referrer-bar-track {
+      flex: 1;
+      height: 20px;
+      background: var(--color-bg-subtle);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .referrer-bar-fill {
+      height: 100%;
+      background: var(--color-brand);
+      border-radius: 4px;
+      min-width: 2px;
+      transition: width 0.3s ease;
+    }
+
+    .referrer-bar-count {
+      flex: 0 0 50px;
+      text-align: right;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
   </style>
 </head>
 <body>
@@ -339,6 +405,30 @@
           <div class="metric-label">Citation rate</div>
           <div class="metric-value" id="citation-rate">0%</div>
           <div class="metric-change" id="citation-rate-change"></div>
+        </div>
+      </div>
+
+      <!-- AI referrer traffic -->
+      <div class="section" id="referrer-section" style="display: none;">
+        <h2>AI referrer traffic</h2>
+        <p class="section-subtitle" id="referrer-subtitle"></p>
+        <div class="referrer-grid">
+          <div class="referrer-sources">
+            <h3>Traffic by source</h3>
+            <div id="referrer-bars"></div>
+          </div>
+          <div class="referrer-landing">
+            <h3>Top landing pages</h3>
+            <table id="landing-table">
+              <thead>
+                <tr>
+                  <th scope="col">Page</th>
+                  <th scope="col" class="text-right">Visits</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -596,17 +686,70 @@
       btn.textContent = 'Refreshing...';
 
       try {
-        // Force cache refresh via POST, then reload
+        // Force cache refresh via POST, then reload all sections
         await fetch('/api/admin/geo-visibility/refresh', { method: 'POST' });
-        await loadData();
+        await Promise.all([loadData(), loadReferrerData()]);
       } finally {
         btn.disabled = false;
         btn.textContent = 'Refresh';
       }
     }
 
+    async function loadReferrerData() {
+      try {
+        const response = await fetch('/api/admin/geo-referrers');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data.configured === false || !data.sources) return;
+
+        const section = document.getElementById('referrer-section');
+        section.style.display = 'block';
+
+        // Subtitle with total stats
+        const subtitle = document.getElementById('referrer-subtitle');
+        subtitle.textContent = formatNumber(data.totalAiReferrals) + ' visits from AI surfaces (' +
+          Number(data.aiReferralShare || 0).toFixed(2) + '% of ' + formatNumber(data.totalPageviews) +
+          ' total) \u2014 last 30 days';
+
+        // Render source bars
+        const barsContainer = document.getElementById('referrer-bars');
+        const sources = data.sources || [];
+        if (sources.length === 0) {
+          barsContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 14px;">No AI referrer traffic detected</p>';
+        } else {
+          const maxCount = sources[0].pageviews;
+          barsContainer.innerHTML = sources.map(function(s) {
+            var pct = maxCount > 0 ? Math.round((s.pageviews / maxCount) * 100) : 0;
+            return '<div class="referrer-bar-row">' +
+              '<span class="referrer-bar-label" title="' + escapeHtml(s.domain) + '">' + escapeHtml(s.domain) + '</span>' +
+              '<div class="referrer-bar-track"><div class="referrer-bar-fill" style="width: ' + pct + '%"></div></div>' +
+              '<span class="referrer-bar-count">' + formatNumber(s.pageviews) + '</span>' +
+            '</div>';
+          }).join('');
+        }
+
+        // Render landing pages table
+        const landingTable = document.getElementById('landing-table').querySelector('tbody');
+        const pages = data.landingPages || [];
+        if (pages.length > 0) {
+          landingTable.innerHTML = pages.map(function(p) {
+            return '<tr>' +
+              '<td>' + escapeHtml(p.path) + '</td>' +
+              '<td class="text-right">' + formatNumber(p.pageviews) + '</td>' +
+            '</tr>';
+          }).join('');
+        } else {
+          landingTable.innerHTML = '<tr><td colspan="2" style="text-align: center; color: var(--color-text-secondary);">No data</td></tr>';
+        }
+      } catch (err) {
+        console.warn('AI referrer data unavailable:', err);
+      }
+    }
+
     // Load data on page load
     loadData();
+    loadReferrerData();
   </script>
 </body>
 </html>

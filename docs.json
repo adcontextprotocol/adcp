@@ -60,6 +60,7 @@
             "pages": [
               "docs/intro",
               "docs/agentic-advertising",
+              "docs/faq",
               "docs/protocol/architecture",
               "docs/quickstart",
               {
@@ -88,7 +89,8 @@
                 "group": "Understanding AdCP",
                 "pages": [
                   "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison"
+                  "docs/building/understanding/protocol-comparison",
+                  "docs/building/understanding/adcp-vs-openrtb"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -369,7 +371,11 @@
             "group": "Industry Guides",
             "pages": [
               "docs/guides/index",
-              "docs/guides/commerce-media"
+              "docs/guides/commerce-media",
+              "docs/guides/ai-media-buying",
+              "docs/guides/seller-integration",
+              "docs/guides/how-agents-communicate",
+              "docs/guides/industry-landscape"
             ]
           },
           {
@@ -410,6 +416,7 @@
             "pages": [
               "docs/intro",
               "docs/agentic-advertising",
+              "docs/faq",
               "docs/protocol/architecture",
               "docs/quickstart",
               {
@@ -438,7 +445,8 @@
                 "group": "Understanding AdCP",
                 "pages": [
                   "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison"
+                  "docs/building/understanding/protocol-comparison",
+                  "docs/building/understanding/adcp-vs-openrtb"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -719,7 +727,11 @@
             "group": "Industry Guides",
             "pages": [
               "docs/guides/index",
-              "docs/guides/commerce-media"
+              "docs/guides/commerce-media",
+              "docs/guides/ai-media-buying",
+              "docs/guides/seller-integration",
+              "docs/guides/how-agents-communicate",
+              "docs/guides/industry-landscape"
             ]
           },
           {

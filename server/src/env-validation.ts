@@ -88,6 +88,14 @@ const envConfig: EnvConfig = {
       description: 'PostHog API host URL',
       defaultValue: 'https://us.i.posthog.com',
     },
+    {
+      name: 'POSTHOG_PERSONAL_API_KEY',
+      description: 'PostHog personal API key for querying analytics data (phx_...)',
+    },
+    {
+      name: 'POSTHOG_PROJECT_ID',
+      description: 'PostHog project ID for analytics queries',
+    },
   ],
 };
 

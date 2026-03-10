@@ -1,0 +1,136 @@
+---
+title: Making your inventory available to AI agents
+sidebarTitle: Seller integration
+description: How publishers, SSPs, and ad platforms expose inventory to AI buyer agents using AdCP. A practical guide for sell-side platforms.
+keywords: [ad inventory AI agents, publisher AdCP integration, SSP AI, sell-side agentic advertising, adagents.json, ad platform AI, MCP advertising]
+---
+
+AI agents are starting to buy media. When an agency's AI assistant is evaluating ad inventory across platforms, it needs a way to discover what you sell, understand your pricing and targeting options, and execute a buy — all through a standard interface.
+
+AdCP (Ad Context Protocol) provides that interface. If you're a publisher, SSP, or ad platform, implementing AdCP makes your inventory accessible to any compliant buyer agent without requiring custom integrations for each one.
+
+## Why this matters
+
+Today, every platform requires buyers to learn a proprietary API. That works when humans are doing the buying. But AI agents work across many platforms simultaneously, and they need a shared language for common operations.
+
+Platforms that implement AdCP are discoverable by buyer agents out of the box. Platforms that don't require each buyer to build a custom integration — which limits the pool of agents that can access your inventory.
+
+## What you need to implement
+
+AdCP sell-side integration has three parts:
+
+<Steps>
+
+### Make your agent discoverable
+
+Publish an `adagents.json` file at your domain root. This file declares your properties and the agents authorized to sell your inventory — similar to how `ads.txt` works for supply chain transparency.
+
+```json
+{
+  "version": "1.0",
+  "properties": [
+    {
+      "domain": "publisher.example.com",
+      "agents": [
+        {
+          "agent_url": "https://ads.publisher.example.com",
+          "relationship": "direct",
+          "supported_protocols": ["media_buy", "creative"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Buyer agents check `adagents.json` to find authorized sales agents, verify relationships, and discover which protocol domains you support.
+
+### Expose your inventory
+
+Implement `get_products` to describe what you sell. Each product represents a buyable unit — a display placement, a video slot, a sponsored listing, a newsletter sponsorship. Buyer agents call this with a `buying_mode` and optional `brief`:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Premium display placements for consumer electronics brand"
+}
+```
+
+Your response includes structured product objects with pricing, formats, and delivery types:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "homepage_leaderboard",
+      "name": "Homepage leaderboard",
+      "channels": ["display"],
+      "format_ids": [
+        { "agent_url": "https://ads.publisher.example.com", "id": "display_728x90" }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_standard",
+          "pricing_model": "cpm",
+          "floor_price": 8.00,
+          "currency": "USD"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The richer the product metadata, the better buyer agents can match your inventory to campaign requirements.
+
+### Accept and fulfill buys
+
+Implement `create_media_buy` to accept campaign instructions from buyer agents. A media buy includes the product, budget, schedule, and any targeting parameters.
+
+```json
+{
+  "buyer_ref": "agency-q2-leaderboard",
+  "account": { "account_id": "acct-56789" },
+  "brand": { "brand_id": "nova-electronics" },
+  "proposal_id": "prop-homepage-leaderboard",
+  "total_budget": { "amount": 10000, "currency": "USD" },
+  "start_time": "2026-04-01T00:00:00Z",
+  "end_time": "2026-04-30T23:59:59Z"
+}
+```
+
+Your platform processes the buy according to your normal workflow — whether that's instant activation, internal review, or an approval queue. AdCP's asynchronous status system (`completed`, `working`, `submitted`, `input-required`) lets you model any workflow.
+
+</Steps>
+
+## Optional: delivery reporting
+
+Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
+
+## How it connects to your existing stack
+
+AdCP sits alongside your existing APIs and dashboards. It doesn't replace your self-serve platform or your internal campaign management system. It adds a standard interface that AI agents can use.
+
+| Your existing system | How AdCP relates |
+|---|---|
+| Self-serve dashboard | AdCP serves a different audience (AI agents, not humans) |
+| Management API | AdCP provides a standard subset; your API provides the full feature set |
+| Ad server (GAM, custom) | AdCP sends campaign instructions; your ad server handles delivery |
+| OpenRTB integration | AdCP handles campaign setup; OpenRTB handles impression-level auctions |
+
+## Getting started
+
+<CardGroup cols={2}>
+  <Card title="adagents.json builder" icon="hammer" href="https://adcontextprotocol.org/adagents">
+    Create and validate your adagents.json file using the interactive builder.
+  </Card>
+  <Card title="Media buy specification" icon="file-lines" href="/docs/media-buy/specification">
+    Full reference for sell-side task implementations: products, media buys, and delivery reporting.
+  </Card>
+  <Card title="Protocol quickstart" icon="rocket" href="/docs/quickstart">
+    Get a minimal implementation running in 5 minutes with code examples.
+  </Card>
+  <Card title="Ask Addie" icon="message-bot" href="https://adcontextprotocol.org/chat">
+    Ask questions about implementing AdCP for your platform — no code required.
+  </Card>
+</CardGroup>
