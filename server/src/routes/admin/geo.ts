@@ -440,6 +440,113 @@ export function setupGeoRoutes(apiRouter: Router): void {
     }
   );
 
+  // GET /api/admin/geo-article-sov - Share of voice from industry articles
+  apiRouter.get(
+    "/geo-article-sov",
+    requireAuth,
+    requireManage,
+    async (_req, res) => {
+      try {
+        // Total articles and AdCP/agentic mention counts
+        const totalsResult = await query<{
+          total_articles: string;
+          mentions_adcp_count: string;
+          mentions_agentic_count: string;
+        }>(
+          `SELECT
+             COUNT(*) AS total_articles,
+             COUNT(*) FILTER (WHERE mentions_adcp = true) AS mentions_adcp_count,
+             COUNT(*) FILTER (WHERE mentions_agentic = true) AS mentions_agentic_count
+           FROM addie_knowledge
+           WHERE is_active = true
+             AND (category IN ('perspective', 'blog')
+               OR article_type IN ('news', 'opinion', 'analysis', 'announcement'))`
+        );
+
+        const totals = totalsResult.rows[0];
+        const totalArticles = parseInt(totals.total_articles, 10);
+        const adcpMentions = parseInt(totals.mentions_adcp_count, 10);
+        const agenticMentions = parseInt(totals.mentions_agentic_count, 10);
+
+        // Competitor mention frequency from articles
+        const competitorResult = await query<{ competitor: string; mention_count: string }>(
+          `SELECT unnest(competitor_mentions) AS competitor, COUNT(*) AS mention_count
+           FROM addie_knowledge
+           WHERE is_active = true
+             AND competitor_mentions IS NOT NULL
+             AND array_length(competitor_mentions, 1) > 0
+           GROUP BY competitor
+           ORDER BY mention_count DESC
+           LIMIT 20`
+        );
+
+        // Trend: articles per week over the last 12 weeks
+        const trendResult = await query<{
+          week: string;
+          total: string;
+          adcp: string;
+          agentic: string;
+        }>(
+          `SELECT
+             date_trunc('week', published_at)::date AS week,
+             COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE mentions_adcp = true) AS adcp,
+             COUNT(*) FILTER (WHERE mentions_agentic = true) AS agentic
+           FROM addie_knowledge
+           WHERE is_active = true
+             AND published_at >= NOW() - INTERVAL '12 weeks'
+             AND published_at IS NOT NULL
+           GROUP BY week
+           ORDER BY week`
+        );
+
+        // Recent articles that mention AdCP
+        const recentAdcpResult = await query<{
+          title: string;
+          source_url: string;
+          published_at: string;
+          quality_score: number;
+        }>(
+          `SELECT title, source_url, published_at, quality_score
+           FROM addie_knowledge
+           WHERE is_active = true AND mentions_adcp = true
+           ORDER BY published_at DESC NULLS LAST
+           LIMIT 10`
+        );
+
+        res.json({
+          summary: {
+            total_articles: totalArticles,
+            adcp_mentions: adcpMentions,
+            agentic_mentions: agenticMentions,
+            adcp_share: totalArticles > 0
+              ? Math.round((adcpMentions / totalArticles) * 1000) / 10
+              : 0,
+            agentic_share: totalArticles > 0
+              ? Math.round((agenticMentions / totalArticles) * 1000) / 10
+              : 0,
+          },
+          competitors: competitorResult.rows.map((r) => ({
+            name: r.competitor,
+            mention_count: parseInt(r.mention_count, 10),
+          })),
+          trend: trendResult.rows.map((r) => ({
+            week: r.week,
+            total: parseInt(r.total, 10),
+            adcp: parseInt(r.adcp, 10),
+            agentic: parseInt(r.agentic, 10),
+          })),
+          recent_adcp_articles: recentAdcpResult.rows,
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching article share-of-voice");
+        res.status(500).json({
+          error: "Failed to fetch article share-of-voice data",
+        });
+      }
+    }
+  );
+
   // GET /api/admin/geo-monitor - GEO prompt monitor results
   apiRouter.get(
     "/geo-monitor",

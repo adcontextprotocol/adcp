@@ -58,6 +58,10 @@ const CATEGORY_PAGE_MAP: Record<string, string[]> = {
   executive: [
     "docs/guides/industry-landscape.mdx",
   ],
+  audience: [
+    "docs/signals/data-providers.mdx",
+    "docs/signals/specification.mdx",
+  ],
   canary: [
     "docs/faq.mdx",
   ],

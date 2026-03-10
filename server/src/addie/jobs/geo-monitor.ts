@@ -21,6 +21,12 @@ const ADCP_PATTERNS = [
 ];
 
 const COMPETITOR_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /\baamp\b/i, name: 'AAMP' },
+  { pattern: /agentic advertising management protocols/i, name: 'AAMP' },
+  { pattern: /\bartf\b/i, name: 'ARTF' },
+  { pattern: /agentic rtb framework/i, name: 'ARTF' },
+  { pattern: /agentic audiences/i, name: 'Agentic Audiences' },
+  { pattern: /iab tech lab agent registry/i, name: 'IAB Agent Registry' },
   { pattern: /iab tech lab/i, name: 'IAB Tech Lab' },
   { pattern: /\biab\b/i, name: 'IAB' },
   { pattern: /openrtb/i, name: 'OpenRTB' },
@@ -56,8 +62,22 @@ function getClient(): Anthropic {
   return client;
 }
 
+/**
+ * Phrases that contain "agentic advertising" but refer to competitors,
+ * not AdCP. Stripped before running ADCP_PATTERNS to avoid false positives.
+ */
+const COMPETITOR_PHRASES_TO_STRIP = [
+  /agentic advertising management protocols/gi,
+  /agentic audiences/gi,
+  /agentic rtb framework/gi,
+];
+
 function detectAdcpMention(text: string): boolean {
-  return ADCP_PATTERNS.some((pattern) => pattern.test(text));
+  const cleaned = COMPETITOR_PHRASES_TO_STRIP.reduce(
+    (t, p) => t.replace(p, ''),
+    text
+  );
+  return ADCP_PATTERNS.some((pattern) => pattern.test(cleaned));
 }
 
 function detectCompetitor(text: string): string | null {
