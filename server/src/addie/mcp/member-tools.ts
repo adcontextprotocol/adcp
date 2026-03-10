@@ -17,6 +17,7 @@ import { SlackDatabase } from '../../db/slack-db.js';
 import {
   testAllScenarios,
   formatSuiteResults,
+  formatTestResults,
   setAgentTesterLogger,
   SCENARIO_REQUIREMENTS,
   type OrchestratorOptions,
@@ -2204,6 +2205,18 @@ export function createMemberToolHandlers(
       }
 
       let output = formatSuiteResults(suite);
+
+      // Include step-level details for failing scenarios so users can
+      // see exactly what went wrong without needing a debugging session
+      const failedResults = suite.results.filter((r) => !r.overall_passed);
+      if (failedResults.length > 0) {
+        output += `\n### Failure details\n\n`;
+        for (const result of failedResults) {
+          output += formatTestResults(result);
+          output += '\n';
+        }
+      }
+
       if (usingSavedToken) {
         output = `_Using saved credentials for this agent._\n\n` + output;
       } else if (usingSavedOAuthToken) {
