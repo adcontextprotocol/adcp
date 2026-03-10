@@ -647,7 +647,10 @@ async function buildRequestContext(
       // Public channels are visible to all workspace members — never share sensitive data there
       if (threadContext.viewing_channel_is_private === false) {
         channelLines.push('');
-        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members. You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.**');
+        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members.**');
+        channelLines.push('- You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.');
+        channelLines.push('- You MUST NOT pitch membership, send join links, or recruit in public channels — membership conversations belong in DMs.');
+        channelLines.push('- The user context above is for the message sender only. Do not use it to make assumptions about other people in the thread. Do not address other thread participants by their membership status.');
       }
       channelContextText = channelLines.join('\n');
     }
@@ -2590,8 +2593,8 @@ async function handleActiveThreadReply({
     historyUnavailable = true;
   }
 
-  // Build per-request context for system prompt
-  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId, channelContext);
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
@@ -3069,8 +3072,8 @@ async function handleChannelMessage({
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
-    // Build per-request context for system prompt
-    const { requestContext: memberRequestContext } = await buildRequestContext(userId);
+    // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+    const { requestContext: memberRequestContext } = await buildRequestContext(userId, channelContext);
 
     // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
@@ -3668,8 +3671,8 @@ async function handleReactionAdded({
     logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
   }
 
-  // Build per-request context for system prompt
-  let { requestContext, memberContext } = await buildRequestContext(reactingUserId);
+  // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+  let { requestContext, memberContext } = await buildRequestContext(reactingUserId, channelContext);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
