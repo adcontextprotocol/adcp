@@ -433,7 +433,7 @@
             </div>
             <div class="meta-item">
               <label>Source</label>
-              <p>${p.source_name ? escapeHtml(p.source_name) : 'N/A'}${p.source_url ? ` (<a href="${escapeHtml(p.source_url)}" target="_blank">link</a>)` : ''}</p>
+              <p>${p.source_name ? escapeHtml(p.source_name) : 'N/A'}${p.source_url && /^https?:\/\//i.test(p.source_url) ? ` (<a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener">link</a>)` : ''}</p>
             </div>
             <div class="meta-item">
               <label>Effective date</label>

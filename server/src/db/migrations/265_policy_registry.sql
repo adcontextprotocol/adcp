@@ -1,4 +1,4 @@
--- Migration: 264_policy_registry.sql
+-- Migration: 265_policy_registry.sql
 -- Purpose: Shared policy registry for governance domains.
 -- Policies are standardized, machine-readable advertising regulations and standards
 -- that governance agents resolve and evaluate at runtime.
@@ -46,7 +46,7 @@ CREATE INDEX idx_policies_governance_domains ON policies USING gin(governance_do
 
 CREATE TABLE policy_revisions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  policy_id TEXT NOT NULL,
+  policy_id TEXT NOT NULL REFERENCES policies(policy_id),
   revision_number INTEGER NOT NULL,
   snapshot JSONB NOT NULL,
   editor_user_id VARCHAR(255) NOT NULL,

@@ -2367,15 +2367,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         offset: parseInt(req.query.offset as string) || 0,
       };
 
-      const { policies, total } = await policiesDb.listPolicies(options);
+      const { policies, total, regulation, standard } = await policiesDb.listPolicies(options);
 
-      const stats = {
-        total,
-        regulation: policies.filter((p) => p.category === "regulation").length,
-        standard: policies.filter((p) => p.category === "standard").length,
-      };
-
-      return res.json({ policies, stats });
+      return res.json({ policies, stats: { total, regulation, standard } });
     } catch (error) {
       logger.error({ error }, "Failed to list policies");
       return res.status(500).json({ error: "Failed to list policies" });
@@ -2485,6 +2479,33 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         return res.status(400).json({ error: "policy_id must be lowercase alphanumeric with underscores" });
       }
 
+      // Validate source_url scheme to prevent XSS via javascript: URIs
+      if (req.body.source_url && typeof req.body.source_url === "string") {
+        if (!/^https?:\/\//i.test(req.body.source_url)) {
+          return res.status(400).json({ error: "source_url must use http:// or https:// scheme" });
+        }
+      }
+
+      // Validate JSONB array fields
+      if (req.body.jurisdictions !== undefined && !Array.isArray(req.body.jurisdictions)) {
+        return res.status(400).json({ error: "jurisdictions must be an array" });
+      }
+      if (req.body.verticals !== undefined && !Array.isArray(req.body.verticals)) {
+        return res.status(400).json({ error: "verticals must be an array" });
+      }
+      if (req.body.channels !== undefined && req.body.channels !== null && !Array.isArray(req.body.channels)) {
+        return res.status(400).json({ error: "channels must be an array" });
+      }
+      if (req.body.governance_domains !== undefined && !Array.isArray(req.body.governance_domains)) {
+        return res.status(400).json({ error: "governance_domains must be an array" });
+      }
+      if (req.body.region_aliases !== undefined && (typeof req.body.region_aliases !== "object" || Array.isArray(req.body.region_aliases))) {
+        return res.status(400).json({ error: "region_aliases must be an object" });
+      }
+      if (req.body.exemplars !== undefined && (typeof req.body.exemplars !== "object" || Array.isArray(req.body.exemplars))) {
+        return res.status(400).json({ error: "exemplars must be an object" });
+      }
+
       const { policy: saved, revision_number } = await policiesDb.savePolicy(
         {
           policy_id,
@@ -2498,6 +2519,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           verticals: req.body.verticals,
           channels: req.body.channels,
           effective_date: req.body.effective_date,
+          sunset_date: req.body.sunset_date,
+          governance_domains: req.body.governance_domains,
           source_url: req.body.source_url,
           source_name: req.body.source_name,
           policy: policyText,

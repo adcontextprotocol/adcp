@@ -64,6 +64,7 @@ export interface SavePolicyInput {
   channels?: string[];
   effective_date?: string;
   sunset_date?: string;
+  governance_domains?: string[];
   source_url?: string;
   source_name?: string;
   policy: string;
@@ -104,15 +105,15 @@ function deserializeRevision(row: any): PolicyRevision {
 /**
  * List policies with optional filtering and pagination.
  */
-export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{ policies: Policy[]; total: number }> {
+export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{ policies: Policy[]; total: number; regulation: number; standard: number }> {
   const conditions: string[] = ["review_status = 'approved'"];
   const values: unknown[] = [];
   let paramIndex = 1;
 
   if (options.search) {
-    conditions.push(`(name ILIKE $${paramIndex} OR description ILIKE $${paramIndex} OR policy_id ILIKE $${paramIndex})`);
-    values.push(`%${options.search}%`);
-    paramIndex++;
+    conditions.push(`(to_tsvector('english', name || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', $${paramIndex}) OR policy_id ILIKE $${paramIndex + 1})`);
+    values.push(options.search, `%${options.search}%`);
+    paramIndex += 2;
   }
   if (options.category) {
     conditions.push(`category = $${paramIndex++}`);
@@ -142,20 +143,26 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
   const limit = Math.min(options.limit || 100, 1000);
   const offset = options.offset || 0;
 
-  const [dataResult, countResult] = await Promise.all([
+  const [dataResult, statsResult] = await Promise.all([
     query<any>(
       `SELECT * FROM policies ${where} ORDER BY category, name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...values, limit, offset]
     ),
-    query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM policies ${where}`,
+    query<{ total: string; regulation: string; standard: string }>(
+      `SELECT COUNT(*) as total,
+              COUNT(*) FILTER (WHERE category = 'regulation') as regulation,
+              COUNT(*) FILTER (WHERE category = 'standard') as standard
+       FROM policies ${where}`,
       values
     ),
   ]);
 
+  const stats = statsResult.rows[0];
   return {
     policies: dataResult.rows.map(deserializePolicy),
-    total: parseInt(countResult.rows[0].count, 10),
+    total: parseInt(stats.total, 10),
+    regulation: parseInt(stats.regulation, 10),
+    standard: parseInt(stats.standard, 10),
   };
 }
 
@@ -244,8 +251,9 @@ export async function savePolicy(
         `UPDATE policies SET
           version = $2, name = $3, description = $4, category = $5, enforcement = $6,
           jurisdictions = $7, region_aliases = $8, verticals = $9, channels = $10,
-          effective_date = $11, source_url = $12, source_name = $13, policy = $14,
-          guidance = $15, exemplars = $16, ext = $17, updated_at = NOW()
+          effective_date = $11, sunset_date = $12, governance_domains = $13,
+          source_url = $14, source_name = $15, policy = $16,
+          guidance = $17, exemplars = $18, ext = $19, updated_at = NOW()
         WHERE policy_id = $1 RETURNING *`,
         [
           input.policy_id, input.version, input.name, input.description || null,
@@ -254,7 +262,9 @@ export async function savePolicy(
           JSON.stringify(input.region_aliases || {}),
           JSON.stringify(input.verticals || []),
           input.channels ? JSON.stringify(input.channels) : null,
-          input.effective_date || null, input.source_url || null, input.source_name || null,
+          input.effective_date || null, input.sunset_date || null,
+          JSON.stringify(input.governance_domains || []),
+          input.source_url || null, input.source_name || null,
           input.policy, input.guidance || null,
           input.exemplars ? JSON.stringify(input.exemplars) : null,
           input.ext ? JSON.stringify(input.ext) : null,
@@ -265,14 +275,15 @@ export async function savePolicy(
       return { policy: deserializePolicy(updateResult.rows[0]), revision_number: revisionNumber };
     }
 
-    // Insert new policy
+    // Insert new policy (community policies start as pending review)
     const insertResult = await client.query<any>(
       `INSERT INTO policies (
         policy_id, version, name, description, category, enforcement,
         jurisdictions, region_aliases, verticals, channels,
-        effective_date, source_url, source_name, policy,
-        guidance, exemplars, ext, source_type
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'community')
+        effective_date, sunset_date, governance_domains,
+        source_url, source_name, policy,
+        guidance, exemplars, ext, source_type, review_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'community', 'pending')
       RETURNING *`,
       [
         input.policy_id, input.version, input.name, input.description || null,
@@ -281,7 +292,9 @@ export async function savePolicy(
         JSON.stringify(input.region_aliases || {}),
         JSON.stringify(input.verticals || []),
         input.channels ? JSON.stringify(input.channels) : null,
-        input.effective_date || null, input.source_url || null, input.source_name || null,
+        input.effective_date || null, input.sunset_date || null,
+        JSON.stringify(input.governance_domains || []),
+        input.source_url || null, input.source_name || null,
         input.policy, input.guidance || null,
         input.exemplars ? JSON.stringify(input.exemplars) : null,
         input.ext ? JSON.stringify(input.ext) : null,
