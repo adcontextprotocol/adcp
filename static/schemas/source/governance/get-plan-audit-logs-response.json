@@ -168,7 +168,7 @@
           },
           "tool": {
             "type": "string",
-            "description": "The AdCP tool (present for validation entries)."
+            "description": "The AdCP tool (present for check entries)."
           },
           "status": {
             "type": "string",

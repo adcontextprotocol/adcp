@@ -425,6 +425,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
     "buyer_campaign_ref": "q1-2026-spring-launch",
+    "binding": "committed",
     "caller": "https://seller.example.com",
     "media_buy_id": "mb_seller_456",
     "buyer_ref": "q1-launch-pinnacle-001",
@@ -450,6 +451,7 @@ The governance agent controls the reporting cadence through `next_check`. It can
 {
   "check_id": "auth_001",
   "status": "approved",
+  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
@@ -466,9 +468,10 @@ The `next_check` field signals that the governance agent expects delivery report
 {
   "check_id": "auth_002",
   "status": "denied",
+  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
-  "explanation": "Planned delivery targets CA (Canada) which is not an plan market for this plan.",
+  "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
     {
       "category_id": "strategic_alignment",
@@ -489,6 +492,7 @@ The `next_check` field signals that the governance agent expects delivery report
 {
   "check_id": "auth_004",
   "status": "approved",
+  "binding": "committed",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
@@ -512,7 +516,7 @@ When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD
 
 ### Governance checks and the governance loop
 
-Governance checks complements the buyer-side governance loop, it does not replace it:
+Governance checks complement the buyer-side governance loop, they do not replace it:
 
 | Concern | Buyer-side (`check_governance`, `binding: "proposed"`) | Seller-side (`check_governance`, `binding: "committed"`) |
 |---------|--------------------------------------|---------------------------------------|
@@ -525,7 +529,7 @@ Governance checks complements the buyer-side governance loop, it does not replac
 
 The `delivery` phase gives the governance agent real-time visibility into what sellers are actually delivering. The buyer-side `report_plan_outcome` depends on the orchestrator reporting honestly; the `delivery` phase gets reports directly from the seller.
 
-The governance agent MAY be the same agent as the governance agent, or a separate agent. The protocol does not prescribe the relationship -- only that the seller can call the `governance_agent` URL registered on the account.
+The buyer-side and seller-side governance checks MAY be handled by the same agent or by separate agents. The protocol does not prescribe the relationship -- only that the seller can call the `governance_agent` URL registered on the account.
 
 ## Orchestrator integration pattern
 
