@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/pricing-options/flat-rate-option.json",
   "title": "Flat Rate Pricing Option",
-  "description": "Flat rate pricing for DOOH, sponsorships, and time-based campaigns. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
+  "description": "Flat rate pricing for sponsorships, takeovers, and DOOH exclusive placements. A fixed total cost regardless of delivery volume. For duration-scaled pricing (rate × time units), use the `time` model instead. If fixed_price is present, it's fixed pricing. If absent, it's auction-based.",
   "type": "object",
   "properties": {
     "pricing_option_id": {
@@ -35,44 +35,51 @@
       "$ref": "/schemas/pricing-options/price-guidance.json"
     },
     "parameters": {
+      "title": "DoohParameters",
+      "description": "DOOH inventory allocation parameters. Sponsorship and takeover flat_rate options omit this field entirely — only include for digital out-of-home inventory.",
       "type": "object",
-      "description": "Flat rate parameters for DOOH and time-based campaigns",
       "properties": {
-        "duration_hours": {
-          "type": "number",
-          "description": "Duration in hours for time-based pricing",
-          "minimum": 0
+        "type": {
+          "type": "string",
+          "const": "dooh",
+          "description": "Discriminator identifying this as DOOH parameters"
         },
         "sov_percentage": {
           "type": "number",
-          "description": "Guaranteed share of voice (0-100)",
+          "description": "Guaranteed share of voice as a percentage (0-100)",
           "minimum": 0,
           "maximum": 100
         },
         "loop_duration_seconds": {
           "type": "integer",
-          "description": "Duration of ad loop rotation in seconds",
+          "description": "Duration of the ad loop rotation in seconds",
           "minimum": 1
         },
         "min_plays_per_hour": {
           "type": "integer",
-          "description": "Minimum plays per hour",
-          "minimum": 0
+          "description": "Minimum number of plays per hour guaranteed",
+          "minimum": 1
         },
         "venue_package": {
           "type": "string",
-          "description": "Named venue package identifier"
+          "description": "Named collection of screens included in this buy"
         },
-        "estimated_impressions": {
-          "type": "integer",
-          "description": "Estimated impressions (informational)",
+        "duration_hours": {
+          "type": "number",
+          "description": "Duration of the DOOH slot in hours (e.g., 24 for a full-day takeover)",
           "minimum": 0
         },
         "daypart": {
           "type": "string",
-          "description": "Specific daypart for time-based pricing"
+          "description": "Named daypart for this slot (e.g., morning_commute, evening_rush)"
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Estimated audience impressions for this slot (informational, not a delivery guarantee)",
+          "minimum": 0
         }
       },
+      "required": ["type"],
       "additionalProperties": true
     },
     "min_spend_per_package": {

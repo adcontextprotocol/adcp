@@ -296,18 +296,50 @@ Buyers should verify the measurement provider meets their campaign requirements 
 ### Flat Rate
 **Fixed cost** - Single payment regardless of delivery volume.
 
-**Use Cases**: Sponsorships, takeovers, exclusive placements, branded content
+**Use Cases**: Sponsorships, takeovers, exclusive placements, branded content, DOOH fixed slots
 
-**Example**:
+**Example** (sponsorship):
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
+  "pricing_option_id": "flat_rate_usd_sponsorship",
   "pricing_model": "flat_rate",
   "fixed_price": 50000.00,
   "currency": "USD"
 }
 ```
 
-**Billing**: Fixed cost for the entire campaign period
+**Example** (DOOH slot with parameters):
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
+  "pricing_option_id": "flat_rate_usd_dooh_morning",
+  "pricing_model": "flat_rate",
+  "fixed_price": 5000.00,
+  "currency": "USD",
+  "parameters": {
+    "type": "dooh",
+    "daypart": "morning_commute",
+    "duration_hours": 4,
+    "sov_percentage": 25,
+    "loop_duration_seconds": 15,
+    "estimated_impressions": 120000
+  }
+}
+```
+
+**Billing**: Fixed cost for the entire campaign period regardless of delivery volume.
+
+**DOOH parameters** (`parameters.type: "dooh"`):
+- `sov_percentage`: Guaranteed share of voice as a percentage (0-100)
+- `loop_duration_seconds`: Duration of ad loop rotation in seconds
+- `min_plays_per_hour`: Minimum guaranteed plays per hour
+- `venue_package`: Named collection of screens
+- `duration_hours`: Duration of the slot in hours (e.g., 24 for a full-day takeover)
+- `daypart`: Named daypart (e.g., `morning_commute`, `evening_rush`)
+- `estimated_impressions`: Audience impression estimate (informational, not a delivery guarantee)
+
+Sponsorship flat_rate options omit `parameters` — the fixed price covers the placement without DOOH-specific constraints.
 
 ---
 
@@ -386,14 +418,9 @@ DOOH advertising uses existing pricing models—typically **CPM** or **flat_rate
 }
 ```
 
-### DOOH Parameters (Optional)
+### DOOH parameters (optional)
 
-Publishers may include additional parameters to describe DOOH inventory allocation:
-
-- `duration_hours`: Duration for time-based pricing
-- `sov_percentage`: Share of voice (% of available plays)
-- `daypart`: Specific time periods (e.g., "morning_commute")
-- `venue_package`: Named collection of screens
+For flat_rate DOOH inventory, publishers may include a `parameters` object with `"type": "dooh"`. See the [flat_rate pricing model](#flat-rate) section above for a complete example and full field list.
 
 **Note**: DOOH measurement and buying practices vary by market. Publishers should clearly explain their measurement methodology and inventory allocation in the product description and `delivery_measurement` field.
 

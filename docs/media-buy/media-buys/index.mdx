@@ -73,7 +73,19 @@ A media buy contains:
 - **Status tracking** through creation, approval, and execution phases
 
 
-### Package Model
+### Package types
+
+Three distinct types represent a package at different lifecycle stages:
+
+| Type | Schema | Used in | Purpose |
+|------|--------|---------|---------|
+| `PackageRequest` | `media-buy/package-request.json` | `create_media_buy` request | What the buyer sends to create a package |
+| `Package` | `core/package.json` | `create_media_buy` success response | What the seller returns after creation (confirmed state) |
+| `PackageStatus` | inline in `media-buy/get-media-buys-response.json` | `get_media_buys` response | Delivery/reporting view — includes creative approvals and optional snapshot |
+
+When implementing `create_media_buy`, send a `PackageRequest`. The response returns `Package` objects. When calling `get_media_buys` to check status or delivery, the response contains `PackageStatus` items with delivery-specific fields.
+
+### Package model
 Packages are the building blocks of media buys:
 - **Single product** selection from discovery results - when you buy a product, you buy the entire product (unless using property targeting)
 - **Creative formats** to be provided for this package
