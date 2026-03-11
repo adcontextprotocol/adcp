@@ -382,5 +382,43 @@ export function createCertificationRouters() {
     }
   });
 
+  // GET /api/admin/certification/overview — aggregate metrics
+  adminRouter.get('/overview', async (_req, res) => {
+    try {
+      const metrics = await certDb.getAdminOverviewMetrics();
+      res.json(metrics);
+    } catch (error) {
+      logger.error({ error }, 'Failed to get admin overview metrics');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/certification/learners — paginated learner list
+  adminRouter.get('/learners', async (req, res) => {
+    try {
+      const search = req.query.search as string | undefined;
+      const status = req.query.status as 'all' | 'active' | 'stuck' | 'completed' | undefined;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const result = await certDb.getAdminLearnerList({ search, status, page, limit });
+      res.json(result);
+    } catch (error) {
+      logger.error({ error }, 'Failed to get admin learner list');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/certification/learners/:userId — individual learner detail
+  adminRouter.get('/learners/:userId', async (req, res) => {
+    try {
+      const detail = await certDb.getAdminLearnerDetail(req.params.userId);
+      if (!detail) return res.status(404).json({ error: 'Learner not found' });
+      res.json(detail);
+    } catch (error) {
+      logger.error({ error }, 'Failed to get admin learner detail');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   return { publicRouter, userRouter, orgRouter, adminRouter };
 }

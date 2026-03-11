@@ -1144,8 +1144,8 @@
 
         // Tier display info
         var tierMeta = [
-          { level: 1, fallbackName: 'AdCP Basics', fallbackReq: 'Complete A1 + A2', accent: '1' },
-          { level: 2, fallbackName: 'AdCP Practitioner', fallbackReq: 'Complete A1\u2013A3 + specialization track', accent: '2' },
+          { level: 1, fallbackName: 'AdCP Basics', fallbackReq: 'Complete A1 + A2 + A3 (free)', accent: '1' },
+          { level: 2, fallbackName: 'AdCP Practitioner', fallbackReq: 'Complete Basics + role track with build project', accent: '2' },
           { level: 3, fallbackName: 'AdCP Specialist', fallbackReq: 'Complete Practitioner + protocol capstone', accent: '3' },
         ];
 
@@ -1224,7 +1224,7 @@
         var foundationModules = getModulesByPrefix('A');
         if (foundationModules.length > 0) {
           html += '<div class="module-group">';
-          html += '  <div class="section-label">Foundations (required for all)</div>';
+          html += '  <div class="section-label">Basics (free)</div>';
           html += '  <div class="module-list">';
           foundationModules.forEach(function(mod) {
             html += renderModule(mod);

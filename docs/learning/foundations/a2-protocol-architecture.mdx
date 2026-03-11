@@ -1,20 +1,20 @@
 ---
-title: "A2: Protocol architecture"
-sidebarTitle: "A2: Protocol architecture"
-description: Walk through the AdCP stack — MCP transport, tool discovery, agent roles, and the transaction flow. See a live demo of agents trading.
+title: "A2: Your first media buy"
+sidebarTitle: "A2: Your first media buy"
+description: Step by step through the full AdCP lifecycle — discovery, purchase, creative, delivery — against a live sandbox agent.
 ---
 
-# A2: AdCP architecture and protocol overview
+# A2: Your first media buy
 
 <Info>
-**Free module** — No account required. ~15 minutes with Addie. Prerequisite: [A1](/docs/learning/foundations/a1-agentic-advertising).
+**Free module** — No account required. ~20 minutes with Addie. Prerequisite: [A1](/docs/learning/foundations/a1-agentic-advertising).
 </Info>
 
 ## Learning objectives
 
-- Describe the MCP transport layer and how agents connect
-- List the main agent roles: sales agent, buyer agent, brand agent, creative agent, signals agent
-- Understand the tool discovery flow — how a buyer agent finds a seller's products
+- Execute the full media buy lifecycle: discovery, purchase, creative sync, delivery
+- Identify the agent roles involved: buyer agent, sales agent, creative agent, signals agent
+- Read and understand real protocol messages at each stage
 - Observe a live agent-to-agent transaction
 
 ## Reading list
@@ -52,34 +52,27 @@ description: Walk through the AdCP stack — MCP transport, tool discovery, agen
 | **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
 | **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
 
-## Hands-on exercise
+## What you'll do with Addie
 
-During the module, Addie will walk you through:
+Tell Addie what you want: audience, goals, budget. Then walk through each step as it happens:
 
-1. **Agent discovery** — Call `get_products` against a sandbox sales agent and examine the response structure
-2. **Transaction flow** — Walk through the complete discovery → selection → purchase → creative → measurement cycle
+1. **Discovery** — `get_products` against `@cptestagent`, examine real response structure
+2. **Purchase** — `create_media_buy` with targeting and budget
+3. **Creative** — `sync_creatives` to deliver assets to the publisher
+4. **Delivery** — `get_media_buy_delivery` to see results
 
-These use live sandbox agents, so you'll see real protocol responses.
-
-## What you'll discuss with Addie
-
-- Walk through what happens when a buyer agent wants to purchase a CTV ad from a publisher
-- What role does adagents.json play? Why is it important?
-- How does the MCP layer relate to the AdCP layer?
-- What happens when a task fails partway through?
+You'll see the actual protocol messages at each stage. By the end, you've bought media through an agent.
 
 ## Assessment
 
 | Dimension | Weight | What Addie looks for |
 |-----------|--------|---------------------|
-| Conceptual understanding | 25% | Can you explain each protocol layer and agent role? |
-| Practical knowledge | 30% | Can you trace through a complete transaction flow? |
-| Problem solving | 15% | Can you reason about failure points and recovery? |
-| Protocol fluency | 30% | Do you correctly name tasks, agents, and concepts? |
+| Conceptual understanding | 25% | Can you describe the transaction flow and which agent handles what? |
+| Practical knowledge | 35% | Can you direct a media buy and interpret the delivery report? |
+| Problem solving | 15% | Can you reason about what happens when things go wrong? |
+| Protocol fluency | 25% | Do you use correct task names and agent roles? |
 
 Passing threshold: 70%.
-
-Completing A1 + A2 earns the **AdCP basics** credential.
 
 ## Start this module
 
@@ -87,4 +80,4 @@ Completing A1 + A2 earns the **AdCP basics** credential.
   Open Addie and say "I'd like to start certification module A2."
 </Card>
 
-**Next:** [A3: Ecosystem and governance](/docs/learning/foundations/a3-ecosystem-governance)
+**Next:** [A3: The AdCP landscape](/docs/learning/foundations/a3-ecosystem-governance)

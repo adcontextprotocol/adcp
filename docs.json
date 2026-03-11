@@ -384,7 +384,7 @@
             "pages": [
               "docs/learning/overview",
               {
-                "group": "Foundations",
+                "group": "Basics (free)",
                 "pages": [
                   "docs/learning/foundations/a1-agentic-advertising",
                   "docs/learning/foundations/a2-protocol-architecture",
@@ -392,7 +392,7 @@
                 ]
               },
               {
-                "group": "Specialization tracks",
+                "group": "Role tracks",
                 "pages": [
                   "docs/learning/tracks/publisher",
                   "docs/learning/tracks/buyer",
@@ -400,12 +400,13 @@
                 ]
               },
               {
-                "group": "Specialist capstones",
+                "group": "Specialist modules",
                 "pages": [
                   "docs/learning/specialist/media-buy",
                   "docs/learning/specialist/creative",
                   "docs/learning/specialist/signals",
-                  "docs/learning/specialist/governance"
+                  "docs/learning/specialist/governance",
+                  "docs/learning/specialist/sponsored-intelligence"
                 ]
               }
             ]
@@ -744,7 +745,7 @@
             "pages": [
               "docs/learning/overview",
               {
-                "group": "Foundations",
+                "group": "Basics (free)",
                 "pages": [
                   "docs/learning/foundations/a1-agentic-advertising",
                   "docs/learning/foundations/a2-protocol-architecture",
@@ -752,7 +753,7 @@
                 ]
               },
               {
-                "group": "Specialization tracks",
+                "group": "Role tracks",
                 "pages": [
                   "docs/learning/tracks/publisher",
                   "docs/learning/tracks/buyer",
@@ -760,12 +761,13 @@
                 ]
               },
               {
-                "group": "Specialist capstones",
+                "group": "Specialist modules",
                 "pages": [
                   "docs/learning/specialist/media-buy",
                   "docs/learning/specialist/creative",
                   "docs/learning/specialist/signals",
-                  "docs/learning/specialist/governance"
+                  "docs/learning/specialist/governance",
+                  "docs/learning/specialist/sponsored-intelligence"
                 ]
               }
             ]

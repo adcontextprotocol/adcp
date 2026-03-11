@@ -78,7 +78,9 @@ import {
 import {
   CERTIFICATION_TOOLS,
   createCertificationToolHandlers,
+  buildCertificationContext,
 } from "../addie/mcp/certification-tools.js";
+import * as certDb from "../db/certification-db.js";
 import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
@@ -327,6 +329,8 @@ interface PreparedRequest {
   requestTools: RequestTools;
   siRetrievalTimeMs: number | null;
   siAgents: RetrievedSIAgent[];
+  hasCertificationContext: boolean;
+  threadExternalId: string;
 }
 
 interface SiSessionData {
@@ -438,6 +442,23 @@ async function prepareRequestWithMemberTools(
     );
   }
 
+  // Add certification module state so Addie remembers active modules
+  // even when conversation history is trimmed
+  let hasCertificationContext = false;
+  if (memberContext?.workos_user?.workos_user_id) {
+    try {
+      const progress = await certDb.getProgress(memberContext.workos_user.workos_user_id);
+      const inProgress = progress.filter(p => p.status === 'in_progress');
+      const certContext = await buildCertificationContext(inProgress, memberContext.workos_user.workos_user_id);
+      if (certContext) {
+        contextSections.push(certContext);
+        hasCertificationContext = true;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie Chat: Failed to get certification progress for context');
+    }
+  }
+
   const requestContext = contextSections.join('\n\n');
 
   // Anonymous users get no per-request tools (saves tokens and prevents data leakage)
@@ -449,6 +470,8 @@ async function prepareRequestWithMemberTools(
       requestTools: { tools: [], handlers: new Map() },
       siRetrievalTimeMs,
       siAgents: siRetrievalResult.agents,
+      hasCertificationContext: false,
+      threadExternalId,
     };
   }
 
@@ -469,7 +492,7 @@ async function prepareRequestWithMemberTools(
   // Certification tools (for authenticated users)
   if (userId) {
     allTools.push(...CERTIFICATION_TOOLS);
-    for (const [name, handler] of createCertificationToolHandlers(memberContext)) {
+    for (const [name, handler] of createCertificationToolHandlers(memberContext, { threadId: threadExternalId })) {
       combinedHandlers.set(name, handler);
     }
   }
@@ -538,6 +561,8 @@ async function prepareRequestWithMemberTools(
     requestTools,
     siRetrievalTimeMs,
     siAgents: siRetrievalResult.agents,
+    hasCertificationContext,
+    threadExternalId,
   };
 }
 
@@ -693,7 +718,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools: memberTools, hasCertificationContext } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -701,10 +726,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Process with Claude
+      // Process with Claude — certification sessions get more conversation history
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, { ...processOptions, requestContext });
+        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
+          ...processOptions,
+          requestContext,
+          maxMessages: hasCertificationContext ? 50 : undefined,
+        });
       } catch (error) {
         // Provide user-friendly error message based on error type
         let errorMessage: string;
@@ -924,7 +953,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools, siAgents } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools: memberTools, siAgents, hasCertificationContext: hasCertCtx } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -932,12 +961,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Stream the response
+      // Stream the response — certification sessions get more conversation history
       let fullText = '';
       let response;
       const toolsUsed: string[] = [];
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, { ...processOptions, requestContext })) {
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
+        ...processOptions,
+        requestContext,
+        maxMessages: hasCertCtx ? 50 : undefined,
+      })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
           logger.info("Addie Chat Stream: Breaking loop due to client disconnect");

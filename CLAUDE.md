@@ -255,7 +255,7 @@ mintlify dev               # Docs dev server (requires mintlify CLI)
 
 ## Certification Program
 
-AgenticAdvertising.org runs a three-tier certification program (Foundations → Practitioner → Specialist → Certified Expert) taught by Addie through interactive chat. Key files:
+AgenticAdvertising.org runs a three-tier certification program (Basics → Practitioner → Specialist) taught by Addie through interactive chat. Key files:
 
 - **Curriculum**: `server/src/addie/mcp/certification-tools.ts` (teaching tools, module resources, scoring)
 - **Database**: `server/src/db/certification-db.ts` (progress, credentials, tracks)

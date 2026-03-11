@@ -1,26 +1,26 @@
 ---
 title: "Buyer / brand track"
 sidebarTitle: Buyer track
-description: Orchestrate multi-agent buying workflows. Brand identity protocols, creative workflows, and sponsored intelligence.
+description: Orchestrate multi-agent buying workflows. Brand identity protocols, creative workflows, sponsored intelligence, and a build project.
 ---
 
-# Buyer / brand track (C1–C3)
+# Buyer / brand track (C1–C4)
 
 <Info>
-**Members only** — Requires A3 completion. Three modules, ~42 minutes total.
+**Members only** — Requires Basics credential (A1–A3). Four modules, ~105 minutes total.
 </Info>
 
-This track teaches you the demand side of AdCP. You'll learn how buyer agents orchestrate across multiple sellers, how brand identity and compliance protocols work, and how creative workflows and Sponsored Intelligence fit together.
+This track teaches you the demand side of AdCP. You'll learn how buyer agents orchestrate across multiple sellers, how brand identity and compliance protocols work, and how creative workflows and Sponsored Intelligence fit together. The track culminates in a build project where you create a working buyer agent.
 
 Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
 
 ---
 
-## C1: The buyer workflow and multi-agent orchestration
+## C1: Multi-agent buying and media planning
 
-**~15 min** | Prerequisite: A3
+**~20 min** | Prerequisite: A3
 
-How buyer agents orchestrate across multiple sales agents simultaneously: discovery, portfolio allocation, and measuring reach across publishers.
+How buyer agents orchestrate across multiple sales agents simultaneously: discovery, portfolio allocation, proposals, and measuring reach across publishers.
 
 ### Reading list
 
@@ -48,8 +48,9 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 ### Key concepts
 
 - **Multi-agent buying** — query multiple sellers in parallel, compare, allocate, execute
-- **Orchestration pattern** — discover → evaluate → allocate → execute → monitor
-- **Cross-publisher measurement** — aggregating reach, frequency, and performance across sellers
+- **Orchestration pattern** — discover, evaluate, allocate, execute, monitor
+- **Audience targeting** — `sync_audiences` for custom segments
+- **Account setup** — `sync_accounts` to establish billing before buying
 
 <Card title="Start C1 with Addie" icon="play" href="https://agenticadvertising.org/addie">
   "I'd like to start certification module C1."
@@ -57,9 +58,9 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 
 ---
 
-## C2: Brand identity and compliance protocols
+## C2: Brand identity, compliance, and safety
 
-**~12 min** | Prerequisite: C1
+**~20 min** | Prerequisite: C1
 
 The Brand Protocol (`brand.json`), content standards, and how brand agents enforce guidelines across automated buying.
 
@@ -90,7 +91,8 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
 
 - **Brand identity protocol** — `brand.json` at `/.well-known/adcp/brand.json` declares brand identity
 - **Content standards** — automated compliance checking via MCP-based brand agents
-- **Supply chain preferences** — suitability, safety, and sustainability requirements that propagate through the buying chain
+- **The Oracle model** — using AI to evaluate brand safety at scale
+- **Supply chain preferences** — suitability, safety, and sustainability requirements
 
 <Card title="Start C2 with Addie" icon="play" href="https://agenticadvertising.org/addie">
   "I'd like to start certification module C2."
@@ -98,11 +100,11 @@ The Brand Protocol (`brand.json`), content standards, and how brand agents enfor
 
 ---
 
-## C3: Creative workflows and sponsored intelligence
+## C3: Creative workflows
 
-**~15 min** | Prerequisite: C2
+**~20 min** | Prerequisite: C2
 
-How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sync_creatives`. Cross-platform adaptation. The Sponsored Intelligence Protocol for conversational AI placements.
+How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sync_creatives`. Cross-platform adaptation and the Sponsored Intelligence Protocol.
 
 ### Reading list
 
@@ -132,7 +134,7 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 ### Key concepts
 
-- **Creative lifecycle** — `build_creative` → `preview_creative` → `sync_creatives`
+- **Creative lifecycle** — `build_creative`, `preview_creative`, `sync_creatives`
 - **Cross-platform adaptation** — creative agents adapt assets across display, video, audio, native formats
 - **Sponsored Intelligence** — brands participate in conversational AI with transparency and user control
 
@@ -142,11 +144,46 @@ How creative assets flow through AdCP: `build_creative`, `preview_creative`, `sy
 
 ---
 
+## C4: Build project — your first buyer agent
+
+**~45 min** | Prerequisite: C3
+
+Create a working buyer agent that discovers products and executes media buys. Use any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. The skill tested is orchestrating a buying workflow correctly.
+
+### What you'll build
+
+- Account setup with `sync_accounts`
+- Product discovery from at least 2 sellers
+- Media buy creation with targeting and budget
+- Creative sync with at least 1 format
+- Campaign monitoring via delivery reporting
+
+### Assessment rubric
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Specification quality | 20% | Can you specify a buying workflow in AdCP terms? |
+| Schema compliance | 25% | Agent requests and responses validate against schemas |
+| Error handling | 15% | Handles seller errors and async responses |
+| Design rationale | 20% | Can you explain orchestration and buying strategy? |
+| Extension ability | 20% | Can you extend the agent with new buying capabilities? |
+
+Passing threshold: 70%.
+
+Any AI coding assistant is welcome. The build must demonstrate cross-role interaction.
+
+<Card title="Start C4 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module C4."
+</Card>
+
+---
+
 ## What's next
 
-After completing C1–C3, you've earned the **AdCP practitioner** credential. From here you can pursue specialist capstones:
+After completing C1–C4, you've earned the **AdCP practitioner** credential. From here you can pursue specialist modules:
 
-- [Media buy specialist](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
-- [Creative specialist](/docs/learning/specialist/creative) — asset workflows, format compliance
-- [Signals specialist](/docs/learning/specialist/signals) — measurement, attribution, optimization
-- [Governance specialist](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S1: Media buy](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [S2: Creative](/docs/learning/specialist/creative) — asset workflows, format compliance
+- [S3: Signals](/docs/learning/specialist/signals) — measurement, attribution, optimization
+- [S4: Governance](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S5: Sponsored Intelligence](/docs/learning/specialist/sponsored-intelligence) — conversational brand experiences

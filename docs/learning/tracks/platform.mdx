@@ -1,26 +1,26 @@
 ---
 title: "Platform / intermediary track"
 sidebarTitle: Platform track
-description: Build AdCP infrastructure — MCP server architecture, supply path and agent trust, RTB migration patterns.
+description: Build AdCP infrastructure — MCP server architecture, supply path and agent trust, RTB migration patterns, and a build project.
 ---
 
-# Platform / intermediary track (D1–D3)
+# Platform / intermediary track (D1–D4)
 
 <Info>
-**Members only** — Requires A3 completion. Three modules, ~39 minutes total.
+**Members only** — Requires Basics credential (A1–A3). Four modules, ~105 minutes total.
 </Info>
 
-This track is for people building AdCP infrastructure: ad tech platforms, exchanges, data companies, and anyone connecting the ecosystem. You'll learn MCP server architecture, supply chain verification, and how to migrate existing programmatic infrastructure to AdCP.
+This track is for people building AdCP infrastructure: ad tech platforms, exchanges, data companies, and anyone connecting the ecosystem. You'll learn MCP server architecture, supply chain verification, RTB migration, and build working infrastructure in the build project.
 
 Completing this track (plus A1–A3) earns the **AdCP practitioner** credential.
 
 ---
 
-## D1: Implementing AdCP — MCP server architecture
+## D1: MCP server architecture
 
-**~15 min** | Prerequisite: A3
+**~20 min** | Prerequisite: A3
 
-Technical deep dive on building an AdCP-compliant MCP server. Transport options (SSE, Streamable HTTP), tool definition patterns, OAuth/authorization flows.
+Technical deep dive on building an AdCP-compliant MCP server. Transport options (SSE, Streamable HTTP), tool definition patterns, OAuth/authorization flows, and account management.
 
 ### Reading list
 
@@ -49,7 +49,8 @@ Technical deep dive on building an AdCP-compliant MCP server. Transport options 
 
 - **MCP server architecture** — exposing AdCP tasks as tools, handling auth, request routing
 - **Transport options** — Streamable HTTP for most cases, SSE for real-time updates
-- **OAuth and agent trust** — tokens, permissions, cross-organization authentication
+- **Capability advertising** — `get_adcp_capabilities` so other agents know what you support
+- **Account handling** — managing incoming `sync_accounts` from buyers
 
 <Card title="Start D1 with Addie" icon="play" href="https://agenticadvertising.org/addie">
   "I'd like to start certification module D1."
@@ -57,9 +58,9 @@ Technical deep dive on building an AdCP-compliant MCP server. Transport options 
 
 ---
 
-## D2: Supply path and agent trust
+## D2: Supply path, trust, and property governance
 
-**~12 min** | Prerequisite: D1
+**~20 min** | Prerequisite: D1
 
 Cryptographic signatures for supply chain verification. How platforms validate agent identity, detect fraud, and ensure trust. The relationship between AdCP and ads.cert.
 
@@ -98,9 +99,9 @@ Cryptographic signatures for supply chain verification. How platforms validate a
 
 ---
 
-## D3: RTB migration patterns
+## D3: RTB coexistence and migration
 
-**~12 min** | Prerequisite: D2
+**~20 min** | Prerequisite: D2
 
 How AdCP coexists with existing programmatic infrastructure. Migration strategies for DSPs, SSPs, and exchanges. Running parallel systems during transition.
 
@@ -139,11 +140,44 @@ How AdCP coexists with existing programmatic infrastructure. Migration strategie
 
 ---
 
+## D4: Build project — AdCP infrastructure
+
+**~45 min** | Prerequisite: D3
+
+Build working AdCP infrastructure using any AI coding assistant (Claude Code, Cursor, Copilot) with the adcp client library. This is the most ambitious build project.
+
+### What you'll build
+
+- MCP server with AdCP tool definitions
+- `get_adcp_capabilities` implementation
+- At least 3 AdCP tasks exposed as tools
+- OAuth/authentication flow
+- Proper error handling with AdCP error codes
+
+### Assessment rubric
+
+| Dimension | Weight | What Addie evaluates |
+|-----------|--------|---------------------|
+| Specification quality | 20% | Can you specify infrastructure in AdCP terms? |
+| Schema compliance | 20% | Protocol compliance across all endpoints |
+| Error handling | 15% | Proper error handling with recovery types and async |
+| Design rationale | 25% | Can you reason about production architecture? |
+| Extension ability | 20% | Can you extend the endpoint with new tasks? |
+
+Passing threshold: 70%.
+
+<Card title="Start D4 with Addie" icon="play" href="https://agenticadvertising.org/addie">
+  "I'd like to start certification module D4."
+</Card>
+
+---
+
 ## What's next
 
-After completing D1–D3, you've earned the **AdCP practitioner** credential. From here you can pursue any specialist capstone:
+After completing D1–D4, you've earned the **AdCP practitioner** credential. From here you can pursue specialist modules:
 
-- [Media buy specialist](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
-- [Creative specialist](/docs/learning/specialist/creative) — asset workflows, format compliance
-- [Signals specialist](/docs/learning/specialist/signals) — measurement, attribution, optimization
-- [Governance specialist](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S1: Media buy](/docs/learning/specialist/media-buy) — transaction flows, pricing, orchestration
+- [S2: Creative](/docs/learning/specialist/creative) — asset workflows, format compliance
+- [S3: Signals](/docs/learning/specialist/signals) — measurement, attribution, optimization
+- [S4: Governance](/docs/learning/specialist/governance) — brand safety, compliance, content standards
+- [S5: Sponsored Intelligence](/docs/learning/specialist/sponsored-intelligence) — conversational brand experiences
