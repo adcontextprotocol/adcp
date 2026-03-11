@@ -105,6 +105,7 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
+import { summarizeToolCalls } from "../addie/prompts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -654,13 +655,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Get conversation history for context
-      const messages = await threadService.getThreadMessages(thread.thread_id);
-      const history: ConversationMessage[] = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
 
       // Save user message
       await threadService.addMessage({
@@ -672,11 +667,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context from history (last N messages)
-      const contextMessages = history.slice(-10).map((m) => ({
-        user: m.role === "user" ? "User" : "Addie",
-        text: m.content,
-      }));
+      // Build context from history (last N messages), including tool result summaries
+      const contextMessages = threadMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10)
+        .map((m) => ({
+          user: m.role === "user" ? "User" : "Addie",
+          text: m.content + summarizeToolCalls(m.tool_calls),
+        }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,
       // authenticated gets Sonnet + full tools
@@ -885,13 +883,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       sendEvent("meta", { conversation_id: externalId });
 
       // Get conversation history
-      const messages = await threadService.getThreadMessages(thread.thread_id);
-      const history: ConversationMessage[] = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
 
       // Save user message
       await threadService.addMessage({
@@ -903,11 +895,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context messages
-      const contextMessages = history.slice(-10).map((m) => ({
-        user: m.role === "user" ? "User" : "Addie",
-        text: m.content,
-      }));
+      // Build context messages, including tool result summaries
+      const contextMessages = threadMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10)
+        .map((m) => ({
+          user: m.role === "user" ? "User" : "Addie",
+          text: m.content + summarizeToolCalls(m.tool_calls),
+        }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,
       // authenticated gets Sonnet + full tools
