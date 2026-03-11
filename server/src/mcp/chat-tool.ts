@@ -89,7 +89,9 @@ function getChatClient(): AddieClaudeClient {
 
     chatClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
 
-    // Register only safe knowledge tools (no Slack, no writes)
+    // Register knowledge + directory tools for MCP callers.
+    // MCP chat_with_addie keeps knowledge tools because MCP partners use Sonnet,
+    // unlike web chat anonymous users who get Haiku (see addie-chat.ts).
     const knowledgeHandlers = createKnowledgeToolHandlers();
     for (const tool of KNOWLEDGE_TOOLS) {
       if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
