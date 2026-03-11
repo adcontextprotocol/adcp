@@ -168,7 +168,7 @@ async function initializeChatClient(): Promise<void> {
 
   const knowledgeHandlers = createKnowledgeToolHandlers();
 
-  // Register only anonymous-safe knowledge tools globally on the client.
+  // Register anonymous-safe knowledge tools globally on the client.
   // These are available to all users (anonymous and authenticated).
   for (const tool of KNOWLEDGE_TOOLS) {
     if (ANONYMOUS_SAFE_TOOLS.has(tool.name)) {
@@ -179,8 +179,27 @@ async function initializeChatClient(): Promise<void> {
     }
   }
 
+  // Register directory tools globally (public data, safe for anonymous users).
+  // Matches chat-tool.ts which also treats these as anonymous-safe.
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register search_members globally so anonymous users get the rich card UI.
+  // The handler uses memberContext only for analytics attribution (null-safe).
+  const anonMemberHandlers = createMemberToolHandlers(null);
+  const searchMembersTool = MEMBER_TOOLS.find(t => t.name === 'search_members');
+  const searchMembersHandler = anonMemberHandlers.get('search_members');
+  if (searchMembersTool && searchMembersHandler) {
+    claudeClient.registerTool(searchMembersTool, searchMembersHandler);
+  }
+
   // Build authenticated-only tools (cached, reused per request).
-  // Includes: non-anonymous knowledge tools, billing, schema, directory, brand, property.
+  // Includes: non-anonymous knowledge tools, billing, schema, brand, property.
   const authTools: typeof KNOWLEDGE_TOOLS = [];
   const authHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -209,16 +228,6 @@ async function initializeChatClient(): Promise<void> {
   const schemaHandlers = createSchemaToolHandlers();
   for (const tool of SCHEMA_TOOLS) {
     const handler = schemaHandlers.get(tool.name);
-    if (handler) {
-      authTools.push(tool);
-      authHandlers.set(tool.name, handler);
-    }
-  }
-
-  // Directory tools (search members, list agents, lookup domains)
-  const directoryHandlers = createDirectoryToolHandlers();
-  for (const tool of DIRECTORY_TOOLS) {
-    const handler = directoryHandlers.get(tool.name);
     if (handler) {
       authTools.push(tool);
       authHandlers.set(tool.name, handler);
