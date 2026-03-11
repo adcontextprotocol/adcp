@@ -10,6 +10,7 @@
  * - search_repos: Public GitHub repos (OpenRTB, MCP, A2A specs, etc.)
  * - search_resources, get_recent_news: Curated public content
  * - Directory tools: Public member/agent/publisher info
+ * - search_members: Rich card-based member search (public profiles only)
  *
  * NOT available to anonymous (require Slack membership):
  * - search_slack, get_channel_activity: Internal community discussions
@@ -27,6 +28,10 @@ import {
   DIRECTORY_TOOLS,
   createDirectoryToolHandlers,
 } from '../addie/mcp/directory-tools.js';
+import {
+  MEMBER_TOOLS,
+  createMemberToolHandlers,
+} from '../addie/mcp/member-tools.js';
 import { createLogger } from '../logger.js';
 import type { AddieTool } from '../addie/types.js';
 
@@ -104,6 +109,14 @@ function getChatClient(): AddieClaudeClient {
       if (handler) {
         chatClient.registerTool(tool, handler);
       }
+    }
+
+    // Register search_members for rich card-based member search (null-safe for anonymous)
+    const anonMemberHandlers = createMemberToolHandlers(null);
+    const searchMembersTool = MEMBER_TOOLS.find(t => t.name === 'search_members');
+    const searchMembersHandler = anonMemberHandlers.get('search_members');
+    if (searchMembersTool && searchMembersHandler) {
+      chatClient.registerTool(searchMembersTool, searchMembersHandler);
     }
 
     logger.info({ tools: chatClient.getRegisteredTools() }, 'MCP Chat: Client initialized');

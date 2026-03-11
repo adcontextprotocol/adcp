@@ -1,0 +1,208 @@
+---
+title: Private assets
+description: How to use assets from private storage, internal DAMs, or authenticated sources with AdCP creative workflows
+---
+
+
+AdCP does not include an asset upload task. Creative agents are not expected to accept file uploads or manage storage on behalf of buyers. Instead, buyer agents are responsible for hosting their own assets and providing accessible URLs in [creative manifests](/docs/creative/creative-manifests).
+
+When assets live in private storage — an internal DAM, a private S3 bucket, or behind authentication — the buyer agent must make them accessible before passing URLs in a manifest.
+
+## Presigned URLs
+
+The recommended pattern is **presigned URLs**. Most cloud storage providers support generating time-limited URLs that grant temporary read access without requiring authentication headers.
+
+### How it works
+
+1. Buyer agent receives or locates a private asset (e.g., a brand logo in S3)
+2. Buyer agent generates a presigned URL with a short expiration
+3. Buyer agent passes the presigned URL in the creative manifest
+4. Creative agent fetches the asset like any other public URL
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creatives.example.com",
+    "id": "display_static",
+    "width": 300,
+    "height": 250
+  },
+  "assets": {
+    "banner_image": {
+      "url": "https://my-bucket.s3.amazonaws.com/brand/logo.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=...",
+      "width": 300,
+      "height": 250
+    },
+    "headline": {
+      "content": "Spring collection"
+    },
+    "clickthrough_url": {
+      "url": "https://shop.example.com/spring"
+    }
+  }
+}
+```
+
+<Note>
+The only difference from a standard manifest is the URL itself. The `banner_image.url` contains presigned query parameters (`X-Amz-Algorithm`, `X-Amz-Expires`, `X-Amz-Signature`). No other fields change.
+</Note>
+
+### Provider examples
+
+<CodeGroup>
+
+```javascript AWS S3
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+const client = new S3Client({ region: "us-east-1" });
+
+const url = await getSignedUrl(
+  client,
+  new GetObjectCommand({
+    Bucket: "my-brand-assets",
+    Key: "logos/primary.png",
+  }),
+  { expiresIn: 3600 } // 1 hour
+);
+```
+
+```javascript Google Cloud Storage
+import { Storage } from "@google-cloud/storage";
+
+const storage = new Storage();
+
+const [url] = await storage
+  .bucket("my-brand-assets")
+  .file("logos/primary.png")
+  .getSignedUrl({
+    action: "read",
+    expires: Date.now() + 3600 * 1000, // 1 hour
+  });
+```
+
+```javascript Cloudflare R2
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+const client = new S3Client({
+  region: "auto",
+  endpoint: "https://<account-id>.r2.cloudflarestorage.com",
+});
+
+const url = await getSignedUrl(
+  client,
+  new GetObjectCommand({
+    Bucket: "my-brand-assets",
+    Key: "logos/primary.png",
+  }),
+  { expiresIn: 3600 }
+);
+```
+
+```javascript Azure Blob Storage
+import { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } from "@azure/storage-blob";
+
+const credential = new StorageSharedKeyCredential(accountName, accountKey);
+
+const sasToken = generateBlobSASQueryParameters({
+  containerName: "brand-assets",
+  blobName: "logos/primary.png",
+  permissions: BlobSASPermissions.parse("r"),
+  expiresOn: new Date(Date.now() + 3600 * 1000), // 1 hour
+}, credential).toString();
+
+const url = `https://${accountName}.blob.core.windows.net/brand-assets/logos/primary.png?${sasToken}`;
+```
+
+</CodeGroup>
+
+## Expiration guidelines
+
+Set presigned URL expiration long enough to cover the full workflow, but no longer than necessary.
+
+| Workflow | Suggested expiration |
+| --- | --- |
+| [`build_creative`](/docs/creative/task-reference/build_creative) only | 1 hour |
+| [`build_creative`](/docs/creative/task-reference/build_creative) + [`preview_creative`](/docs/creative/task-reference/preview_creative) | 2 hours |
+| Full pipeline (build, preview, iterate, [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives)) | 4 hours |
+
+<Warning>
+If a presigned URL expires mid-workflow, the creative agent will receive an HTTP error when fetching the asset. The buyer agent must generate a new presigned URL and resubmit the request.
+</Warning>
+
+For assets that will be served at scale (e.g., a logo used across many impressions), use a CDN with long-lived public URLs instead of presigned URLs. Presigned query parameters defeat CDN caching since each generated URL is unique.
+
+## Uploading local files
+
+For assets that don't already live in cloud storage — local files, Slack attachments, email attachments — the buyer agent should upload them to its own storage first, then generate a presigned URL.
+
+<CodeGroup>
+
+```javascript AWS S3
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { readFile } from "fs/promises";
+
+const client = new S3Client({ region: "us-east-1" });
+
+// Upload the local file
+const fileBuffer = await readFile("./assets/logo.png");
+await client.send(new PutObjectCommand({
+  Bucket: "my-brand-assets",
+  Key: "logos/primary.png",
+  Body: fileBuffer,
+  ContentType: "image/png",
+}));
+
+// Generate a presigned URL for the creative agent to fetch
+const url = await getSignedUrl(
+  client,
+  new GetObjectCommand({
+    Bucket: "my-brand-assets",
+    Key: "logos/primary.png",
+  }),
+  { expiresIn: 3600 }
+);
+```
+
+```javascript Google Cloud Storage
+import { Storage } from "@google-cloud/storage";
+
+const storage = new Storage();
+const bucket = storage.bucket("my-brand-assets");
+
+// Upload the local file
+await bucket.upload("./assets/logo.png", {
+  destination: "logos/primary.png",
+  contentType: "image/png",
+});
+
+// Generate a presigned URL for the creative agent to fetch
+const [url] = await bucket
+  .file("logos/primary.png")
+  .getSignedUrl({
+    action: "read",
+    expires: Date.now() + 3600 * 1000,
+  });
+```
+
+</CodeGroup>
+
+## Why not auth headers?
+
+AdCP manifests are declarative data passed between agents as JSON. Adding per-URL authentication headers would mean sharing storage credentials across trust boundaries — every system that touches the manifest (creative agent, preview service, ad server, logging infrastructure) would need to handle those credentials securely.
+
+Presigned URLs avoid this by encoding authorization into the URL itself:
+
+- Scoped to a single object with read-only access
+- Time-limited with built-in expiration
+- No credential forwarding required
+- Revocation is automatic (the URL expires)
+
+## Related
+
+- [Creative manifests](/docs/creative/creative-manifests) — manifest structure and asset references
+- [Asset types](/docs/creative/asset-types) — requirements for each asset type
+- [`build_creative`](/docs/creative/task-reference/build_creative) — generating creatives from manifests
+- [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) — syncing creatives to a media buy
