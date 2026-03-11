@@ -241,7 +241,7 @@ app.post('/webhooks/adcp', (req, res) => {
 
 ### HMAC-SHA256 (recommended for production)
 
-The publisher signs each request with a shared secret. You verify the signature on receipt.
+The publisher signs each request with a shared secret and includes a timestamp for replay protection. You verify both the signature and the timestamp on receipt.
 
 **Configuration:**
 ```json
@@ -253,31 +253,88 @@ The publisher signs each request with a shared secret. You verify the signature 
 }
 ```
 
-**Publisher sends:**
+**Publisher sends two headers:**
 ```
-X-ADCP-Signature: <hex digest>
+X-ADCP-Signature: sha256=<hex digest>
+X-ADCP-Timestamp: <unix timestamp in seconds>
 ```
 
-Signature is computed as: `HMAC-SHA256(secret, rawBody)`
+**Signature algorithm:**
 
-**Verifying on your server:**
+The signed message is `{unix_timestamp}.{raw_json_body}` — the Unix timestamp (in seconds), a dot, then the exact JSON bytes being sent in the HTTP body.
+
+```
+Signature = sha256= + hex( HMAC-SHA256( secret, "{timestamp}.{rawBody}" ) )
+```
+
+The `rawBody` **must** be the exact bytes sent on the wire. Implementations must sign the same serialization that goes in the HTTP body — signing a re-serialized or reformatted version of the payload will cause verification failures.
+
+**Publisher implementation (signing):**
 ```typescript
 import { createHmac } from 'crypto';
 
-function verifyWebhook(payload: string, signature: string, secret: string): boolean {
-  const expected = createHmac('sha256', secret).update(payload).digest('hex');
-  return expected === signature;
+function signWebhook(rawBody: string, secret: string): { signature: string; timestamp: string } {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const message = `${timestamp}.${rawBody}`;
+  const hex = createHmac('sha256', secret).update(message).digest('hex');
+  return {
+    signature: `sha256=${hex}`,
+    timestamp,
+  };
+}
+```
+
+**Receiver implementation (verification):**
+```typescript
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifyWebhook(
+  rawBody: string,
+  signature: string,
+  timestamp: string,
+  secret: string,
+): boolean {
+  const ts = parseInt(timestamp, 10);
+  if (isNaN(ts)) return false;
+
+  // Reject requests older than 5 minutes (replay attack prevention)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > 300) return false;
+
+  const message = `${ts}.${rawBody}`;
+  const expected = `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
+
+  if (signature.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
 app.post('/webhooks/adcp', (req, res) => {
   const sig = req.headers['x-adcp-signature'] as string;
-  if (!sig || !verifyWebhook(req.rawBody, sig, process.env.ADCP_WEBHOOK_SECRET)) {
+  const timestamp = req.headers['x-adcp-timestamp'] as string;
+  if (!sig || !timestamp || !verifyWebhook(req.rawBody, sig, timestamp, process.env.ADCP_WEBHOOK_SECRET)) {
     return res.status(401).end();
   }
   processWebhook(req.body);
   res.status(200).end();
 });
 ```
+
+:::caution Important: raw body verification
+Always verify the signature against the **raw HTTP body bytes**, not a re-serialized version of the parsed JSON. Different languages and libraries may produce different JSON serializations (key ordering, whitespace, number formatting). Capture the raw body before JSON parsing and use those exact bytes for HMAC verification.
+
+In Express, use the `verify` callback on `express.json()` to capture the raw body:
+```typescript
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as any).rawBody = buf.toString('utf-8');
+  },
+}));
+```
+:::
+
+:::note Replay protection
+The 5-minute timestamp window prevents replay attacks. Publishers must use Unix timestamps in seconds (not ISO 8601) in the `X-ADCP-Timestamp` header. Receivers should reject requests where `|current_time - timestamp| > 300` seconds.
+:::
 
 ## Reliability
 
