@@ -69,7 +69,7 @@ import {
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE, summarizeToolCalls } from './prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -1119,7 +1119,7 @@ async function handleUserMessage({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -1583,7 +1583,7 @@ async function handleAppMention({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -2276,7 +2276,7 @@ async function handleDirectMessage(
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -2578,7 +2578,7 @@ async function handleActiveThreadReply({
         .slice(-MAX_DB_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -3648,7 +3648,7 @@ async function handleReactionAdded({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
