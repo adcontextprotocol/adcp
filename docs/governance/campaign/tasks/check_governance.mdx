@@ -221,6 +221,7 @@ The presence of `next_check` in a response is the signal that the governance age
   "check_id": "chk_001",
   "status": "approved",
   "binding": "proposed",
+  "mode": "enforce",
   "plan_id": "plan_q1_2026_launch",
   "buyer_campaign_ref": "q1-2026-spring-launch",
   "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
@@ -276,7 +277,6 @@ The seller continues delivery and schedules the next governance check for `next_
   "findings": [
     {
       "category_id": "strategic_alignment",
-      "policy_id": "eu_gdpr_advertising",
       "severity": "critical",
       "explanation": "Geo targeting includes CA but plan only covers US.",
       "details": {
@@ -304,6 +304,7 @@ The orchestrator MUST NOT send the tool call to the seller.
     {
       "category_id": "strategic_alignment",
       "severity": "critical",
+      "confidence": 0.98,
       "explanation": "Geo distribution shows 12% delivery in CA, but plan only covers US.",
       "details": {
         "plan_countries": ["US"],
@@ -385,7 +386,8 @@ The seller MUST adjust pacing and re-call `check_governance` immediately. The `n
   "escalation": {
     "reason": "Budget reallocation exceeds plan threshold. A human stakeholder must approve before the seller can proceed.",
     "severity": "critical",
-    "requires_human": true
+    "requires_human": true,
+    "approval_tier": "director"
   }
 }
 ```
@@ -434,9 +436,10 @@ The caller MUST NOT proceed. The action is halted until a human resolves the esc
 | `plan_id` | string | Echoed from request. |
 | `buyer_campaign_ref` | string | Echoed from request. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. |
+| `findings` | array | Per-category issues found. Present when status is `denied`, `conditions`, or `escalated`. MAY also be present on `approved` for advisory findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. |
 | `conditions` | array | Present when status is `conditions`. Adjustments the caller must make before re-calling. |
-| `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, and `requires_human`. |
+| `mode` | enum | The governance mode under which this check was evaluated (`audit`, `advisory`, or `enforce`). Present so audit trails can distinguish advisory denials from enforced denials. |
+| `escalation` | object | Present when status is `escalated`. Contains `reason`, `severity`, `requires_human`, and optionally `approval_tier` (the organizational role required to resolve, e.g., `"manager"`, `"director"`, `"legal"`). |
 | `expires_at` | string | Present when status is `approved` or `conditions`. The caller must act before this time or re-call. A lapsed approval is no approval. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
 

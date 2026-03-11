@@ -66,40 +66,97 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
 
 The `mix_targets` field defines acceptable allocation ranges. The governance agent validates that aggregate spend across all media buys stays within these ranges. A `create_media_buy` that would push video spend above 70% of total budget triggers a `conditions` or `escalated` status.
 
+### Delegations
+
+Plans can include a `delegations` array that specifies which agents are authorized to execute against the plan and with what constraints. This makes the principal-agent relationship between brand and agency explicit in the protocol.
+
+```json
+{
+  "plan_id": "plan_q1_2026_launch",
+  "brand": { "domain": "acmecorp.com" },
+  "delegations": [
+    {
+      "agent_url": "https://buying.pinnacle-media.com",
+      "authority": "full",
+      "budget_limit": { "amount": 300000, "currency": "USD" },
+      "markets": ["FR", "DE", "GB"],
+      "expires_at": "2026-06-30T00:00:00Z"
+    },
+    {
+      "agent_url": "https://buying.nova-agency.com",
+      "authority": "execute_only",
+      "markets": ["US"],
+      "expires_at": "2026-06-30T00:00:00Z"
+    }
+  ]
+}
+```
+
+Authority levels:
+
+| Level | Meaning |
+|-------|---------|
+| `full` | Can execute any action within the delegation's budget and market constraints |
+| `execute_only` | Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget |
+| `propose_only` | Can propose actions for governance review but cannot execute without explicit approval |
+
+When delegations are present, the governance agent validates that the `caller` URL in `check_governance` matches a delegation's `agent_url` before approving actions. Matching is by exact URI comparison (case-sensitive, after normalization per RFC 3986). An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
+
+When delegations are absent, the governance agent does not restrict which agents can act on the plan.
+
+### Portfolio governance
+
+For holding companies and multi-brand organizations, a plan can include a `portfolio` object that defines cross-brand constraints. Portfolio plans govern member plans -- any action validated against a member plan is also validated against the portfolio plan's constraints.
+
+```json
+{
+  "plan_id": "portfolio_q1_2026_global",
+  "brand": { "domain": "acmecorp.com" },
+  "objectives": "Global Q1 media governance across all Acme brands",
+  "budget": { "total": 50000000, "currency": "USD", "authority_level": "agent_limited" },
+  "flight": { "start": "2026-01-01T00:00:00Z", "end": "2026-06-30T00:00:00Z" },
+  "countries": ["US", "GB", "FR", "DE", "JP"],
+  "portfolio": {
+    "member_plan_ids": ["plan_sparkle_q1", "plan_glow_q1", "plan_nova_q1"],
+    "total_budget_cap": { "amount": 50000000, "currency": "USD" },
+    "shared_policy_ids": ["eu_gdpr_advertising", "eu_ai_act_article_50"],
+    "shared_exclusions": [
+      "No advertising on properties owned by competitor holding companies"
+    ]
+  }
+}
+```
+
+Portfolio constraints:
+
+- **`total_budget_cap`**: Maximum aggregate spend across all member plans. The governance agent tracks committed budget across all member plans and denies actions that would exceed the cap.
+- **`shared_policy_ids`**: Registry policies enforced across all member plans, regardless of individual brand compliance configuration. Corporate-level regulations that no brand team can override.
+- **`shared_exclusions`**: Natural language exclusion rules applied to all member plans.
+
+The governance agent validates member plan actions against both the member plan's own constraints and the portfolio plan's constraints. A denial from either level blocks the action.
+
+When a portfolio plan references a `member_plan_id` that the governance agent does not yet recognize, the governance agent SHOULD accept the portfolio plan and begin enforcing portfolio constraints as member plans are synced. This allows portfolio plans to be synced before their member plans without requiring a specific ordering.
+
+<Note>
+**Concurrency**: An orchestrator may send `create_media_buy` requests to multiple sellers simultaneously, each triggering a `committed` check. The governance agent SHOULD use optimistic concurrency control or budget reservation to prevent concurrent approvals that together exceed the plan budget.
+</Note>
+
 ## Brand compliance configuration
 
 Compliance policies live at the brand level, not in individual campaign plans. The brand's policy team configures the brand's compliance profile, and the governance agent resolves it when processing plans for that brand.
 
 <Note>
-The brand.json schema extension for compliance configuration is a separate effort. The following is an illustrative, non-normative example of what the configuration would contain.
+The schema and hosting mechanism for brand compliance configuration are under development by the AgenticAdvertising.org Governance Working Group. The following describes the conceptual model; implementations may vary.
 </Note>
 
-The brand compliance configuration contains two kinds of policies:
+A brand's compliance configuration contains two kinds of policies:
 
-- **Registry policies**: References to standardized policies in the AdCP policy registry, identified by ID. Each reference MAY include configuration parameters that customize the policy for the brand.
-- **Custom policies**: Brand-specific rules that are not in the registry.
-
-```json
-{
-  "compliance": {
-    "registry_policies": [
-      { "policy_id": "age_gating_18_plus" },
-      { "policy_id": "uk_hfss_restrictions" },
-      { "policy_id": "viewability_required", "config": { "channels": ["olv", "ctv"] } }
-    ],
-    "custom_policies": [
-      "Do not run adjacent to competitor brands in the beverage category"
-    ],
-    "verticals": ["cpg", "beverage"]
-  }
-}
-```
+- **Registry policies**: References to standardized policies in the [AdCP policy registry](/docs/governance/policy-registry), identified by ID. Each reference MAY include configuration parameters that customize the policy for the brand.
+- **Custom policies**: Brand-specific rules expressed as natural language strings, evaluated by the governance agent using the same approach as [prompt-based policies](/docs/governance/overview#prompt-based-policies).
 
 The policy team selects registry policies that apply to the brand, configures parameters where needed, and adds any custom policies specific to the brand. The buying team never interacts with this configuration -- they create campaign plans that reference the brand, and the governance agent resolves applicable policies automatically.
 
-Custom policies are natural language strings evaluated by the governance agent using the same approach as [prompt-based policies](/docs/governance/overview#prompt-based-policies) in the Governance Protocol. Unlike registry policies, they are not machine-readable in a structured sense and require AI interpretation. The registry is the preferred mechanism; custom policies exist for brand-specific rules that do not yet have standardized equivalents.
-
-The `verticals` field declares the brand's industry verticals. The governance agent uses this to match vertical-specific registry policies -- for example, a brand declaring `"beverage"` would automatically receive any registry policies tagged for the beverage vertical.
+The brand's industry verticals inform automatic policy matching -- for example, a brand in the beverage vertical would receive any registry policies tagged for that vertical.
 
 ## Policy registry
 
@@ -166,6 +223,55 @@ This ensures budget tracking reflects reality. If a seller reduces the budget fr
 
 A `committed` approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 
+### Drift detection
+
+The audit log includes `drift_metrics` that surface aggregate governance trends over the plan's lifetime:
+
+```json
+{
+  "summary": {
+    "checks_performed": 847,
+    "drift_metrics": {
+      "escalation_rate": 0.03,
+      "escalation_rate_trend": "declining",
+      "auto_approval_rate": 0.91,
+      "human_override_rate": 0.02,
+      "mean_confidence": 0.88
+    }
+  }
+}
+```
+
+These metrics detect oversight drift -- the gradual migration of control away from humans. A declining escalation rate may indicate the governance agent is well-calibrated, or it may indicate that oversight is eroding. Surfacing the trend lets the organization make that judgment.
+
+| Metric | What it measures |
+|--------|-----------------|
+| `escalation_rate` | Fraction of checks that resulted in escalation |
+| `escalation_rate_trend` | Direction over the plan's lifetime (`increasing`, `stable`, `declining`) |
+| `auto_approval_rate` | Fraction of checks approved without human intervention |
+| `human_override_rate` | Fraction of escalations where the human overrode the governance agent |
+| `mean_confidence` | Average confidence score across findings (when confidence is reported) |
+
+Organizations can set thresholds on drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding (severity `warning`) on the next governance check:
+
+```json
+{
+  "drift_metrics": {
+    "escalation_rate": 0.01,
+    "escalation_rate_trend": "declining",
+    "auto_approval_rate": 0.97,
+    "thresholds": {
+      "escalation_rate_min": 0.02,
+      "auto_approval_rate_max": 0.95
+    }
+  }
+}
+```
+
+In this example, both thresholds are breached -- the escalation rate (0.01) is below the minimum (0.02) and the auto-approval rate (0.97) exceeds the maximum (0.95). This could indicate that the governance agent is approving too broadly, or that policies are well-calibrated for a low-risk campaign. The threshold breach surfaces the question; the organization decides the answer.
+
+Organizations set only the thresholds relevant to their concern. An `escalation_rate_min` catches oversight erosion; an `escalation_rate_max` catches policy miscalibration. A `human_override_rate_max` catches a governance agent whose recommendations are consistently wrong. All threshold fields are optional.
+
 ### Plan amendments
 
 Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The governance agent increments `plan_version` and applies the new parameters immediately. Active media buys that were approved under the previous plan version are not automatically re-validated -- the governance agent evaluates them against the updated plan on the next `check_governance` call (e.g., the next delivery check). If an amendment reduces the budget below the currently committed amount, the governance agent flags this as a finding on the next governance check.
@@ -180,6 +286,27 @@ The governance agent evaluates each [validation category](/docs/governance/campa
 - If all categories pass, the status is `approved`
 
 The `conditions` array is only present when the status is `conditions`. Each condition identifies a specific field, its current value, a suggested value, and the reason for the change.
+
+### Finding confidence
+
+Governance findings include an optional `confidence` score (0-1) and `uncertainty_reason` that distinguish certain violations from ambiguous ones:
+
+```json
+{
+  "category_id": "regulatory_compliance",
+  "severity": "critical",
+  "confidence": 0.85,
+  "uncertainty_reason": "Targeting includes 'New Mexico' which partially overlaps LATAM HFSS jurisdiction boundaries",
+  "explanation": "Potential HFSS jurisdiction violation based on targeting geography."
+}
+```
+
+Confidence informs the appropriate response:
+- **High confidence (0.9+)**: The finding is definitive. A GDPR violation on a campaign explicitly targeting EU users.
+- **Medium confidence (0.6-0.9)**: The finding depends on context the governance agent cannot fully resolve. Audience segments that may include minors, geo targeting that partially overlaps regulated jurisdictions.
+- **Low confidence (<0.6)**: The finding is speculative. The governance agent flags it for human review rather than acting on it autonomously.
+
+Without confidence, every finding is presented as equally certain, which either over-blocks (if treated as certain) or trains people to ignore findings (if many are false positives). Governance agents SHOULD include confidence when the evaluation involves natural language interpretation or probabilistic matching.
 
 ### Phase inference
 
@@ -285,7 +412,7 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 ## Governance checks
 
-Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Governance webhooks close this gap by giving sellers an independent way to confirm that purchases are approved.
+Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Seller-side governance checks close this gap by giving sellers an independent way to confirm that purchases are approved.
 
 The seller POSTs to the buyer's `governance_agent` URL when media buy events occur. The governance agent maintains all state and correlates requests by `plan_id` + `media_buy_id` -- the seller does not need to track governance history or chain IDs across calls.
 
@@ -307,7 +434,8 @@ The buyer registers an `governance_agent` when syncing accounts with the seller.
           "authentication": {
             "schemes": ["Bearer"],
             "credentials": "gov_token_acme_pinnacle_2026_xyz..."
-          }
+          },
+          "mode": "enforce"
         }
       }
     ]
@@ -315,7 +443,25 @@ The buyer registers an `governance_agent` when syncing accounts with the seller.
 }
 ```
 
-The seller stores this endpoint and presents the credentials when calling `check_governance`. This ensures only recognized sellers can make governance requests -- the governance agent rejects calls without valid credentials.
+The seller stores this endpoint and presents the credentials when calling `check_governance`. The governance agent MUST verify that the Bearer token matches a registered credential for the account associated with the `plan_id`, and MUST reject requests with unrecognized or mismatched credentials.
+
+### Governance modes
+
+The `governance_agent` object accepts an optional `mode` field that controls how the governance agent treats findings:
+
+| Mode | Behavior | Use case |
+|------|----------|----------|
+| `audit` | Log all checks. Never block -- always return `approved`, with findings attached for review. | Initial rollout. See what governance would flag without disrupting live campaigns. |
+| `advisory` | Return findings with real statuses (`denied`, `conditions`, `escalated`), but the seller treats all responses as non-blocking. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
+| `enforce` | Block on `denied` or `escalated`. Require resolution before proceeding. | Production governance. The default. |
+
+Default is `enforce` for backward compatibility. Organizations can start in `audit` mode to build confidence in the governance agent's calibration before enabling enforcement. The mode can be changed per-account by re-syncing with `sync_accounts`.
+
+In `audit` mode, the governance agent still performs full evaluation and returns findings -- the only difference is that the status is always `approved`. This produces a complete audit trail that the organization can review to assess false positive rates and calibrate policies before going live.
+
+In `advisory` mode, the governance agent returns the real status it would have returned under enforcement. The check response includes a `mode` field so sellers and auditors can distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
+
+In all modes, delegation violations, credential mismatches, and other authorization checks are logged as findings. In `audit` and `advisory` modes, these findings do not block the action -- they are recorded for review. Only in `enforce` mode are authorization violations blocking.
 
 ### Governance phases
 
@@ -475,7 +621,6 @@ The `next_check` field signals that the governance agent expects delivery report
   "findings": [
     {
       "category_id": "strategic_alignment",
-      "policy_id": "eu_gdpr_advertising",
       "severity": "critical",
       "explanation": "Geo targeting includes CA but plan only authorizes US.",
       "details": {
@@ -609,12 +754,6 @@ A conformance test suite for governance agent implementations is planned. Test v
 
 The policy registry's exemplars (pass/fail scenarios per policy) provide the raw material. Test vectors formalize these into executable assertions that any governance agent can validate against. The AdCP client test library will include these vectors as part of its standard test suite.
 
-## Batch validation
-
-The `check_governance` schema reserves an `actions` array field for batch validation. An orchestrator building a multi-seller media plan can submit multiple proposed actions as a group, allowing the governance agent to evaluate aggregate constraints (total budget across all actions, channel mix across the set) in a single round-trip.
-
-The response includes a corresponding `results` array with one result per action, in the same order. Each result follows the same structure as the single-action response. Until batch support is widely implemented, orchestrators call `check_governance` sequentially for each action.
-
 ## Property list governance
 
-Campaign governance intersects with property governance when media buys reference property lists. A governance agent MAY validate that property lists referenced in media buy requests meet the plan's brand safety and compliance requirements. The community governance agent integrates with the property registry to provide this validation, ensuring that property lists align with the brand's compliance configuration and enforced policies.
+Campaign governance intersects with property governance when media buys reference property lists. A governance agent MAY validate that property lists referenced in media buy requests meet the plan's brand safety and compliance requirements, ensuring that property lists align with the brand's compliance configuration and enforced policies.

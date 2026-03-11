@@ -140,12 +140,17 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = Math.min(options.limit || 100, 1000);
+  const limit = Math.min(options.limit || 20, 100);
   const offset = options.offset || 0;
 
   const [dataResult, statsResult] = await Promise.all([
     query<any>(
-      `SELECT * FROM policies ${where} ORDER BY category, name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      `SELECT policy_id, version, name, description, category, enforcement,
+              jurisdictions, region_aliases, verticals, channels,
+              governance_domains, effective_date, sunset_date,
+              source_url, source_name, source_type, review_status,
+              created_at, updated_at
+       FROM policies ${where} ORDER BY category, name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...values, limit, offset]
     ),
     query<{ total: string; regulation: string; standard: string }>(

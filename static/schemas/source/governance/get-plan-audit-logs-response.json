@@ -142,6 +142,73 @@
             "required": ["check_id", "reason"],
             "additionalProperties": false
           }
+        },
+        "drift_metrics": {
+          "type": "object",
+          "description": "Aggregate governance metrics for detecting oversight drift. A declining escalation rate may indicate well-calibrated governance or eroding human oversight -- surfacing the trend lets the organization make that judgment.",
+          "properties": {
+            "escalation_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of checks that resulted in escalation."
+            },
+            "escalation_rate_trend": {
+              "type": "string",
+              "enum": ["increasing", "stable", "declining"],
+              "description": "Direction of escalation rate over the plan's lifetime."
+            },
+            "auto_approval_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of checks approved without human intervention."
+            },
+            "human_override_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of escalations where the human overrode the governance agent's recommendation."
+            },
+            "mean_confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Average confidence score across all findings. Present when findings include confidence scores."
+            },
+            "thresholds": {
+              "type": "object",
+              "description": "Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governance agent SHOULD include a finding on the next check. Set by the organization in governance agent configuration, echoed here for visibility.",
+              "properties": {
+                "escalation_rate_max": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Maximum acceptable escalation rate. A rate above this suggests policy miscalibration."
+                },
+                "escalation_rate_min": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Minimum acceptable escalation rate. A rate below this may indicate eroding oversight."
+                },
+                "auto_approval_rate_max": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Maximum acceptable auto-approval rate."
+                },
+                "human_override_rate_max": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Maximum acceptable human override rate. A high rate suggests the governance agent's recommendations are poorly calibrated."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

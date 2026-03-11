@@ -727,6 +727,14 @@
         "governance-domain": {
           "$ref": "/schemas/enums/governance-domain.json",
           "description": "Governance sub-domains a registry policy applies to (campaign, property, creative, content_standards)"
+        },
+        "governance-mode": {
+          "$ref": "/schemas/enums/governance-mode.json",
+          "description": "Operating mode for a governance agent (audit, advisory, enforce)"
+        },
+        "delegation-authority": {
+          "$ref": "/schemas/enums/delegation-authority.json",
+          "description": "Authority level for a delegated agent on a campaign plan (full, execute_only, propose_only)"
         }
       }
     },
@@ -1089,10 +1097,6 @@
         "policy-ref": {
           "$ref": "/schemas/governance/policy-ref.json",
           "description": "Reference to a registry policy by ID with optional version pin"
-        },
-        "brand-compliance-config": {
-          "$ref": "/schemas/governance/brand-compliance-config.json",
-          "description": "Brand-level compliance configuration referencing registry policies and custom policies"
         }
       },
       "tasks": {

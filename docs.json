@@ -177,6 +177,7 @@
                 "group": "Campaign Governance",
                 "pages": [
                   "docs/governance/campaign/index",
+                  "docs/governance/campaign/safety-model",
                   "docs/governance/campaign/specification",
                   {
                     "group": "Tasks",
@@ -532,6 +533,7 @@
                 "group": "Campaign Governance",
                 "pages": [
                   "docs/governance/campaign/index",
+                  "docs/governance/campaign/safety-model",
                   "docs/governance/campaign/specification",
                   {
                     "group": "Tasks",

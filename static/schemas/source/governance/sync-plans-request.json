@@ -17,7 +17,7 @@
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
-            "description": "Brand being governed. The governance agent resolves the brand's compliance configuration to determine applicable policies."
+            "description": "Brand or organization being governed. For campaign plans, the governance agent resolves the brand's compliance configuration. For portfolio plans, this is the holding company or parent organization."
           },
           "objectives": {
             "type": "string",
@@ -114,6 +114,79 @@
             "type": ["array", "null"],
             "items": { "type": "string", "format": "uri" },
             "description": "List of approved seller agent URLs. null means any seller."
+          },
+          "delegations": {
+            "type": "array",
+            "description": "Agents authorized to execute against this plan. Each delegation scopes an agent's authority by budget, markets, and expiration. The governance agent validates that the requesting agent matches a delegation before approving actions.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the delegated agent."
+                },
+                "authority": {
+                  "$ref": "/schemas/enums/delegation-authority.json",
+                  "description": "Authority level granted to this agent."
+                },
+                "budget_limit": {
+                  "type": "object",
+                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
+                  "properties": {
+                    "amount": { "type": "number" },
+                    "currency": { "type": "string" }
+                  },
+                  "required": ["amount", "currency"],
+                  "additionalProperties": false
+                },
+                "markets": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "ISO 3166-1/3166-2 codes this agent is authorized for. When omitted, the agent can operate in all plan markets."
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this delegation expires. After expiration, the governance agent denies actions from this agent."
+                }
+              },
+              "required": ["agent_url", "authority"],
+              "additionalProperties": false
+            }
+          },
+          "portfolio": {
+            "type": "object",
+            "description": "Portfolio-level governance constraints. When present, this plan acts as a portfolio plan that governs member plans. Portfolio plans define cross-brand constraints that no individual brand plan can override.",
+            "properties": {
+              "member_plan_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
+              },
+              "total_budget_cap": {
+                "type": "object",
+                "description": "Maximum aggregate budget across all member plans.",
+                "properties": {
+                  "amount": { "type": "number" },
+                  "currency": { "type": "string" }
+                },
+                "required": ["amount", "currency"],
+                "additionalProperties": false
+              },
+              "shared_policy_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
+              },
+              "shared_exclusions": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Natural language exclusion rules applied across all member plans (e.g., 'No advertising on properties owned by competitor holding companies')."
+              }
+            },
+            "required": ["member_plan_ids"],
+            "additionalProperties": false
           },
           "ext": {
             "$ref": "/schemas/core/ext.json"

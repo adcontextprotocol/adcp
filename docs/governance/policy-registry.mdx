@@ -63,7 +63,7 @@ Enforcement levels follow RFC 2119 keywords:
 
 Governance agents are LLMs that interpret natural language policy text -- the same pattern used by [Content Standards](/docs/governance/content-standards/index). The registry's value is in structured metadata and calibration exemplars, not a custom rule language.
 
-1. **Resolve applicable policies** from the brand's [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration) or buyer request
+1. **Resolve applicable policies** from the brand's compliance configuration or buyer request
 2. **Bulk-resolve from the registry** via `POST /api/policies/resolve/bulk`
 3. **Filter by context** -- intersect policy jurisdictions/verticals/channels with campaign parameters
 4. **Include policy text + exemplars** in the evaluation prompt
@@ -130,22 +130,7 @@ For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A bran
 
 ## Brand compliance configuration
 
-Brands reference registry policies through their [compliance configuration](/docs/governance/campaign/specification#brand-compliance-configuration):
-
-```json
-{
-  "registry_policies": [
-    { "policy_id": "uk_hfss" },
-    { "policy_id": "eu_gdpr_advertising", "version": "1.0.0" },
-    { "policy_id": "alcohol_advertising", "config": { "min_age": 21 } }
-  ],
-  "custom_policies": [
-    "No advertising adjacent to content mentioning competitor brands Acme Cola or Nova Fizz.",
-    "All creative must include the brand's sustainability commitment badge."
-  ],
-  "verticals": ["beverage", "alcohol"]
-}
-```
+Brands reference registry policies through their compliance configuration. See the [Campaign Governance specification](/docs/governance/campaign/specification#brand-compliance-configuration) for the conceptual model.
 
 ## Integration across governance domains
 

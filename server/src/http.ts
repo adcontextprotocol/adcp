@@ -7,7 +7,6 @@ import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, initializeMCPServer, isMCPServerReady } from "./mcp/index.js";
-import { configureGovernanceRoutes } from "./governance/index.js";
 import { HealthChecker } from "./health.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger } from "./logger.js";
@@ -1721,11 +1720,6 @@ export class HTTPServer {
     // Supports OAuth 2.1 (users adding to Claude/ChatGPT) and M2M (partner bots)
     // Auth via WorkOS AuthKit
     configureMCPRoutes(this.app);
-
-    // Community governance agent MCP endpoint
-    // Sellers call this to validate media buys against campaign plans
-    // Auth via Bearer token from sync_accounts governance_agent configuration
-    configureGovernanceRoutes(this.app);
 
     // Health check - verifies critical services are operational
     this.app.get("/health", async (req, res) => {

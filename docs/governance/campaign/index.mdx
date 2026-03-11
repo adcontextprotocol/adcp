@@ -25,7 +25,9 @@ Without a governance layer on the buy side:
 - Seller responses could differ from what was requested, with no automated verification
 - Compliance policies are fragmented -- copy-pasted as natural language strings into every campaign plan, with no standard library and no separation between who defines policies and who executes campaigns
 
-Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance webhooks** that check purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
+Campaign Governance fills this gap with three mechanisms: **plans** that define what's allowed (independent of the agent), **seller-side governance checks** that verify purchases independently of the buyer, and a **policy registry** that standardizes compliance rules across governance agents.
+
+Governance supports incremental adoption through three operating modes: **audit** (log everything, never block), **advisory** (flag issues for post-hoc review), and **enforce** (block on violations). Organizations can start in audit mode to build confidence before enabling enforcement.
 
 ### Industry precedent
 
@@ -86,14 +88,14 @@ The orchestrator cannot bypass or modify compliance policies because it does not
 
 The governance agent resolves applicable policies through the brand reference in the plan:
 
-1. The plan includes `brand.domain` (required) and `countries`/`regions` (authorized markets for this campaign)
+1. The plan includes `brand.domain` (required) and optionally `countries`/`regions` (authorized markets for this campaign)
 2. The governance agent resolves the brand via the [Brand Protocol](/docs/brand-protocol/index) and retrieves its compliance configuration
 3. The brand configuration references standardized policies from the **policy registry** by ID and includes any custom brand-specific policies
 4. The governance agent intersects these policies with the plan's authorized markets -- only policies applicable to those markets are active for this plan
 5. The resolved policy set is what gets evaluated during `check_governance`
 6. Media buys targeting outside the authorized markets are denied regardless of policy compliance
 
-The **policy registry** is a community-maintained library of standardized, machine-readable advertising compliance policies -- covering jurisdictions (UK HFSS restrictions, US COPPA, EU GDPR), verticals (alcohol, pharma, gambling, financial services), and brand safety baselines. Brands select applicable policies from the registry rather than writing their own. See the [specification](/docs/governance/campaign/specification#brand-compliance-configuration) for details.
+The **[policy registry](/docs/governance/policy-registry)** is a community-maintained library of standardized, machine-readable advertising compliance policies -- covering jurisdictions (UK HFSS restrictions, US COPPA, EU GDPR), verticals (alcohol, pharma, gambling, financial services), and brand safety baselines. Brands select applicable policies from the registry rather than writing their own.
 
 ## The governance loop
 
@@ -115,11 +117,11 @@ When a seller confirms a media buy, it returns a `planned_delivery` object descr
 1. **Governance check**: The seller sends `planned_delivery` to the buyer's governance agent, which confirms it matches the campaign plan. This prevents the seller from delivering something the buyer didn't approve.
 2. **Discrepancy detection**: The buyer can compare `planned_delivery` against the original request and flag differences via `report_plan_outcome`, catching configuration drift before delivery begins.
 
-## Governance webhooks
+## Seller-side governance checks
 
 Buyer-side governance has a trust limitation: the orchestrator attests to its own compliance. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. You can't trust the agent that's spending money to also be the one that checks whether spending that money is OK.
 
-Governance webhooks solve this by telling the seller: "call this URL when things happen." The buyer registers a `governance_agent` URL (with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it POSTs to the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
+Seller-side governance checks solve this. The buyer registers a `governance_agent` URL (with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
 
 This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the governance agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
 
@@ -134,6 +136,42 @@ The governance agent maintains all state. The seller just posts what's happening
 Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-webhooks) for the full protocol.
 
 Sellers that implement governance checks gain a competitive advantage: they can prove to buyers that purchases were independently verified before execution. This reduces dispute risk, automates compliance verification, and signals trust to buyers with strict oversight requirements.
+
+## Adoption path
+
+Campaign Governance supports three operating modes, set per-account via [`sync_accounts`](/docs/accounts/tasks/sync_accounts):
+
+| Mode | Behavior | When to use |
+|------|----------|-------------|
+| `audit` | Log all checks, never block. Always returns `approved` with findings attached. | Initial rollout. Build confidence in calibration before enabling enforcement. |
+| `advisory` | Return real statuses (`denied`, `conditions`, `escalated`) but the seller treats all responses as non-blocking. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
+| `enforce` | Block on `denied` or `escalated`. Require resolution before proceeding. | Production governance. The default. |
+
+Start in `audit` mode to see what governance would flag. Move to `advisory` to test findings with real campaigns. Switch to `enforce` when confidence is established. This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.
+
+### For small brands
+
+A brand buying direct (no agency, no policy team) still gets:
+- Automated budget limits and geo enforcement from the campaign plan
+- Compliance coverage from the [policy registry](/docs/governance/policy-registry) -- registry policies are community-maintained, no per-brand configuration required
+- Seller-side verification via governance checks
+- Full audit trail via `get_plan_audit_logs`
+
+Set `authority_level: "agent_limited"` with a `reallocation_threshold` to define guardrails. The governance agent handles the rest.
+
+### For multi-agency and holding company setups
+
+Plans support [delegations](/docs/governance/campaign/specification#delegations) that scope which agents can execute against a plan -- by authority level, budget limit, market, and expiration. A brand can delegate `full` authority to one agency for European markets and `execute_only` authority to another for North America.
+
+For holding companies managing multiple brands, [portfolio governance](/docs/governance/campaign/specification#portfolio-governance) defines cross-brand constraints: total portfolio spend caps, shared policy enforcement, and corporate-level exclusions that no individual brand plan can override.
+
+### Finding confidence
+
+Governance findings include optional [confidence scores](/docs/governance/campaign/specification#finding-confidence) (0-1) that distinguish "this definitely violates GDPR" (0.95) from "this might violate depending on how audience segments resolve" (0.6). This helps brands respond appropriately -- high-confidence findings can be auto-resolved, medium-confidence findings get flagged for human review.
+
+### Drift detection
+
+The [audit log](/docs/governance/campaign/tasks/get_plan_audit_logs) includes aggregate metrics -- escalation rate, auto-approval rate, human override rate -- with trend indicators. A declining escalation rate may mean the system is well-calibrated or that oversight is eroding. Surfacing the trend lets the organization make that call.
 
 ## Lifecycle phases
 
@@ -192,21 +230,12 @@ Campaign Governance composes with the existing domains -- it does not duplicate 
 | **[Creative Governance](/docs/governance/creative/index)** | Campaign Governance validates that creative assignments match format requirements. Creative Governance scans the creatives themselves. |
 | **[Brand Protocol](/docs/brand-protocol/index)** | Campaign Governance resolves the brand's compliance configuration via the Brand Protocol. The brand's policy team configures compliance policies in brand.json; the governance agent applies them automatically. |
 
-## Community governance agent
-
-AgenticAdvertising.org operates a community governance agent that implements the registry's seeded policies. Brands that do not need a custom governance agent can point their `governance_agent` URL to the community agent for baseline policy compliance checks and basic budget guardrails. This provides a zero-setup entry point for governance without requiring brands to build or procure a dedicated agent.
-
-The community agent supports:
-- Policy compliance checks against all registry policies
-- Basic budget threshold guardrails (reject or escalate above configurable limits)
-- Property list validation against the property registry
-- Geo and vertical alignment checks
-
-For full budget tracking, delivery monitoring, and custom validation logic, brands should use a dedicated governance agent.
-
 ## Next steps
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
+  <Card title="Safety model" icon="shield-check" href="/docs/governance/campaign/safety-model">
+    How the three-party trust model, separation of duties, and structural controls make agentic advertising safe.
+  </Card>
   <Card title="Specification" icon="file-lines" href="/docs/governance/campaign/specification">
     Data models, validation logic, capability declaration, and orchestrator integration patterns.
   </Card>

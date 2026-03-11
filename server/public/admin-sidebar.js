@@ -40,6 +40,12 @@
         ]
       },
       {
+        label: 'Registry',
+        items: [
+          { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
+        ]
+      },
+      {
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },

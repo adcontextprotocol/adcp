@@ -61,6 +61,11 @@
                 },
                 "required": ["schemes", "credentials"],
                 "additionalProperties": false
+              },
+              "mode": {
+                "$ref": "/schemas/enums/governance-mode.json",
+                "description": "Operating mode. 'audit': log all checks, never block. 'advisory': flag issues but do not block. 'enforce': block on denied/escalated. Default: 'enforce'.",
+                "default": "enforce"
               }
             },
             "required": ["url", "authentication"],
@@ -100,6 +105,11 @@
                   "type": "array",
                   "items": { "type": "string" },
                   "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories."
+                },
+                "mode": {
+                  "$ref": "/schemas/enums/governance-mode.json",
+                  "description": "Operating mode for this governance agent. Default: 'enforce'.",
+                  "default": "enforce"
                 }
               },
               "required": ["url", "authentication"],
@@ -165,8 +175,8 @@
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acme-corp.com" },
-            "operator": "acme-corp.com",
+            "brand": { "domain": "acmecorp.com" },
+            "operator": "acmecorp.com",
             "billing": "operator"
           }
         ]

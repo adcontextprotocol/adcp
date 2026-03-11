@@ -67,7 +67,19 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
         "resolution": "approved_by_human",
         "resolved_at": "2026-03-16T09:30:00Z"
       }
-    ]
+    ],
+    "drift_metrics": {
+      "escalation_rate": 0.07,
+      "escalation_rate_trend": "stable",
+      "auto_approval_rate": 0.80,
+      "human_override_rate": 0.02,
+      "mean_confidence": 0.88,
+      "thresholds": {
+        "escalation_rate_min": 0.02,
+        "auto_approval_rate_max": 0.95,
+        "human_override_rate_max": 0.15
+      }
+    }
   },
   "entries": [
     {
@@ -146,6 +158,17 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
 | `summary.escalations[].reason` | string | Why it was escalated. |
 | `summary.escalations[].resolution` | string | How it was resolved (e.g., `approved_by_human`, `rejected_by_human`). |
 | `summary.escalations[].resolved_at` | string | ISO 8601 resolution timestamp. |
+| `summary.drift_metrics` | object | Aggregate governance metrics for detecting oversight drift. See [specification](/docs/governance/campaign/specification#drift-detection). |
+| `summary.drift_metrics.escalation_rate` | number | Fraction of checks that resulted in escalation (0-1). |
+| `summary.drift_metrics.escalation_rate_trend` | enum | `increasing`, `stable`, or `declining`. |
+| `summary.drift_metrics.auto_approval_rate` | number | Fraction of checks approved without human intervention (0-1). |
+| `summary.drift_metrics.human_override_rate` | number | Fraction of escalations where the human overrode the agent (0-1). |
+| `summary.drift_metrics.mean_confidence` | number | Average confidence score across findings (0-1). Present when findings include confidence. |
+| `summary.drift_metrics.thresholds` | object | Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governance agent includes a finding. |
+| `summary.drift_metrics.thresholds.escalation_rate_max` | number | Maximum acceptable escalation rate. |
+| `summary.drift_metrics.thresholds.escalation_rate_min` | number | Minimum acceptable escalation rate. A rate below this may indicate eroding oversight. |
+| `summary.drift_metrics.thresholds.auto_approval_rate_max` | number | Maximum acceptable auto-approval rate. |
+| `summary.drift_metrics.thresholds.human_override_rate_max` | number | Maximum acceptable human override rate. |
 | `entries` | array | Ordered audit trail (only when `include_entries` is `true`). |
 | `entries[].id` | string | Entry identifier. |
 | `entries[].type` | enum | `check` or `outcome`. |

@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Campaign Governance and Policy Registry. Includes unified check_governance with binding discriminator, 14 seeded policies (8 regulations, 6 standards including Scope3 Common Sense brand safety), policy_id on findings, resolved_policies on sync_plans, multi-agent governance composition, batch-ready check_governance, and enforced_policies simplified to string arrays.
+Campaign Governance and Policy Registry. Adds governance modes (audit/advisory/enforce), delegations for multi-agency authorization, portfolio governance for holding companies, finding confidence scores, drift detection metrics with thresholds, escalation approval tiers, seller-side governance checks, and a safety model page. Includes unified check_governance with binding discriminator, 14 seeded policies, multi-agent governance composition, and enforced_policies on planned delivery.
