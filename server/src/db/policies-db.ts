@@ -124,7 +124,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
     values.push(options.enforcement);
   }
   if (options.jurisdiction) {
-    conditions.push(`(jurisdictions @> $${paramIndex}::jsonb OR jurisdictions = '[]'::jsonb OR EXISTS (SELECT 1 FROM jsonb_each(region_aliases) AS ra(key, val) WHERE val @> $${paramIndex}::jsonb))`);
+    conditions.push(`(jurisdictions @> $${paramIndex}::jsonb OR (jurisdictions = '[]'::jsonb AND region_aliases = '{}'::jsonb) OR EXISTS (SELECT 1 FROM jsonb_each(region_aliases) AS ra(key, val) WHERE val @> $${paramIndex}::jsonb))`);
     values.push(JSON.stringify([options.jurisdiction]));
     paramIndex++;
   }
