@@ -18,6 +18,7 @@ import {
   type ThreadChannel,
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
+import { ModelConfig } from "../config/models.js";
 import { getAddieBoltApp } from "../addie/bolt-app.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
@@ -789,7 +790,7 @@ Please analyze this conversation and provide:
 Be specific and actionable. Focus on patterns that could help improve Addie's behavior.`;
 
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: ModelConfig.primary,
         max_tokens: 1500,
         messages: [{ role: 'user', content: diagnosisPrompt }],
       });

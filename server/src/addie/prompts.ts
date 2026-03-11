@@ -390,6 +390,40 @@ export interface ThreadContextEntry {
   text: string;
 }
 
+/**
+ * Produce a compact summary of tool calls for conversation context.
+ * Appended to assistant messages so follow-up turns can reference prior tool results
+ * without re-calling tools. Capped at 1000 chars total to protect context budget.
+ */
+const MAX_RESULT_HINT_CHARS = 200;
+const MAX_SUMMARY_CHARS = 1000;
+
+export function summarizeToolCalls(
+  toolCalls: Array<{ name: string; result: unknown; is_error?: boolean }> | null | undefined
+): string {
+  if (!toolCalls || toolCalls.length === 0) return '';
+
+  const parts: string[] = [];
+  let totalLen = 0;
+
+  for (const tc of toolCalls) {
+    const prefix = tc.is_error ? `${tc.name}(error)` : tc.name;
+    const resultStr = typeof tc.result === 'string'
+      ? tc.result
+      : tc.result != null ? JSON.stringify(tc.result) : '';
+    const hint = resultStr.length > MAX_RESULT_HINT_CHARS
+      ? resultStr.slice(0, MAX_RESULT_HINT_CHARS) + '...'
+      : resultStr;
+    const part = `${prefix}: ${hint}`;
+
+    if (totalLen + part.length > MAX_SUMMARY_CHARS) break;
+    parts.push(part);
+    totalLen += part.length;
+  }
+
+  return `\n\n[Tool results from this turn:\n${parts.join('\n')}]`;
+}
+
 // Re-export MessageTurn from token-limiter for backwards compatibility
 export type { MessageTurn };
 

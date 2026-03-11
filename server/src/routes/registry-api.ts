@@ -227,7 +227,6 @@ registry.registerPath({
             stats: z.object({
               total: z.number().int(),
               brand_json: z.number().int(),
-              hosted: z.number().int(),
               community: z.number().int(),
               enriched: z.number().int(),
             }),
@@ -843,10 +842,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       const stats = {
         total: brands.length,
-        brand_json: brands.filter((b) => b.source === "brand_json").length,
-        hosted: brands.filter((b) => b.source === "hosted").length,
+        brand_json: brands.filter((b) => b.source === "brand_json" || b.source === "hosted").length,
         community: brands.filter((b) => b.source === "community").length,
         enriched: brands.filter((b) => b.source === "enriched").length,
+        houses: brands.filter((b) => b.keller_type === "master" || b.keller_type === "independent").length,
+        sub_brands: brands.filter((b) => b.keller_type === "sub_brand" || b.keller_type === "endorsed").length,
+        with_manifest: brands.filter((b) => b.has_manifest).length,
       };
 
       return res.json({ brands, stats });

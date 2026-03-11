@@ -14,12 +14,11 @@ Six questions underlie every AdCP transaction:
 |----------|-------------|-----------|
 | Who is the advertiser? | Brand registry | `brand.domain` resolves to `brand.json` |
 | Who operates on the brand's behalf? | Brand registry | `authorized_operators` in `brand.json` declares who can buy on the brand's behalf |
-| How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines whether operator credentials are needed or the agent is trusted |
-| How are accounts referenced? | Seller capabilities | `account_resolution` declares whether buyers use seller-assigned IDs (`explicit_account_id`) or natural keys (`implicit_from_sync`) |
+| How does the operator authenticate? | Seller capabilities | `require_operator_auth` determines the account model: `true` means explicit accounts (operator credentials required, discover via `list_accounts`), `false` means implicit accounts (agent trusted, declare via `sync_accounts`) |
 | Who gets billed? | Buyer declaration | Buyer passes `billing` in `sync_accounts` — `operator` or `agent`. Seller accepts or rejects. |
 | What was consumed? | Usage reporting | `report_usage` informs vendor agents how their services were used after delivery |
 
-The seller declares authentication and resolution in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). In the **explicit** model (`explicit_account_id`), accounts exist out-of-band and the buyer calls [`list_accounts`](/docs/accounts/tasks/list_accounts) to discover them. In the **implicit** model (`implicit_from_sync`), the buyer calls [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to declare brand/operator pairs, billing, and provision accounts.
+The seller declares the account model in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) via `require_operator_auth`. When `true` (**explicit accounts**), operators authenticate independently and the buyer discovers accounts via [`list_accounts`](/docs/accounts/tasks/list_accounts). When `false` (**implicit accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
 
 After delivery, the orchestrator calls [`report_usage`](/docs/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.
 
@@ -34,13 +33,13 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance | Content standards billing |
 | Creative | Creative service billing |
 
-The account reference may be a seller-assigned `account_id` (explicit model) or a natural key — `brand` + `operator` (implicit model). The seller's `account_resolution` capability determines which form the buyer uses. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
+The account reference may be a seller-assigned `account_id` (explicit accounts, `require_operator_auth: true`) or a natural key — `brand` + `operator` (implicit accounts, `require_operator_auth: false`). For sandbox operations, use the natural key with `sandbox: true` regardless of account model. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
 
 ## Transaction lifecycle
 
 ```
 1. Discover seller capabilities
-   get_adcp_capabilities → account_resolution, require_operator_auth, supported_billing
+   get_adcp_capabilities → require_operator_auth, supported_billing
 
 2. Resolve brand identity
    Fetch brand.domain/.well-known/brand.json → canonical brand (domain, brand_id)
@@ -52,9 +51,9 @@ The account reference may be a seller-assigned `account_id` (explicit model) or 
    When require_operator_auth is true → obtain operator credential via authorization_endpoint or out-of-band
 
 5. Establish account reference
-   Explicit (explicit_account_id):
+   Explicit (require_operator_auth: true):
      list_accounts() → find existing account_id for this brand/operator
-   Implicit (implicit_from_sync):
+   Implicit (require_operator_auth: false):
      sync_accounts({ accounts: [{ brand, operator, billing }] }) → status, billing terms
 
 6. Execute
@@ -81,8 +80,8 @@ The Accounts Protocol operates with four principal types. See [Accounts and agen
 
 | Task | Purpose |
 |------|---------|
-| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (implicit model) |
-| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Discover existing accounts (explicit model); poll status on pending accounts |
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (implicit accounts, `require_operator_auth: false`) |
+| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Discover existing accounts (explicit accounts, `require_operator_auth: true`); poll status on pending accounts |
 | [`get_account_financials`](/docs/accounts/tasks/get_account_financials) | Query spend, credit, and invoice status for operator-billed accounts |
 | [`report_usage`](/docs/accounts/tasks/report_usage) | Inform vendor agents how their services were consumed after delivery |
 

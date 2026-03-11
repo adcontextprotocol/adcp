@@ -234,7 +234,7 @@
   <div class="container">
     <h1>Analytics Dashboard</h1>
 
-    <div class="actions-bar">
+    <div class="actions-bar" id="sync-actions" style="display: none;">
       <button id="backfill-btn" class="btn btn-primary" onclick="backfillRevenue()">
         Sync from Stripe
       </button>
@@ -602,6 +602,11 @@
 
     function downloadMembershipCSV() {
       window.location.href = '/api/admin/membership-metrics/csv';
+    }
+
+    // Only admins can trigger the Stripe sync
+    if (window.__APP_CONFIG__ && window.__APP_CONFIG__.isAdmin) {
+      document.getElementById('sync-actions').style.display = '';
     }
 
     // Load analytics on page load

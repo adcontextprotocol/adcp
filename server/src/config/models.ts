@@ -50,4 +50,10 @@ export const AddieModelConfig = {
    * Override: ADDIE_ANONYMOUS_MODEL (falls back to fast/Haiku)
    */
   anonymousChat: process.env.ADDIE_ANONYMOUS_MODEL || ModelConfig.fast,
+
+  /**
+   * Model for voice/video conversations
+   * Override: ADDIE_VOICE_MODEL (falls back to primary/Sonnet)
+   */
+  voice: process.env.ADDIE_VOICE_MODEL || ModelConfig.primary,
 } as const;

@@ -219,7 +219,7 @@ export async function runSummaryGeneratorJob(options: {
 } = {}): Promise<SummaryGeneratorResult> {
   const { batchSize = 10, summaryType = 'activity' } = options;
 
-  logger.info({ batchSize, summaryType }, 'Running committee summary generator job');
+  logger.debug({ batchSize, summaryType }, 'Running committee summary generator job');
 
   const result: SummaryGeneratorResult = {
     committeesProcessed: 0,
@@ -237,7 +237,7 @@ export async function runSummaryGeneratorJob(options: {
       return result;
     }
 
-    logger.info({ count: committeeIds.length }, 'Processing committees for summary generation');
+    logger.debug({ count: committeeIds.length }, 'Processing committees for summary generation');
 
     // Process each committee
     for (const workingGroupId of committeeIds) {
@@ -253,7 +253,7 @@ export async function runSummaryGeneratorJob(options: {
       }
     }
 
-    logger.info(result, 'Committee summary generator job completed');
+    logger.debug(result, 'Committee summary generator job completed');
     return result;
   } catch (error) {
     logger.error({ err: error }, 'Committee summary generator job failed');

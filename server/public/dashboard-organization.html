@@ -918,15 +918,15 @@
       const profileUrl = orgId ? `/member-profile?org=${orgId}` : '/member-profile';
       const hdr = `
         <div class="hub-card-header">
-          <span class="hub-card-title">Public profile</span>
-          <a href="${profileUrl}" class="hub-card-link">Edit profile →</a>
+          <span class="hub-card-title">Directory listing</span>
+          <a href="${profileUrl}" class="hub-card-link">Edit listing →</a>
         </div>`;
 
       if (!profile) {
         return `${hdr}
           <div class="hub-empty">
-            <p>Your public profile isn't set up yet.</p>
-            <a href="${profileUrl}">Create your profile →</a>
+            <p>Your directory listing isn't set up yet.</p>
+            <a href="${profileUrl}">Create your listing →</a>
           </div>`;
       }
 

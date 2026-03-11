@@ -159,6 +159,27 @@ setAgentTesterLogger({
 });
 
 /**
+ * Extract AdCP version from an agent card's extensions array.
+ * Returns the version string if found and valid (e.g., "2.6.0"), undefined otherwise.
+ */
+export function extractAdcpVersion(extensions: unknown): string | undefined {
+  if (!Array.isArray(extensions)) return undefined;
+  const adcpExt = extensions.find((ext: { uri?: string }) => {
+    if (!ext?.uri) return false;
+    try {
+      return new URL(ext.uri).hostname === 'adcontextprotocol.org';
+    } catch {
+      return false;
+    }
+  });
+  const version = adcpExt?.params?.adcp_version;
+  if (typeof version === 'string' && /^\d+\.\d+/.test(version)) {
+    return version;
+  }
+  return undefined;
+}
+
+/**
  * Tool definitions for member-related operations
  */
 export const MEMBER_TOOLS: AddieTool[] = [
@@ -1863,7 +1884,7 @@ export function createMemberToolHandlers(
           errors?: string[];
           status_code?: number;
           response_time_ms?: number;
-          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean };
+          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean; extensions?: Array<{ uri?: string; params?: { adcp_version?: string } }> };
           card_endpoint?: string;
           oauth_required?: boolean;
         }>;
@@ -1939,7 +1960,10 @@ export function createMemberToolHandlers(
       }
     }
 
-    // Step 3: Format unified response
+    // Step 3: Extract AdCP version from agent card extensions
+    const adcpVersion = extractAdcpVersion(card?.card_data?.extensions);
+
+    // Step 4: Format unified response
     let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
 
     // Health section
@@ -1958,6 +1982,15 @@ export function createMemberToolHandlers(
         response += `**Error:** ${card?.errors?.[0]}\n`;
       } else if (card?.status_code) {
         response += `**HTTP Status:** ${card.status_code}\n`;
+      }
+    }
+
+    // AdCP version section
+    if (adcpVersion) {
+      response += `**AdCP Version:** ${adcpVersion}\n`;
+      const majorVersion = parseInt(adcpVersion.split('.')[0], 10);
+      if (majorVersion < 3) {
+        response += `\n> ⚠️ **Version notice:** This agent implements AdCP v${adcpVersion}, which is a v2 specification. The current version is AdCP 3.0. We recommend upgrading to v3 for full compatibility with the latest protocol features. See [what's new in AdCP 3.0](https://adcontextprotocol.org/docs/reference/whats-new-in-v3) for details.\n`;
       }
     }
 

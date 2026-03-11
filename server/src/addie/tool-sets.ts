@@ -86,6 +86,9 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   directory: {
     name: 'directory',
+    // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
+    // Anonymous web/MCP users get only the DIRECTORY_TOOLS subset (read-only public lookups).
+    // This set adds member-scoped tools (search_members, request_introduction) and brand tools.
     description: 'The searchable partner/vendor directory — find partners, vendors, consultants, service providers, and member organizations. Also: request introductions, browse the member directory, research brands, look up brand assets, and find registry gaps',
     tools: [
       'search_members',
@@ -302,6 +305,25 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       'rename_working_group',
       'list_missing_brands',
       'list_missing_properties',
+      'get_outreach_stats',
+      'get_outreach_history',
+      'send_outreach',
+      'lookup_person',
+      'get_action_items',
+    ],
+    adminOnly: true,
+  },
+
+  outreach: {
+    name: 'outreach',
+    description: 'SDR outreach operations — view outreach stats, check history, send outreach, look up people, manage action items (admin only)',
+    tools: [
+      'get_outreach_stats',
+      'get_outreach_history',
+      'send_outreach',
+      'lookup_person',
+      'get_action_items',
+      'get_account',
     ],
     adminOnly: true,
   },

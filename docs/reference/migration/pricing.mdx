@@ -124,15 +124,13 @@ All fields are optional. Publishers include whichever percentiles they can provi
 
 ## Flat-rate pricing
 
-Flat-rate pricing (DOOH, sponsorships, time-based) follows the same pattern:
-
+**v2** (DOOH with parameters, no type discriminator):
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
   "pricing_option_id": "dooh_times_square",
   "pricing_model": "flat_rate",
   "currency": "USD",
-  "fixed_price": 50000.00,
+  "fixed_rate": 50000.00,
   "parameters": {
     "duration_hours": 24,
     "sov_percentage": 100,
@@ -141,7 +139,28 @@ Flat-rate pricing (DOOH, sponsorships, time-based) follows the same pattern:
 }
 ```
 
-The `parameters` object is specific to flat-rate pricing and is unchanged from v2. Note that `fixed_price` is optional on flat-rate options — when absent, the flat-rate is auction-based (uncommon but valid for some DOOH inventory).
+**v3:**
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/flat-rate-option.json",
+  "pricing_option_id": "dooh_times_square",
+  "pricing_model": "flat_rate",
+  "currency": "USD",
+  "fixed_price": 50000.00,
+  "parameters": {
+    "type": "dooh",
+    "duration_hours": 24,
+    "sov_percentage": 100,
+    "estimated_impressions": 1500000
+  }
+}
+```
+
+Two changes:
+1. `fixed_rate` renames to `fixed_price` (same as other pricing models)
+2. `parameters` gains a required `"type": "dooh"` discriminator for DOOH inventory
+
+Sponsorship flat_rate options that had no `parameters` in v2 continue to omit it in v3. Note that `fixed_price` is optional on flat-rate options — when absent, the flat-rate is auction-based (uncommon but valid for some DOOH inventory).
 
 ## Minimum spend
 
@@ -197,6 +216,10 @@ v3 writers should only emit the new field names. Old field names (`fixed_rate`, 
     Each pricing model has its own schema in `/schemas/v3/pricing-options/`.
   </Step>
 </Steps>
+
+<Card title="Media products" icon="arrow-right" href="/docs/media-buy/product-discovery/media-products">
+  How products declare pricing options, channels, and capabilities.
+</Card>
 
 ---
 

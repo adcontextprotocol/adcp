@@ -15,8 +15,15 @@ import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin, requireManage } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
-import { OrganizationDatabase } from "../../db/organization-db.js";
-import { getPendingInvoices } from "../../billing/stripe-client.js";
+import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
+import {
+  getPendingInvoices,
+  createCheckoutSession,
+  getProductsForCustomer,
+  createAndSendInvoice,
+} from "../../billing/stripe-client.js";
+import { createProspect, updateProspect } from "../../services/prospect.js";
+import { WorkOS } from "@workos-inc/node";
 import {
   MEMBER_FILTER_ALIASED,
   NOT_MEMBER_ALIASED,
@@ -24,76 +31,30 @@ import {
   type OrgTier,
 } from "../../db/org-filters.js";
 import { isValidWorkOSMembershipId } from "../../utils/workos-validation.js";
+import {
+  computeEngagementTier,
+  scoreToFires,
+  HOT_PROSPECT_SCORE_THRESHOLD,
+  HOT_PROSPECT_INTEREST_LEVELS,
+  GOING_COLD_DAYS,
+  GOING_COLD_MIN_SCORE,
+  CHURNED_STATUSES,
+} from "../../services/account-lifecycle.js";
 
 const orgDb = new OrganizationDatabase();
 const logger = createLogger("admin-accounts");
 
-/**
- * Derive organization tier from subscription and engagement data
- * Uses the shared tier definitions from org-filters.ts
- *
- * Tiers (mutually exclusive, highest wins):
- * - member: paying subscription (active, not canceled, amount > 0)
- * - engaged: not paying, but has users with engagement
- * - registered: not paying, no engaged users, but has users
- * - prospect: no users at all (pure placeholder)
- *
- * For backward compatibility, if has_users/has_engaged_users are not provided,
- * returns simplified "member" or "prospect" based on subscription only.
- */
-function deriveOrgTier(org: {
-  subscription_status: string | null;
-  subscription_canceled_at?: Date | null;
-  has_users?: boolean;
-  has_engaged_users?: boolean;
-}): OrgTier {
-  // Member: active, non-canceled subscription (includes comped members)
-  if (org.subscription_status === "active" && !org.subscription_canceled_at) {
-    return "member";
-  }
-
-  // If we have the engagement data, use full tier logic
-  if (org.has_engaged_users !== undefined || org.has_users !== undefined) {
-    // Engaged: has users with engagement
-    if (org.has_engaged_users) {
-      return "engaged";
-    }
-
-    // Registered: has users but no engagement
-    if (org.has_users) {
-      return "registered";
-    }
-
-    // Prospect: no users at all
-    return "prospect";
-  }
-
-  // Backward compatibility: no engagement data, just return prospect for non-members
-  return "prospect";
-}
-
-/**
- * Map engagement score (0-100) to fire count (0-4)
- */
-function scoreToFires(score: number): number {
-  if (score >= 76) return 4;
-  if (score >= 56) return 3;
-  if (score >= 36) return 2;
-  if (score >= 16) return 1;
-  return 0;
-}
 
 export function setupAccountRoutes(
   pageRouter: Router,
-  apiRouter: Router
+  apiRouter: Router,
+  config?: { workos: WorkOS | null }
 ): void {
+  const workos = config?.workos ?? null;
 
-  // Page route for unified account list
-  pageRouter.get("/accounts", requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-accounts.html").catch((err) => {
-      logger.error({ err }, "Error serving accounts page");
-      res.status(500).send("Internal server error");
-    });
+  // Redirect to manage accounts page
+  pageRouter.get("/accounts", requireAuth, (req, res) => {
+    res.redirect(301, "/manage/accounts");
   });
 
   // Page route for domain discovery tool
@@ -122,16 +83,12 @@ export function setupAccountRoutes(
     }
   );
 
-  // Page route for unified account detail
+  // Redirect account detail to manage
   pageRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireAdmin,
     (req, res) => {
-      serveHtmlWithConfig(req, res, "admin-account-detail.html").catch((err) => {
-        logger.error({ err }, "Error serving admin account detail page");
-        res.status(500).send("Internal server error");
-      });
+      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
     }
   );
 
@@ -139,9 +96,8 @@ export function setupAccountRoutes(
   pageRouter.get(
     "/organizations/:orgId",
     requireAuth,
-    requireAdmin,
     (req, res) => {
-      res.redirect(301, `/admin/accounts/${req.params.orgId}`);
+      res.redirect(301, `/manage/accounts/${req.params.orgId}`);
     }
   );
 
@@ -156,6 +112,8 @@ export function setupAccountRoutes(
         const pool = getPool();
         const currentUserId = req.user?.id;
 
+        const churnedStatusList = CHURNED_STATUSES.map(s => `'${s}'`).join(', ');
+
         const [
           needsAttention,
           newInsights,
@@ -167,6 +125,8 @@ export function setupAccountRoutes(
           members,
           disqualified,
           missingOwner,
+          openInvoices,
+          churned,
         ] = await Promise.all([
           // Needs attention - prospects with action items OR members with real problems
           pool.query(`
@@ -187,7 +147,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= 50
+                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -229,8 +189,8 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE (${NOT_MEMBER_ALIASED})
               AND (
-                COALESCE(o.engagement_score, 0) >= 50
-                OR o.interest_level IN ('high', 'very_high')
+                COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+                OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
               )
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
@@ -249,7 +209,7 @@ export function setupAccountRoutes(
             SELECT COUNT(*) as count
             FROM organizations o
             WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
           `),
@@ -305,6 +265,21 @@ export function setupAccountRoutes(
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `),
+
+          // Open invoices
+          pool.query(`
+            SELECT COUNT(DISTINCT o.workos_organization_id) as count
+            FROM organizations o
+            INNER JOIN org_invoices oi ON oi.workos_organization_id = o.workos_organization_id
+            WHERE oi.status IN ('draft', 'open')
+          `),
+
+          // Churned - canceled, past due, unpaid, or expired subscriptions
+          pool.query(`
+            SELECT COUNT(*) as count
+            FROM organizations o
+            WHERE o.subscription_status IN (${churnedStatusList})
+          `),
         ]);
 
         res.json({
@@ -318,6 +293,8 @@ export function setupAccountRoutes(
           members: parseInt(members.rows[0].count),
           disqualified: parseInt(disqualified.rows[0].count),
           missing_owner: parseInt(missingOwner.rows[0].count),
+          open_invoices: parseInt(openInvoices.rows[0].count),
+          churned: parseInt(churned.rows[0].count),
         });
       } catch (error) {
         logger.error({ err: error }, "Error fetching view counts");
@@ -333,7 +310,7 @@ export function setupAccountRoutes(
   apiRouter.get(
     "/accounts/:orgId",
     requireAuth,
-    requireAdmin,
+    requireManage,
     async (req, res) => {
       try {
         const { orgId } = req.params;
@@ -362,7 +339,7 @@ export function setupAccountRoutes(
         const org = orgResult.rows[0];
 
         // Derive member status from subscription
-        const memberStatus = deriveOrgTier(org);
+        const memberStatus = computeEngagementTier(org);
         const isDisqualified = org.prospect_status === "disqualified";
 
         // Resolve effective membership (direct or inherited via brand hierarchy)
@@ -824,7 +801,7 @@ export function setupAccountRoutes(
   );
 
   // GET /api/admin/accounts - List all accounts with action-based views
-  apiRouter.get("/accounts", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/accounts", requireAuth, requireManage, async (req, res) => {
     try {
       const pool = getPool();
       const { view, owner, search, limit: limitParam, offset: offsetParam } = req.query;
@@ -873,6 +850,7 @@ export function setupAccountRoutes(
           // OR members with real problems (expiring soon, missing owner)
           query = `
             ${selectFields},
+            na.id as attention_activity_id,
             na.next_step_due_date as next_step_due,
             na.description as next_step_description,
             CASE
@@ -881,7 +859,7 @@ export function setupAccountRoutes(
               WHEN oi.stripe_invoice_id IS NOT NULL THEN 'open_invoice'
               WHEN o.subscription_current_period_end <= NOW() + INTERVAL '30 days'
                 AND ${MEMBER_FILTER_ALIASED} THEN 'expiring_soon'
-              WHEN COALESCE(o.engagement_score, 0) >= 50 AND NOT EXISTS (
+              WHEN COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD} AND NOT EXISTS (
                 SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
               ) THEN 'high_engagement_unowned'
               WHEN EXISTS (
@@ -907,7 +885,7 @@ export function setupAccountRoutes(
                     na.id IS NOT NULL
                     OR oi.stripe_invoice_id IS NOT NULL
                     OR (
-                      COALESCE(o.engagement_score, 0) >= 50
+                      COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
                       AND NOT EXISTS (
                         SELECT 1 FROM org_stakeholders os WHERE os.organization_id = o.workos_organization_id
                       )
@@ -978,8 +956,8 @@ export function setupAccountRoutes(
             FROM organizations o
             WHERE (${NOT_MEMBER_ALIASED})
             AND (
-              COALESCE(o.engagement_score, 0) >= 50
-              OR o.interest_level IN ('high', 'very_high')
+              COALESCE(o.engagement_score, 0) >= ${HOT_PROSPECT_SCORE_THRESHOLD}
+              OR o.interest_level IN (${HOT_PROSPECT_INTEREST_LEVELS.map(l => `'${l}'`).join(', ')})
             )
             AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
           `;
@@ -992,7 +970,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             WHERE o.last_activity_at IS NOT NULL
-              AND o.last_activity_at < NOW() - INTERVAL '30 days'
+              AND o.last_activity_at < NOW() - INTERVAL '${GOING_COLD_DAYS} days'
               AND COALESCE(o.prospect_status, 'prospect') != 'disqualified'
               AND (${NOT_MEMBER_ALIASED})
           `;
@@ -1048,7 +1026,7 @@ export function setupAccountRoutes(
             ${selectFields}
             FROM organizations o
             WHERE ${MEMBER_FILTER_ALIASED}
-              AND COALESCE(o.engagement_score, 0) < 30
+              AND COALESCE(o.engagement_score, 0) < ${GOING_COLD_MIN_SCORE}
           `;
           orderBy = ` ORDER BY o.engagement_score ASC NULLS FIRST`;
           break;
@@ -1131,6 +1109,16 @@ export function setupAccountRoutes(
           orderBy = ` ORDER BY o.name ASC`;
           break;
 
+        case "churned":
+          // Churned members — canceled, past due, unpaid, or expired subscriptions
+          query = `
+            ${selectFields}
+            FROM organizations o
+            WHERE o.subscription_status IN (${CHURNED_STATUSES.map(s => `'${s}'`).join(', ')})
+          `;
+          orderBy = ` ORDER BY o.updated_at DESC`;
+          break;
+
         default:
           // All accounts (except disqualified)
           query = `
@@ -1173,7 +1161,7 @@ export function setupAccountRoutes(
       const orgIds = result.rows.map((r) => r.workos_organization_id);
 
       // Fetch related data in parallel
-      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts] =
+      const [stakeholdersResult, domainsResult, slackUserCounts, memberCounts, slackOnlyCounts, addieActivityResult] =
         await Promise.all([
           pool.query(
             `
@@ -1232,6 +1220,19 @@ export function setupAccountRoutes(
           `,
             [orgIds]
           ),
+
+          // Addie outreach activity (orgs with outreach in last 30 days)
+          pool.query(
+            `
+            SELECT DISTINCT om.workos_organization_id
+            FROM member_outreach mo
+            JOIN slack_user_mappings sm ON sm.slack_user_id = mo.slack_user_id
+            JOIN organization_memberships om ON om.workos_user_id = sm.workos_user_id
+            WHERE om.workos_organization_id = ANY($1)
+              AND mo.sent_at >= NOW() - INTERVAL '30 days'
+          `,
+            [orgIds]
+          ),
         ]);
 
       // Build maps
@@ -1272,9 +1273,13 @@ export function setupAccountRoutes(
         ])
       );
 
+      const addieActivitySet = new Set(
+        addieActivityResult.rows.map((r) => r.workos_organization_id)
+      );
+
       // Transform results
       const accounts = result.rows.map((row) => {
-        const memberStatus = deriveOrgTier(row);
+        const memberStatus = computeEngagementTier(row);
         const engagementScore = row.engagement_score || 0;
         const stakeholders =
           stakeholdersMap.get(row.workos_organization_id) || [];
@@ -1332,9 +1337,13 @@ export function setupAccountRoutes(
           next_step_due: row.next_step_due,
           next_step_description: row.next_step_description,
           attention_reason: row.attention_reason,
+          attention_activity_id: row.attention_activity_id,
           invoice_amount: row.invoice_amount,
           invoice_status: row.invoice_status,
           stakeholder_role: row.stakeholder_role,
+
+          // Addie activity
+          has_addie_activity: addieActivitySet.has(row.workos_organization_id),
 
           // Legacy (for transition)
           workos_organization_id: row.workos_organization_id,
@@ -1350,6 +1359,36 @@ export function setupAccountRoutes(
       });
     }
   });
+
+  // POST /api/admin/accounts/:orgId/activities/:activityId/complete - Mark a task complete
+  apiRouter.post(
+    "/accounts/:orgId/activities/:activityId/complete",
+    requireAuth,
+    requireManage,
+    async (req, res) => {
+      try {
+        const { orgId, activityId } = req.params;
+        const pool = getPool();
+
+        const result = await pool.query(
+          `UPDATE org_activities
+           SET next_step_completed_at = NOW()
+           WHERE id = $1 AND organization_id = $2 AND is_next_step = TRUE
+           RETURNING id, description, next_step_completed_at`,
+          [activityId, orgId]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: "Activity not found" });
+        }
+
+        res.json({ success: true, activity: result.rows[0] });
+      } catch (error) {
+        logger.error({ err: error }, "Error completing activity");
+        res.status(500).json({ error: "Internal server error" });
+      }
+    }
+  );
 
   // GET /api/admin/activity-feed - Unified activity stream across all sources
   apiRouter.get(
@@ -2115,6 +2154,391 @@ export function setupAccountRoutes(
       } catch (error) {
         logger.error({ err: error }, "Error fetching registry activity");
         res.status(500).json({ error: "Failed to fetch registry activity" });
+      }
+    }
+  );
+
+  // =========================================================================
+  // ACCOUNT MUTATIONS (create, update, payment-link, invoice)
+  // =========================================================================
+
+  // POST /api/admin/accounts - Create a new prospect/account
+  apiRouter.post("/accounts", requireAuth, requireManage, async (req, res) => {
+    try {
+      const {
+        name,
+        domain,
+        company_type,
+        prospect_status,
+        prospect_source,
+        prospect_notes,
+        prospect_contact_name,
+        prospect_contact_email,
+        prospect_contact_title,
+        prospect_next_action,
+        prospect_next_action_date,
+        prospect_owner,
+      } = req.body;
+
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ error: "Company name is required" });
+      }
+
+      const result = await createProspect({
+        name,
+        domain,
+        company_type,
+        prospect_status,
+        prospect_source: prospect_source || "referral",
+        prospect_notes,
+        prospect_contact_name,
+        prospect_contact_email,
+        prospect_contact_title,
+        prospect_next_action,
+        prospect_next_action_date,
+        prospect_owner,
+      });
+
+      if (!result.success) {
+        if (result.alreadyExists) {
+          return res.status(409).json({
+            error: "Organization already exists",
+            message: result.error,
+            organization: result.organization,
+          });
+        }
+        return res.status(400).json({
+          error: "Failed to create prospect",
+          message: result.error,
+        });
+      }
+
+      res.status(201).json(result.organization);
+    } catch (error) {
+      logger.error({ err: error }, "Error creating prospect");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to create prospect",
+      });
+    }
+  });
+
+  // PUT /api/admin/accounts/:orgId - Update account/prospect fields
+  apiRouter.put(
+    "/accounts/:orgId",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const updates = req.body;
+
+        // If name is being updated, sync to WorkOS first
+        if (updates.name && typeof updates.name === "string" && updates.name.trim()) {
+          const trimmedName = updates.name.trim();
+          if (workos) {
+            try {
+              await workos.organizations.updateOrganization({
+                organization: orgId,
+                name: trimmedName,
+              });
+              logger.info({ orgId, newName: trimmedName }, "Organization name synced to WorkOS");
+            } catch (workosError) {
+              logger.error({ err: workosError, orgId }, "Failed to update organization name in WorkOS");
+              return res.status(500).json({
+                error: "Failed to update organization name",
+                message: `Could not sync name change to WorkOS: ${workosError instanceof Error ? workosError.message : 'Unknown error'}`,
+              });
+            }
+          }
+          updates.name = trimmedName;
+        }
+
+        const result = await updateProspect(orgId, {
+          fields: updates,
+          notesMode: 'overwrite',
+        });
+
+        if (!result.success) {
+          const status = result.error === 'Account not found' ? 404 : 400;
+          return res.status(status).json({ error: result.error });
+        }
+
+        res.json(result.updated);
+      } catch (error) {
+        logger.error({ err: error }, "Error updating account");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to update account",
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/payment-link - Generate a Stripe payment link
+  apiRouter.post(
+    "/accounts/:orgId/payment-link",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const { lookup_key, coupon_id, promotion_code } = req.body;
+        const pool = getPool();
+
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, is_personal, prospect_contact_email,
+                  stripe_coupon_id, stripe_promotion_code
+           FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const customerType = org.is_personal ? "individual" : "company";
+
+        const products = await getProductsForCustomer({
+          customerType,
+          category: "membership",
+        });
+
+        if (!lookup_key) {
+          return res.json({
+            needs_selection: true,
+            products: products.map((p) => ({
+              lookup_key: p.lookup_key,
+              display_name: p.display_name,
+              amount_cents: p.amount_cents,
+              revenue_tiers: p.revenue_tiers,
+            })),
+            message: "Select a product to generate payment link",
+          });
+        }
+
+        const product = products.find((p) => p.lookup_key === lookup_key);
+        if (!product) {
+          return res.status(400).json({
+            error: "Product not found",
+            message: `No product found with lookup key: ${lookup_key}`,
+          });
+        }
+
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+        const effectivePromoCode = promotion_code || org.stripe_promotion_code;
+
+        const baseUrl = process.env.BASE_URL || "https://agenticadvertising.org";
+        const session = await createCheckoutSession({
+          priceId: product.price_id,
+          customerEmail: org.prospect_contact_email || undefined,
+          successUrl: `${baseUrl}/dashboard?payment=success`,
+          cancelUrl: `${baseUrl}/join?payment=cancelled`,
+          workosOrganizationId: orgId,
+          isPersonalWorkspace: org.is_personal,
+          couponId: effectiveCouponId || undefined,
+          promotionCode: !effectiveCouponId ? effectivePromoCode : undefined,
+        });
+
+        if (!session?.url) {
+          return res.status(500).json({
+            error: "Failed to create payment link",
+            message: "Stripe is not configured or session created but no URL returned",
+          });
+        }
+
+        logger.info(
+          { orgId, orgName: org.name, lookupKey: lookup_key, adminEmail: req.user!.email },
+          "Admin generated payment link"
+        );
+
+        res.json({
+          success: true,
+          payment_url: session.url,
+          product: { display_name: product.display_name, amount_cents: product.amount_cents },
+          organization: { name: org.name, email: org.prospect_contact_email },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error generating payment link");
+        const errorMessage = error instanceof Error ? error.message : "Unable to generate payment link";
+        res.status(500).json({ error: "Internal server error", message: errorMessage });
+      }
+    }
+  );
+
+  // POST /api/admin/accounts/:orgId/invoice - Generate and send a Stripe invoice
+  apiRouter.post(
+    "/accounts/:orgId/invoice",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const {
+          lookup_key,
+          company_name,
+          contact_name,
+          contact_email,
+          billing_address,
+          coupon_id,
+        } = req.body;
+
+        if (!lookup_key || !company_name || !contact_name || !contact_email || !billing_address) {
+          return res.status(400).json({
+            error: "Missing required fields",
+            message: "lookup_key, company_name, contact_name, contact_email, and billing_address are required",
+          });
+        }
+
+        if (!billing_address.line1 || !billing_address.city || !billing_address.state ||
+            !billing_address.postal_code || !billing_address.country) {
+          return res.status(400).json({
+            error: "Incomplete billing address",
+            message: "Billing address must include line1, city, state, postal_code, and country",
+          });
+        }
+
+        const pool = getPool();
+        const orgResult = await pool.query(
+          `SELECT workos_organization_id, name, stripe_coupon_id FROM organizations WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const org = orgResult.rows[0];
+        const effectiveCouponId = coupon_id || org.stripe_coupon_id;
+
+        const result = await createAndSendInvoice({
+          lookupKey: lookup_key,
+          companyName: company_name,
+          contactName: contact_name,
+          contactEmail: contact_email,
+          billingAddress: {
+            line1: billing_address.line1,
+            line2: billing_address.line2,
+            city: billing_address.city,
+            state: billing_address.state,
+            postal_code: billing_address.postal_code,
+            country: billing_address.country,
+          },
+          workosOrganizationId: orgId,
+          couponId: effectiveCouponId,
+        });
+
+        if (!result) {
+          return res.status(500).json({
+            error: "Failed to create invoice",
+            message: "Stripe may not be configured or the product was not found",
+          });
+        }
+
+        await pool.query(
+          `UPDATE organizations SET
+            invoice_requested_at = NOW(),
+            prospect_contact_name = $1,
+            prospect_contact_email = $2
+           WHERE workos_organization_id = $3`,
+          [contact_name, contact_email, orgId]
+        );
+
+        logger.info(
+          { orgId, orgName: org.name, lookupKey: lookup_key, invoiceId: result.invoiceId, contactEmail: contact_email, adminEmail: req.user!.email },
+          "Admin sent invoice"
+        );
+
+        res.json({
+          success: true,
+          invoice_id: result.invoiceId,
+          invoice_url: result.invoiceUrl,
+          organization: { name: org.name },
+          contact: { name: contact_name, email: contact_email },
+        });
+      } catch (error) {
+        logger.error({ err: error }, "Error sending invoice");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to send invoice",
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/team - Admin team members for assignment dropdowns
+  apiRouter.get("/team", requireAuth, requireManage, async (req, res) => {
+    try {
+      const pool = getPool();
+
+      const result = await pool.query(`
+        SELECT DISTINCT
+          u.workos_user_id as user_id,
+          COALESCE(NULLIF(TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')), ''), u.email) as user_name,
+          u.email as user_email
+        FROM working_group_memberships wgm
+        JOIN working_groups wg ON wg.id = wgm.working_group_id
+        JOIN users u ON u.workos_user_id = wgm.workos_user_id
+        WHERE wg.slug = 'aao-admin'
+          AND wgm.status = 'active'
+        ORDER BY user_name ASC
+      `);
+
+      const currentUserId = req.user?.id;
+      const currentUserName =
+        [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim() || req.user?.email;
+      const currentUserEmail = req.user?.email;
+
+      const teamMembers = result.rows;
+      const currentUserInList = teamMembers.some(
+        (m: { user_id: string }) => m.user_id === currentUserId
+      );
+
+      if (!currentUserInList && currentUserId) {
+        teamMembers.unshift({
+          user_id: currentUserId,
+          user_name: currentUserName,
+          user_email: currentUserEmail,
+        });
+      }
+
+      res.json(teamMembers);
+    } catch (error) {
+      logger.error({ err: error }, "Error fetching admin team");
+      res.status(500).json({
+        error: "Internal server error",
+        message: "Unable to fetch admin team",
+      });
+    }
+  });
+
+  // GET /api/admin/organizations - List all organizations (for parent org dropdown)
+  apiRouter.get(
+    "/organizations",
+    requireAuth,
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const pool = getPool();
+
+        const result = await pool.query(`
+          SELECT
+            workos_organization_id,
+            name,
+            company_type,
+            prospect_status
+          FROM organizations
+          ORDER BY name ASC
+        `);
+
+        res.json(result.rows);
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching organizations");
+        res.status(500).json({
+          error: "Internal server error",
+          message: "Unable to fetch organizations",
+        });
       }
     }
   );

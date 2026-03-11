@@ -27,9 +27,12 @@ import { sendChannelMessage } from '../../slack/client.js';
 import { runPersonaInferenceJob } from '../services/persona-inference.js';
 import { runJourneyComputationJob } from '../services/journey-computation.js';
 import { runKnowledgeStalenessJob } from './knowledge-staleness.js';
+import { runGeoMonitorJob } from './geo-monitor.js';
+import { runGeoSnapshotJob } from './geo-snapshot.js';
+import { runGeoContentPlannerJob } from './geo-content-planner.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
-import { autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
+import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
@@ -201,6 +204,7 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'seconds' },
     runner: runEngagementScoringJob,
+    shouldLogResult: (r) => r.usersUpdated > 0 || r.orgsUpdated > 0,
   });
 
   // Goal follow-up - sends follow-up messages during business hours
@@ -286,7 +290,48 @@ export function registerAllJobs(): void {
     interval: { value: 24, unit: 'hours' },
     initialDelay: { value: 2, unit: 'minutes' },
     runner: autoLinkUnmappedSlackUsers,
-    shouldLogResult: (r) => r.linked > 0 || r.errors > 0,
+    shouldLogResult: (r) => r.linked > 0 || r.pending_org_prospects_set > 0 || r.errors > 0,
+  });
+
+  jobScheduler.register({
+    name: 'domain-member-backfill',
+    description: 'Add verified-domain Slack users as org members if not already added',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 5, unit: 'minutes' },
+    runner: autoAddVerifiedDomainUsersAsMembers,
+    shouldLogResult: (r) => r.added > 0 || r.errors > 0,
+  });
+
+  // GEO prompt monitor - checks LLM visibility for AdCP mentions
+  jobScheduler.register({
+    name: 'geo-monitor',
+    description: 'GEO prompt monitor',
+    interval: { value: 168, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: runGeoMonitorJob,
+    options: { limit: 15 },
+    shouldLogResult: (r) => r.promptsChecked > 0,
+  });
+
+  // GEO visibility snapshot - saves daily per-model metrics from LLM Pulse
+  jobScheduler.register({
+    name: 'geo-snapshot',
+    description: 'GEO visibility daily snapshot',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 10, unit: 'minutes' },
+    runner: runGeoSnapshotJob,
+    shouldLogResult: (r) => r.modelsSnapped > 0,
+  });
+
+  // GEO content planner - generates content briefs from monitoring gaps
+  jobScheduler.register({
+    name: 'geo-content-planner',
+    description: 'GEO content planner',
+    interval: { value: 168, unit: 'hours' },
+    initialDelay: { value: 30, unit: 'minutes' },
+    runner: runGeoContentPlannerJob,
+    options: { limit: 10 },
+    shouldLogResult: (r) => r.briefsCreated > 0,
   });
 
   // Event reminder - sends notifications ~24h before events start
@@ -311,20 +356,24 @@ export function registerAllJobs(): void {
           const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
           if (alreadySent) continue;
 
-          await notifyUser({
-            recipientUserId: reg.workos_user_id,
-            type: 'event_reminder',
-            referenceId: event.id,
-            referenceType: 'event',
-            title: `Reminder: ${event.title} is tomorrow`,
-            url: `/events/${event.slug}`,
-          }).catch(err => logger.error({ err }, 'Failed to send event reminder'));
-          remindersSent++;
+          try {
+            await notifyUser({
+              recipientUserId: reg.workos_user_id,
+              type: 'event_reminder',
+              referenceId: event.id,
+              referenceType: 'event',
+              title: `Reminder: ${event.title} is tomorrow`,
+              url: `/events/${event.slug}`,
+            });
+            remindersSent++;
+          } catch (err) {
+            logger.error({ err }, 'Failed to send event reminder');
+          }
         }
       }
       return { eventsChecked: events.length, remindersSent };
     },
-    shouldLogResult: (r) => r.eventsChecked > 0,
+    shouldLogResult: (r) => r.remindersSent > 0,
   });
 }
 
@@ -351,5 +400,9 @@ export const JOB_NAMES = {
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
   SLACK_AUTO_LINK: 'slack-auto-link',
+  DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   EVENT_REMINDER: 'event-reminder',
+  GEO_MONITOR: 'geo-monitor',
+  GEO_SNAPSHOT: 'geo-snapshot',
+  GEO_CONTENT_PLANNER: 'geo-content-planner',
 } as const;

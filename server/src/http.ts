@@ -48,6 +48,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAdminOutboundRouter } from "./routes/admin-outbound.js";
+import { markLinkAccountGoalsSucceeded } from "./db/outbound-db.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
 import { createMoltbookAdminRouter } from "./routes/moltbook-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
@@ -640,6 +641,7 @@ export class HTTPServer {
           }
         });
       } catch (error) {
+        logger.error({ err: error }, 'Failed to list schema versions');
         res.status(500).json({ error: "Failed to list schema versions" });
       }
     });
@@ -694,7 +696,7 @@ export class HTTPServer {
       // Skip paths that have their own route handlers which manage auth and config injection
       // (e.g. /dashboard injects isManage; /manage requires kitchen-cabinet auth;
       // /agents does content negotiation to serve HTML or JSON)
-      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents') {
+      if (urlPath.startsWith('/manage') || urlPath.startsWith('/dashboard') || urlPath === '/agents' || urlPath === '/chat') {
         return next();
       }
 
@@ -819,8 +821,8 @@ export class HTTPServer {
 
     // Mount admin routes
     const { pageRouter, apiRouter } = createAdminRouter();
-    this.app.use('/admin', pageRouter);      // Page routes: /admin/prospects
-    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/prospects
+    this.app.use('/admin', pageRouter);      // Page routes: /admin/*
+    this.app.use('/api/admin', apiRouter);   // API routes: /api/admin/accounts, etc.
 
     // Mount admin insights routes (member insights, goals, outreach)
     const { pageRouter: insightsPageRouter, apiRouter: insightsApiRouter } = createAdminInsightsRouter();
@@ -1525,6 +1527,7 @@ export class HTTPServer {
     });
     this.app.get('/dashboard/emails', (req, res) => serveDashboardPage(req, res, 'dashboard-emails.html'));
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // My Content - unified CMS for all authenticated users
     this.app.get('/my-content', async (req, res) => {
@@ -1602,6 +1605,7 @@ export class HTTPServer {
         const result = await this.validator.validate(domain, agent_url);
         res.json(result);
       } catch (error) {
+        logger.error({ err: error, domain, agent_url }, 'Validation failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Validation failed",
         });
@@ -1672,6 +1676,7 @@ export class HTTPServer {
         const profile = await this.capabilityDiscovery.discoverCapabilities(agent);
         res.json(profile);
       } catch (error) {
+        logger.error({ err: error, agentId }, 'Capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Capability discovery failed",
         });
@@ -1687,6 +1692,7 @@ export class HTTPServer {
           profiles: Array.from(profiles.values()),
         });
       } catch (error) {
+        logger.error({ err: error, agentCount: agents.length }, 'Bulk capability discovery failed');
         res.status(500).json({
           error: error instanceof Error ? error.message : "Bulk discovery failed",
         });
@@ -2482,12 +2488,12 @@ export class HTTPServer {
     });
 
     // GET /brand/view/:domain - Brand viewer page (wildcard captures dots in domain names)
-    this.app.get('/brand/view/:domain(*)', async (req, res) => {
+    this.app.get('/brand/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'brand-viewer.html');
     });
 
     // GET /property/view/:domain - Property viewer page (wildcard captures dots in domain names)
-    this.app.get('/property/view/:domain(*)', async (req, res) => {
+    this.app.get('/property/view/*domain', async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
@@ -3989,15 +3995,20 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'manage.html'));
     this.app.get('/manage/referrals', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-referrals.html'));
-    this.app.get('/manage/prospects', requireAuth, requireManage, (req, res) =>
-      this.serveHtmlWithConfig(req, res, 'manage-prospects.html'));
-    this.app.get('/manage/accounts', requireAuth, (req, res) => res.redirect(302, '/admin/accounts'));
+    this.app.get('/manage/prospects', requireAuth, (req, res) => res.redirect(301, '/manage/accounts'));
+    this.app.get('/manage/accounts', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-accounts.html'));
+    this.app.get('/manage/accounts/:orgId', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
     this.app.get('/manage/analytics', requireAuth, requireManage, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'manage-analytics.html'));
+    this.app.get('/manage/geo', requireAuth, requireManage, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'manage-geo.html'));
 
     // Redirect moved admin pages to their new /manage paths
-    this.app.get('/admin/prospects', (req, res) => res.redirect(302, '/manage/prospects'));
+    this.app.get('/admin/prospects', (req, res) => res.redirect(301, '/manage/accounts'));
     this.app.get('/admin/analytics', (req, res) => res.redirect(302, '/manage/analytics'));
+    this.app.get('/admin/geo', (req, res) => res.redirect(301, '/manage/geo'));
 
     // Admin routes
     // GET /admin - Admin landing page
@@ -5168,6 +5179,26 @@ Disallow: /api/admin/
 
         logger.info({ userId: user.id }, 'User authenticated via OAuth callback');
 
+        // Ensure user exists in local users table (webhooks may have been missed).
+        // WorkOS is the source of truth for name/email — always sync on login.
+        try {
+          const pool = getPool();
+          await pool.query(
+            `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+             ON CONFLICT (workos_user_id) DO UPDATE SET
+               email = EXCLUDED.email,
+               first_name = EXCLUDED.first_name,
+               last_name = EXCLUDED.last_name,
+               email_verified = EXCLUDED.email_verified,
+               workos_updated_at = EXCLUDED.workos_updated_at,
+               updated_at = NOW()`,
+            [user.id, user.email, user.firstName, user.lastName, user.emailVerified, user.createdAt, user.updatedAt]
+          );
+        } catch (upsertError) {
+          logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
+        }
+
         // Check if user needs to accept (or re-accept) ToS and Privacy Policy
         // This happens when:
         // 1. User has never accepted them, OR
@@ -5333,6 +5364,8 @@ Disallow: /api/admin/
             const slackDb = new SlackDatabase();
             const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
 
+            let accountLinked = false;
+
             if (existingMapping && !existingMapping.workos_user_id) {
               // Link the Slack user to the newly authenticated WorkOS user
               await slackDb.mapUser({
@@ -5340,6 +5373,7 @@ Disallow: /api/admin/
                 workos_user_id: user.id,
                 mapping_source: 'user_claimed',
               });
+              accountLinked = true;
               logger.info(
                 { slackUserId: slackUserIdToLink, workosUserId: user.id },
                 'Auto-linked Slack account after signup'
@@ -5375,11 +5409,30 @@ Disallow: /api/admin/
                 { slackUserId: slackUserIdToLink },
                 'Slack user not found in mapping table, skipping auto-link'
               );
+            } else if (existingMapping.workos_user_id === user.id) {
+              // Already correctly linked — user clicked the link again.
+              // We still mark the goal as success (below) but don't re-send the
+              // "you're now linked" Addie message to avoid duplicate notifications.
+              accountLinked = true;
+              logger.debug(
+                { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                'Slack account already linked to this WorkOS user'
+              );
             } else {
               logger.debug(
                 { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
                 'Slack user already mapped to different WorkOS user'
               );
+            }
+
+            // Mark any pending Link Account outreach goals as succeeded so Addie stops re-sending
+            if (accountLinked) {
+              try {
+                await markLinkAccountGoalsSucceeded(slackUserIdToLink);
+              } catch (historyError) {
+                logger.warn({ error: historyError, slackUserId: slackUserIdToLink }, 'Failed to mark Link Account goal as success');
+              }
+              invalidateMemberContextCache(slackUserIdToLink);
             }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails
@@ -5399,6 +5452,16 @@ Disallow: /api/admin/
                   { workosUserId: user.id, slackUserId: linkResult.slack_user_id },
                   'Email-based auto-link on login'
                 );
+
+                // Mark any pending "Link Account" goals as succeeded
+                if (linkResult.slack_user_id) {
+                  try {
+                    await markLinkAccountGoalsSucceeded(linkResult.slack_user_id);
+                  } catch (historyError) {
+                    logger.warn({ error: historyError, slackUserId: linkResult.slack_user_id }, 'Failed to mark Link Account goal as success after email auto-link');
+                  }
+                  invalidateMemberContextCache(linkResult.slack_user_id);
+                }
               }
             }
           } catch (linkError) {
@@ -6504,6 +6567,16 @@ Disallow: /api/admin/
               const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
               const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
           // Add earned credentials for org members
@@ -6539,6 +6612,16 @@ Disallow: /api/admin/
               const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
               const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
               profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hosted.domain_verified };
+            } else {
+              const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+              if (discovered) {
+                const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+                const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+                const primaryBrand = brands?.[0];
+                const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+                const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+                profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+              }
             }
           }
         }));
@@ -6649,6 +6732,16 @@ Disallow: /api/admin/
             const logos = (primaryBrand?.logos ?? bj.logos) as Array<Record<string, unknown>> | undefined;
             const colors = (primaryBrand?.colors ?? bj.colors) as Record<string, unknown> | undefined;
             profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: hostedBrand.domain_verified };
+          } else {
+            const discovered = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+            if (discovered) {
+              const manifest = discovered.brand_manifest as Record<string, unknown> | undefined;
+              const brands = manifest?.brands as Array<Record<string, unknown>> | undefined;
+              const primaryBrand = brands?.[0];
+              const logos = (primaryBrand?.logos ?? manifest?.logos) as Array<Record<string, unknown>> | undefined;
+              const colors = (primaryBrand?.colors ?? manifest?.colors) as Record<string, unknown> | undefined;
+              profile.resolved_brand = { domain: profile.primary_brand_domain, logo_url: logos?.[0]?.url as string | undefined, brand_color: colors?.primary as string | undefined, verified: true };
+            }
           }
         }
 
@@ -6726,10 +6819,8 @@ Disallow: /api/admin/
 
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
-    // Note: Prospect management routes are in routes/admin.ts
-    // Routes: GET/POST /api/admin/prospects, POST /api/admin/prospects/bulk,
-    //         PUT /api/admin/prospects/:orgId, GET /api/admin/prospects/stats,
-    //         GET /api/admin/organizations
+    // Note: Account management routes are in routes/admin/accounts.ts
+    // Old /api/admin/prospects/* paths are proxied via routes/admin/prospects.ts for compatibility
 
     // NOTE: Agent management is now handled through member profiles.
     // Agents are stored in the member_profiles.agents JSONB array.

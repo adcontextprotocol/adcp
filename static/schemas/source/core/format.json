@@ -542,6 +542,31 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "disclosure_capabilities": {
+      "type": "array",
+      "description": "Structured disclosure capabilities per position with persistence modes. Declares which persistence behaviors each disclosure position supports, enabling persistence-aware matching against provenance render guidance and brief requirements. When present, supersedes supported_disclosure_positions for persistence-aware queries. The flat supported_disclosure_positions field is retained for backward compatibility. Each position MUST appear at most once; validators and agents SHOULD reject duplicates.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "$ref": "/schemas/enums/disclosure-position.json",
+            "description": "The disclosure position"
+          },
+          "persistence": {
+            "type": "array",
+            "description": "Persistence modes this position supports",
+            "items": {
+              "$ref": "/schemas/enums/disclosure-persistence.json"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": ["position", "persistence"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
     "format_card_detailed": {
       "type": "object",
       "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",

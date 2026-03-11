@@ -38,7 +38,7 @@ export async function runEngagementScoringJob(options: {
 } = {}): Promise<EngagementScoringResult> {
   const { usersPerBatch = 100, orgsPerBatch = 100 } = options;
 
-  logger.info({ usersPerBatch, orgsPerBatch }, 'Running engagement scoring job');
+  logger.debug({ usersPerBatch, orgsPerBatch }, 'Running engagement scoring job');
 
   // Update stale user scores
   const userResult = await query<{ update_stale_user_scores: number }>(
@@ -54,7 +54,7 @@ export async function runEngagementScoringJob(options: {
   );
   const orgsUpdated = orgResult.rows[0]?.update_stale_org_engagement_scores || 0;
 
-  logger.info({ usersUpdated, orgsUpdated }, 'Engagement scoring job completed');
+  logger.debug({ usersUpdated, orgsUpdated }, 'Engagement scoring job completed');
 
   return { usersUpdated, orgsUpdated };
 }

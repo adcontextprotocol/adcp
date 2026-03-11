@@ -324,7 +324,7 @@
         },
         "account-ref": {
           "$ref": "/schemas/core/account-ref.json",
-          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator)"
+          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional sandbox)"
         },
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
@@ -459,6 +459,10 @@
         "disclosure-position": {
           "$ref": "/schemas/enums/disclosure-position.json",
           "description": "Where a required disclosure should appear within a creative"
+        },
+        "disclosure-persistence": {
+          "$ref": "/schemas/enums/disclosure-persistence.json",
+          "description": "How long a disclosure must persist during content playback or display"
         },
         "format-category": {
           "$ref": "/schemas/enums/format-category.json",

@@ -170,6 +170,8 @@ Configure automated delivery reporting for this media buy:
 | `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
 | `budget` | number | Updated budget allocation |
 | `impressions` | number | Updated impression goal for this package |
+| `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
+| `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |

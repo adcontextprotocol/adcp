@@ -904,8 +904,6 @@ paths:
                         type: integer
                       brand_json:
                         type: integer
-                      hosted:
-                        type: integer
                       community:
                         type: integer
                       enriched:
@@ -913,7 +911,6 @@ paths:
                     required:
                       - total
                       - brand_json
-                      - hosted
                       - community
                       - enriched
                 required:

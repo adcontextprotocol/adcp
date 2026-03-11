@@ -75,6 +75,7 @@ Account and authentication capabilities. Optional — sellers that don't manage 
 | `account_resolution` | string | How this seller resolves account references in requests. Either `explicit_account_id` (seller-assigned identifier) or `implicit_from_sync` (resolved from brand + operator). Buyers use this to determine whether to pass `account.account_id` or `account.brand` (with `operator`) in task requests. Default: `explicit_account_id`. |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling `get_products`. When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/dist/docs/3.0.0-rc.1/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+| `sandbox` | boolean | Default: `false`. When `true`, the seller supports sandbox accounts for testing. Buyers provision a sandbox account via `sync_accounts` with `sandbox: true`; all requests using that `account_id` are treated as sandbox — no real platform calls or spend. See [Sandbox mode](/dist/docs/3.0.0-rc.1/media-buy/advanced-topics/sandbox). |
 
 #### Auth models
 

@@ -8,6 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
+import { ModelConfig } from "../config/models.js";
 import {
   getLushaClient,
   isLushaConfigured,
@@ -288,7 +289,7 @@ export class ProspectCleanupService {
   private client: Anthropic;
   private model: string;
 
-  constructor(apiKey?: string, model: string = "claude-sonnet-4-20250514") {
+  constructor(apiKey?: string, model: string = ModelConfig.primary) {
     const key = apiKey || process.env.ANTHROPIC_API_KEY;
     if (!key) {
       throw new Error("ANTHROPIC_API_KEY is required for prospect cleanup");

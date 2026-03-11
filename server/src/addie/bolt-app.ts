@@ -28,6 +28,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { logger } from '../logger.js';
+import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { getPool } from '../db/client.js';
@@ -68,7 +69,7 @@ import {
   createMeetingToolHandlers,
   canScheduleMeetings,
 } from './mcp/meeting-tools.js';
-import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE } from './prompts.js';
+import { SUGGESTED_PROMPTS, buildDynamicSuggestedPrompts, HISTORY_UNAVAILABLE_NOTE, summarizeToolCalls } from './prompts.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
@@ -648,7 +649,10 @@ async function buildRequestContext(
       // Public channels are visible to all workspace members — never share sensitive data there
       if (threadContext.viewing_channel_is_private === false) {
         channelLines.push('');
-        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members. You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.**');
+        channelLines.push('**IMPORTANT: This is a PUBLIC channel visible to all workspace members.**');
+        channelLines.push('- You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data in this channel, even if an admin asks. If asked for sensitive information, tell them to ask you in a private message instead.');
+        channelLines.push('- You MUST NOT pitch membership, send join links, or recruit in public channels — membership conversations belong in DMs.');
+        channelLines.push('- The user context above is for the message sender only. Do not use it to make assumptions about other people in the thread. Do not address other thread participants by their membership status.');
       }
       channelContextText = channelLines.join('\n');
     }
@@ -1045,6 +1049,13 @@ async function handleUserMessage({
         sentiment: analysis.sentiment,
         intent: analysis.intent,
       }, 'Addie Bolt: Recorded outreach response (Assistant)');
+      captureEvent(userId, 'outreach_responded', {
+        outreach_id: pendingOutreach.id,
+        outreach_type: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        channel: 'assistant_thread',
+      });
     }
   } catch (err) {
     logger.warn({ err, userId }, 'Addie Bolt: Failed to track outreach response');
@@ -1132,7 +1143,7 @@ async function handleUserMessage({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -1600,7 +1611,7 @@ async function handleAppMention({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -2237,6 +2248,14 @@ async function handleDirectMessage(
         intent: analysis.intent,
         followUpDays: analysis.followUpDays,
       }, 'Addie Bolt: Recorded outreach response');
+      captureEvent(userId, 'outreach_responded', {
+        outreach_id: pendingOutreach.id,
+        outreach_type: pendingOutreach.outreach_type,
+        sentiment: analysis.sentiment,
+        intent: analysis.intent,
+        follow_up_days: analysis.followUpDays,
+        channel: 'dm',
+      });
     }
   } catch (err) {
     // Don't fail the DM handling if outreach tracking fails
@@ -2285,7 +2304,7 @@ async function handleDirectMessage(
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -2587,7 +2606,7 @@ async function handleActiveThreadReply({
         .slice(-MAX_DB_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -2602,8 +2621,8 @@ async function handleActiveThreadReply({
     historyUnavailable = true;
   }
 
-  // Build per-request context for system prompt
-  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+  const { requestContext: memberRequestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId, channelContext);
   if (!memberContext && updatedMemberContext) {
     memberContext = updatedMemberContext;
   }
@@ -3081,8 +3100,8 @@ async function handleChannelMessage({
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
-    // Build per-request context for system prompt
-    const { requestContext: memberRequestContext } = await buildRequestContext(userId);
+    // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+    const { requestContext: memberRequestContext } = await buildRequestContext(userId, channelContext);
 
     // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
@@ -3657,7 +3676,7 @@ async function handleReactionAdded({
         .slice(-MAX_HISTORY_MESSAGES)
         .map(msg => ({
           user: msg.role === 'user' ? 'User' : 'Addie',
-          text: msg.content_sanitized || msg.content,
+          text: (msg.content_sanitized || msg.content) + summarizeToolCalls(msg.tool_calls),
         }));
 
       if (conversationHistory.length > 0) {
@@ -3680,8 +3699,8 @@ async function handleReactionAdded({
     logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
   }
 
-  // Build per-request context for system prompt
-  let { requestContext, memberContext } = await buildRequestContext(reactingUserId);
+  // Build per-request context for system prompt (pass channelContext so public channel guard is included)
+  let { requestContext, memberContext } = await buildRequestContext(reactingUserId, channelContext);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }

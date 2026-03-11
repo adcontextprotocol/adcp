@@ -6,7 +6,9 @@ title: Sandbox mode
 
 Sandbox mode lets buyers test the full media buying lifecycle — discovery, campaign creation, creatives, and delivery — without real platform calls or spending real money. Responses contain simulated but realistic data.
 
-Sandbox is **account-level**, not per-request. The seller provisions a dedicated sandbox account, and every request using that `account_id` is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
+Sandbox is **account-level**, not per-request. Every request with `sandbox: true` in the account reference is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
+
+Sandbox is part of the account's **natural key**. The same brand/operator pair can have both a production and a sandbox account — distinguished by `sandbox: true` in the account reference. No separate provisioning step is needed — just include `sandbox: true` and the seller handles it.
 
 ## Capabilities discovery
 
@@ -14,62 +16,32 @@ Sellers declare sandbox support in `get_adcp_capabilities`:
 
 ```json
 {
-  "media_buy": {
-    "features": {
-      "sandbox": true
-    }
+  "account": {
+    "sandbox": true
   }
 }
 ```
 
-Check this before requesting a sandbox account. If `sandbox` is not declared or is `false`, the seller does not support sandbox mode.
-
-## Setting up a sandbox account
-
-Request a sandbox account via `sync_accounts` using `"sandbox": true`:
-
-```json
-// sync_accounts request
-{
-  "accounts": [{
-    "brand": { "domain": "acme-corp.com" },
-    "operator": "acme-corp.com",
-    "sandbox": true
-  }]
-}
-```
-
-The seller provisions a sandbox account and returns its `account_id`. From the protocol's perspective, a sandbox account behaves identically to a real account — the seller suppresses real platform calls and billing for any request using that ID.
-
-## Identifying sandbox accounts
-
-Sandbox accounts appear in `list_accounts` with `sandbox: true`. Use the `sandbox` filter to list only sandbox or only production accounts:
-
-```json
-// list_accounts - sandbox only
-{
-  "sandbox": true
-}
-```
-
-Response:
-```json
-{
-  "accounts": [{
-    "account_id": "acct_sandbox_acme_001",
-    "name": "Acme (sandbox)",
-    "status": "active",
-    "sandbox": true
-  }]
-}
-```
+Check this before using sandbox mode. If `account.sandbox` is not declared or is `false`, the seller does not support sandbox mode.
 
 ## Usage
 
-Pass your sandbox `account_id` in requests exactly as you would a production account. No additional flags are needed:
+Include `sandbox: true` in the account reference. No provisioning or account discovery is required — just add the flag:
 
 ```json
-// get_products
+// get_products — sandbox via natural key
+{
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
+  "brief": "Premium CTV inventory for Q2 campaign"
+}
+```
+
+```json
+// get_products — sandbox via account_id
 {
   "account": { "account_id": "acct_sandbox_acme_001" },
   "brief": "Premium CTV inventory for Q2 campaign"
@@ -92,7 +64,11 @@ The seller detects the sandbox account and returns simulated data. Success respo
 ```json
 // get_products
 {
-  "account": { "account_id": "acct_sandbox_acme_001" },
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
   "brief": "CTV inventory for brand awareness"
 }
 ```
@@ -103,7 +79,11 @@ The seller detects the sandbox account and returns simulated data. Success respo
 // create_media_buy
 {
   "buyer_ref": "sandbox_test_001",
-  "account": { "account_id": "acct_sandbox_acme_001" },
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
   "proposal_id": "prop_abc",
   "total_budget": { "amount": 50000, "currency": "USD" },
   "brand": { "domain": "acme-corp.com" },
@@ -119,7 +99,11 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
 ```json
 // sync_creatives
 {
-  "account": { "account_id": "acct_sandbox_acme_001" },
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
   "creatives": [{
     "creative_id": "hero_video_30s",
     "name": "Brand Hero Video 30s",
@@ -147,7 +131,11 @@ The seller returns a simulated media buy with realistic IDs, packages, and creat
 ```json
 // get_media_buy_delivery
 {
-  "account": { "account_id": "acct_sandbox_acme_001" },
+  "account": {
+    "brand": { "domain": "acme-corp.com" },
+    "operator": "acme-corp.com",
+    "sandbox": true
+  },
   "media_buy_ids": ["mb_sandbox_123"]
 }
 ```
@@ -167,7 +155,7 @@ Some tasks (e.g., `sync_creatives`) also support a `dry_run` parameter. These se
 
 ## Seller implementation
 
-When a request arrives with a sandbox `account_id`:
+When a request arrives with `sandbox: true` in the account reference:
 
 - **Do not** make real ad platform API calls (no real orders, line items, etc.)
 - **Do not** charge real money or create real billing records
@@ -179,10 +167,10 @@ Sandbox errors are real validation errors. If a buyer sends an invalid budget us
 
 ## Protocol compliance
 
-Sellers that declare `features.sandbox: true` in capabilities MUST:
+Sellers that declare `account.sandbox: true` in capabilities MUST:
 
-- Support provisioning sandbox accounts on request
-- Apply sandbox semantics to all requests using a sandbox account ID
+- Accept `sandbox: true` in account references
+- Apply sandbox semantics to all requests referencing a sandbox account
 - Apply normal input validation (sandbox does not bypass validation)
 
 Sellers SHOULD include `sandbox: true` in success responses when processing a sandbox account request.

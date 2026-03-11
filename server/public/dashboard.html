@@ -788,7 +788,7 @@
       <!-- ========== PROFILE SECTION ========== -->
       <section id="profile" class="dashboard-section">
         <div class="section-header">
-          <h2>Member Profile</h2>
+          <h2>Directory listing</h2>
           <p>How your organization appears in the member directory</p>
         </div>
         <div id="profileCardContainer">
@@ -1255,8 +1255,20 @@
         }
       }
 
+      // Hide profile section for personal accounts (they use community profile edit)
+      const profileSection = document.getElementById('profile');
+      if (profileSection) {
+        if (isPersonal) {
+          profileSection.style.display = 'none';
+        } else {
+          profileSection.style.display = '';
+        }
+      }
+
       // ===== PROFILE CARD =====
-      renderProfileCard(org.id, hasSubscription);
+      if (!isPersonal) {
+        renderProfileCard(org.id, hasSubscription);
+      }
 
       // ===== MEMBERSHIP CARD =====
       renderMembershipCard(org, hasSubscription);
@@ -1303,9 +1315,9 @@
           container.innerHTML = `
             <div class="card" style="padding: 40px; text-align: center;">
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-              <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">Set up your presence in the member directory</p>
-              <a href="/member-profile?org=${orgId}" class="btn btn-primary">Create Profile</a>
+              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create your listing</h3>
+              <p style="margin: 0 0 20px 0; color: var(--color-text-secondary);">Set up your listing in the member directory</p>
+              <a href="/member-profile?org=${orgId}" class="btn btn-primary">Create listing</a>
             </div>
           `;
           actionBar.style.display = 'none';
@@ -2858,15 +2870,15 @@
 
         if (!response.ok || response.status === 404) {
           // No profile - update status card
-          updateProfileStatusCard('Not Set', 'Create your profile');
+          updateProfileStatusCard('Not Set', 'Create your listing');
 
           if (previewEl) {
             previewEl.innerHTML = `
               <div style="text-align: center; padding: 20px 16px;">
                 <div style="font-size: 32px; margin-bottom: 12px;">✨</div>
-                <h4 style="margin: 0 0 6px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
+                <h4 style="margin: 0 0 6px 0; color: var(--color-text-heading); font-size: 14px;">Create your listing</h4>
                 <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">
-                  Build your presence in the ecosystem
+                  Get listed in the member directory
                 </p>
               </div>
             `;
@@ -2877,7 +2889,7 @@
                 href="/member-profile?org=${orgId}"
                 class="btn btn-primary btn-sm btn-block"
               >
-                Create Profile
+                Create listing
               </a>
             `;
           }
@@ -2897,7 +2909,7 @@
             updateProfileStatusCard('Draft', 'Subscribe to publish');
           }
         } else {
-          updateProfileStatusCard('Not Set', 'Create your profile');
+          updateProfileStatusCard('Not Set', 'Create your listing');
         }
 
         if (previewEl && profile) {
@@ -2958,12 +2970,12 @@
             actionsContainer.innerHTML = actionHtml;
           }
         } else if (previewEl) {
-          // No profile exists - show compact "Create Your Profile" UI
+          // No profile exists - show compact "Create your listing" UI
           previewEl.innerHTML = `
             <div style="text-align: center; padding: 16px;">
               <div style="font-size: 32px; margin-bottom: 8px;">✨</div>
-              <h4 style="margin: 0 0 4px 0; color: var(--color-text-heading); font-size: 14px;">Create Your Profile</h4>
-              <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">Build your presence in the ecosystem</p>
+              <h4 style="margin: 0 0 4px 0; color: var(--color-text-heading); font-size: 14px;">Create your listing</h4>
+              <p style="margin: 0; color: var(--color-text-muted); font-size: 12px;">Get listed in the member directory</p>
             </div>
           `;
           if (actionsContainer) {
@@ -2972,7 +2984,7 @@
                 href="/member-profile?org=${orgId}"
                 style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
               >
-                Create Profile
+                Create listing
               </a>
             `;
           }
@@ -2985,8 +2997,8 @@
           previewEl.innerHTML = `
             <div style="text-align: center; padding: 30px 20px;">
               <div style="font-size: 48px; margin-bottom: 16px;">✨</div>
-              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create Your Profile</h3>
-              <p style="margin: 0; color: var(--color-text-muted); font-size: 14px;">Set up your member profile. It will be published when you subscribe as a member.</p>
+              <h3 style="margin: 0 0 8px 0; color: var(--color-text-heading);">Create your listing</h3>
+              <p style="margin: 0; color: var(--color-text-muted); font-size: 14px;">Set up your directory listing. It will be published when you subscribe as a member.</p>
             </div>
           `;
         }
@@ -2996,7 +3008,7 @@
               href="/member-profile?org=${orgId}"
               style="display: block; text-align: center; padding: 12px 24px; background: var(--color-brand); color: white; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;"
             >
-              Create Profile
+              Create listing
             </a>
           `;
         }

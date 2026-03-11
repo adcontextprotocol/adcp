@@ -59,6 +59,8 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/agentic-advertising",
+              "docs/faq",
               "docs/protocol/architecture",
               "docs/quickstart",
               {
@@ -87,7 +89,8 @@
                 "group": "Understanding AdCP",
                 "pages": [
                   "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison"
+                  "docs/building/understanding/protocol-comparison",
+                  "docs/building/understanding/adcp-vs-openrtb"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -315,11 +318,13 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
+              "docs/creative/private-assets",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
+              "docs/creative/catalog-schemas",
               "docs/creative/accessibility",
               "docs/creative/provenance",
               {
@@ -348,7 +353,11 @@
             "group": "Industry Guides",
             "pages": [
               "docs/guides/index",
-              "docs/guides/commerce-media"
+              "docs/guides/commerce-media",
+              "docs/guides/ai-media-buying",
+              "docs/guides/seller-integration",
+              "docs/guides/how-agents-communicate",
+              "docs/guides/industry-landscape"
             ]
           },
           {
@@ -420,6 +429,8 @@
             "group": "Getting Started",
             "pages": [
               "docs/intro",
+              "docs/agentic-advertising",
+              "docs/faq",
               "docs/protocol/architecture",
               "docs/quickstart",
               {
@@ -448,7 +459,8 @@
                 "group": "Understanding AdCP",
                 "pages": [
                   "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison"
+                  "docs/building/understanding/protocol-comparison",
+                  "docs/building/understanding/adcp-vs-openrtb"
                 ]
               },
               "docs/building/schemas-and-sdks",
@@ -676,11 +688,13 @@
               "docs/creative/formats",
               "docs/creative/asset-types",
               "docs/creative/creative-manifests",
+              "docs/creative/private-assets",
               "docs/creative/universal-macros",
               "docs/creative/implementing-creative-agents",
               "docs/creative/generative-creative",
               "docs/creative/template-format-ids",
               "docs/creative/catalogs",
+              "docs/creative/catalog-schemas",
               "docs/creative/accessibility",
               "docs/creative/provenance",
               {
@@ -709,7 +723,11 @@
             "group": "Industry Guides",
             "pages": [
               "docs/guides/index",
-              "docs/guides/commerce-media"
+              "docs/guides/commerce-media",
+              "docs/guides/ai-media-buying",
+              "docs/guides/seller-integration",
+              "docs/guides/how-agents-communicate",
+              "docs/guides/industry-landscape"
             ]
           },
           {

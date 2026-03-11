@@ -888,15 +888,15 @@
     function renderProfileCard(profile) {
       const hdr = `
         <div class="hub-card-header">
-          <span class="hub-card-title">Public profile</span>
-          <a href="/member-profile.html" class="hub-card-link">Edit profile →</a>
+          <span class="hub-card-title">Directory listing</span>
+          <a href="/member-profile.html" class="hub-card-link">Edit listing →</a>
         </div>`;
 
       if (!profile) {
         return `${hdr}
           <div class="hub-empty">
-            <p>Your public profile isn't set up yet.</p>
-            <a href="/member-profile.html">Create your profile →</a>
+            <p>Your directory listing isn't set up yet.</p>
+            <a href="/member-profile.html">Create your listing →</a>
           </div>`;
       }
 

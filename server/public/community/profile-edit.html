@@ -54,6 +54,16 @@
       margin-bottom: var(--space-5);
     }
 
+    .edit-section-description {
+      font-size: var(--text-sm);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-4);
+    }
+
+    .edit-section-description a {
+      color: var(--color-brand);
+    }
+
     .form-group {
       margin-bottom: var(--space-5);
     }
@@ -433,7 +443,7 @@
   <script src="/nav.js"></script>
 
   <div class="edit-container">
-    <a href="/community" class="back-link">
+    <a id="back-link" href="/community" class="back-link">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
       </svg>
@@ -452,7 +462,7 @@
 
       <form id="profile-form" novalidate>
         <!-- Community visibility -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-visibility">
           <h2 class="edit-section-title">Community visibility</h2>
           <div class="toggle-row">
             <div class="toggle-content">
@@ -467,7 +477,7 @@
         </div>
 
         <!-- About you -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-about">
           <h2 class="edit-section-title">About you</h2>
 
           <div class="form-group">
@@ -516,7 +526,7 @@
         </div>
 
         <!-- Social links -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-social">
           <h2 class="edit-section-title">Social links</h2>
 
           <div class="form-group">
@@ -539,7 +549,7 @@
         </div>
 
         <!-- Preferences -->
-        <div class="edit-section">
+        <div class="edit-section" id="section-preferences">
           <h2 class="edit-section-title">Preferences</h2>
 
           <div class="checkbox-row">
@@ -562,8 +572,8 @@
         <!-- Member directory (individual accounts only) -->
         <div class="edit-section" id="member-directory-section" style="display: none;">
           <h2 class="edit-section-title">Member directory</h2>
-          <p style="font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-4);">
-            Get listed in the <a href="/members" style="color: var(--color-brand);">member directory</a> so companies and peers can discover your expertise in agentic advertising.
+          <p class="edit-section-description">
+            Get listed in the <a href="/members">member directory</a> so companies and peers can discover your expertise in agentic advertising.
           </p>
 
           <div id="member-directory-status" style="display: none; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-size: var(--text-sm);"></div>
@@ -598,7 +608,7 @@
 
         <!-- Save -->
         <div class="save-bar">
-          <a href="/community" class="btn btn-ghost">Cancel</a>
+          <a id="cancel-link" href="/community" class="btn btn-ghost">Cancel</a>
           <button type="submit" class="btn btn-primary" id="save-btn">Save changes</button>
         </div>
       </form>
@@ -637,9 +647,15 @@
     // Data fetching
     async function loadProfile() {
       try {
-        const [hubResponse, memberResponse] = await Promise.all([
+        const orgParam = new URLSearchParams(window.location.search).get('org');
+        const memberProfileUrl = orgParam
+          ? `/api/me/member-profile?org=${encodeURIComponent(orgParam)}`
+          : '/api/me/member-profile';
+
+        const [hubResponse, meResponse, memberResponse] = await Promise.all([
           fetch('/api/me/community/hub'),
-          fetch('/api/me/member-profile').catch(() => null),
+          fetch('/api/me'),
+          fetch(memberProfileUrl).catch(() => null),
         ]);
 
         if (!hubResponse.ok) {
@@ -653,31 +669,41 @@
         const data = await hubResponse.json();
         profileData = data.profile || {};
 
-        // Detect individual account and load member profile data
-        if (memberResponse && memberResponse.ok) {
-          const memberData = await memberResponse.json();
-          memberProfileData = memberData.profile || null;
+        // Detect individual account from /api/me organizations
+        if (meResponse.ok) {
+          const meData = await meResponse.json();
+          const orgs = meData.organizations || [];
+          if (memberResponse && memberResponse.ok) {
+            const memberData = await memberResponse.json();
+            memberProfileData = memberData.profile || null;
+            const targetOrg = orgs.find(o => o.id === memberData.organization_id);
+            isPersonalAccount = targetOrg?.is_personal || false;
 
-          // Check if org is personal via billing endpoint
-          if (memberData.organization_id) {
-            try {
-              const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
-              if (billingResp.ok) {
-                memberBillingData = await billingResp.json();
-                isPersonalAccount = memberBillingData.is_personal || false;
+            // Load billing for subscription status display
+            if (memberData.organization_id) {
+              try {
+                const billingResp = await fetch(`/api/organizations/${memberData.organization_id}/billing`);
+                if (billingResp.ok) {
+                  memberBillingData = await billingResp.json();
+                }
+              } catch (e) {
+                console.warn('Could not load billing info:', e);
               }
-            } catch (e) {
-              console.warn('Could not load billing info:', e);
             }
+          } else if (orgParam) {
+            // No member profile yet, but check if the requested org is personal
+            const targetOrg = orgs.find(o => o.id === orgParam);
+            isPersonalAccount = targetOrg?.is_personal || false;
           }
         }
 
         populateForm(profileData);
 
-        // Show member directory section for individual accounts
+        // Show member directory section for individual accounts and restructure layout
         if (isPersonalAccount) {
           document.getElementById('member-directory-section').style.display = 'block';
           populateMemberFields(memberProfileData, memberBillingData);
+          restructureForIndividual();
         }
 
         document.getElementById('edit-loading').style.display = 'none';
@@ -905,6 +931,163 @@
       toastTimeout = setTimeout(() => {
         toast.classList.remove('toast--visible');
       }, 3000);
+    }
+
+    // Restructure the form layout for individual (personal) accounts
+    function restructureForIndividual() {
+      const form = document.getElementById('profile-form');
+      const saveBar = form.querySelector('.save-bar');
+
+      // Change page title, back link, and cancel link
+      document.querySelector('.edit-title').textContent = 'Your profile';
+      const orgParam = new URLSearchParams(window.location.search).get('org');
+      if (orgParam) {
+        const dashboardUrl = '/dashboard?org=' + encodeURIComponent(orgParam);
+        const backLink = document.getElementById('back-link');
+        if (backLink) {
+          backLink.href = dashboardUrl;
+          backLink.lastChild.textContent = ' Back to dashboard';
+        }
+        const cancelLink = document.getElementById('cancel-link');
+        if (cancelLink) cancelLink.href = dashboardUrl;
+      }
+
+      // Get existing sections by ID — bail if any are missing
+      const visibilitySection = document.getElementById('section-visibility');
+      const aboutSection = document.getElementById('section-about');
+      const socialSection = document.getElementById('section-social');
+      const prefsSection = document.getElementById('section-preferences');
+      const memberDirSection = document.getElementById('member-directory-section');
+      if (!visibilitySection || !aboutSection || !socialSection || !prefsSection || !memberDirSection) {
+        console.warn('restructureForIndividual: missing section element, skipping');
+        return;
+      }
+
+      // -- Extract elements to move --
+
+      // Move slug out of About you
+      const slugField = document.getElementById('field-slug');
+      if (!slugField) return;
+      const slugGroup = slugField.closest('.form-group');
+      const slugPreview = slugGroup.querySelector('.slug-preview');
+
+      // Move expertise and interests out of About you
+      const expertiseGroup = document.getElementById('expertise-container').closest('.form-group');
+      const interestsGroup = document.getElementById('interests-container').closest('.form-group');
+
+      // Move offerings out of Member directory
+      const offeringsGroup = document.getElementById('offering-consulting').closest('.form-group');
+
+      // Move contact fields out of Member directory
+      const contactEmail = document.getElementById('field-contact-email').closest('.form-group');
+      const contactPhone = document.getElementById('field-contact-phone').closest('.form-group');
+      const contactWebsite = document.getElementById('field-contact-website').closest('.form-group');
+
+      // Move visibility toggle out and update its label for combined context
+      const visibilityToggle = visibilitySection.querySelector('.toggle-row');
+      if (visibilityToggle) {
+        const toggleLabel = visibilityToggle.querySelector('.toggle-label');
+        const toggleDesc = visibilityToggle.querySelector('.toggle-description');
+        if (toggleLabel) toggleLabel.textContent = 'Show in directories';
+        if (toggleDesc) toggleDesc.innerHTML = 'Make your profile visible in the <a href="/community/people">community directory</a>. Member directory visibility requires an active <a href="/dashboard/settings">membership</a>.';
+      }
+
+      // Member directory status message
+      const statusEl = document.getElementById('member-directory-status');
+
+      // -- Build new sections --
+
+      // Section 1: About you (keep headline, bio, avatar, city — slug/expertise/interests removed)
+      slugGroup.remove();
+      expertiseGroup.remove();
+      interestsGroup.remove();
+
+      // Section 2: Expertise and interests (new)
+      const expertiseSection = document.createElement('div');
+      expertiseSection.className = 'edit-section';
+      const expertiseTitle = document.createElement('h2');
+      expertiseTitle.className = 'edit-section-title';
+      expertiseTitle.textContent = 'Expertise and interests';
+      expertiseSection.appendChild(expertiseTitle);
+      expertiseSection.appendChild(expertiseGroup);
+      expertiseSection.appendChild(interestsGroup);
+      if (offeringsGroup) {
+        offeringsGroup.querySelector('.form-label').textContent = 'What do you offer?';
+        expertiseSection.appendChild(offeringsGroup);
+      }
+
+      // Section 3: Public listing (new)
+      const publicListingSection = document.createElement('div');
+      publicListingSection.className = 'edit-section';
+      const listingTitle = document.createElement('h2');
+      listingTitle.className = 'edit-section-title';
+      listingTitle.textContent = 'Public listing';
+      publicListingSection.appendChild(listingTitle);
+
+      // Add description with sync explanation
+      const listingDesc = document.createElement('p');
+      listingDesc.className = 'edit-section-description';
+      listingDesc.innerHTML = 'Your name, photo, and bio appear in both the <a href="/members">member directory</a> and <a href="/community/people">community directory</a>. Contact details and offerings are shown only in the member directory.';
+      publicListingSection.appendChild(listingDesc);
+
+      // Add status message
+      if (statusEl) publicListingSection.appendChild(statusEl);
+
+      // Add visibility toggle
+      if (visibilityToggle) {
+        const toggleGroup = document.createElement('div');
+        toggleGroup.className = 'form-group';
+        toggleGroup.appendChild(visibilityToggle);
+        publicListingSection.appendChild(toggleGroup);
+      }
+
+      // Add contact fields
+      if (contactEmail) publicListingSection.appendChild(contactEmail);
+      if (contactWebsite) publicListingSection.appendChild(contactWebsite);
+      if (contactPhone) publicListingSection.appendChild(contactPhone);
+
+      // Add slug at end with updated label for directory context
+      slugGroup.querySelector('.form-label').textContent = 'URL slug';
+      if (slugPreview) {
+        slugPreview.innerHTML = 'agenticadvertising.org/members/<strong id="slug-preview-value">' + escapeHtml(slugField.value || '...') + '</strong>';
+      }
+      publicListingSection.appendChild(slugGroup);
+
+      // Add preview link that updates with slug input
+      const previewLink = document.createElement('p');
+      previewLink.id = 'listing-preview-link';
+      previewLink.className = 'edit-section-description';
+      previewLink.style.marginTop = 'var(--space-4)';
+      previewLink.style.marginBottom = '0';
+      publicListingSection.appendChild(previewLink);
+
+      function updatePreviewLink() {
+        const slug = slugField.value.trim();
+        if (slug) {
+          previewLink.innerHTML = '<a href="/members/' + encodeURIComponent(slug) + '">Preview your listing &rarr;</a>';
+          previewLink.style.display = '';
+        } else {
+          previewLink.style.display = 'none';
+        }
+      }
+      slugField.addEventListener('input', updatePreviewLink);
+      updatePreviewLink();
+
+      // Section 4: Rename Preferences → Networking
+      prefsSection.querySelector('.edit-section-title').textContent = 'Networking';
+
+      // -- Remove old sections and reassemble --
+      visibilitySection.remove();
+      memberDirSection.remove();
+
+      // Remove all remaining sections from form
+      Array.from(form.querySelectorAll('.edit-section')).forEach(s => s.remove());
+
+      // Re-insert in new order before save bar (Social links before Networking)
+      const newOrder = [aboutSection, expertiseSection, publicListingSection, socialSection, prefsSection];
+      newOrder.forEach(section => {
+        form.insertBefore(section, saveBar);
+      });
     }
 
     // Helpers

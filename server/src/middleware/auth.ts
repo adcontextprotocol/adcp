@@ -972,6 +972,12 @@ export async function requireManage(req: Request, res: Response, next: NextFunct
     return next();
   }
 
+  // Static admin API key has manage access
+  if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
+    logger.debug({ path: req.path, method: req.method }, 'Manage access via static admin API key');
+    return next();
+  }
+
   if (!req.user) {
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);

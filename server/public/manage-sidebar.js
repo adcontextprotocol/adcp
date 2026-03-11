@@ -18,13 +18,14 @@
         label: 'Growth',
         items: [
           { href: '/manage/referrals', label: 'Referrals', icon: '🔗' },
-          { href: '/manage/prospects', label: 'Prospects', icon: '🎯' },
+          { href: '/manage/accounts', label: 'Accounts', icon: '📋' },
         ]
       },
       {
         label: 'Analytics',
         items: [
           { href: '/manage/analytics', label: 'Revenue analytics', icon: '📈' },
+          { href: '/manage/geo', label: 'GEO visibility', icon: '🔍' },
         ]
       }
     ]

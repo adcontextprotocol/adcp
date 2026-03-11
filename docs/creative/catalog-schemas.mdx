@@ -1,0 +1,517 @@
+---
+title: Catalog item schemas
+description: Field tables, required fields, and starter templates for every vertical catalog type — job, hotel, vehicle, flight, real estate, education, destination, and app
+testable: true
+keywords: [catalog schema, job catalog, hotel catalog, vehicle catalog, flight catalog, real estate catalog, education catalog, destination catalog, app catalog, item schema, universal asset registry]
+---
+
+# Catalog item schemas
+
+Each vertical catalog type maps to a single AdCP schema that works across platforms — Google, Meta, LinkedIn, and others. Provide items in this format once, and every platform gets what it needs.
+
+All vertical items share a common pattern: a unique ID field, core display fields, an optional `assets` array for [typed creative asset pools](/docs/creative/catalogs#typed-catalog-assets), an optional `tags` array for filtering, and an `ext` object for vendor-specific extensions. **Conversion events** listed for each vertical are the standard event names used for [attribution](/docs/media-buy/conversion-tracking) when an ad drives action on a catalog item.
+
+<a id="common-fields"></a>
+**Common fields** — In addition to the domain-specific fields listed in each vertical's table, all vertical items support:
+
+| Field | Type | Description |
+|---|---|---|
+| `image_url` | uri | Primary image URL (most verticals — see note) |
+| `url` | uri | Landing page URL (most verticals — see note) |
+| `assets` | OfferingAssetGroup[] | [Typed creative asset pools](/docs/creative/catalogs#typed-catalog-assets) (landscape, vertical, square, logo, video) |
+| `tags` | string[] | Tags for filtering and targeting |
+| `ext` | object | Vendor-specific extensions |
+
+**Exceptions:** Job items use `apply_url` instead of `url` and have no `image_url`. App items use `icon_url` and `store_url` instead of `image_url` and `url`. See each vertical's field table for the exact fields.
+
+## Job catalog
+
+Job postings for recruitment campaigns. Maps to LinkedIn Jobs XML, Google DynamicJobsAsset, and schema.org JobPosting.
+
+**Schema**: [`/schemas/core/job-item.json`](https://adcontextprotocol.org/schemas/v3/core/job-item.json)
+**Required**: `job_id`, `title`, `company_name`, `description`
+**Conversion events**: `submit_application`, `complete_registration`
+
+| Field | Type | Description |
+|---|---|---|
+| `job_id` | string | Unique identifier for this posting |
+| `title` | string | Job title |
+| `company_name` | string | Hiring company name |
+| `description` | string | Full job description |
+| `location` | string | Display string — "Amsterdam, NL" or "Remote" |
+| `employment_type` | enum | `full_time`, `part_time`, `contract`, `temporary`, `internship`, `freelance` |
+| `experience_level` | enum | `entry_level`, `mid_level`, `senior`, `director`, `executive` |
+| `salary` | object | `{ min, max, currency, period }` — period is `hour`, `month`, or `year` |
+| `date_posted` | date | ISO 8601 date |
+| `valid_through` | date | Application deadline |
+| `apply_url` | uri | Direct application URL |
+| `job_functions` | string[] | e.g., `["engineering", "marketing"]` |
+| `industries` | string[] | e.g., `["technology", "healthcare"]` |
+| `tags` | string[] | For filtering — e.g., `["remote", "visa-sponsorship"]` |
+
+Plus [common fields](#common-fields) (`assets`, `tags`, `ext`) shared by all verticals. Job items use `apply_url` instead of `url` and have no `image_url`.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
+  "job_id": "eng-sr-2025-042",
+  "title": "Senior Software Engineer",
+  "company_name": "Acme Corp",
+  "description": "Senior engineer to lead our platform team, designing distributed systems serving millions of daily requests."
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/job-item.json",
+  "job_id": "eng-sr-2025-042",
+  "title": "Senior Software Engineer",
+  "company_name": "Acme Corp",
+  "description": "We're looking for a senior engineer to lead our platform team. You'll design and build distributed systems serving millions of daily requests.",
+  "location": "Amsterdam, NL",
+  "employment_type": "full_time",
+  "experience_level": "senior",
+  "salary": { "min": 80000, "max": 110000, "currency": "EUR", "period": "year" },
+  "date_posted": "2025-06-01",
+  "valid_through": "2025-08-01",
+  "apply_url": "https://acmecorp.com/careers/eng-sr-2025-042",
+  "job_functions": ["engineering"],
+  "industries": ["technology"],
+  "tags": ["visa-sponsorship", "equity"]
+}
+```
+
+## Hotel catalog
+
+Hotel and lodging properties for travel ads and dynamic remarketing. Maps to Google Hotel Center feeds and Meta hotel catalogs.
+
+**Schema**: [`/schemas/core/hotel-item.json`](https://adcontextprotocol.org/schemas/v3/core/hotel-item.json)
+**Required**: `hotel_id`, `name`, `location`
+**Conversion events**: `purchase` (booking)
+
+| Field | Type | Description |
+|---|---|---|
+| `hotel_id` | string | Unique identifier |
+| `name` | string | Property name |
+| `description` | string | Property description |
+| `location` | object | `{ lat, lng }` — WGS 84 coordinates |
+| `address` | object | `{ street, city, region, postal_code, country }` |
+| `star_rating` | integer | 1–5 |
+| `price` | object | `{ amount, currency, period }` — use period `"night"` |
+| `image_url` | uri | Primary property image |
+| `url` | uri | Property landing page |
+| `amenities` | string[] | e.g., `["spa", "pool", "wifi"]` |
+| `check_in_time` | string | HH:MM format (e.g., `"15:00"`) |
+| `check_out_time` | string | HH:MM format (e.g., `"11:00"`) |
+| `phone` | string | Property phone number in E.164 format |
+| `valid_from` | date | Start of seasonal availability window |
+| `valid_to` | date | End of seasonal availability window |
+| `tags` | string[] | e.g., `["luxury", "city-center"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
+  "hotel_id": "grand-amsterdam",
+  "name": "Grand Hotel Amsterdam",
+  "location": { "lat": 52.3676, "lng": 4.9041 }
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/hotel-item.json",
+  "hotel_id": "grand-amsterdam",
+  "name": "Grand Hotel Amsterdam",
+  "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
+  "location": { "lat": 52.3676, "lng": 4.9041 },
+  "address": {
+    "street": "Herengracht 100",
+    "city": "Amsterdam",
+    "region": "NL-NH",
+    "postal_code": "1015 BS",
+    "country": "NL"
+  },
+  "star_rating": 5,
+  "price": { "amount": 289, "currency": "EUR", "period": "night" },
+  "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
+  "url": "https://acmehotels.com/amsterdam/grand",
+  "amenities": ["spa", "pool", "restaurant", "wifi", "parking"],
+  "check_in_time": "15:00",
+  "check_out_time": "11:00",
+  "tags": ["luxury", "city-center", "business"]
+}
+```
+
+## Vehicle catalog
+
+Vehicle listings for automotive inventory ads. Maps to Meta Automotive Inventory Ads, Microsoft Auto Inventory feeds, and Google vehicle ads.
+
+**Schema**: [`/schemas/core/vehicle-item.json`](https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json)
+**Required**: `vehicle_id`, `title`, `make`, `model`, `year`
+**Conversion events**: `lead`, `schedule` (test drive)
+
+| Field | Type | Description |
+|---|---|---|
+| `vehicle_id` | string | Unique identifier |
+| `title` | string | Listing title (e.g., "2024 Apex Horizon EX Sedan") |
+| `make` | string | Manufacturer |
+| `model` | string | Model name |
+| `year` | integer | Model year |
+| `price` | object | `{ amount, currency }` |
+| `condition` | enum | `new`, `used`, `certified_pre_owned` |
+| `vin` | string | 17-character VIN |
+| `trim` | string | Trim level (e.g., "EX", "Limited") |
+| `mileage` | object | `{ value, unit }` — unit is `km` or `mi` |
+| `body_style` | enum | `sedan`, `suv`, `truck`, `coupe`, `convertible`, `wagon`, `van`, `hatchback` |
+| `transmission` | enum | `automatic`, `manual`, `cvt` |
+| `fuel_type` | enum | `gasoline`, `diesel`, `electric`, `hybrid`, `plug_in_hybrid` |
+| `exterior_color` | string | Exterior color |
+| `interior_color` | string | Interior color |
+| `location` | object | `{ lat, lng }` — dealer or vehicle location |
+| `tags` | string[] | e.g., `["low-mileage", "one-owner"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
+  "vehicle_id": "dlr-2024-horizon-001",
+  "title": "2024 Apex Horizon EX Sedan",
+  "make": "Apex",
+  "model": "Horizon",
+  "year": 2024
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/vehicle-item.json",
+  "vehicle_id": "dlr-2024-horizon-001",
+  "title": "2024 Apex Horizon EX Sedan",
+  "make": "Apex",
+  "model": "Horizon",
+  "year": 2024,
+  "trim": "EX",
+  "price": { "amount": 28500, "currency": "USD" },
+  "condition": "new",
+  "body_style": "sedan",
+  "transmission": "cvt",
+  "fuel_type": "gasoline",
+  "exterior_color": "Lunar Silver Metallic",
+  "image_url": "https://images.apexmotors.com/horizon-ex-2024.jpg",
+  "url": "https://apexmotors.com/inventory/horizon-001",
+  "tags": ["new-arrival"]
+}
+```
+
+## Flight catalog
+
+Flight routes for travel ads and dynamic remarketing. Maps to Google DynamicFlightsAsset and Meta flight catalogs.
+
+**Schema**: [`/schemas/core/flight-item.json`](https://adcontextprotocol.org/schemas/v3/core/flight-item.json)
+**Required**: `flight_id`, `origin`, `destination`
+**Conversion events**: `purchase` (booking)
+
+| Field | Type | Description |
+|---|---|---|
+| `flight_id` | string | Unique identifier for this route |
+| `origin` | object | `{ airport_code, city }` — IATA 3-letter code required |
+| `destination` | object | `{ airport_code, city }` — IATA 3-letter code required |
+| `airline` | string | Airline name or IATA code |
+| `price` | object | `{ amount, currency }` |
+| `description` | string | Route description or promotional text |
+| `departure_time` | datetime | ISO 8601 |
+| `arrival_time` | datetime | ISO 8601 |
+| `image_url` | uri | Destination photo |
+| `url` | uri | Booking page |
+| `tags` | string[] | e.g., `["direct", "red-eye"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
+  "flight_id": "ams-jfk-summer",
+  "origin": { "airport_code": "AMS" },
+  "destination": { "airport_code": "JFK" }
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/flight-item.json",
+  "flight_id": "ams-jfk-summer",
+  "origin": { "airport_code": "AMS", "city": "Amsterdam" },
+  "destination": { "airport_code": "JFK", "city": "New York" },
+  "airline": "Acme Air",
+  "price": { "amount": 449, "currency": "EUR" },
+  "description": "Direct flights from Amsterdam to New York, daily departures.",
+  "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
+  "url": "https://acmeair.com/flights/ams-jfk",
+  "tags": ["direct", "transatlantic"]
+}
+```
+
+## Real estate catalog
+
+Property listings for real estate ads. Maps to Google DynamicRealEstateAsset and Meta home listing catalogs.
+
+**Schema**: [`/schemas/core/real-estate-item.json`](https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json)
+**Required**: `listing_id`, `title`, `address`
+**Conversion events**: `lead`, `schedule` (viewing)
+
+| Field | Type | Description |
+|---|---|---|
+| `listing_id` | string | Unique identifier |
+| `title` | string | Listing title |
+| `description` | string | Property description |
+| `address` | object | `{ street, city, region, postal_code, country }` |
+| `price` | object | `{ amount, currency, period }` — use `"month"` for rentals |
+| `property_type` | enum | `house`, `apartment`, `condo`, `townhouse`, `land`, `commercial` |
+| `listing_type` | enum | `for_sale`, `for_rent` |
+| `bedrooms` | integer | Number of bedrooms |
+| `bathrooms` | number | Number of bathrooms (e.g., 2.5) |
+| `area` | object | `{ value, unit }` — unit is `sqft` or `sqm` |
+| `location` | object | `{ lat, lng }` |
+| `neighborhood` | string | Area name |
+| `year_built` | integer | Year built |
+| `tags` | string[] | e.g., `["garden", "renovated"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
+  "listing_id": "ams-jordaan-3br",
+  "title": "Spacious 3BR Apartment in Jordaan",
+  "address": { "city": "Amsterdam", "country": "NL" }
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/real-estate-item.json",
+  "listing_id": "ams-jordaan-3br",
+  "title": "Spacious 3BR Apartment in Jordaan",
+  "description": "Bright canal-view apartment with original features and modern kitchen, steps from Noordermarkt.",
+  "address": {
+    "street": "Prinsengracht 450",
+    "city": "Amsterdam",
+    "region": "NL-NH",
+    "postal_code": "1017 KE",
+    "country": "NL"
+  },
+  "price": { "amount": 650000, "currency": "EUR" },
+  "property_type": "apartment",
+  "listing_type": "for_sale",
+  "bedrooms": 3,
+  "bathrooms": 1,
+  "area": { "value": 95, "unit": "sqm" },
+  "location": { "lat": 52.3667, "lng": 4.8833 },
+  "neighborhood": "Jordaan",
+  "year_built": 1920,
+  "tags": ["canal-view", "renovated"]
+}
+```
+
+## Education catalog
+
+Educational programs and courses for student recruitment. Maps to Google DynamicEducationAsset and schema.org Course.
+
+**Schema**: [`/schemas/core/education-item.json`](https://adcontextprotocol.org/schemas/v3/core/education-item.json)
+**Required**: `program_id`, `name`, `school`
+**Conversion events**: `submit_application`, `complete_registration`
+
+| Field | Type | Description |
+|---|---|---|
+| `program_id` | string | Unique identifier |
+| `name` | string | Program name |
+| `school` | string | Institution name |
+| `description` | string | Program description |
+| `subject` | string | Field of study |
+| `degree_type` | enum | `certificate`, `associate`, `bachelor`, `master`, `doctorate`, `professional`, `bootcamp` |
+| `level` | enum | `beginner`, `intermediate`, `advanced` |
+| `price` | object | `{ amount, currency, period }` |
+| `duration` | string | e.g., "4 weeks", "2 years" |
+| `start_date` | date | Next available start date |
+| `language` | string | Language code (e.g., "en") |
+| `modality` | enum | `online`, `in_person`, `hybrid` |
+| `location` | string | Campus location (e.g., "Amsterdam, NL"). Omit for fully online. |
+| `tags` | string[] | e.g., `["stem", "research"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
+  "program_id": "pinnacle-msc-cs-2025",
+  "name": "MSc Computer Science",
+  "school": "Pinnacle University"
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/education-item.json",
+  "program_id": "pinnacle-msc-cs-2025",
+  "name": "MSc Computer Science",
+  "school": "Pinnacle University",
+  "description": "Two-year research master's covering AI, distributed systems, and software engineering.",
+  "subject": "computer-science",
+  "degree_type": "master",
+  "level": "advanced",
+  "price": { "amount": 2314, "currency": "EUR", "period": "year" },
+  "duration": "2 years",
+  "start_date": "2025-09-01",
+  "language": "en",
+  "modality": "in_person",
+  "location": "Amsterdam, NL",
+  "url": "https://pinnacle-university.com/programmes/masters/computer-science",
+  "tags": ["stem", "research"]
+}
+```
+
+## Destination catalog
+
+Travel destinations for destination ads and travel remarketing. Maps to Meta destination catalogs and Google travel ads.
+
+**Schema**: [`/schemas/core/destination-item.json`](https://adcontextprotocol.org/schemas/v3/core/destination-item.json)
+**Required**: `destination_id`, `name`
+**Conversion events**: `purchase` (booking)
+
+| Field | Type | Description |
+|---|---|---|
+| `destination_id` | string | Unique identifier |
+| `name` | string | Destination name |
+| `description` | string | Highlights and appeal |
+| `city` | string | City name |
+| `region` | string | State/province |
+| `country` | string | ISO 3166-1 alpha-2 |
+| `location` | object | `{ lat, lng }` |
+| `destination_type` | enum | `beach`, `mountain`, `urban`, `cultural`, `adventure`, `wellness`, `cruise` |
+| `price` | object | Starting trip price |
+| `rating` | number | 1–5 |
+| `tags` | string[] | e.g., `["family", "romantic"]` |
+
+Plus [common fields](#common-fields) (`image_url`, `url`, `assets`, `tags`, `ext`) shared by all verticals.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
+  "destination_id": "barcelona",
+  "name": "Barcelona"
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/destination-item.json",
+  "destination_id": "barcelona",
+  "name": "Barcelona",
+  "description": "Mediterranean city blending Gaudí architecture, beaches, and world-class dining.",
+  "city": "Barcelona",
+  "region": "Catalonia",
+  "country": "ES",
+  "location": { "lat": 41.3874, "lng": 2.1686 },
+  "destination_type": "urban",
+  "price": { "amount": 399, "currency": "EUR" },
+  "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
+  "url": "https://acmetravel.com/destinations/barcelona",
+  "rating": 4.7,
+  "tags": ["city-break", "beach", "culture"]
+}
+```
+
+## App catalog
+
+Mobile applications for app install and re-engagement campaigns. Maps to Google App Campaigns, Apple Search Ads, Meta App Ads, TikTok App Campaigns, and Snapchat App Install Ads. iOS and Android variants are separate items.
+
+**Schema**: [`/schemas/core/app-item.json`](https://adcontextprotocol.org/schemas/v3/core/app-item.json)
+**Required**: `app_id`, `name`, `platform`
+**Conversion events**: `app_install`, `app_launch`
+
+| Field | Type | Description |
+|---|---|---|
+| `app_id` | string | Buyer-assigned unique identifier |
+| `name` | string | App display name |
+| `platform` | enum | `ios`, `android` |
+| `bundle_id` | string | Reverse-domain identifier (e.g., `com.acme.app`) |
+| `apple_id` | string | Numeric Apple App Store ID (iOS only) |
+| `description` | string | App description (overrides store listing) |
+| `category` | string | Store category (e.g., "games", "finance") |
+| `genre` | string | Sub-genre (e.g., "puzzle", "strategy") |
+| `icon_url` | uri | App icon (1024x1024 px) |
+| `screenshots` | uri[] | App store screenshots |
+| `preview_video_url` | uri | Gameplay or demo video for video ad creatives |
+| `store_url` | uri | App store listing URL |
+| `deep_link_url` | uri | For re-engagement campaigns |
+| `price` | object | `{ amount, currency }` — set amount to 0 for free |
+| `rating` | number | 0–5 store rating |
+| `rating_count` | integer | Total number of store ratings |
+| `content_rating` | string | Age rating (e.g., "4+", "Everyone") |
+| `tags` | string[] | e.g., `["casual", "offline"]` |
+
+Plus [common fields](#common-fields) (`assets`, `tags`, `ext`) shared by all verticals. App items use `icon_url` and `store_url` instead of `image_url` and `url`.
+
+Minimal — just required fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
+  "app_id": "puzzlequest-ios",
+  "name": "Puzzle Quest: Match 3",
+  "platform": "ios"
+}
+```
+
+Full example with optional fields:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/app-item.json",
+  "app_id": "puzzlequest-ios",
+  "name": "Puzzle Quest: Match 3",
+  "platform": "ios",
+  "bundle_id": "com.acmegames.puzzlequest",
+  "apple_id": "1234567890",
+  "category": "games",
+  "genre": "puzzle",
+  "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
+  "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
+  "price": { "amount": 0, "currency": "USD" },
+  "rating": 4.7,
+  "rating_count": 82000,
+  "content_rating": "4+",
+  "tags": ["casual", "offline"]
+}
+```

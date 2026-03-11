@@ -69,6 +69,8 @@
             "type": "array",
             "description": "Packages within this media buy, augmented with creative approval status and optional delivery snapshots",
             "items": {
+              "title": "PackageStatus",
+              "description": "Current status of a package within a media buy — includes creative approval state and optional delivery snapshot. For the creation input shape, see PackageRequest. For the creation output shape, see Package.",
               "type": "object",
               "properties": {
                 "package_id": {

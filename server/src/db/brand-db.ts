@@ -457,20 +457,21 @@ export class BrandDatabase {
       `
       SELECT
         brand_domain as domain,
-        COALESCE(brand_json->>'name', brand_domain) as brand_name,
+        COALESCE(brand_json->>'name', brand_json->'house'->>'name', brand_domain) as brand_name,
         'hosted' as source,
         true as has_manifest,
         domain_verified as verified,
-        NULL as house_domain,
-        NULL as keller_type,
-        brand_json->'logos'->0->>'url' as logo_url,
-        brand_json->'colors'->>'primary' as primary_color,
-        brand_json->'company'->>'industry' as industry,
+        db.house_domain,
+        COALESCE(db.keller_type, 'master') as keller_type,
+        COALESCE(brand_json->'logos'->0->>'url', brand_json->'brands'->0->'logos'->0->>'url') as logo_url,
+        COALESCE(brand_json->'colors'->>'primary', brand_json->'brands'->0->'colors'->>'primary') as primary_color,
+        COALESCE(brand_json->'company'->>'industry', brand_json->'brands'->0->>'industry') as industry,
         (SELECT COUNT(*)::int FROM discovered_brands sub WHERE sub.house_domain = brand_domain) as sub_brand_count,
         COALESCE(CASE WHEN brand_json->'company'->>'employees' ~ '^\d+$' THEN (brand_json->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
       FROM hosted_brands
+      LEFT JOIN discovered_brands db ON db.domain = hosted_brands.brand_domain
       WHERE is_public = true
-        AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1)
+        AND ($1::text IS NULL OR brand_domain ILIKE $1 OR brand_json->>'name' ILIKE $1 OR brand_json->'house'->>'name' ILIKE $1)
 
       UNION ALL
 
