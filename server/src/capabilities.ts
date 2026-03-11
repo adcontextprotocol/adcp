@@ -147,7 +147,7 @@ export class CapabilityDiscovery {
         logger.info({ url }, 'MCP agent returned 401');
         throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }
-      logger.warn({ url, error: error.message }, 'MCP discovery failed');
+      logger.debug({ url, error: error.message }, 'MCP discovery failed');
       throw error;
     }
   }
@@ -184,7 +184,7 @@ export class CapabilityDiscovery {
         logger.info({ url }, 'A2A agent returned 401');
         throw new AuthenticationRequiredError(url, undefined, 'Agent requires authentication');
       }
-      logger.warn({ url, error: error.message }, 'A2A discovery failed');
+      logger.debug({ url, error: error.message }, 'A2A discovery failed');
       throw error;
     }
   }
@@ -243,7 +243,7 @@ export class CapabilityDiscovery {
         const formatsProfile = await this.formatsService.getFormatsForAgent(agent);
         formats = formatsProfile.formats.map(f => f.name);
       } catch (error: any) {
-        logger.warn({ url: agent.url, error: error.message }, 'Format discovery failed');
+        logger.debug({ url: agent.url, error: error.message }, 'Format discovery failed');
       }
     }
 

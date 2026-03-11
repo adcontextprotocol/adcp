@@ -279,7 +279,7 @@ export async function runDocumentIndexerJob(options: {
 } = {}): Promise<DocumentIndexResult> {
   const { batchSize = 20 } = options;
 
-  logger.info({ batchSize }, 'Running committee document indexer job');
+  logger.debug({ batchSize }, 'Running committee document indexer job');
 
   const result: DocumentIndexResult = {
     documentsChecked: 0,
@@ -298,7 +298,7 @@ export async function runDocumentIndexerJob(options: {
       return result;
     }
 
-    logger.info({ count: documents.length }, 'Processing documents for indexing');
+    logger.debug({ count: documents.length }, 'Processing documents for indexing');
 
     // Process each document
     for (const doc of documents) {
@@ -323,7 +323,7 @@ export async function runDocumentIndexerJob(options: {
       }
     }
 
-    logger.info(result, 'Committee document indexer job completed');
+    logger.debug(result, 'Committee document indexer job completed');
     return result;
   } catch (error) {
     logger.error({ err: error }, 'Committee document indexer job failed');

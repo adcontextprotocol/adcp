@@ -285,7 +285,7 @@ export async function runTaskReminderJob(options: {
 }> {
   const { includeTomorrow = false, dryRun = false, forceResend = false } = options;
 
-  logger.info({ includeTomorrow, dryRun, forceResend }, 'Running task reminder job');
+  logger.debug({ includeTomorrow, dryRun, forceResend }, 'Running task reminder job');
 
   const batches = await getTasksNeedingReminders();
   let remindersSent = 0;
@@ -357,7 +357,7 @@ export async function runTaskReminderJob(options: {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  logger.info({
+  logger.debug({
     usersChecked: batches.length,
     remindersSent,
     skipped,
