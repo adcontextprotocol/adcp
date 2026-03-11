@@ -45,19 +45,23 @@ describe("CapabilityDiscovery", () => {
       expect(inferAgentType([{ name: "ping" }, { name: "health_check" }])).toBe("unknown");
     });
 
-    it("should return unknown when multiple types are detected", () => {
-      // Both sales and creative tools
+    it("should prioritize sales for multi-type agents", () => {
+      // Both sales and creative tools → sales (primary commerce type)
       expect(
         inferAgentType([{ name: "get_products" }, { name: "list_creative_formats" }])
-      ).toBe("unknown");
-      // All three types
+      ).toBe("sales");
+      // All three types → sales
       expect(
         inferAgentType([
           { name: "get_products" },
           { name: "build_creative" },
           { name: "get_signals" },
         ])
-      ).toBe("unknown");
+      ).toBe("sales");
+      // Creative + signals (no sales) → creative
+      expect(
+        inferAgentType([{ name: "build_creative" }, { name: "get_signals" }])
+      ).toBe("creative");
     });
 
     it("should handle tool names case-insensitively", () => {
