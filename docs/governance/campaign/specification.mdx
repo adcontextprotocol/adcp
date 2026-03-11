@@ -304,7 +304,7 @@ Governance findings include an optional `confidence` score (0-1) and `uncertaint
 Confidence informs the appropriate response:
 - **High confidence (0.9+)**: The finding is definitive. A GDPR violation on a campaign explicitly targeting EU users.
 - **Medium confidence (0.6-0.9)**: The finding depends on context the governance agent cannot fully resolve. Audience segments that may include minors, geo targeting that partially overlaps regulated jurisdictions.
-- **Low confidence (<0.6)**: The finding is speculative. The governance agent flags it for human review rather than acting on it autonomously.
+- **Low confidence (below 0.6)**: The finding is speculative. The governance agent flags it for human review rather than acting on it autonomously.
 
 Without confidence, every finding is presented as equally certain, which either over-blocks (if treated as certain) or trains people to ignore findings (if many are false positives). Governance agents SHOULD include confidence when the evaluation involves natural language interpretation or probabilistic matching.
 

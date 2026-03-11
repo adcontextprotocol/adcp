@@ -70,11 +70,11 @@ Concurrent media buys are handled through optimistic concurrency control or budg
 
 ## Confidence and explainability
 
-Governance findings include confidence scores (0-1) and explanations that distinguish certain violations from ambiguous ones:
+Governance findings include confidence scores (0 to 1) and explanations that distinguish certain violations from ambiguous ones:
 
 - **High confidence (0.9+)**: Definitive violation. A GDPR breach on a campaign explicitly targeting EU users.
 - **Medium confidence (0.6-0.9)**: Depends on context the governance agent cannot fully resolve. Audience segments that may include minors, geo targeting that partially overlaps regulated jurisdictions.
-- **Low confidence (<0.6)**: Speculative. Flagged for human review rather than acted on autonomously.
+- **Low confidence (below 0.6)**: Speculative. Flagged for human review rather than acted on autonomously.
 
 Every finding includes a human-readable `explanation` and structured `details` for programmatic consumption. Escalations include the `reason`, `severity`, and optionally the `approval_tier` needed to resolve them. Nothing is a black box.
 
