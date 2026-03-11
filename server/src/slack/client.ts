@@ -209,7 +209,7 @@ export async function getSlackUsers(): Promise<SlackUser[]> {
     }
   } while (cursor);
 
-  logger.info({ count: users.length }, 'Fetched Slack users');
+  logger.debug({ count: users.length }, 'Fetched Slack users');
   return users;
 }
 
