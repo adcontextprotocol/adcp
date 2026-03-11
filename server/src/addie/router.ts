@@ -302,8 +302,8 @@ Use these insights to:
  */
 function buildRoutingPrompt(ctx: RoutingContext): string {
   const isAAOAdmin = ctx.isAAOAdmin ?? false;
-  const isMember = !!ctx.memberContext?.workos_user?.workos_user_id;
-  const isLinked = isMember;
+  const isMember = ctx.memberContext?.is_member ?? false;
+  const isLinked = !!ctx.memberContext?.workos_user?.workos_user_id;
 
   // Build tool SET descriptions - router selects categories, not individual tools
   const toolSetsSection = getToolSetDescriptionsForRouter(isAAOAdmin);

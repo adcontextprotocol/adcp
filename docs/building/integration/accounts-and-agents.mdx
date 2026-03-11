@@ -14,7 +14,7 @@ AdCP distinguishes four entities in every billable operation:
 
 **Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id`), resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — either an `account_id` or a natural key (`brand`, `operator`).
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` (explicit accounts) or a natural key (`brand`, `operator`) (implicit accounts). For sandbox, use the natural key with `sandbox: true`.
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -37,18 +37,13 @@ The buyer must pass one of these values as `billing` in every `sync_accounts` en
 
 **2. Do you require operator-level auth?** (`require_operator_auth`)
 
-When `false` (default): the seller trusts the agent. The agent authenticates once and sets up accounts via `sync_accounts`.
+This single field determines both the authentication model and how accounts are referenced:
 
-When `true`: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band.
+When `false` (default) — **implicit accounts**: the seller trusts the agent. The agent authenticates once and declares accounts via `sync_accounts`. On subsequent requests, the buyer passes the natural key (`brand` + `operator`) and the seller resolves internally.
 
-**3. How do you resolve account references?** (`account_resolution`)
+When `true` — **explicit accounts**: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band. The buyer discovers accounts via `list_accounts` and passes a seller-assigned `account_id`.
 
-| Resolution | Model | Description |
-|-----------|-------|-------------|
-| `explicit_account_id` | Explicit account IDs | Accounts are managed out-of-band (advertiser portal, sales rep). Buyer discovers them via `list_accounts` and passes a seller-assigned `account_id`. |
-| `implicit_from_sync` | Implicit account IDs | Buyer declares intent via `sync_accounts` — who's advertising, who's paying — and the seller provisions accounts. On subsequent requests, the buyer passes brand identity (`brand`, `operator`) and the seller resolves internally. |
-
-Default: `"explicit_account_id"`. See [Account references](#account-references) for detailed workflows.
+For sandbox operations, use the natural key with `sandbox: true` regardless of account model — no account provisioning or discovery needed.
 
 Sellers can also declare `account_financials: true` to expose account-level financial data (spend, credit, invoices) via [`get_account_financials`](/docs/accounts/tasks/get_account_financials). This only applies to operator-billed accounts.
 
@@ -57,14 +52,13 @@ Sellers can also declare `account_financials: true` to expose account-level fina
 ```json
 {
   "account": {
-    "account_resolution": "implicit_from_sync",
     "require_operator_auth": false,
     "supported_billing": ["operator", "agent"]
   }
 }
 ```
 
-These three fields combine into four common patterns.
+These two fields combine into three common patterns.
 
 ## Seller patterns
 
@@ -85,7 +79,6 @@ The operator already has an account on the platform — an ad account, a busines
 ```json
 {
   "account": {
-    "account_resolution": "explicit_account_id",
     "require_operator_auth": true,
     "supported_billing": ["operator"],
     "authorization_endpoint": "https://seller.example.com/oauth/authorize"
@@ -143,7 +136,6 @@ Many publishers also accept agent billing (`supported_billing: ["operator", "age
 ```json
 {
   "account": {
-    "account_resolution": "explicit_account_id",
     "supported_billing": ["operator", "agent"]
   }
 }
@@ -331,9 +323,9 @@ Verification is a trust signal, not a gate. Finding the operator in `brand.json`
 
 ## Account references
 
-Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `account_resolution` capability declares which model it supports — and the model determines the buyer's entire integration path.
+Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `require_operator_auth` capability determines which model applies — and the model determines the buyer's entire integration path.
 
-### Explicit account IDs
+### Explicit accounts (`require_operator_auth: true`)
 
 Accounts are managed outside of AdCP. The advertiser creates an account on the seller's platform, grants the operator permission to manage it, and the agent discovers the account via `list_accounts`. The agent is not involved in authentication or billing — those are handled between the advertiser and seller directly.
 
@@ -349,11 +341,11 @@ Accounts are managed outside of AdCP. The advertiser creates an account on the s
 
 The agent doesn't set up accounts, negotiate billing, or manage authentication with the seller. It just discovers what already exists and lets the human choose.
 
-### Implicit account IDs
+### Implicit accounts (`require_operator_auth: false`)
 
 The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating on the brand's behalf, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
 
-**Typical sellers:** Traditional publishers, retail media networks — anywhere the buying relationship is established programmatically.
+**Typical sellers:** Traditional publishers, retail media networks, DSPs — anywhere the buying relationship is established programmatically.
 
 `sync_accounts` is the declaration tool. Each entry is a set of flags that tells the seller what the buyer needs:
 
@@ -374,15 +366,16 @@ Every combination of flags that might require the seller to do something differe
    - `pending_approval` — seller reviewing (human may need to visit `setup.url`)
    - `rejected` — seller declined the request
 3. For subsequent requests, pass the account reference:
-   - **Explicit model**: discover account IDs via `list_accounts`, pass `{ "account_id": "acc_acme_001" }`
-   - **Implicit model**: pass the natural key `{ "brand": { "domain": "acme-corp.com" }, "operator": "pinnacle-media.com" }`
+   - **Implicit accounts** (`require_operator_auth: false`): pass the natural key `{ "brand": { "domain": "acme-corp.com" }, "operator": "pinnacle-media.com" }`
+   - **Explicit accounts** (`require_operator_auth: true`): pass `{ "account_id": "acc_acme_001" }` (discover via `list_accounts`)
+   - **Sandbox** (either model): pass the natural key with `sandbox: true`
 4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
 
 The agent may be involved in billing (when `billing` is `"agent"` or `"operator"`). The seller may require human approval before activating accounts.
 
 ### Natural key semantics
 
-The tuple `(brand, operator)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates directly, set `operator` to the brand's domain. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency).
+The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates directly, set `operator` to the brand's domain. `sandbox` defaults to `false` when omitted. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency). Adding `sandbox: true` references the sandbox account for the same pair.
 
 See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
 
@@ -412,7 +405,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-`sync_accounts` does not return `account_id` — the seller manages account identifiers internally. For the explicit model, discover account IDs via `list_accounts`. For the implicit model, use natural keys (`brand` + `operator`) on subsequent requests.
+`sync_accounts` does not return `account_id` — the seller manages account identifiers internally. For explicit accounts (`require_operator_auth: true`), discover account IDs via `list_accounts`. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For sandbox operations, use the natural key with `sandbox: true` regardless of account model.
 
 ## Error codes
 

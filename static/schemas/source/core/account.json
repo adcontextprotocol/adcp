@@ -164,7 +164,7 @@
     },
     "sandbox": {
       "type": "boolean",
-      "description": "When true, this is a sandbox account. All requests using this account_id are treated as sandbox — no real platform calls, no real spend."
+      "description": "When true, this is a sandbox account — no real platform calls, no real spend. Sandbox is part of the account's natural key: the same brand/operator pair can have both a production and sandbox account."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

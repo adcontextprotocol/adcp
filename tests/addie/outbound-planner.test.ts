@@ -1,9 +1,9 @@
 /**
  * Tests for OutboundPlanner
  *
- * Focuses on the availability logic (isAvailable) for goals with deferred status,
- * which was the subject of a recent bug fix: deferred goals with null next_attempt_at
- * must be blocked indefinitely, not treated as available.
+ * Focuses on the availability logic (isAvailable) for goals with deferred status.
+ * Deferred goals with null next_attempt_at must be blocked indefinitely, not treated
+ * as available.
  *
  * We test this through the public planNextAction() method with mocked DB dependencies.
  */

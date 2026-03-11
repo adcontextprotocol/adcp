@@ -328,7 +328,7 @@
         },
         "account-ref": {
           "$ref": "/schemas/core/account-ref.json",
-          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator)"
+          "description": "Reference to an account by seller-assigned ID or natural key (brand, operator, optional sandbox)"
         },
         "provenance": {
           "$ref": "/schemas/core/provenance.json",
