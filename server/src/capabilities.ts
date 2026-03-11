@@ -52,6 +52,10 @@ export class CapabilityDiscovery {
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
   private formatsService: FormatsService;
 
+  private static readonly SALES_TOOLS = ['get_products', 'create_media_buy', 'list_authorized_properties'];
+  private static readonly CREATIVE_TOOLS = ['list_creative_formats', 'build_creative', 'generate_creative', 'validate_creative'];
+  private static readonly SIGNALS_TOOLS = ['get_signals', 'list_signals', 'match_audience', 'activate_signal', 'activate_audience'];
+
   constructor() {
     this.formatsService = new FormatsService();
   }
@@ -66,11 +70,6 @@ export class CapabilityDiscovery {
       const protocol = agent.protocol || "mcp";
       const tools = await this.discoverTools(agent.url, protocol);
 
-      // Infer agent type from tools if not already set
-      const agentType = agent.type && agent.type !== 'unknown'
-        ? agent.type
-        : this.inferAgentType(tools);
-
       const profile: AgentCapabilityProfile = {
         agent_url: agent.url,
         protocol,
@@ -78,12 +77,16 @@ export class CapabilityDiscovery {
         last_discovered: new Date().toISOString(),
       };
 
-      // Analyze tools to determine standard operations based on inferred type
-      if (agentType === "sales") {
+      // Analyze all matching capabilities (agent may support multiple types)
+      const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
+
+      if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
-      } else if (agentType === "creative") {
+      }
+      if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
         profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools);
-      } else if (agentType === "signals") {
+      }
+      if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
       }
 
@@ -198,24 +201,11 @@ export class CapabilityDiscovery {
   private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
 
-    // Check for sales-specific tools
-    const salesTools = ['get_products', 'create_media_buy', 'list_authorized_properties'];
-    const hasSalesTools = salesTools.some(t => toolNames.has(t));
+    // Priority: sales > creative > signals (sales is the primary commerce type)
+    if (CapabilityDiscovery.SALES_TOOLS.some(t => toolNames.has(t))) return 'sales';
+    if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) return 'creative';
+    if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) return 'signals';
 
-    // Check for creative-specific tools
-    const creativeTools = ['list_creative_formats', 'build_creative', 'generate_creative', 'validate_creative'];
-    const hasCreativeTools = creativeTools.some(t => toolNames.has(t));
-
-    // Check for signals-specific tools
-    const signalsTools = ['get_signals', 'list_signals', 'match_audience', 'activate_signal', 'activate_audience'];
-    const hasSignalsTools = signalsTools.some(t => toolNames.has(t));
-
-    // Return the most specific match
-    if (hasSalesTools && !hasCreativeTools && !hasSignalsTools) return 'sales';
-    if (hasCreativeTools && !hasSalesTools && !hasSignalsTools) return 'creative';
-    if (hasSignalsTools && !hasSalesTools && !hasCreativeTools) return 'signals';
-
-    // If multiple types detected or none, return unknown
     return 'unknown';
   }
 
