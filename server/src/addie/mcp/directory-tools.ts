@@ -229,7 +229,7 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
       type: a.type,
       url: a.url,
       description: a.description,
-      contact: a.contact,
+      contact: { name: a.contact.name, website: a.contact.website },
     }));
 
     return JSON.stringify({ agents: result, count: result.length }, null, 2);
@@ -251,7 +251,7 @@ export function createDirectoryToolHandlers(): Map<string, (args: Record<string,
       type: agent.type,
       url: agent.url,
       description: agent.description,
-      contact: agent.contact,
+      contact: { name: agent.contact.name, website: agent.contact.website },
       mcp_endpoint: agent.mcp_endpoint,
     }, null, 2);
   });

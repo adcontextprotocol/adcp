@@ -188,6 +188,15 @@ async function initializeChatClient(): Promise<void> {
     }
   }
 
+  // Register search_members globally so anonymous users get the rich card UI.
+  // The handler uses memberContext only for analytics attribution (null-safe).
+  const anonMemberHandlers = createMemberToolHandlers(null);
+  const searchMembersTool = MEMBER_TOOLS.find(t => t.name === 'search_members');
+  const searchMembersHandler = anonMemberHandlers.get('search_members');
+  if (searchMembersTool && searchMembersHandler) {
+    claudeClient.registerTool(searchMembersTool, searchMembersHandler);
+  }
+
   // Build authenticated-only tools (cached, reused per request).
   // Includes: non-anonymous knowledge tools, billing, schema, brand, property.
   const authTools: typeof KNOWLEDGE_TOOLS = [];

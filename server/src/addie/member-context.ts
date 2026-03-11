@@ -970,7 +970,7 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       lines.push('**Status**: Anonymous user (not signed in)');
       lines.push('');
       lines.push('This user is browsing the web chat without signing in.');
-      lines.push('They do not have access to: member directory search (search_members), profile management, working group operations, or introduction requests. If they need these, suggest signing in at https://agenticadvertising.org. They CAN use: list_members (public directory), search_docs, search_repos, and other knowledge tools.');
+      lines.push('They can search the member directory (search_members, list_members), browse agents (list_agents, get_agent), look up publishers (list_publishers, lookup_domain), and explore documentation (search_docs, search_repos). If they want to request an introduction, manage a profile, or access community discussions, suggest signing in at https://agenticadvertising.org.');
       lines.push('');
       return lines.join('\n');
     }
