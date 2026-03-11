@@ -56,7 +56,7 @@ export const BRAND_TOOLS: AddieTool[] = [
   {
     name: 'save_brand',
     description: 'Save a brand to the registry as a community brand. Use for manually adding brands (not needed after research_brand, which auto-saves). Preserves any existing enrichment data when manifest is not provided.',
-    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved.',
+    usage_hints: 'Use to add a new community brand by name/domain. Not needed after research_brand — enrichment is auto-saved. Use industry to set or update the brand\'s industry classification.',
     input_schema: {
       type: 'object',
       properties: {
@@ -67,6 +67,10 @@ export const BRAND_TOOLS: AddieTool[] = [
         brand_name: {
           type: 'string',
           description: 'Brand name',
+        },
+        industry: {
+          type: 'string',
+          description: 'Industry classification (e.g., "Technology", "Retail", "Healthcare")',
         },
         brand_manifest: {
           type: 'object',
@@ -215,9 +219,11 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
               colors: result.manifest!.colors,
               fonts: result.manifest!.fonts,
               ...(result.company ? { company: result.company } : {}),
+              ...(result.raw?.qualityScore !== undefined ? { quality_score: result.raw.qualityScore } : {}),
+              ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
             },
             has_brand_manifest: true,
-            source_type: 'enriched',
+            source_type: result.highQuality !== false ? 'enriched' : 'community',
           });
         } catch (err) {
           logger.warn({ err, domain }, 'Failed to cache enrichment result');
@@ -322,14 +328,27 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
   handlers.set('save_brand', async (args) => {
     const domain = args.domain as string;
     const brandName = args.brand_name as string;
+    const rawIndustry = typeof args.industry === 'string' ? args.industry.trim() : undefined;
+    if (rawIndustry !== undefined && (rawIndustry.length === 0 || rawIndustry.length > 200)) {
+      return JSON.stringify({ error: 'industry must be 1-200 characters' });
+    }
+    const industry = rawIndustry;
     const brandManifest = args.brand_manifest as Record<string, unknown> | undefined;
-    const sourceType = (args.source_type as string) || 'enriched';
+    const sourceType = (args.source_type as string) || 'community';
 
     if (!domain) {
       return JSON.stringify({ error: 'domain is required' });
     }
     if (!brandName) {
       return JSON.stringify({ error: 'brand_name is required' });
+    }
+
+    // Helper: merge industry into a manifest's company.industry field
+    function applyIndustry(manifest: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+      if (!industry) return manifest;
+      const base = manifest ?? {};
+      const company = (base.company as Record<string, unknown>) ?? {};
+      return { ...base, company: { ...company, industry } };
     }
 
     // Check if brand already exists
@@ -353,9 +372,14 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
         editor_email: 'addie@agenticadvertising.org',
         editor_name: 'Addie',
       };
-      if (brandManifest !== undefined) {
-        editInput.brand_manifest = brandManifest;
-        editInput.has_brand_manifest = !!brandManifest;
+      if (brandManifest !== undefined || industry) {
+        // When only industry is provided (no manifest), merge into existing manifest
+        const baseManifest = brandManifest ?? (existing.brand_manifest as Record<string, unknown> | undefined);
+        const merged = applyIndustry(baseManifest);
+        if (merged) {
+          editInput.brand_manifest = merged;
+          editInput.has_brand_manifest = true;
+        }
       }
 
       const { brand, revision_number } = await brandDb.editDiscoveredBrand(domain, editInput);
@@ -371,11 +395,12 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
 
     // New brand: upsert directly (Addie is trusted, no pending review)
     // Preserve any existing enrichment data (e.g., from research_brand cache)
+    const finalManifest = applyIndustry(brandManifest);
     const saved = await brandDb.upsertDiscoveredBrand({
       domain,
       brand_name: brandName,
-      brand_manifest: brandManifest,
-      has_brand_manifest: brandManifest !== undefined ? !!brandManifest : undefined,
+      brand_manifest: finalManifest,
+      has_brand_manifest: finalManifest !== undefined ? !!finalManifest : undefined,
       source_type: sourceType as 'community' | 'enriched',
     });
 
