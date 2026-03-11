@@ -556,6 +556,96 @@
           padding: 20px;
         }
 
+        /* Certification section */
+        .cert-row {
+          display: flex;
+          align-items: center;
+          gap: var(--space-4);
+        }
+        .cert-row--start {
+          align-items: flex-start;
+        }
+        .cert-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: var(--radius-xl);
+          background: var(--gradient-primary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: var(--text-2xl);
+          color: white;
+          flex-shrink: 0;
+        }
+        .cert-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--space-2);
+          margin-bottom: var(--space-3);
+        }
+        .cert-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: var(--space-1) var(--space-2);
+          border-radius: var(--radius-md);
+          font-size: var(--text-xs);
+          font-weight: var(--font-semibold);
+        }
+        .cert-badge--tier-1 {
+          background: var(--credential-tier-1-bg);
+          color: var(--credential-tier-1-color);
+        }
+        .cert-badge--tier-2 {
+          background: var(--credential-tier-2-bg);
+          color: var(--credential-tier-2-color);
+        }
+        .cert-badge--tier-3 {
+          background: var(--credential-tier-3-bg);
+          color: var(--credential-tier-3-color);
+          border: var(--credential-tier-3-border);
+        }
+        .cert-progress {
+          display: flex;
+          gap: var(--space-6);
+          margin-bottom: var(--space-3);
+          font-size: var(--text-sm);
+        }
+        .cert-progress strong {
+          color: var(--color-text-heading);
+        }
+        .cert-progress span {
+          color: var(--color-text-secondary);
+        }
+        .cert-cta {
+          display: inline-block;
+          padding: var(--space-2) var(--space-4);
+          background: var(--color-brand);
+          color: white;
+          border-radius: var(--radius-md);
+          text-decoration: none;
+          font-size: var(--text-sm);
+          font-weight: var(--font-medium);
+        }
+        .cert-cta:hover {
+          background: var(--color-brand-hover);
+        }
+        .cert-subtitle {
+          margin: 0 0 var(--space-3) 0;
+          color: var(--color-text-secondary);
+          font-size: var(--text-sm);
+        }
+        @media (max-width: 640px) {
+          .cert-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: var(--space-3);
+          }
+          .cert-progress {
+            gap: var(--space-4);
+          }
+        }
+
         /* Promo banner styles */
         .promo-banner {
           background: linear-gradient(135deg, var(--color-brand) 0%, var(--color-primary-600) 100%);
@@ -737,6 +827,19 @@
         </div>
         <div id="leadershipContent">
           <div style="text-align: center; color: var(--color-text-secondary); padding: 20px;">Loading committees...</div>
+        </div>
+      </section>
+
+      <!-- ========== CERTIFICATION SECTION ========== -->
+      <section id="certification" class="dashboard-section">
+        <div class="section-header">
+          <h2>Certification</h2>
+          <p>Your AdCP learning progress and earned credentials</p>
+        </div>
+        <div class="section-card" id="certificationCard">
+          <div id="certificationContent" class="section-card-body">
+            <div style="text-align: center; color: var(--color-text-secondary);">Loading certification progress...</div>
+          </div>
         </div>
       </section>
 
@@ -1176,6 +1279,7 @@
         loadTeamSection(org.id);
       }
       loadLeadershipSection();
+      loadCertificationSection();
 
       // ===== MEMBERSHIP SIGNUP SECTION (hidden, for modal use) =====
       const membershipSection = document.getElementById('membershipSection');
@@ -2655,6 +2759,93 @@
             </a>
           `;
         }
+      }
+    }
+
+    // Load certification progress section
+    async function loadCertificationSection() {
+      const contentEl = document.getElementById('certificationContent');
+      if (!contentEl) return;
+
+      const ctaHtml = `
+        <div class="cert-row">
+          <div class="cert-icon">🎓</div>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 4px 0; font-size: var(--text-base); color: var(--color-text-heading);">Get AdCP certified</h3>
+            <p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>
+            <a href="/certification.html" class="cert-cta">Start learning</a>
+          </div>
+        </div>
+      `;
+
+      try {
+        const [progressResp, tracksResp] = await Promise.all([
+          fetch('/api/me/certification/progress', { credentials: 'include' }),
+          fetch('/api/certification/tracks'),
+        ]);
+        if (!progressResp.ok) {
+          contentEl.innerHTML = ctaHtml;
+          return;
+        }
+
+        const data = await progressResp.json();
+        const { progress = [], credentials = [], certifications = [] } = data;
+
+        // Get total module count from tracks API (progress only has started modules)
+        let totalModules = 16; // fallback
+        if (tracksResp.ok) {
+          const tracksData = await tracksResp.json();
+          totalModules = (tracksData.tracks || []).reduce((sum, t) => sum + (t.modules?.length || 0), 0);
+        }
+
+        const completedModules = progress.filter(p => p.status === 'completed').length;
+        const inProgressModules = progress.filter(p => p.status === 'in_progress').length;
+        // Use credentials (from user_credentials table with name/tier) or fall back to certifications (legacy exam attempts)
+        const earnedCredentials = credentials.length > 0
+          ? credentials.map(c => ({ tier: c.tier, track_name: c.credential_name }))
+          : certifications.filter(c => c.status === 'passed');
+
+        // Credential tier badges
+        const tierLabels = { 1: 'Basics', 2: 'Practitioner', 3: 'Specialist' };
+
+        let credBadgesHtml = '';
+        if (earnedCredentials.length > 0) {
+          credBadgesHtml = `
+            <div class="cert-badges">
+              ${earnedCredentials.map(c => {
+                const tier = c.tier || 1;
+                const label = (c.track_name || tierLabels[tier] || 'Basics').replace(/[<>"'&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;'}[c]));
+                return `<span class="cert-badge cert-badge--tier-${tier}">🎓 ${label}</span>`;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        const hasActivity = completedModules > 0 || inProgressModules > 0;
+        let progressHtml = '';
+        if (hasActivity) {
+          progressHtml = `
+            <div class="cert-progress">
+              <div><strong>${completedModules}</strong> <span>of ${totalModules} completed</span></div>
+              ${inProgressModules > 0 ? `<div><strong>${inProgressModules}</strong> <span>in progress</span></div>` : ''}
+            </div>
+          `;
+        }
+
+        contentEl.innerHTML = `
+          <div class="cert-row cert-row--start">
+            <div class="cert-icon">🎓</div>
+            <div style="flex: 1;">
+              ${credBadgesHtml}
+              ${progressHtml}
+              ${!hasActivity && earnedCredentials.length === 0 ? '<p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>' : ''}
+              <a href="/certification.html" class="cert-cta">${hasActivity ? 'Continue learning' : 'Start learning'}</a>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('loadCertificationSection error:', error);
+        contentEl.innerHTML = ctaHtml;
       }
     }
 

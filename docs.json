@@ -387,6 +387,38 @@
             "pages": [
               "docs/community/working-group"
             ]
+          },
+          {
+            "group": "Certification",
+            "pages": [
+              "docs/learning/overview",
+              {
+                "group": "Basics (free)",
+                "pages": [
+                  "docs/learning/foundations/a1-agentic-advertising",
+                  "docs/learning/foundations/a2-protocol-architecture",
+                  "docs/learning/foundations/a3-ecosystem-governance"
+                ]
+              },
+              {
+                "group": "Role tracks",
+                "pages": [
+                  "docs/learning/tracks/publisher",
+                  "docs/learning/tracks/buyer",
+                  "docs/learning/tracks/platform"
+                ]
+              },
+              {
+                "group": "Specialist modules",
+                "pages": [
+                  "docs/learning/specialist/media-buy",
+                  "docs/learning/specialist/creative",
+                  "docs/learning/specialist/signals",
+                  "docs/learning/specialist/governance",
+                  "docs/learning/specialist/sponsored-intelligence"
+                ]
+              }
+            ]
           }
         ]
       },
@@ -724,6 +756,38 @@
             "group": "Community",
             "pages": [
               "docs/community/working-group"
+            ]
+          },
+          {
+            "group": "Certification",
+            "pages": [
+              "docs/learning/overview",
+              {
+                "group": "Basics (free)",
+                "pages": [
+                  "docs/learning/foundations/a1-agentic-advertising",
+                  "docs/learning/foundations/a2-protocol-architecture",
+                  "docs/learning/foundations/a3-ecosystem-governance"
+                ]
+              },
+              {
+                "group": "Role tracks",
+                "pages": [
+                  "docs/learning/tracks/publisher",
+                  "docs/learning/tracks/buyer",
+                  "docs/learning/tracks/platform"
+                ]
+              },
+              {
+                "group": "Specialist modules",
+                "pages": [
+                  "docs/learning/specialist/media-buy",
+                  "docs/learning/specialist/creative",
+                  "docs/learning/specialist/signals",
+                  "docs/learning/specialist/governance",
+                  "docs/learning/specialist/sponsored-intelligence"
+                ]
+              }
             ]
           }
         ]

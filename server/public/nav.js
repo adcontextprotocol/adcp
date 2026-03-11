@@ -78,6 +78,13 @@
   // Get current path to mark active link
   const currentPath = window.location.pathname;
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   // Build navigation HTML - will be updated after config fetch
   function buildNavHTML(config) {
     const user = config?.user;
@@ -227,7 +234,8 @@
     const communityPeopleUrl = isLocal ? '/community/people' : `${aaoBaseUrl}/community/people`;
     const isCommunityActive = currentPath.startsWith('/community');
     const isCommitteesActive = currentPath.startsWith('/committees') || currentPath.startsWith('/working-groups') || currentPath.startsWith('/industry-gatherings') || currentPath.startsWith('/meetings');
-    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive;
+    const isCertificationActive = currentPath.startsWith('/certification') || currentPath.startsWith('/study-guide');
+    const isParticipateActive = isEventsActive || isCommitteesActive || isCommunityActive || isCertificationActive;
     const participateDropdown = membershipEnabled
       ? `<div class="navbar__dropdown-wrapper">
           <button class="navbar__link navbar__dropdown-trigger ${isParticipateActive ? 'active' : ''}">
@@ -248,6 +256,8 @@
             <a href="${councilsUrl}" class="navbar__dropdown-item">Industry Councils</a>
             <a href="${chaptersUrl}" class="navbar__dropdown-item">Regional Chapters</a>
             <a href="${gatheringsUrl}" class="navbar__dropdown-item ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>
+            <div class="navbar__dropdown-divider"></div>
+            <a href="/certification.html" class="navbar__dropdown-item ${isCertificationActive ? 'active' : ''}">Certification</a>
           </div>
         </div>`
       : '';
@@ -316,6 +326,7 @@
           ${membershipEnabled ? `<a href="${councilsUrl}" class="navbar__link navbar__link--indent">Industry Councils</a>` : ''}
           ${membershipEnabled ? `<a href="${chaptersUrl}" class="navbar__link navbar__link--indent">Regional Chapters</a>` : ''}
           ${membershipEnabled ? `<a href="${gatheringsUrl}" class="navbar__link navbar__link--indent ${currentPath === '/industry-gatherings' ? 'active' : ''}">Industry Gatherings</a>` : ''}
+          ${membershipEnabled ? `<a href="/certification.html" class="navbar__link navbar__link--indent ${isCertificationActive ? 'active' : ''}">Certification</a>` : ''}
           <span class="navbar__link navbar__link--header">About</span>
           <a href="${aboutUrl}" class="navbar__link navbar__link--indent ${currentPath === '/about' ? 'active' : ''}">About</a>
           <a href="${membershipUrl}" class="navbar__link navbar__link--indent ${currentPath === '/membership' ? 'active' : ''}">Membership</a>

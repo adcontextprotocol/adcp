@@ -15,6 +15,7 @@ import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
+import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
@@ -654,6 +655,21 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     is_member: false,
     slack_linked: false,
   };
+
+  // Dev mode: build context from dev user config instead of calling WorkOS API
+  if (isDevModeEnabled() && workosUserId.startsWith('user_dev_')) {
+    const devUser = Object.values(DEV_USERS).find(u => u.id === workosUserId);
+    if (devUser) {
+      context.workos_user = {
+        workos_user_id: devUser.id,
+        email: devUser.email,
+        first_name: devUser.firstName,
+        last_name: devUser.lastName,
+      };
+      context.is_member = devUser.isMember;
+      return context;
+    }
+  }
 
   try {
     // Step 1: Get WorkOS user info

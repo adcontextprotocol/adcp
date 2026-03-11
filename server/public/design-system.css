@@ -126,6 +126,15 @@
   --gradient-primary-dark: linear-gradient(135deg, var(--color-primary-800) 0%, var(--color-primary-600) 100%);
   --gradient-success: linear-gradient(135deg, var(--color-success-500) 0%, var(--color-success-600) 100%);
   --gradient-light: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-primary-100) 100%);
+
+  /* Credential tier colors */
+  --credential-tier-1-bg: var(--color-info-100);
+  --credential-tier-1-color: var(--color-info-700);
+  --credential-tier-2-bg: var(--color-warning-100);
+  --credential-tier-2-color: var(--color-warning-700);
+  --credential-tier-3-bg: linear-gradient(135deg, var(--color-warning-100), var(--color-warning-500));
+  --credential-tier-3-color: var(--color-warning-700);
+  --credential-tier-3-border: 1px solid var(--color-warning-500);
 }
 
 /* =============================================================================

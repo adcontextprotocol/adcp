@@ -102,6 +102,8 @@ import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/coll
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
+import { CERTIFICATION_TOOLS, createCertificationToolHandlers, buildCertificationContext } from './mcp/certification-tools.js';
+import * as certDb from '../db/certification-db.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
 import { initializeEmailHandler } from './email-handler.js';
 import {
@@ -622,7 +624,7 @@ async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
   existingMemberContext?: MemberContext | null
-): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; hasCertificationContext: boolean }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
@@ -667,14 +669,29 @@ async function buildRequestContext(
       logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
     }
 
-    const sections = [memberContextText, channelContextText, insightGoalsText].filter(Boolean);
+    // Add certification module state so Addie remembers active modules
+    // even when conversation history is trimmed
+    let certContextText = '';
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    if (workosUserId) {
+      try {
+        const progress = await certDb.getProgress(workosUserId);
+        const inProgress = progress.filter(p => p.status === 'in_progress');
+        certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
+      } catch (error) {
+        logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');
+      }
+    }
+
+    const sections = [memberContextText, channelContextText, insightGoalsText, certContextText].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
+      hasCertificationContext: !!certContextText,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null };
+    return { requestContext: '', memberContext: null, hasCertificationContext: false };
   }
 }
 
@@ -796,6 +813,13 @@ async function createUserScopedTools(
   const schemaHandlers = createSchemaToolHandlers();
   allTools.push(...SCHEMA_TOOLS);
   for (const [name, handler] of schemaHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add certification tools (learning modules, exams, progress tracking)
+  const certificationHandlers = createCertificationToolHandlers(memberContext, { threadId });
+  allTools.push(...CERTIFICATION_TOOLS);
+  for (const [name, handler] of certificationHandlers) {
     allHandlers.set(name, handler);
   }
 
@@ -1135,7 +1159,7 @@ async function handleUserMessage({
   }
 
   // Build per-request context for system prompt
-  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(
+  let { requestContext, memberContext: updatedMemberContext, hasCertificationContext } = await buildRequestContext(
     userId,
     slackThreadContext
   );
@@ -1168,8 +1192,12 @@ async function handleUserMessage({
   // Create user-scoped tools (includes admin tools if user is admin, meeting tools with channel context)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, slackThreadContext);
 
-  // Admin users get higher iteration limit for bulk operations
-  const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
+  // Admin users get higher iteration limit; certification sessions get more conversation history
+  const processOptions: import('./claude-client.js').ProcessMessageOptions = {
+    requestContext,
+    ...(userIsAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
+    ...(hasCertificationContext && { maxMessages: 50 }),
+  };
 
   // Process with Claude using streaming
   let response;

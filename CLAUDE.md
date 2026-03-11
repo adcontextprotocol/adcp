@@ -252,3 +252,29 @@ mintlify dev               # Docs dev server (requires mintlify CLI)
 ### Task Reference
 - ✅ `get_products`, `create_media_buy`, `list_creative_formats`
 - ❌ `discover_products`, `get_avails` (don't exist)
+
+## Certification Program
+
+AgenticAdvertising.org runs a three-tier certification program (Basics → Practitioner → Specialist) taught by Addie through interactive chat. Key files:
+
+- **Curriculum**: `server/src/addie/mcp/certification-tools.ts` (teaching tools, module resources, scoring)
+- **Database**: `server/src/db/certification-db.ts` (progress, credentials, tracks)
+- **API routes**: `server/src/routes/certification.ts` (public/authenticated endpoints)
+- **UI**: `server/public/certification.html` (dashboard, LinkedIn sharing, credential display)
+
+### Certification impact checklist
+
+When making protocol changes (new tasks, schema changes, renamed fields, removed features):
+
+1. **Check affected modules** — Which certification modules teach the changed concepts? Update `MODULE_RESOURCES` links and teaching context in `certification-tools.ts` if needed.
+2. **Consider continuing education** — Breaking changes (`major` version bumps) that alter core concepts may require notifying credential holders. Credentials reference the protocol version at time of issuance.
+3. **Update learning resources** — If you add or move documentation pages referenced in `MODULE_RESOURCES`, update the URLs.
+
+When building new features (member profiles, dashboards, community pages):
+
+4. **Surface credentials** — If the feature displays user identity or professional context, consider showing earned credentials.
+5. **Link to certification** — New capability areas may warrant new modules or tracks. Note this in the changeset description so it can be planned.
+
+### Security
+
+Module and exam completion is only available through Addie's tool calls — never through REST API. This prevents users from self-reporting scores without actual assessment.

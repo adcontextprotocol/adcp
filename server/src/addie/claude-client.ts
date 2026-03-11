@@ -143,6 +143,8 @@ export interface ProcessMessageOptions {
   modelOverride?: string;
   /** Per-request context (member info, channel, goals) appended to system prompt */
   requestContext?: string;
+  /** Override max messages for conversation history (default: 20, certification sessions use 50) */
+  maxMessages?: number;
 }
 
 /**
@@ -400,6 +402,7 @@ export class AddieClaudeClient {
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
+      maxMessages: options?.maxMessages,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -906,6 +909,7 @@ export class AddieClaudeClient {
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
       model: effectiveModel,
       toolCount,
+      maxMessages: options?.maxMessages,
     });
 
     if (messageTurnsResult.wasTrimmed) {
