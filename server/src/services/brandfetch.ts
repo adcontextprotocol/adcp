@@ -136,6 +136,9 @@ export interface BrandfetchEnrichmentResult {
     founded?: number;
     location?: string;
   };
+  /** Whether Brandfetch returned meaningful brand data (logos, description, decent quality score).
+   * When false, the result should be saved as 'community' rather than 'enriched'. */
+  highQuality?: boolean;
   raw?: BrandfetchResponse;
   error?: string;
   cached?: boolean;
@@ -148,6 +151,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (rate-limit protection)
 
 // DB-level cache: callers should check discovered_brands.last_validated before hitting the API
 export const ENRICHMENT_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Minimum Brandfetch qualityScore (0-1) to consider a result genuine vs. a placeholder
+export const QUALITY_SCORE_THRESHOLD = 0.3;
 
 /**
  * Check if Brandfetch is configured
@@ -249,6 +255,26 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
 }
 
 /**
+ * Check if a Brandfetch response contains meaningful brand data.
+ * Low-quality results (generic fallbacks, missing data) should be saved
+ * as 'community' rather than 'enriched' to avoid incorrect metadata.
+ */
+export function isHighQualityResult(data: BrandfetchResponse): boolean {
+  // NSFW brands should not be auto-enriched without review
+  if (data.isNsfw) return false;
+
+  const hasLogos = Array.isArray(data.logos) && data.logos.length > 0 &&
+    data.logos.some(l => Array.isArray(l.formats) && l.formats.length > 0);
+
+  const hasDescription = !!data.description && data.description.trim().length > 10;
+
+  const hasAcceptableScore = data.qualityScore === undefined || data.qualityScore >= QUALITY_SCORE_THRESHOLD;
+
+  // Must have acceptable quality AND at least one of: logos or description
+  return hasAcceptableScore && (hasLogos || hasDescription);
+}
+
+/**
  * Map Brandfetch response to AdCP enrichment result
  */
 function mapToEnrichmentResult(
@@ -331,6 +357,7 @@ function mapToEnrichmentResult(
     domain,
     manifest,
     company,
+    highQuality: isHighQualityResult(data),
     raw: data,
   };
 }
