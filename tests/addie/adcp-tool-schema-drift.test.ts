@@ -27,12 +27,10 @@ const SCHEMA_DIR = path.join(__dirname, '../../static/schemas/source');
 const TOOL_SCHEMA_MAP: Record<string, string> = {
   get_products: 'media-buy/get-products-request.json',
   create_media_buy: 'media-buy/create-media-buy-request.json',
-  sync_creatives: 'media-buy/sync-creatives-request.json',
   sync_catalogs: 'media-buy/sync-catalogs-request.json',
   list_creative_formats: 'media-buy/list-creative-formats-request.json',
   get_media_buy_delivery: 'media-buy/get-media-buy-delivery-request.json',
   update_media_buy: 'media-buy/update-media-buy-request.json',
-  list_creatives: 'media-buy/list-creatives-request.json',
   provide_performance_feedback: 'media-buy/provide-performance-feedback-request.json',
   build_creative: 'media-buy/build-creative-request.json',
 };

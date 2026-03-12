@@ -926,6 +926,26 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'integer',
           description: 'Max catalog items to use when generating.',
         },
+        creative_id: {
+          type: 'string',
+          description: 'Reference to a creative in the agent library. Use instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation.',
+        },
+        concept_id: {
+          type: 'string',
+          description: 'Creative concept containing the creative. Required to disambiguate when creative_id is not globally unique.',
+        },
+        media_buy_id: {
+          type: 'string',
+          description: "Buyer's media buy reference for tag generation context. Provides trafficking context when the creative agent is also the ad server.",
+        },
+        package_id: {
+          type: 'string',
+          description: "Buyer's package or line item reference within the media buy. Used with media_buy_id for line-item-level tag generation context.",
+        },
+        macro_values: {
+          type: 'object',
+          description: 'Macro values to pre-substitute into output assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are substitution strings.',
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
