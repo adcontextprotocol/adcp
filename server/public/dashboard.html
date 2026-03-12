@@ -879,7 +879,7 @@
       <!-- ========== CERTIFICATION SECTION ========== -->
       <section id="certification" class="dashboard-section">
         <div class="section-header">
-          <h2>Certification</h2>
+          <h2>Academy</h2>
           <p>Your AdCP learning progress and earned credentials</p>
         </div>
         <div class="section-card" id="certificationCard">
@@ -2824,7 +2824,7 @@
           <div style="flex: 1;">
             <h3 style="margin: 0 0 4px 0; font-size: var(--text-base); color: var(--color-text-heading);">Get AdCP certified</h3>
             <p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>
-            <a href="/certification.html" class="cert-cta">Start learning</a>
+            <a href="/certification" class="cert-cta">Start learning</a>
           </div>
         </div>
       `;
@@ -2890,7 +2890,7 @@
               ${credBadgesHtml}
               ${progressHtml}
               ${!hasActivity && earnedCredentials.length === 0 ? '<p class="cert-subtitle">Learn agentic advertising fundamentals and earn industry credentials.</p>' : ''}
-              <a href="/certification.html" class="cert-cta">${hasActivity ? 'Continue learning' : 'Start learning'}</a>
+              <a href="/certification" class="cert-cta">${hasActivity ? 'Continue learning' : 'Start learning'}</a>
             </div>
           </div>
         `;
@@ -3218,7 +3218,7 @@
 
     async function loadUserData() {
       try {
-        const response = await fetch(apiUrl('/api/me'));
+        const response = await fetch(apiUrl('/api/me'), { credentials: 'include' });
         if (!response.ok) {
           if (response.status === 401) {
             const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);

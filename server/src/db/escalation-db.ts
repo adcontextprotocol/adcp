@@ -34,6 +34,8 @@ export interface Escalation {
   slack_user_id: string | null;
   workos_user_id: string | null;
   user_display_name: string | null;
+  user_email: string | null;
+  user_slack_handle: string | null;
   category: EscalationCategory;
   priority: EscalationPriority;
   summary: string;
@@ -56,6 +58,8 @@ export interface EscalationInput {
   slack_user_id?: string;
   workos_user_id?: string;
   user_display_name?: string;
+  user_email?: string;
+  user_slack_handle?: string;
   category: EscalationCategory;
   priority?: EscalationPriority;
   summary: string;
@@ -79,8 +83,9 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
   const result = await query<Escalation>(
     `INSERT INTO addie_escalations (
       thread_id, message_id, slack_user_id, workos_user_id, user_display_name,
+      user_email, user_slack_handle,
       category, priority, summary, original_request, addie_context
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *`,
     [
       input.thread_id || null,
@@ -88,6 +93,8 @@ export async function createEscalation(input: EscalationInput): Promise<Escalati
       input.slack_user_id || null,
       input.workos_user_id || null,
       input.user_display_name || null,
+      input.user_email || null,
+      input.user_slack_handle || null,
       input.category,
       input.priority || 'normal',
       input.summary,

@@ -85,6 +85,8 @@ describe('get_escalation_status', () => {
         slack_user_id: 'U_SLACK_123',
         workos_user_id: 'user_test123',
         user_display_name: 'Test User',
+        user_email: 'test@example.com',
+        user_slack_handle: 'testuser',
         category: 'needs_human_action',
         priority: 'high',
         original_request: 'I never got my invoice',

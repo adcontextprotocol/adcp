@@ -65,24 +65,44 @@
       "$ref": "/schemas/media-buy/update-media-buy-async-response-submitted.json"
     },
     {
+      "title": "BuildCreativeResponse",
+      "description": "Response for completed or failed build_creative",
+      "$ref": "/schemas/media-buy/build-creative-response.json"
+    },
+    {
+      "title": "BuildCreativeAsyncWorking",
+      "description": "Progress data for working build_creative",
+      "$ref": "/schemas/media-buy/build-creative-async-response-working.json"
+    },
+    {
+      "title": "BuildCreativeAsyncInputRequired",
+      "description": "Input requirements for build_creative needing user input",
+      "$ref": "/schemas/media-buy/build-creative-async-response-input-required.json"
+    },
+    {
+      "title": "BuildCreativeAsyncSubmitted",
+      "description": "Acknowledgment for submitted build_creative",
+      "$ref": "/schemas/media-buy/build-creative-async-response-submitted.json"
+    },
+    {
       "title": "SyncCreativesResponse",
       "description": "Response for completed or failed sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-response.json"
+      "$ref": "/schemas/creative/sync-creatives-response.json"
     },
     {
       "title": "SyncCreativesAsyncWorking",
       "description": "Progress data for working sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-working.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-working.json"
     },
     {
       "title": "SyncCreativesAsyncInputRequired",
       "description": "Input requirements for sync_creatives needing user input",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-input-required.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-input-required.json"
     },
     {
       "title": "SyncCreativesAsyncSubmitted",
       "description": "Acknowledgment for submitted sync_creatives",
-      "$ref": "/schemas/media-buy/sync-creatives-async-response-submitted.json"
+      "$ref": "/schemas/creative/sync-creatives-async-response-submitted.json"
     },
     {
       "title": "SyncCatalogsResponse",

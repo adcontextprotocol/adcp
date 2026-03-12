@@ -370,7 +370,7 @@ async function renderJoinCta(options = {}) {
 
   const individualBenefits = [
     'Help build standards, practices, protocols, and policies',
-    'AdCP certification program — earn Basics, Practitioner & Specialist credentials',
+    'AdCP Academy — earn Basics, Practitioner & Specialist credentials',
     'Personal listing in member directory',
     'Working group participation',
     'Community Slack access',
@@ -507,7 +507,7 @@ function renderMemberConfirmation(userContext, showContactLine) {
 
   const individualBenefits = [
     'Help build standards, practices, protocols, and policies',
-    'AdCP certification program — earn Basics, Practitioner & Specialist credentials',
+    'AdCP Academy — earn Basics, Practitioner & Specialist credentials',
     'Personal listing in member directory',
     'Working group participation',
     'Community Slack access',

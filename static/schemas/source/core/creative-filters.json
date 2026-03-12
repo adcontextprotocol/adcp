@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-filters.json",
   "title": "Creative Filters",
-  "description": "Filter criteria for querying creative assets from the centralized library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
+  "description": "Filter criteria for querying creatives from a creative library. By default, archived creatives are excluded from results. To include archived creatives, explicitly filter by status='archived' or include 'archived' in the statuses array.",
   "type": "object",
   "properties": {
     "accounts": {
@@ -13,9 +13,9 @@
       },
       "minItems": 1
     },
-    "formats": {
+    "format_types": {
       "type": "array",
-      "description": "Filter by creative format types (e.g., video, audio, display)",
+      "description": "Filter by high-level format types (e.g., 'video', 'audio', 'display'). For specific format matching, use format_ids instead.",
       "items": {
         "type": "string"
       },
@@ -80,7 +80,7 @@
     },
     "assigned_to_packages": {
       "type": "array",
-      "description": "Filter creatives assigned to any of these packages",
+      "description": "Filter creatives assigned to any of these packages. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -88,7 +88,7 @@
     },
     "media_buy_ids": {
       "type": "array",
-      "description": "Filter creatives assigned to any of these media buys",
+      "description": "Filter creatives assigned to any of these media buys. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -96,7 +96,7 @@
     },
     "buyer_refs": {
       "type": "array",
-      "description": "Filter creatives assigned to media buys with any of these buyer references",
+      "description": "Filter creatives assigned to media buys with any of these buyer references. Sales-agent-specific — standalone creative agents SHOULD ignore this filter.",
       "items": {
         "type": "string"
       },
@@ -104,11 +104,31 @@
     },
     "unassigned": {
       "type": "boolean",
-      "description": "Filter for unassigned creatives when true, assigned creatives when false"
+      "description": "Filter for unassigned creatives when true, assigned creatives when false. Sales-agent-specific — standalone creative agents SHOULD ignore this filter."
     },
-    "has_performance_data": {
+    "has_served": {
       "type": "boolean",
-      "description": "Filter creatives that have performance data when true"
+      "description": "When true, return only creatives that have served at least one impression. When false, return only creatives that have never served."
+    },
+    "concept_ids": {
+      "type": "array",
+      "description": "Filter by creative concept IDs. Concepts group related creatives across sizes and formats (e.g., Flashtalking concepts, Celtra campaign folders, CM360 creative groups).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Filter by structured format IDs. Returns creatives that match any of these formats.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "has_variables": {
+      "type": "boolean",
+      "description": "When true, return only creatives with dynamic variables (DCO). When false, return only static creatives."
     }
   },
   "additionalProperties": true
