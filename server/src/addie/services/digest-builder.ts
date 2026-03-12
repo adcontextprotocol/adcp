@@ -8,7 +8,9 @@ import {
   type DigestNewMember,
   type DigestConversation,
   type DigestWorkingGroup,
+  type DigestSocialPostIdea,
 } from '../../db/digest-db.js';
+import { getRecentSocialPostIdeas } from '../jobs/social-post-ideas.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { MeetingsDatabase } from '../../db/meetings-db.js';
 
@@ -28,11 +30,12 @@ const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agentica
 export async function buildDigestContent(): Promise<DigestContent> {
   logger.info('Building weekly digest content');
 
-  const [news, newMembers, conversations, workingGroups] = await Promise.all([
+  const [news, newMembers, conversations, workingGroups, socialPostIdeas] = await Promise.all([
     buildNewsSection(),
     buildNewMembersSection(),
     buildConversationsSection(),
     buildWorkingGroupsSection(),
+    buildSocialPostIdeasSection(),
   ]);
 
   const intro = await generateIntro(news, newMembers, conversations, workingGroups);
@@ -43,6 +46,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
     newMembers,
     conversations,
     workingGroups,
+    ...(socialPostIdeas.length > 0 ? { socialPostIdeas } : {}),
     generatedAt: new Date().toISOString(),
   };
 
@@ -52,6 +56,7 @@ export async function buildDigestContent(): Promise<DigestContent> {
       newMemberCount: newMembers.length,
       conversationCount: conversations.length,
       workingGroupCount: workingGroups.length,
+      socialPostIdeasCount: socialPostIdeas.length,
     },
     'Digest content built',
   );
@@ -297,4 +302,20 @@ async function generateIntro(
   });
 
   return result.text;
+}
+
+// --- Social Post Ideas Section ---
+
+async function buildSocialPostIdeasSection(): Promise<DigestSocialPostIdea[]> {
+  try {
+    const recentPosts = await getRecentSocialPostIdeas(7, 2);
+    return recentPosts.map((post) => ({
+      title: post.title,
+      url: post.source_url,
+      description: post.addie_notes || post.summary || '',
+    }));
+  } catch (error) {
+    logger.warn({ error }, 'Failed to build social post ideas section');
+    return [];
+  }
 }

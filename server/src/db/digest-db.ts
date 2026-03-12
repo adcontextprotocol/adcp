@@ -14,12 +14,19 @@ export interface DigestRecord {
   send_stats: DigestSendStats | null;
 }
 
+export interface DigestSocialPostIdea {
+  title: string;
+  url: string;
+  description: string;
+}
+
 export interface DigestContent {
   intro: string;
   news: DigestNewsItem[];
   newMembers: DigestNewMember[];
   conversations: DigestConversation[];
   workingGroups: DigestWorkingGroup[];
+  socialPostIdeas?: DigestSocialPostIdea[];
   generatedAt: string;
 }
 

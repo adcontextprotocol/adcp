@@ -106,6 +106,22 @@ export function renderDigestEmail(
     `).join('')}
     ` : ''}
 
+    ${content.socialPostIdeas && content.socialPostIdeas.length > 0 ? `
+    <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Ready to share</h2>
+    <p style="font-size: 14px; color: #555; margin-bottom: 16px;">
+      Grab ready-to-post social copy for these stories in <a href="https://agenticadvertising.slack.com/channels/social-post-ideas" style="color: #2563eb;">#social-post-ideas</a>:
+    </p>
+    ${content.socialPostIdeas.map((idea) => `
+    <div style="margin-bottom: 12px;">
+      <p style="font-size: 14px; margin: 0;">
+        <a href="${escapeHtml(idea.url)}" style="color: #2563eb; text-decoration: none;">${escapeHtml(idea.title)}</a>
+        <br><span style="font-size: 13px; color: #666;">${escapeHtml(idea.description.slice(0, 150))}</span>
+      </p>
+    </div>
+    `).join('')}
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
+    ` : ''}
+
     ${renderFoundingDeadlineBannerHtml()}
 
     <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 24px 0;">
@@ -206,6 +222,16 @@ function renderDigestText(content: DigestContent, editionDate: string, segment: 
     }
   }
 
+  if (content.socialPostIdeas && content.socialPostIdeas.length > 0) {
+    lines.push('--- READY TO SHARE ---', '');
+    lines.push('Grab ready-to-post social copy in #social-post-ideas:');
+    for (const idea of content.socialPostIdeas) {
+      lines.push(`* ${idea.title}`);
+      lines.push(`  ${idea.url}`);
+      lines.push('');
+    }
+  }
+
   const deadlineBannerText = renderFoundingDeadlineBannerText();
   if (deadlineBannerText) {
     lines.push('---', '', deadlineBannerText, '');
@@ -264,6 +290,18 @@ export function renderDigestSlack(content: DigestContent, editionDate: string): 
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Community Pulse*\n${communityParts.join(' · ')}` },
+    });
+  }
+
+  // Social post ideas
+  if (content.socialPostIdeas && content.socialPostIdeas.length > 0) {
+    const ideasText = content.socialPostIdeas
+      .map((idea) => `> *<${idea.url}|${escapeSlackMrkdwn(idea.title)}>*`)
+      .join('\n');
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Ready to share*\nGrab social copy in #social-post-ideas:\n\n${ideasText}` },
     });
   }
 
