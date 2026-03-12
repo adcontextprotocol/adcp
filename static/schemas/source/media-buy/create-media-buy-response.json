@@ -40,7 +40,7 @@
         },
         "planned_delivery": {
           "$ref": "/schemas/core/planned-delivery.json",
-          "description": "The seller's interpreted delivery parameters. Describes what the seller will actually run -- geo, channels, flight dates, frequency caps, and budget. Present when the account has a governance_agent or when the seller chooses to provide delivery transparency."
+          "description": "The seller's interpreted delivery parameters. Describes what the seller will actually run -- geo, channels, flight dates, frequency caps, and budget. Present when the account has a governance_agent or when the seller chooses to provide delivery transparency. The buyer uses this to run their own proposed governance check before the seller independently runs a committed check -- both sides validate, neither grades its own homework."
         },
         "sandbox": {
           "type": "boolean",
