@@ -712,7 +712,7 @@ async function createUserScopedTools(
   threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
-  const allTools = [...MEMBER_TOOLS];
+  let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 
   // Add billing tools for all users (membership signup assistance)
@@ -849,6 +849,15 @@ async function createUserScopedTools(
     if (getChannelActivityHandler) {
       allHandlers.set('get_channel_activity', getChannelActivityHandler);
     }
+  }
+
+  // Remove enrollment tools in public channels (covers all handler paths,
+  // not just the ones that go through filterToolsBySet)
+  if (isPublicChannel) {
+    const enrollmentToolNames = new Set(['get_account_link']);
+    allTools = allTools.filter(t => !enrollmentToolNames.has(t.name));
+    enrollmentToolNames.forEach(name => allHandlers.delete(name));
+    logger.debug('Addie Bolt: Enrollment tools removed (public channel)');
   }
 
   return {
