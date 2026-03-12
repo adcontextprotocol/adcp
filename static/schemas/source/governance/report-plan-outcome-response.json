@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/report-plan-outcome-response.json",
   "title": "Report Plan Outcome Response",
-  "description": "Response from reporting an action outcome. Returns acceptance status, budget impact, and any findings.",
+  "description": "Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that manages the plan. Sellers report delivery data via check_governance with phase 'delivery', not via this task.",
   "type": "object",
   "properties": {
     "outcome_id": {

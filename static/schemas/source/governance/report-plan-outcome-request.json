@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/report-plan-outcome-request.json",
   "title": "Report Plan Outcome Request",
-  "description": "Report the outcome of an action to the governance agent. This is the 'after' half of the governance loop.",
+  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
   "type": "object",
   "properties": {
     "plan_id": {

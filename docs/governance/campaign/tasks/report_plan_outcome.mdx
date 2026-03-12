@@ -5,7 +5,9 @@ title: report_plan_outcome
 
 # report_plan_outcome
 
-Report the outcome of an action to the governance agent. This is the "after" half of the governance loop -- it tells the governance agent what actually happened so it can update its state and flag any issues.
+Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the "after" half of the governance loop -- it tells the governance agent what actually happened so it can update its state and flag any issues.
+
+Sellers do not call this task. They report delivery data via [`check_governance`](./check_governance) with `phase: "delivery"`.
 
 ## Seller response (after `create_media_buy`)
 
