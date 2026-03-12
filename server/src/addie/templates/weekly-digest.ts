@@ -3,6 +3,7 @@ import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
+const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticadvertising.slack.com';
 
 function escapeHtml(text: string): string {
   return text
@@ -109,7 +110,7 @@ export function renderDigestEmail(
     ${content.socialPostIdeas && content.socialPostIdeas.length > 0 ? `
     <h2 style="font-size: 17px; color: #1a1a2e; margin-bottom: 12px;">Ready to share</h2>
     <p style="font-size: 14px; color: #555; margin-bottom: 16px;">
-      Grab ready-to-post social copy for these stories in <a href="https://agenticadvertising.slack.com/channels/social-post-ideas" style="color: #2563eb;">#social-post-ideas</a>:
+      Grab ready-to-post social copy for these stories in <a href="${SLACK_WORKSPACE_URL}/channels/social-post-ideas" style="color: #2563eb;">#social-post-ideas</a>:
     </p>
     ${content.socialPostIdeas.map((idea) => `
     <div style="margin-bottom: 12px;">

@@ -55,11 +55,11 @@ ${BASE_URL}
 
   const linkedinC = `I've spent enough hours manually translating campaign specs between platforms. The fact that AI agents are about to do the same thing -- just faster and at scale -- is not an improvement.
 
-AdCP is an open protocol that gives agents a common language for media buying. I joined AgenticAdvertising.org to help build that standard.
+AdCP is an open protocol that gives agents a common language for media buying. I joined the org building it. If you've done the same spec translation enough times, you'll get why.
 
 ${BASE_URL}
 
-#AgenticAdvertising #Programmatic`;
+#AdCP #AgenticAdvertising #Programmatic`;
 
   const twitter = `Just joined AgenticAdvertising.org -- ad tech practitioners building an open protocol so AI agents can actually transact across platforms. About time. ${BASE_URL} #AdCP`;
 
