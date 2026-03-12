@@ -657,7 +657,7 @@ export function createCertificationToolHandlers(
       const heldCredentials = new Set(userCredentials.map(c => c.credential_id));
       const progressMap = new Map(trackProgress.map(tp => [tp.track_id, tp]));
 
-      const lines: string[] = ['# AdCP certification program\n'];
+      const lines: string[] = ['# AdCP Academy\n'];
       lines.push('Three-tier credential system: Basics → Practitioner → Specialist\n');
 
       // Group credentials by tier

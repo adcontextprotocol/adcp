@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AdCP certification - AgenticAdvertising.org</title>
+  <title>AdCP Academy - AgenticAdvertising.org</title>
   <link rel="icon" href="/AAo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -52,7 +52,28 @@
       flex-wrap: wrap;
     }
 
-    .btn-assess {
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-5);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      cursor: pointer;
+      border: var(--border-1) solid var(--color-brand);
+      background: var(--color-brand);
+      color: #fff;
+      transition: background var(--duration-normal) var(--ease-in-out);
+    }
+
+    .btn-primary:hover {
+      background: var(--color-brand-dark, var(--color-brand));
+      opacity: 0.9;
+    }
+
+    .btn-secondary {
       display: inline-flex;
       align-items: center;
       gap: var(--space-2);
@@ -69,9 +90,21 @@
                   background var(--duration-normal) var(--ease-in-out);
     }
 
-    .btn-assess:hover {
+    .btn-secondary:hover {
       border-color: var(--color-brand);
       background: var(--color-bg-hover);
+    }
+
+    .link-tertiary {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      cursor: pointer;
+      padding: var(--space-2) 0;
+    }
+
+    .link-tertiary:hover {
+      color: var(--color-brand);
     }
 
     /* =========================================================================
@@ -804,16 +837,23 @@
   </style>
 </head>
 <body>
+  <div id="adcp-nav"></div>
+  <script src="/nav.js"></script>
+
   <div class="cert-container">
     <div class="cert-header">
-      <h1>AdCP certification program</h1>
-      <p>Interactive training delivered by Addie, our AI instructor. Learn AdCP through hands-on exercises with real sandbox agents, then earn a verifiable credential.</p>
-      <div class="cert-header-actions" id="cert-header-actions" style="display: none;"></div>
+      <h1>AdCP Academy</h1>
+      <p>Learn AdCP through hands-on training with Addie, our AI instructor. Work with real sandbox agents and earn a verifiable credential at each tier.</p>
+      <div class="cert-header-actions">
+        <a id="start-btn" href="/chat?topic=certification&action=start" class="btn-primary">Start with the basics</a>
+        <a id="assess-btn" href="/chat?topic=certification&action=assess" class="btn-secondary">Find your tier</a>
+        <a href="/study-guide.html" class="link-tertiary">See the full curriculum</a>
+      </div>
     </div>
 
     <!-- Tier progression -->
     <div id="tier-section" class="tier-section">
-      <h2>Credential progression</h2>
+      <h2>Your progress</h2>
       <div id="tier-grid" class="tier-grid">
         <div class="loading">Loading credentials...</div>
       </div>
@@ -1116,19 +1156,21 @@
       }
 
       function renderHeaderActions() {
-        var container = document.getElementById('cert-header-actions');
-        if (!state.isAuthenticated) return;
+        var startBtn = document.getElementById('start-btn');
+        var assessBtn = document.getElementById('assess-btn');
 
-        var hasAnyProgress = state.progress.length > 0;
-        var html = '';
-
-        if (!hasAnyProgress) {
-          html += '<a href="/chat?topic=certification&action=assess" class="btn-assess">Assess my level</a>';
+        if (!state.isAuthenticated) {
+          if (startBtn) startBtn.href = '/auth/login?return_to=' + encodeURIComponent('/chat?topic=certification&action=start');
+          if (assessBtn) assessBtn.href = '/auth/login?return_to=' + encodeURIComponent('/chat?topic=certification&action=assess');
+          return;
         }
 
-        if (html) {
-          container.innerHTML = html;
-          container.style.display = '';
+        var hasAnyProgress = state.progress.length > 0;
+        if (hasAnyProgress && startBtn) {
+          startBtn.textContent = 'Continue where you left off';
+          startBtn.href = '/chat?topic=certification&action=continue';
+          // Hide placement option for returning learners
+          if (assessBtn) assessBtn.style.display = 'none';
         }
       }
 
