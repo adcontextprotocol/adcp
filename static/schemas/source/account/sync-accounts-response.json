@@ -97,7 +97,15 @@
               },
               "payment_terms": {
                 "type": "string",
-                "description": "Payment terms (e.g., 'net_30', 'prepay')"
+                "enum": [
+                  "net_15",
+                  "net_30",
+                  "net_45",
+                  "net_60",
+                  "net_90",
+                  "prepay"
+                ],
+                "description": "Payment terms applied to this account. May differ from what was requested."
               },
               "credit_limit": {
                 "type": "object",
