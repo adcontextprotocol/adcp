@@ -31,21 +31,6 @@
         .subtitle { font-size: var(--text-lg); opacity: 0.9; }
         .container { max-width: var(--container-2xl); margin: var(--space-8) auto; padding: 0 var(--space-4); }
 
-        /* Tabs */
-        .tabs { display: flex; gap: var(--space-2); border-bottom: var(--border-2) solid var(--color-border); margin-bottom: var(--space-8); }
-        .tab {
-            padding: var(--space-4) var(--space-8);
-            background: var(--color-bg-card);
-            border: none;
-            border-radius: var(--radius-md) var(--radius-md) 0 0;
-            cursor: pointer;
-            font-size: var(--text-base);
-            font-weight: var(--font-semibold);
-            color: var(--color-text-muted);
-            transition: var(--transition-all);
-        }
-        .tab:hover { color: var(--color-success-500); }
-        .tab.active { color: var(--color-success-500); background: var(--color-bg-card); border-bottom: 3px solid var(--color-success-500); }
 
         /* Search and Filters */
         .search-filters {
@@ -180,8 +165,6 @@
         .add-record-cta { margin-top: var(--space-4); text-align: center; }
         .view { display: none; }
         .view.active { display: block; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
 
         footer {
             background: var(--color-bg-card);
@@ -369,75 +352,27 @@
     <!-- List View -->
     <div id="list-view" class="view active">
         <div class="container">
-            <div class="tabs">
-                <button class="tab active" onclick="switchTab('sales')">🏢 Sales Agents</button>
-                <button class="tab" onclick="switchTab('creative')">🎨 Creative Agents</button>
-                <button class="tab" onclick="switchTab('signals')">📊 Signals Agents</button>
-            </div>
-
-            <!-- Sales Tab -->
-            <div id="sales-tab" class="tab-content active">
-                <div class="search-filters">
-                    <div class="search-box">
-                        <input type="text" id="sales-search" placeholder="Search by publisher name, domain, or country..." onkeyup="filterSalesAgents()">
+            <div class="search-filters">
+                <div class="search-box">
+                    <input type="text" id="agent-search" placeholder="Search by agent name, URL, or publisher..." onkeyup="filterAgents()">
+                </div>
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Type:</label>
+                        <button class="filter-btn active" data-type="all" onclick="setTypeFilter('all')">All</button>
+                        <button class="filter-btn" data-type="sales" onclick="setTypeFilter('sales')">Sales</button>
+                        <button class="filter-btn" data-type="creative" onclick="setTypeFilter('creative')">Creative</button>
+                        <button class="filter-btn" data-type="signals" onclick="setTypeFilter('signals')">Signals</button>
                     </div>
-                    <div class="filter-row">
-                        <div class="filter-group">
-                            <label>Status:</label>
-                            <button class="filter-btn active" data-status="all" onclick="setSalesStatusFilter('all')">All</button>
-                            <button class="filter-btn" data-status="online" onclick="setSalesStatusFilter('online')">Active</button>
-                            <button class="filter-btn" data-status="offline" onclick="setSalesStatusFilter('offline')">Issues</button>
-                        </div>
-                        <div class="filter-group" id="sales-channel-filters" style="display: none;">
-                            <label>Channel:</label>
-                        </div>
-                        <div class="filter-group" id="sales-country-filters" style="display: none;">
-                            <label>Country:</label>
-                        </div>
+                    <div class="filter-group">
+                        <label>Status:</label>
+                        <button class="filter-btn active" data-status="all" onclick="setStatusFilter('all')">All</button>
+                        <button class="filter-btn" data-status="online" onclick="setStatusFilter('online')">Active</button>
+                        <button class="filter-btn" data-status="offline" onclick="setStatusFilter('offline')">Issues</button>
                     </div>
                 </div>
-                <div id="sales-agents" class="agent-grid"></div>
             </div>
-
-            <!-- Creative Tab -->
-            <div id="creative-tab" class="tab-content">
-                <div class="search-filters">
-                    <div class="search-box">
-                        <input type="text" id="creative-search" placeholder="Search by format dimensions (e.g., 300x250, native)..." onkeyup="filterCreativeAgents()">
-                    </div>
-                    <div class="filter-row">
-                        <div class="filter-group">
-                            <label>Status:</label>
-                            <button class="filter-btn active" data-status="all" onclick="setCreativeStatusFilter('all')">All</button>
-                            <button class="filter-btn" data-status="online" onclick="setCreativeStatusFilter('online')">Active</button>
-                            <button class="filter-btn" data-status="offline" onclick="setCreativeStatusFilter('offline')">Issues</button>
-                        </div>
-                        <div class="filter-group" id="creative-format-filters" style="display: none;">
-                            <label>Format:</label>
-                        </div>
-                    </div>
-                </div>
-                <div id="creative-agents" class="agent-grid"></div>
-            </div>
-
-            <!-- Signals Tab -->
-            <div id="signals-tab" class="tab-content">
-                <div class="search-filters">
-                    <div class="search-box">
-                        <input type="text" id="signals-search" placeholder="Search signals agents..." onkeyup="filterSignalsAgents()">
-                    </div>
-                    <div class="filter-row">
-                        <div class="filter-group">
-                            <label>Status:</label>
-                            <button class="filter-btn active" data-status="all" onclick="setSignalsStatusFilter('all')">All</button>
-                            <button class="filter-btn" data-status="online" onclick="setSignalsStatusFilter('online')">Active</button>
-                            <button class="filter-btn" data-status="offline" onclick="setSignalsStatusFilter('offline')">Issues</button>
-                        </div>
-                    </div>
-                </div>
-                <div id="signals-agents" class="agent-grid"></div>
-            </div>
-
+            <div id="agents-grid" class="agent-grid"></div>
         </div>
     </div>
 
@@ -483,16 +418,16 @@
     </footer>
 
     <script type="module">
-        let salesAgents = [];
-        let creativeAgents = [];
-        let signalsAgents = [];
-        let salesAgentsEnriched = []; // With properties data
-        let creativeAgentsEnriched = []; // With formats data
-        let currentTab = 'sales';
-        let salesFilters = { status: 'all', channel: null, country: null, search: '' };
-        let creativeFilters = { status: 'all', format: null, search: '' };
-        let signalsFilters = { status: 'all', search: '' };
+        let allAgents = [];
+        let filters = { type: 'all', status: 'all', search: '' };
         let isLoading = true;
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
 
         // Initialize
         window.addEventListener('DOMContentLoaded', async () => {
@@ -500,7 +435,7 @@
             window.addEventListener('hashchange', handleRoute);
 
             // Show loading skeletons immediately
-            renderCurrentTab();
+            renderAgents();
 
             await loadAllAgents();
             handleQueryParams();
@@ -511,138 +446,39 @@
             const type = urlParams.get('type');
 
             if (type && ['sales', 'creative', 'signals'].includes(type)) {
-                // Update tab buttons
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                const activeTab = Array.from(document.querySelectorAll('.tab')).find(t =>
-                    t.textContent.toLowerCase().includes(type)
-                );
-                if (activeTab) activeTab.classList.add('active');
-
-                // Update tab content
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                document.getElementById(`${type}-tab`).classList.add('active');
-
-                currentTab = type;
-                renderCurrentTab();
+                setTypeFilter(type);
             }
         }
 
         async function loadAllAgents() {
             try {
-                const agentsResponse = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+                const response = await fetch('/api/registry/agents?health=true&properties=true&capabilities=true');
+                const data = await response.json();
+                const agents = data.agents || data;
 
-                const data = await agentsResponse.json();
-                const agents = data.agents || data; // Handle both wrapped and unwrapped response
-
-                salesAgents = agents.filter(a => a.type === 'sales');
-                creativeAgents = agents.filter(a => a.type === 'creative');
-                signalsAgents = agents.filter(a => a.type === 'signals');
-
-                // Sales agents already have properties from server
-                // Mark agents as offline if they have property errors (missing required tool)
-                salesAgentsEnriched = salesAgents.map(agent => {
+                allAgents = agents.map(agent => {
                     const hasPropertyError = agent.propertiesError && agent.propertiesError.length > 0;
                     return {
                         ...agent,
                         properties: agent.properties || [],
+                        formats: agent.capabilities?.creative_capabilities?.formats_supported || [],
                         propertiesError: agent.propertiesError,
                         health: hasPropertyError
                             ? { ...agent.health, online: false, error: `Missing required tool: ${agent.propertiesError}` }
                             : agent.health
                     };
                 });
-                buildSalesFilters();
 
-                // Enrich creative agents with formats
-                await enrichCreativeAgents();
-
-                // Done loading
                 isLoading = false;
-
-                // Render current tab
-                renderCurrentTab();
+                renderAgents();
             } catch (error) {
                 console.error('Failed to load agents:', error);
                 isLoading = false;
-                renderCurrentTab();
+                renderAgents();
             }
         }
 
-        async function enrichCreativeAgents() {
-            // Extract formats from capabilities if available
-            creativeAgentsEnriched = creativeAgents.map(agent => ({
-                ...agent,
-                formats: agent.capabilities?.creative_capabilities?.formats_supported || []
-            }));
-        }
-
-        function buildSalesFilters() {
-            const channels = new Set();
-            const countries = new Set();
-
-            salesAgentsEnriched.forEach(agent => {
-                agent.properties.forEach(prop => {
-                    if (prop.tags) {
-                        prop.tags.forEach(tag => {
-                            if (tag.toLowerCase().includes('dooh') || tag.toLowerCase().includes('digital') ||
-                                tag.toLowerCase().includes('mobile') || tag.toLowerCase().includes('ctv') ||
-                                tag.toLowerCase().includes('web') || tag.toLowerCase().includes('display')) {
-                                channels.add(tag);
-                            }
-                        });
-                    }
-                    if (prop.country) countries.add(prop.country);
-                });
-            });
-
-            // Render channel filters
-            const channelContainer = document.getElementById('sales-channel-filters');
-            if (channels.size > 0) {
-                channelContainer.style.display = 'flex';
-                channels.forEach(channel => {
-                    const btn = document.createElement('button');
-                    btn.className = 'filter-btn';
-                    btn.textContent = channel;
-                    btn.onclick = () => setSalesChannelFilter(channel);
-                    channelContainer.appendChild(btn);
-                });
-            }
-
-            // Render country filters
-            const countryContainer = document.getElementById('sales-country-filters');
-            if (countries.size > 0) {
-                countryContainer.style.display = 'flex';
-                countries.forEach(country => {
-                    const btn = document.createElement('button');
-                    btn.className = 'filter-btn';
-                    btn.textContent = country;
-                    btn.onclick = () => setSalesCountryFilter(country);
-                    countryContainer.appendChild(btn);
-                });
-            }
-        }
-
-        window.switchTab = function(tab) {
-            currentTab = tab;
-
-            // Update tab buttons
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-
-            // Update tab content
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.getElementById(`${tab}-tab`).classList.add('active');
-
-            renderCurrentTab();
-        };
-
-        function renderCurrentTab() {
-            if (currentTab === 'sales') renderSalesAgents();
-            else if (currentTab === 'creative') renderCreativeAgents();
-            else if (currentTab === 'signals') renderSignalsAgents();
-        }
-
-        function renderLoadingSkeleton(count = 3) {
+        function renderLoadingSkeleton(count = 4) {
             return Array(count).fill(0).map(() => `
                 <div class="agent-card" style="pointer-events: none; opacity: 0.6;">
                     <div class="agent-header">
@@ -660,295 +496,206 @@
             `).join('');
         }
 
-        function renderSalesAgents() {
-            const container = document.getElementById('sales-agents');
+        function typeLabel(type) {
+            if (type === 'sales') return 'Sales';
+            if (type === 'creative') return 'Creative';
+            if (type === 'signals') return 'Signals';
+            return 'Unclassified';
+        }
 
-            // Show loading skeleton while data is being fetched
+        function typeIcon(type) {
+            if (type === 'sales') return '🏢';
+            if (type === 'creative') return '🎨';
+            if (type === 'signals') return '📊';
+            return '🤖';
+        }
+
+        function renderAgents() {
+            const container = document.getElementById('agents-grid');
+
             if (isLoading) {
                 container.innerHTML = renderLoadingSkeleton(4);
                 return;
             }
 
-            const filtered = salesAgentsEnriched.filter(agent => {
-                // Status filter
-                if (salesFilters.status !== 'all') {
+            const filtered = allAgents.filter(agent => {
+                if (filters.type !== 'all' && agent.type !== filters.type) return false;
+
+                if (filters.status !== 'all') {
                     const online = agent.health?.online || false;
-                    if (salesFilters.status === 'online' && !online) return false;
-                    if (salesFilters.status === 'offline' && online) return false;
+                    if (filters.status === 'online' && !online) return false;
+                    if (filters.status === 'offline' && online) return false;
                 }
 
-                // Channel filter
-                if (salesFilters.channel) {
-                    const hasChannel = agent.properties.some(p =>
-                        p.tags && p.tags.some(t => t === salesFilters.channel)
-                    );
-                    if (!hasChannel) return false;
-                }
-
-                // Country filter
-                if (salesFilters.country) {
-                    const hasCountry = agent.properties.some(p => p.country === salesFilters.country);
-                    if (!hasCountry) return false;
-                }
-
-                // Search filter
-                if (salesFilters.search) {
-                    const query = salesFilters.search.toLowerCase();
+                if (filters.search) {
+                    const query = filters.search.toLowerCase();
                     const matchesName = agent.name.toLowerCase().includes(query);
+                    const matchesUrl = agent.url.toLowerCase().includes(query);
                     const matchesProperty = agent.properties.some(p =>
                         (p.identifier && p.identifier.toLowerCase().includes(query)) ||
                         (p.domain && p.domain.toLowerCase().includes(query)) ||
-                        (p.description && p.description.toLowerCase().includes(query)) ||
                         (p.country && p.country.toLowerCase().includes(query))
                     );
-                    if (!matchesName && !matchesProperty) return false;
+                    const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
+                    if (!matchesName && !matchesUrl && !matchesProperty && !matchesFormat) return false;
                 }
 
                 return true;
             });
 
+            // Update filter button counts
+            const typeCounts = { all: allAgents.length };
+            for (const a of allAgents) {
+                typeCounts[a.type] = (typeCounts[a.type] || 0) + 1;
+            }
+            document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+                const t = btn.dataset.type;
+                const count = typeCounts[t] || 0;
+                const label = t === 'all' ? 'All' : typeLabel(t);
+                btn.textContent = `${label} (${count})`;
+            });
+
             if (filtered.length === 0) {
-                container.innerHTML = '<div class="loading">No sales agents found matching your filters.</div>';
+                container.innerHTML = '<div class="loading">No agents found matching your filters.</div>';
                 return;
             }
 
-            container.innerHTML = filtered.map(agent => `
-                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
-                    <div class="agent-header">
-                        <div class="agent-title">
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-url">${agent.url}</div>
-                        </div>
-                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
-                            ${agent.health?.online ? 'Active' : 'Issues'}
-                        </span>
+            container.innerHTML = filtered.map(agent => {
+                const agentSlug = agent.name.toLowerCase().replace(/\s+/g, '-');
+                const toolCount = agent.capabilities?.tools_count || 0;
+
+                let metaHtml = `
+                    <div class="meta-item">
+                        <span>${typeIcon(agent.type)}</span>
+                        <span class="meta-value">${typeLabel(agent.type)}</span>
                     </div>
+                `;
 
-                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
-
-                    <div class="agent-meta">
+                if (toolCount > 0) {
+                    metaHtml += `
                         <div class="meta-item">
-                            <span>📊</span>
+                            <span>🛠️</span>
+                            <span class="meta-value">${toolCount}</span> tools
+                        </div>
+                    `;
+                }
+
+                if (agent.type === 'sales' && agent.properties.length > 0) {
+                    metaHtml += `
+                        <div class="meta-item">
+                            <span>📰</span>
                             <span class="meta-value">${agent.properties.length}</span> properties
                         </div>
-                        ${agent.health?.response_time_ms ? `
+                    `;
+                }
+
+                if (agent.type === 'creative' && agent.formats.length > 0) {
+                    metaHtml += `
+                        <div class="meta-item">
+                            <span>📐</span>
+                            <span class="meta-value">${agent.formats.length}</span> formats
+                        </div>
+                    `;
+                }
+
+                if (agent.health?.response_time_ms) {
+                    metaHtml += `
                         <div class="meta-item">
                             <span>⚡</span>
                             <span class="meta-value">${agent.health.response_time_ms}ms</span>
                         </div>
-                        ` : ''}
-                    </div>
+                    `;
+                }
 
-                    ${agent.properties.length > 0 ? `
-                    <div class="agent-properties">
-                        <div class="property-section-small">
-                            <strong>Publishers:</strong> ${agent.properties.slice(0, 3).map(p => p.identifier || p.domain).join(', ')}${agent.properties.length > 3 ? ` +${agent.properties.length - 3} more` : ''}
+                let extrasHtml = '';
+
+                if (agent.type === 'sales' && agent.properties.length > 0) {
+                    extrasHtml = `
+                        <div class="agent-properties">
+                            <div class="property-section-small">
+                                <strong>Publishers:</strong> ${agent.properties.slice(0, 3).map(p => escapeHtml(p.identifier || p.domain)).join(', ')}${agent.properties.length > 3 ? ` +${agent.properties.length - 3} more` : ''}
+                            </div>
+                            <div class="property-tags">
+                                ${Array.from(new Set(agent.properties.flatMap(p => p.tags || []))).slice(0, 5).map(tag =>
+                                    `<span class="property-tag">${escapeHtml(tag)}</span>`
+                                ).join('')}
+                            </div>
                         </div>
-                        <div class="property-tags">
-                            ${Array.from(new Set(agent.properties.flatMap(p => p.tags || []))).slice(0, 5).map(tag =>
-                                `<span class="property-tag">${tag}</span>`
+                    `;
+                } else if (agent.propertiesError) {
+                    extrasHtml = `
+                        <div class="agent-properties">
+                            <div class="tool-error-box">
+                                <span class="tool-error-box__title">Tool error:</span><br>
+                                <span class="tool-error-box__msg">${escapeHtml(agent.propertiesError)}</span>
+                            </div>
+                        </div>
+                    `;
+                } else if (agent.type === 'creative' && agent.formats.length > 0) {
+                    extrasHtml = `
+                        <div class="formats-list">
+                            ${agent.formats.slice(0, 5).map(format =>
+                                `<span class="format-badge">${escapeHtml(format)}</span>`
                             ).join('')}
+                            ${agent.formats.length > 5 ? `<span class="format-badge">+${agent.formats.length - 5} more</span>` : ''}
                         </div>
-                    </div>
-                    ` : agent.propertiesError ? `
-                    <div class="agent-properties">
-                        <div class="tool-error-box">
-                            <span class="tool-error-box__title">❌ Tool Error:</span><br>
-                            <span class="tool-error-box__msg">${agent.propertiesError}</span>
+                    `;
+                }
+
+                if (agent.capabilities?.discovery_error) {
+                    extrasHtml += `
+                        <div class="agent-properties">
+                            <div class="tool-error-box">
+                                <span class="tool-error-box__title">Discovery error:</span><br>
+                                <span class="tool-error-box__msg">${escapeHtml(agent.capabilities.discovery_error)}</span>
+                            </div>
                         </div>
+                    `;
+                }
+
+                return `
+                    <div class="agent-card" data-agent-id="${escapeHtml(agent.type)}/${escapeHtml(agentSlug)}">
+                        <div class="agent-header">
+                            <div class="agent-title">
+                                <div class="agent-name">${escapeHtml(agent.name)}</div>
+                                <div class="agent-url">${escapeHtml(agent.url)}</div>
+                            </div>
+                            <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
+                                ${agent.health?.online ? 'Active' : 'Issues'}
+                            </span>
+                        </div>
+                        ${agent.description ? `<p class="agent-description">${escapeHtml(agent.description)}</p>` : ''}
+                        <div class="agent-meta">${metaHtml}</div>
+                        ${extrasHtml}
                     </div>
-                    ` : ''}
-                </div>
-            `).join('');
+                `;
+            }).join('');
+
+            // Delegated click handler for agent cards
+            container.querySelectorAll('.agent-card[data-agent-id]').forEach(card => {
+                card.addEventListener('click', () => navigateToAgent(card.dataset.agentId));
+            });
         }
 
-        function renderCreativeAgents() {
-            const container = document.getElementById('creative-agents');
-
-            // Show loading skeleton while data is being fetched
-            if (isLoading) {
-                container.innerHTML = renderLoadingSkeleton(3);
-                return;
-            }
-
-            const filtered = creativeAgentsEnriched.filter(agent => {
-                // Status filter
-                if (creativeFilters.status !== 'all') {
-                    const online = agent.health?.online || false;
-                    if (creativeFilters.status === 'online' && !online) return false;
-                    if (creativeFilters.status === 'offline' && online) return false;
-                }
-
-                // Search filter
-                if (creativeFilters.search) {
-                    const query = creativeFilters.search.toLowerCase();
-                    const matchesName = agent.name.toLowerCase().includes(query);
-                    const matchesFormat = agent.formats.some(f => f.toLowerCase().includes(query));
-                    if (!matchesName && !matchesFormat) return false;
-                }
-
-                return true;
+        window.setTypeFilter = function(type) {
+            filters.type = type;
+            document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.type === type);
             });
+            renderAgents();
+        };
 
-            if (filtered.length === 0) {
-                container.innerHTML = '<div class="loading">No creative agents found matching your filters.</div>';
-                return;
-            }
-
-            container.innerHTML = filtered.map(agent => `
-                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
-                    <div class="agent-header">
-                        <div class="agent-title">
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-url">${agent.url}</div>
-                        </div>
-                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
-                            ${agent.health?.online ? 'Active' : 'Issues'}
-                        </span>
-                    </div>
-
-                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
-
-                    <div class="agent-meta">
-                        <div class="meta-item">
-                            <span>🎨</span>
-                            <span class="meta-value">${agent.formats.length || 'TBD'}</span> formats
-                        </div>
-                        ${agent.health?.response_time_ms ? `
-                        <div class="meta-item">
-                            <span>⚡</span>
-                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
-                        </div>
-                        ` : ''}
-                    </div>
-
-                    ${agent.formats.length > 0 ? `
-                    <div class="formats-list">
-                        ${agent.formats.slice(0, 5).map(format =>
-                            `<span class="format-badge">${format}</span>`
-                        ).join('')}
-                        ${agent.formats.length > 5 ? `<span class="format-badge">+${agent.formats.length - 5} more</span>` : ''}
-                    </div>
-                    ` : `
-                    <div class="format-discovery-note">📐 Format discovery coming soon</div>
-                    `}
-                </div>
-            `).join('');
-        }
-
-        function renderSignalsAgents() {
-            const container = document.getElementById('signals-agents');
-
-            // Show loading skeleton while data is being fetched
-            if (isLoading) {
-                container.innerHTML = renderLoadingSkeleton(2);
-                return;
-            }
-
-            const filtered = signalsAgents.filter(agent => {
-                // Status filter
-                if (signalsFilters.status !== 'all') {
-                    const online = agent.health?.online || false;
-                    if (signalsFilters.status === 'online' && !online) return false;
-                    if (signalsFilters.status === 'offline' && online) return false;
-                }
-
-                // Search filter
-                if (signalsFilters.search) {
-                    const query = signalsFilters.search.toLowerCase();
-                    if (!agent.name.toLowerCase().includes(query)) return false;
-                }
-
-                return true;
-            });
-
-            if (filtered.length === 0) {
-                container.innerHTML = '<div class="loading">No signals agents registered yet.</div>';
-                return;
-            }
-
-            container.innerHTML = filtered.map(agent => `
-                <div class="agent-card" onclick="navigateToAgent('${agent.type}/${agent.name.toLowerCase().replace(/\s+/g, '-')}')">
-                    <div class="agent-header">
-                        <div class="agent-title">
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-url">${agent.url}</div>
-                        </div>
-                        <span class="status-badge ${agent.health?.online ? 'online' : 'offline'}">
-                            ${agent.health?.online ? 'Active' : 'Issues'}
-                        </span>
-                    </div>
-
-                    ${agent.description ? `<p class="agent-description">${agent.description}</p>` : ''}
-
-                    <div class="agent-meta">
-                        ${agent.health?.response_time_ms ? `
-                        <div class="meta-item">
-                            <span>⚡</span>
-                            <span class="meta-value">${agent.health.response_time_ms}ms</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Filter functions for sales
-        window.setSalesStatusFilter = function(status) {
-            salesFilters.status = status;
-            document.querySelectorAll('#sales-tab .filter-btn[data-status]').forEach(btn => {
+        window.setStatusFilter = function(status) {
+            filters.status = status;
+            document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.status === status);
             });
-            renderSalesAgents();
+            renderAgents();
         };
 
-        window.setSalesChannelFilter = function(channel) {
-            salesFilters.channel = salesFilters.channel === channel ? null : channel;
-            document.querySelectorAll('#sales-channel-filters .filter-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.textContent === channel && salesFilters.channel);
-            });
-            renderSalesAgents();
-        };
-
-        window.setSalesCountryFilter = function(country) {
-            salesFilters.country = salesFilters.country === country ? null : country;
-            document.querySelectorAll('#sales-country-filters .filter-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.textContent === country && salesFilters.country);
-            });
-            renderSalesAgents();
-        };
-
-        window.filterSalesAgents = function() {
-            salesFilters.search = document.getElementById('sales-search').value;
-            renderSalesAgents();
-        };
-
-        // Filter functions for creative
-        window.setCreativeStatusFilter = function(status) {
-            creativeFilters.status = status;
-            document.querySelectorAll('#creative-tab .filter-btn[data-status]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.status === status);
-            });
-            renderCreativeAgents();
-        };
-
-        window.filterCreativeAgents = function() {
-            creativeFilters.search = document.getElementById('creative-search').value;
-            renderCreativeAgents();
-        };
-
-        // Filter functions for signals
-        window.setSignalsStatusFilter = function(status) {
-            signalsFilters.status = status;
-            document.querySelectorAll('#signals-tab .filter-btn[data-status]').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.status === status);
-            });
-            renderSignalsAgents();
-        };
-
-        window.filterSignalsAgents = function() {
-            signalsFilters.search = document.getElementById('signals-search').value;
-            renderSignalsAgents();
+        window.filterAgents = function() {
+            filters.search = document.getElementById('agent-search').value;
+            renderAgents();
         };
 
         // Navigation

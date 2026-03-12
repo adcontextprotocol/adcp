@@ -76,6 +76,7 @@ import { createContentRouter, createMyContentRouter } from "./routes/content.js"
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createCommunityRouters } from "./routes/community.js";
+import { createCertificationRouters } from "./routes/certification.js";
 import { createEngagementRouter } from "./routes/engagement.js";
 import { createNotificationRouter } from "./routes/notifications.js";
 import { CommunityDatabase } from "./db/community-db.js";
@@ -993,6 +994,13 @@ export class HTTPServer {
     const { publicRouter: communityPublicRouter, userRouter: communityUserRouter } = createCommunityRouters({ communityDb, slackDb: communitySlackDb, memberDb, orgDb, invalidateMemberContextCache });
     this.app.use('/api/community', communityPublicRouter);
     this.app.use('/api/me', communityUserRouter);
+
+    // Mount certification routes
+    const { publicRouter: certPublicRouter, userRouter: certUserRouter, orgRouter: certOrgRouter, adminRouter: certAdminRouter } = createCertificationRouters();
+    this.app.use('/api/certification', certPublicRouter);
+    this.app.use('/api/me', certUserRouter);
+    this.app.use('/api/organizations', certOrgRouter);
+    this.app.use('/api/admin/certification', certAdminRouter);
 
     // Mount engagement dashboard route
     const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -4957,6 +4965,9 @@ Disallow: /api/admin/
       await this.serveHtmlWithConfig(req, res, 'admin-escalations.html');
     });
 
+    this.app.get('/admin/certification', requireAuth, requireAdmin, async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'admin-certification.html');
+    });
 
   }
 
@@ -6545,7 +6556,7 @@ Disallow: /api/admin/
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Resolve brand data in parallel for all profiles that have a primary brand
+        // Resolve brand data and credentials in parallel for all profiles
         await Promise.all(profiles.map(async (profile) => {
           if (profile.primary_brand_domain) {
             const hosted = await this.brandDb.getHostedBrandByDomain(profile.primary_brand_domain);
@@ -6568,6 +6579,11 @@ Disallow: /api/admin/
               }
             }
           }
+          // Add earned credentials for org members
+          try {
+            const { getOrgMemberCredentials } = await import('./db/certification-db.js');
+            (profile as any).credentials = await getOrgMemberCredentials(profile.workos_organization_id);
+          } catch { /* credentials optional */ }
         }));
 
         res.json({ members: profiles });
@@ -6729,7 +6745,14 @@ Disallow: /api/admin/
           }
         }
 
-        res.json({ member: profile, perspectives, registry_contributions, github_username });
+        // Add earned credentials for org members
+        let credentials: { credential_id: string; credential_name: string; tier: number; awarded_at: string }[] = [];
+        try {
+          const { getOrgMemberCredentials } = await import('./db/certification-db.js');
+          credentials = await getOrgMemberCredentials(profile.workos_organization_id);
+        } catch { /* credentials optional */ }
+
+        res.json({ member: { ...profile, credentials }, perspectives, registry_contributions, github_username });
       } catch (error) {
         logger.error({ err: error }, 'Get member error');
         res.status(500).json({

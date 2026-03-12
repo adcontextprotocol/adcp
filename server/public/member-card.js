@@ -71,6 +71,16 @@ function renderMemberCard(member, options = {}) {
     ? '<span class="founding-member-badge">Founding Member</span>'
     : '';
 
+  // Credential badges - show earned AdCP credentials
+  const tierPrefix = { 1: 'L1', 2: 'L2', 3: 'L3' };
+  const credentialBadges = (member.credentials || [])
+    .map(c => {
+      const tier = c.tier || 1;
+      const prefix = tierPrefix[tier] || `L${tier}`;
+      return `<span class="credential-badge credential-tier-${tier}" title="${escapeHtmlSafe(c.credential_name || c.name)}">${prefix}</span>`;
+    })
+    .join('');
+
   // Markets display - show regions served if available
   const markets = member.markets || [];
   const marketsHtml = markets.length > 0
@@ -88,6 +98,7 @@ function renderMemberCard(member, options = {}) {
           <div class="member-name-row">
             <div class="member-name">${member.display_name}</div>
             ${foundingBadge}
+            ${credentialBadges}
             ${agentBadge}
             ${publisherBadge}
             ${dataProviderBadge}
@@ -312,6 +323,29 @@ function getMemberCardStyles() {
       font-size: 11px;
       font-weight: 600;
       border: 1px solid #fcd34d;
+    }
+    .credential-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .credential-tier-1 {
+      background: var(--credential-tier-1-bg);
+      color: var(--credential-tier-1-color);
+    }
+    .credential-tier-2 {
+      background: var(--credential-tier-2-bg);
+      color: var(--credential-tier-2-color);
+    }
+    .credential-tier-3 {
+      background: var(--credential-tier-3-bg);
+      color: var(--credential-tier-3-color);
+      border: var(--credential-tier-3-border);
+      font-weight: 600;
     }
   `;
 }

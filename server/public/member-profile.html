@@ -1006,6 +1006,16 @@
           </div>
           </div><!-- end logos-section -->
 
+          <!-- Credentials (read-only display) -->
+          <div id="credentials-section" style="display: none;">
+            <h2>Credentials</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+              AdCP credentials earned through the certification program. These appear on your public profile.
+            </p>
+            <div id="credentials-list" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--space-4);"></div>
+            <a href="/certification.html" style="font-size: var(--text-sm); color: var(--color-brand); text-decoration: none;">View certification portal &rarr;</a>
+          </div>
+
           <!-- Contact Information -->
           <h2>Contact Information</h2>
 
@@ -1295,6 +1305,7 @@
           document.getElementById('form-title').textContent = currentOrgName ? `Edit ${currentOrgName} Profile` : 'Edit Member Profile';
           document.getElementById('delete-btn').style.display = 'block';
           document.getElementById('slug-group').style.display = 'none'; // Can't change slug after creation
+          loadCredentials();
           // Show preview button with link to public profile
           if (data.profile.slug) {
             const previewBtn = document.getElementById('preview-btn');
@@ -1652,6 +1663,29 @@
         _brandSaving = false;
         btn.disabled = false;
         btn.textContent = isNew ? 'Save brand' : 'Save';
+      }
+    }
+
+    async function loadCredentials() {
+      try {
+        const response = await fetch('/api/me/certification/credentials', { credentials: 'include' });
+        if (!response.ok) return;
+        const data = await response.json();
+        const credentials = data.credentials || [];
+        if (credentials.length === 0) return;
+
+        const section = document.getElementById('credentials-section');
+        const list = document.getElementById('credentials-list');
+        if (!section || !list) return;
+
+        list.innerHTML = credentials.map(c => {
+          const tier = c.tier || 1;
+          return `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--credential-tier-${tier}-bg); color: var(--credential-tier-${tier}-color); border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: var(--font-semibold); ${tier === 3 ? 'border: var(--credential-tier-3-border);' : ''}">${c.credential_name}</span>`;
+        }).join('');
+
+        section.style.display = 'block';
+      } catch (error) {
+        console.error('Failed to load credentials:', error);
       }
     }
 

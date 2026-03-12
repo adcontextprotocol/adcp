@@ -86,6 +86,9 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   directory: {
     name: 'directory',
+    // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
+    // Anonymous web/MCP users get only the DIRECTORY_TOOLS subset (read-only public lookups).
+    // This set adds member-scoped tools (search_members, request_introduction) and brand tools.
     description: 'The searchable partner/vendor directory — find partners, vendors, consultants, service providers, and member organizations. Also: request introductions, browse the member directory, research brands, look up brand assets, and find registry gaps',
     tools: [
       'search_members',
@@ -330,6 +333,21 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     description: 'Send direct messages to other AgenticAdvertising.org members, forward conversation context, and collaborate across the community',
     tools: [
       'send_member_dm',
+    ],
+  },
+
+  certification: {
+    name: 'certification',
+    description: 'AdCP certification program — list tracks, teach modules, run exercises, placement assessment, and track learner progress',
+    tools: [
+      'list_certification_tracks',
+      'get_certification_module',
+      'start_certification_module',
+      'complete_certification_module',
+      'get_learner_progress',
+      'test_out_modules',
+      'start_certification_exam',
+      'complete_certification_exam',
     ],
   },
 };

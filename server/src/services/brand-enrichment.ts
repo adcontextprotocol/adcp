@@ -10,7 +10,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
-import { fetchBrandData, isBrandfetchConfigured } from './brandfetch.js';
+import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from './brandfetch.js';
 import { downloadAndCacheLogos } from './logo-cdn.js';
 import { classifyBrand } from './brand-classifier.js';
 import { brandDb } from '../db/brand-db.js';
@@ -110,6 +110,13 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   if (existing?.source_type === 'enriched' && existing.has_brand_manifest) {
     return { domain, status: 'skipped', brand_name: existing.brand_name, error: 'Already enriched' };
   }
+  // Skip community brands with fresh manifests (e.g., recently downgraded from enriched due to low quality)
+  if (existing?.source_type === 'community' && existing.has_brand_manifest && existing.last_validated) {
+    const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+    if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+      return { domain, status: 'skipped', brand_name: existing.brand_name, error: 'Recently validated (community)' };
+    }
+  }
 
   // Fetch from Brandfetch
   let result: BrandfetchEnrichmentResult;
@@ -170,6 +177,9 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     ? await downloadAndCacheLogos(domain, result.manifest.logos)
     : result.manifest.logos;
 
+  // Determine source_type: only mark as 'enriched' if Brandfetch returned meaningful data
+  const sourceType = result.highQuality !== false ? 'enriched' : 'community';
+
   // Map to discovered brand input
   const input: UpsertDiscoveredBrandInput = {
     domain,
@@ -189,9 +199,11 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
           related_domains: classification.related_domains,
         },
       } : {}),
+      ...(result.raw?.qualityScore !== undefined ? { quality_score: result.raw.qualityScore } : {}),
+      ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
     },
     has_brand_manifest: true,
-    source_type: 'enriched',
+    source_type: sourceType,
     // Apply classification fields if available
     ...(classification ? {
       keller_type: classification.keller_type,
@@ -215,14 +227,15 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   });
 
   logger.info(
-    { domain, brandName, keller_type: classification?.keller_type },
-    'Brand enriched'
+    { domain, brandName, sourceType, keller_type: classification?.keller_type },
+    sourceType === 'enriched' ? 'Brand enriched' : 'Brand saved as community (low-quality Brandfetch data)'
   );
   return {
     domain,
-    status: 'enriched',
+    status: sourceType === 'enriched' ? 'enriched' : 'skipped',
     brand_name: brandName,
     classification: classification || undefined,
+    error: sourceType === 'community' ? 'Low-quality Brandfetch result saved as community' : undefined,
   };
 }
 
@@ -285,12 +298,16 @@ export async function getEnrichmentCandidates(options: {
   const limit = Math.min(Math.max(1, options.limit || 25), 100);
   const candidates: EnrichmentCandidate[] = [];
 
-  // Community brands without manifests
+  // Community brands: both those without manifests and those with low-quality data
+  // that may benefit from re-enrichment (last validated > 30 days ago)
   if (source === 'community' || source === 'all') {
     const communityResult = await query<{ domain: string; brand_name: string | null }>(
       `SELECT domain, brand_name FROM discovered_brands
-       WHERE source_type = 'community' AND has_brand_manifest = false
-       ORDER BY brand_name, domain
+       WHERE source_type = 'community' AND (
+         has_brand_manifest = false
+         OR (has_brand_manifest = true AND (last_validated IS NULL OR last_validated < NOW() - INTERVAL '30 days'))
+       )
+       ORDER BY has_brand_manifest ASC, brand_name, domain
        LIMIT $1`,
       [limit]
     );
@@ -537,7 +554,7 @@ export async function expandHouse(houseDomain: string, options: {
       await brandDb.upsertDiscoveredBrand({
         domain,
         brand_name: brand.brand_name,
-        source_type: 'enriched',
+        source_type: 'community',
         has_brand_manifest: false,
         keller_type: brand.keller_type || 'sub_brand',
         house_domain: houseDomain,
@@ -690,8 +707,8 @@ export async function researchDomain(
 
     // Step 1: Check existing brand data
     const existingBrand = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
-    const brandIsFresh = existingBrand?.source_type === 'enriched'
-      && existingBrand.has_brand_manifest
+    const brandIsFresh = existingBrand?.has_brand_manifest
+      && (existingBrand.source_type === 'enriched' || existingBrand.source_type === 'community')
       && existingBrand.last_validated
       && new Date(existingBrand.last_validated) > freshThreshold;
 
@@ -728,6 +745,9 @@ export async function researchDomain(
         actions.push({ source: 'brandfetch', action: 'not_found', detail: brandResult.error });
       } else if (brandResult.status === 'failed') {
         actions.push({ source: 'brandfetch', action: 'failed', detail: brandResult.error });
+      } else if (brandResult.error?.includes('Low-quality')) {
+        // Brandfetch returned data but it was too low quality to mark as enriched
+        actions.push({ source: 'brandfetch', action: 'fetched', detail: brandResult.error });
       } else {
         actions.push({ source: 'brandfetch', action: 'skipped_fresh', detail: brandResult.error });
       }

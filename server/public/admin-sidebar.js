@@ -46,6 +46,12 @@
         ]
       },
       {
+        label: 'Programs',
+        items: [
+          { href: '/admin/certification', label: 'Certification', icon: '🎓' },
+        ]
+      },
+      {
         label: 'System',
         items: [
           { href: '/admin/agreements', label: 'Agreements', icon: '📋' },

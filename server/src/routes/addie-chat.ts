@@ -27,9 +27,8 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from "../addie/mcp/knowledge-search.js";
-import {
-  ANONYMOUS_SAFE_KNOWLEDGE_TOOLS,
-} from "../mcp/chat-tool.js";
+// Note: ANONYMOUS_SAFE_KNOWLEDGE_TOOLS is used by the MCP chat-tool.ts (separate client).
+// Web chat anonymous users get directory tools only; knowledge tools require login.
 import {
   MEMBER_TOOLS,
   createMemberToolHandlers,
@@ -76,6 +75,12 @@ import {
   createBillingToolHandlers,
 } from "../addie/mcp/billing-tools.js";
 import {
+  CERTIFICATION_TOOLS,
+  createCertificationToolHandlers,
+  buildCertificationContext,
+} from "../addie/mcp/certification-tools.js";
+import * as certDb from "../db/certification-db.js";
+import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
 } from "../addie/mcp/schema-tools.js";
@@ -105,6 +110,7 @@ import {
 } from "../addie/thread-service.js";
 import { UsersDatabase } from "../db/users-db.js";
 import { isRetriesExhaustedError } from "../utils/anthropic-retry.js";
+import { summarizeToolCalls } from "../addie/prompts.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -114,8 +120,11 @@ const logger = createLogger("addie-chat-routes");
 let claudeClient: AddieClaudeClient | null = null;
 let initialized = false;
 
-// Re-use the canonical anonymous-safe tool list from chat-tool.ts
-const ANONYMOUS_SAFE_TOOLS = ANONYMOUS_SAFE_KNOWLEDGE_TOOLS;
+/**
+ * Anonymous users get directory tools only (fast DB lookups, public data).
+ * Knowledge/doc search tools require login — Haiku can't reliably synthesize
+ * multi-step research within the anonymous iteration limit.
+ */
 
 /**
  * Tools only available to authenticated users.
@@ -147,7 +156,7 @@ function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
 /**
  * Initialize the chat client
  *
- * Anonymous users get Haiku with read-only knowledge tools.
+ * Anonymous users get Haiku with read-only directory tools.
  * Authenticated users get Sonnet with full tools (billing, schema, Slack, etc.).
  */
 async function initializeChatClient(): Promise<void> {
@@ -165,32 +174,37 @@ async function initializeChatClient(): Promise<void> {
   // Initialize knowledge search
   await initializeKnowledgeSearch();
 
-  const knowledgeHandlers = createKnowledgeToolHandlers();
-
-  // Register only anonymous-safe knowledge tools globally on the client.
-  // These are available to all users (anonymous and authenticated).
-  for (const tool of KNOWLEDGE_TOOLS) {
-    if (ANONYMOUS_SAFE_TOOLS.has(tool.name)) {
-      const handler = knowledgeHandlers.get(tool.name);
-      if (handler) {
-        claudeClient.registerTool(tool, handler);
-      }
+  // Register directory tools globally — available to all users (anonymous and authenticated).
+  // These are fast DB lookups over public data (members, agents, publishers).
+  const directoryHandlers = createDirectoryToolHandlers();
+  for (const tool of DIRECTORY_TOOLS) {
+    const handler = directoryHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
     }
   }
 
+  // Register search_members globally so anonymous users get the rich card UI.
+  // The handler uses memberContext only for analytics attribution (null-safe).
+  const anonMemberHandlers = createMemberToolHandlers(null);
+  const searchMembersTool = MEMBER_TOOLS.find(t => t.name === 'search_members');
+  const searchMembersHandler = anonMemberHandlers.get('search_members');
+  if (searchMembersTool && searchMembersHandler) {
+    claudeClient.registerTool(searchMembersTool, searchMembersHandler);
+  }
+
   // Build authenticated-only tools (cached, reused per request).
-  // Includes: non-anonymous knowledge tools, billing, schema, directory, brand, property.
+  // Includes: all knowledge tools, billing, schema, brand, property.
   const authTools: typeof KNOWLEDGE_TOOLS = [];
   const authHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
-  // Slack-requiring knowledge tools (search_slack, get_channel_activity, bookmark_resource, etc.)
+  // All knowledge tools require authentication (doc search needs Sonnet to synthesize well)
+  const knowledgeHandlers = createKnowledgeToolHandlers();
   for (const tool of KNOWLEDGE_TOOLS) {
-    if (!ANONYMOUS_SAFE_TOOLS.has(tool.name)) {
-      const handler = knowledgeHandlers.get(tool.name);
-      if (handler) {
-        authTools.push(tool);
-        authHandlers.set(tool.name, handler);
-      }
+    const handler = knowledgeHandlers.get(tool.name);
+    if (handler) {
+      authTools.push(tool);
+      authHandlers.set(tool.name, handler);
     }
   }
 
@@ -214,15 +228,7 @@ async function initializeChatClient(): Promise<void> {
     }
   }
 
-  // Directory tools (search members, list agents, lookup domains)
-  const directoryHandlers = createDirectoryToolHandlers();
-  for (const tool of DIRECTORY_TOOLS) {
-    const handler = directoryHandlers.get(tool.name);
-    if (handler) {
-      authTools.push(tool);
-      authHandlers.set(tool.name, handler);
-    }
-  }
+  // Directory tools are registered globally (above) — skip here.
 
   // Brand tools (research, resolve, save, list brands)
   const brandHandlers = createBrandToolHandlers();
@@ -251,7 +257,7 @@ async function initializeChatClient(): Promise<void> {
 
   initialized = true;
   logger.info({
-    anonymousTools: ANONYMOUS_SAFE_TOOLS.size,
+    anonymousTools: DIRECTORY_TOOLS.length,
     authenticatedTools: authTools.length,
     anonymousModel: AddieModelConfig.anonymousChat,
     authenticatedModel: AddieModelConfig.chat,
@@ -323,6 +329,8 @@ interface PreparedRequest {
   requestTools: RequestTools;
   siRetrievalTimeMs: number | null;
   siAgents: RetrievedSIAgent[];
+  hasCertificationContext: boolean;
+  threadExternalId: string;
 }
 
 interface SiSessionData {
@@ -434,6 +442,23 @@ async function prepareRequestWithMemberTools(
     );
   }
 
+  // Add certification module state so Addie remembers active modules
+  // even when conversation history is trimmed
+  let hasCertificationContext = false;
+  if (memberContext?.workos_user?.workos_user_id) {
+    try {
+      const progress = await certDb.getProgress(memberContext.workos_user.workos_user_id);
+      const inProgress = progress.filter(p => p.status === 'in_progress');
+      const certContext = await buildCertificationContext(inProgress, memberContext.workos_user.workos_user_id);
+      if (certContext) {
+        contextSections.push(certContext);
+        hasCertificationContext = true;
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie Chat: Failed to get certification progress for context');
+    }
+  }
+
   const requestContext = contextSections.join('\n\n');
 
   // Anonymous users get no per-request tools (saves tokens and prevents data leakage)
@@ -445,6 +470,8 @@ async function prepareRequestWithMemberTools(
       requestTools: { tools: [], handlers: new Map() },
       siRetrievalTimeMs,
       siAgents: siRetrievalResult.agents,
+      hasCertificationContext: false,
+      threadExternalId,
     };
   }
 
@@ -461,6 +488,14 @@ async function prepareRequestWithMemberTools(
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId),
     ...createBillingToolHandlers(memberContext),
   ]);
+
+  // Certification tools (for authenticated users)
+  if (userId) {
+    allTools.push(...CERTIFICATION_TOOLS);
+    for (const [name, handler] of createCertificationToolHandlers(memberContext, { threadId: threadExternalId })) {
+      combinedHandlers.set(name, handler);
+    }
+  }
 
   // Permission-gated tools (for authenticated users)
   if (userId) {
@@ -526,6 +561,8 @@ async function prepareRequestWithMemberTools(
     requestTools,
     siRetrievalTimeMs,
     siAgents: siRetrievalResult.agents,
+    hasCertificationContext,
+    threadExternalId,
   };
 }
 
@@ -654,13 +691,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       }
 
       // Get conversation history for context
-      const messages = await threadService.getThreadMessages(thread.thread_id);
-      const history: ConversationMessage[] = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
 
       // Save user message
       await threadService.addMessage({
@@ -672,18 +703,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context from history (last N messages)
-      const contextMessages = history.slice(-10).map((m) => ({
-        user: m.role === "user" ? "User" : "Addie",
-        text: m.content,
-      }));
+      // Build context from history (last N messages), including tool result summaries
+      const contextMessages = threadMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10)
+        .map((m) => ({
+          user: m.role === "user" ? "User" : "Addie",
+          text: m.content + summarizeToolCalls(m.tool_calls),
+        }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,
       // authenticated gets Sonnet + full tools
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools: memberTools, hasCertificationContext } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -691,10 +725,14 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Process with Claude
+      // Process with Claude — certification sessions get more conversation history
       let response;
       try {
-        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, { ...processOptions, requestContext });
+        response = await claudeClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
+          ...processOptions,
+          requestContext,
+          maxMessages: hasCertificationContext ? 50 : undefined,
+        });
       } catch (error) {
         // Provide user-friendly error message based on error type
         let errorMessage: string;
@@ -885,13 +923,7 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       sendEvent("meta", { conversation_id: externalId });
 
       // Get conversation history
-      const messages = await threadService.getThreadMessages(thread.thread_id);
-      const history: ConversationMessage[] = messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }));
+      const threadMessages = await threadService.getThreadMessages(thread.thread_id);
 
       // Save user message
       await threadService.addMessage({
@@ -903,18 +935,21 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context messages
-      const contextMessages = history.slice(-10).map((m) => ({
-        user: m.role === "user" ? "User" : "Addie",
-        text: m.content,
-      }));
+      // Build context messages, including tool result summaries
+      const contextMessages = threadMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10)
+        .map((m) => ({
+          user: m.role === "user" ? "User" : "Addie",
+          text: m.content + summarizeToolCalls(m.tool_calls),
+        }));
 
       // Build tiered access: anonymous gets Haiku + restricted tools,
       // authenticated gets Sonnet + full tools
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools, siAgents } = await prepareRequestWithMemberTools(
+      const { messageToProcess, requestContext, requestTools: memberTools, siAgents, hasCertificationContext: hasCertCtx } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -922,12 +957,16 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
 
-      // Stream the response
+      // Stream the response — certification sessions get more conversation history
       let fullText = '';
       let response;
       const toolsUsed: string[] = [];
 
-      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, { ...processOptions, requestContext })) {
+      for await (const event of claudeClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
+        ...processOptions,
+        requestContext,
+        maxMessages: hasCertCtx ? 50 : undefined,
+      })) {
         // Break early if client disconnected (still save partial response below)
         if (connectionClosed) {
           logger.info("Addie Chat Stream: Breaking loop due to client disconnect");

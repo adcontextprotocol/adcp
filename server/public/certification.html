@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AdCP certification - AgenticAdvertising.org</title>
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <style>
+    :root {
+      --color-tier-3: #7c3aed;
+      --color-tier-3-light: #ede9fe;
+      --color-tier-3-dark: #6d28d9;
+    }
+
+    body {
+      background: var(--color-bg-page);
+      padding-top: var(--nav-height);
+    }
+
+    .cert-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    /* =========================================================================
+       Hero / header
+       ========================================================================= */
+    .cert-header {
+      margin-bottom: var(--space-8);
+    }
+
+    .cert-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+    }
+
+    .cert-header p {
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      max-width: 640px;
+      line-height: var(--leading-relaxed);
+    }
+
+    .cert-header-actions {
+      display: flex;
+      gap: var(--space-3);
+      margin-top: var(--space-4);
+      flex-wrap: wrap;
+    }
+
+    .btn-assess {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      cursor: pointer;
+      border: var(--border-1) solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text-primary);
+      transition: border-color var(--duration-normal) var(--ease-in-out),
+                  background var(--duration-normal) var(--ease-in-out);
+    }
+
+    .btn-assess:hover {
+      border-color: var(--color-brand);
+      background: var(--color-bg-hover);
+    }
+
+    /* =========================================================================
+       Credential tier cards
+       ========================================================================= */
+    .tier-section {
+      margin-bottom: var(--space-8);
+    }
+
+    .tier-section h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--space-4);
+    }
+
+    .tier-card {
+      background: var(--color-bg-card);
+      border: var(--border-2) solid var(--color-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-5) var(--space-6);
+      position: relative;
+      transition: border-color var(--duration-normal) var(--ease-in-out),
+                  box-shadow var(--duration-normal) var(--ease-in-out);
+    }
+
+    .tier-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .tier-card-earned {
+      border-color: var(--color-success-500);
+    }
+
+    .tier-card-earned:hover {
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+    }
+
+    /* Tier accent stripe at top */
+    .tier-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      border-radius: var(--card-radius) var(--card-radius) 0 0;
+    }
+
+    .tier-card[data-tier="1"]::before { background: var(--color-info-500); }
+    .tier-card[data-tier="2"]::before { background: var(--color-warning-500); }
+    .tier-card[data-tier="3"]::before { background: var(--color-tier-3); }
+
+    .tier-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: var(--space-3);
+    }
+
+    .tier-level {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      letter-spacing: var(--tracking-wide);
+      text-transform: uppercase;
+    }
+
+    .tier-level-1 {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+
+    .tier-level-2 {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    .tier-level-3 {
+      background: var(--color-tier-3-light);
+      color: var(--color-tier-3-dark);
+    }
+
+    .tier-earned-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .tier-name {
+      font-size: var(--text-lg);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .tier-requirement {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-4);
+    }
+
+    /* Tier progress bar */
+    .tier-progress {
+      margin-top: auto;
+    }
+
+    .tier-progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--color-gray-200);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      margin-bottom: var(--space-1);
+    }
+
+    .tier-progress-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width var(--duration-slow) var(--ease-out);
+    }
+
+    .tier-progress-fill-1 { background: var(--color-info-500); }
+    .tier-progress-fill-2 { background: var(--color-warning-500); }
+    .tier-progress-fill-3 { background: var(--color-tier-3); }
+
+    .tier-progress-text {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+    }
+
+    /* Specialist badges grid inside tier 3 */
+    .specialist-badges {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+
+    .specialist-badge {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
+    .specialist-badge-earned {
+      background: var(--color-tier-3-light);
+      color: var(--color-tier-3-dark);
+    }
+
+    .specialist-badge-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .specialist-badge-icon-default {
+      background: var(--color-gray-200);
+      color: var(--color-text-muted);
+    }
+
+    .specialist-badge-icon-earned {
+      background: var(--color-tier-3);
+      color: white;
+    }
+
+    /* =========================================================================
+       Learning path section
+       ========================================================================= */
+    .learning-section {
+      margin-bottom: var(--space-8);
+    }
+
+    .learning-section h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+
+    .section-label {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+      margin-bottom: var(--space-3);
+    }
+
+    .module-group {
+      margin-bottom: var(--space-6);
+    }
+
+    .module-group-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+    }
+
+    /* Module list (shared) */
+    .module-list {
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--card-radius);
+      overflow: hidden;
+    }
+
+    .module-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      padding: var(--space-4) var(--space-6);
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+
+    .module-item:last-child {
+      border-bottom: none;
+    }
+
+    .module-item-locked {
+      opacity: 0.55;
+    }
+
+    .module-status {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: var(--text-sm);
+    }
+
+    .module-status-locked {
+      background: var(--color-gray-100);
+      color: var(--color-text-muted);
+    }
+
+    .module-status-available {
+      background: var(--color-primary-100);
+      color: var(--color-brand);
+      border: 2px solid var(--color-brand);
+    }
+
+    .module-status-in-progress {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+
+    .module-status-completed {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+
+    .module-status-tested_out {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      opacity: 0.7;
+    }
+
+    .module-info { flex: 1; min-width: 0; }
+
+    .module-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-medium);
+      color: var(--color-text);
+    }
+
+    .module-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-1);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .module-badge-free {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px var(--space-2);
+      border-radius: var(--radius-full);
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+
+    .module-action {
+      flex-shrink: 0;
+    }
+
+    .btn-start {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background var(--duration-fast) var(--ease-in-out);
+    }
+
+    .btn-start-primary {
+      background: var(--color-brand);
+      color: white;
+    }
+
+    .btn-start-primary:hover {
+      background: var(--color-brand-hover);
+    }
+
+    .btn-start-secondary {
+      background: var(--color-gray-100);
+      color: var(--color-text);
+    }
+
+    .btn-start-secondary:hover {
+      background: var(--color-gray-200);
+    }
+
+    .btn-start:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* =========================================================================
+       Specialization tabs
+       ========================================================================= */
+    .tabs {
+      display: flex;
+      gap: var(--space-1);
+      margin-bottom: var(--space-4);
+      border-bottom: var(--border-1) solid var(--color-border);
+    }
+
+    .tab {
+      padding: var(--space-2) var(--space-4);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-secondary);
+      background: none;
+      border: none;
+      border-bottom: var(--border-2) solid transparent;
+      cursor: pointer;
+      transition: color var(--duration-fast) var(--ease-in-out),
+                  border-color var(--duration-fast) var(--ease-in-out);
+      margin-bottom: -1px;
+    }
+
+    .tab:hover {
+      color: var(--color-text);
+    }
+
+    .tab-active {
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel-active {
+      display: block;
+    }
+
+    /* =========================================================================
+       Capstone cards
+       ========================================================================= */
+    .capstone-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: var(--space-4);
+    }
+
+    .capstone-card {
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--card-radius);
+      padding: var(--space-5);
+      transition: border-color var(--duration-normal) var(--ease-in-out),
+                  box-shadow var(--duration-normal) var(--ease-in-out);
+    }
+
+    .capstone-card:hover {
+      box-shadow: var(--shadow-sm);
+    }
+
+    .capstone-card-locked {
+      opacity: 0.55;
+    }
+
+    .capstone-card-completed {
+      border-color: var(--color-success-500);
+    }
+
+    .capstone-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-2);
+    }
+
+    .capstone-id {
+      font-size: var(--text-xs);
+      font-weight: var(--font-bold);
+      color: var(--color-tier-3);
+      background: var(--color-tier-3-light);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-full);
+    }
+
+    .capstone-status-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: var(--radius-full);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .capstone-title {
+      font-size: var(--text-base);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-1);
+    }
+
+    .capstone-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-relaxed);
+      margin-bottom: var(--space-3);
+    }
+
+    .capstone-action {
+      margin-top: auto;
+    }
+
+    /* =========================================================================
+       Earned credentials section
+       ========================================================================= */
+    .credentials-section {
+      margin-top: var(--space-8);
+    }
+
+    .credentials-section h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-4);
+    }
+
+    /* Credential sharing panel (inside tier cards) */
+    .tier-share-panel {
+      margin-top: var(--space-4);
+      padding-top: var(--space-4);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+
+    .tier-share-panel h4 {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-3);
+      text-transform: uppercase;
+      letter-spacing: var(--tracking-wide);
+    }
+
+    .share-buttons {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      margin-bottom: var(--space-3);
+    }
+
+    .share-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      text-decoration: none;
+      color: white;
+      transition: opacity var(--duration-fast) var(--ease-in-out);
+    }
+
+    .share-btn:hover {
+      opacity: 0.9;
+    }
+
+    .share-btn-x {
+      background: #000;
+    }
+
+    .share-btn-linkedin {
+      background: #0a66c2;
+    }
+
+    .share-btn-cert {
+      background: var(--color-brand);
+    }
+
+    .share-btn-embed {
+      background: var(--color-bg-subtle);
+      color: var(--color-text-primary);
+      border: var(--border-1) solid var(--color-border);
+    }
+
+    .embed-section {
+      margin-top: var(--space-2);
+    }
+
+    .embed-section summary {
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .embed-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .embed-snippet {
+      margin-top: var(--space-2);
+      position: relative;
+    }
+
+    .embed-snippet pre {
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      font-size: var(--text-xs);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .embed-copy-btn {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      background: var(--color-bg-card);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--color-text-secondary);
+    }
+
+    .embed-copy-btn:hover {
+      background: var(--color-bg-subtle);
+    }
+
+    .embed-tabs {
+      display: flex;
+      gap: var(--space-1);
+      margin-bottom: var(--space-2);
+    }
+
+    .embed-tab {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--text-xs);
+      font-weight: var(--font-medium);
+      border: var(--border-1) solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+
+    .embed-tab-active {
+      background: var(--color-brand);
+      color: white;
+      border-color: var(--color-brand);
+    }
+
+    .credential-badge-row {
+      display: flex;
+      gap: var(--space-4);
+      align-items: center;
+      margin-bottom: var(--space-4);
+    }
+
+    .credential-badge-link {
+      flex-shrink: 0;
+    }
+
+    .credential-badge-img {
+      height: 100px;
+      width: auto;
+      border-radius: var(--radius-md);
+    }
+
+    .credential-badge-info {
+      flex: 1;
+    }
+
+    .credential-badge-name {
+      font-weight: var(--font-semibold);
+      font-size: var(--text-base);
+      color: var(--color-text-heading);
+    }
+
+    .credential-badge-date {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .credential-badge-verify {
+      display: inline-block;
+      margin-top: var(--space-2);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .credential-badge-verify:hover {
+      text-decoration: underline;
+    }
+
+    .credential-pending-note {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      font-style: italic;
+      margin-top: var(--space-2);
+    }
+
+    /* =========================================================================
+       Empty / loading states
+       ========================================================================= */
+    .loading {
+      text-align: center;
+      padding: var(--space-12) 0;
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-8);
+      color: var(--color-text-secondary);
+    }
+
+    /* =========================================================================
+       Responsive
+       ========================================================================= */
+    @media (max-width: 640px) {
+      .tier-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .module-item {
+        flex-wrap: wrap;
+        padding: var(--space-3) var(--space-4);
+      }
+
+      .module-action {
+        width: 100%;
+        margin-top: var(--space-2);
+      }
+
+      .module-action .btn-start {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .capstone-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .credential-card {
+        flex-wrap: wrap;
+      }
+
+      .credential-actions {
+        width: 100%;
+        margin-top: var(--space-2);
+      }
+
+      .specialist-badges {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="cert-container">
+    <div class="cert-header">
+      <h1>AdCP certification program</h1>
+      <p>Interactive training delivered by Addie, our AI instructor. Learn AdCP through hands-on exercises with real sandbox agents, then earn a verifiable credential.</p>
+      <div class="cert-header-actions" id="cert-header-actions" style="display: none;"></div>
+    </div>
+
+    <!-- Tier progression -->
+    <div id="tier-section" class="tier-section">
+      <h2>Credential progression</h2>
+      <div id="tier-grid" class="tier-grid">
+        <div class="loading">Loading credentials...</div>
+      </div>
+    </div>
+
+    <!-- Learning path -->
+    <div id="learning-section" class="learning-section">
+      <h2>Learning path</h2>
+      <div id="learning-container">
+        <div class="loading">Loading modules...</div>
+      </div>
+    </div>
+
+    <!-- Earned credentials are rendered inline in tier cards -->
+  </div>
+
+  <script>
+    (function() {
+      var state = {
+        tracks: [],
+        progress: [],
+        trackProgress: [],
+        certifications: [],
+        credentials: [],
+        myCredentials: [],
+        isAuthenticated: false,
+        isMember: false,
+      };
+
+      // Track-to-tab mapping
+      var SPEC_TRACKS = {
+        B: { label: 'Publisher / seller', index: 0 },
+        C: { label: 'Buyer / brand', index: 1 },
+        D: { label: 'Platform / intermediary', index: 2 },
+      };
+
+
+      var CAPSTONE_META = {
+        S1: { title: 'Media buy mastery', desc: 'Full media buy lifecycle: proposals, forecasting, refinement, advanced targeting, and delivery analysis.' },
+        S2: { title: 'Creative mastery', desc: 'Creative protocol across 19 channels: AI-powered generation, compliance, disclosures, and feature evaluation.' },
+        S3: { title: 'Signals and audiences', desc: 'Audience activation, privacy compliance, signal pricing, conversion tracking, and attribution.' },
+        S4: { title: 'Governance and brand safety', desc: 'Content standards, property governance, the Oracle model, and compliance artifacts.' },
+        S5: { title: 'Sponsored Intelligence', desc: 'Conversational brand experiences: session lifecycle, A2UI components, and offering discovery.' },
+      };
+
+      async function init() {
+        // Load config for auth state
+        try {
+          var configRes = await fetch('/api/config');
+          if (configRes.ok) {
+            var config = await configRes.json();
+            state.isAuthenticated = !!config.user;
+            state.isMember = !!(config.user && config.user.isMember);
+          }
+        } catch (e) { /* not authenticated */ }
+
+        // Parallel fetches for public data
+        var publicFetches = [
+          fetch('/api/certification/tracks').then(function(r) { return r.ok ? r.json() : null; }),
+          fetch('/api/certification/credentials').then(function(r) { return r.ok ? r.json() : null; }),
+        ];
+
+        var results = await Promise.all(publicFetches);
+        if (results[0]) state.tracks = results[0].tracks || [];
+        if (results[1]) state.credentials = results[1].credentials || [];
+
+        // Authenticated fetches
+        if (state.isAuthenticated) {
+          var authFetches = [
+            fetch('/api/me/certification/progress').then(function(r) { return r.ok ? r.json() : null; }),
+            fetch('/api/me/certification/credentials').then(function(r) { return r.ok ? r.json() : null; }),
+          ];
+
+          var authResults = await Promise.all(authFetches);
+          if (authResults[0]) {
+            state.progress = authResults[0].progress || [];
+            state.trackProgress = authResults[0].trackProgress || [];
+            state.certifications = authResults[0].certifications || [];
+          }
+          if (authResults[1]) {
+            state.myCredentials = authResults[1].credentials || [];
+          }
+        }
+
+        render();
+      }
+
+      function getModuleStatus(moduleId, isFree, prerequisites) {
+        if (!state.isAuthenticated) return isFree ? 'available' : 'locked';
+
+        var prog = state.progress.find(function(p) { return p.module_id === moduleId; });
+        if (prog && prog.status === 'completed') return 'completed';
+        if (prog && prog.status === 'tested_out') return 'tested_out';
+        if (prog && prog.status === 'in_progress') return 'in_progress';
+
+        if (!isFree && !state.isMember) return 'locked';
+
+        if (prerequisites && prerequisites.length > 0) {
+          var completed = new Set(
+            state.progress.filter(function(p) { return p.status === 'completed' || p.status === 'tested_out'; }).map(function(p) { return p.module_id; })
+          );
+          var met = prerequisites.every(function(p) { return completed.has(p); });
+          if (!met) return 'locked';
+        }
+
+        return 'available';
+      }
+
+      function statusIcon(status) {
+        switch (status) {
+          case 'completed': return '\u2713';
+          case 'tested_out': return '\u2713';
+          case 'in_progress': return '\u25B6';
+          case 'available': return '\u25CB';
+          case 'locked': return '\uD83D\uDD12';
+          default: return '';
+        }
+      }
+
+      function formatDuration(minutes) {
+        if (minutes < 60) return minutes + ' min';
+        var h = Math.floor(minutes / 60);
+        var m = minutes % 60;
+        return m > 0 ? h + 'h ' + m + 'min' : h + 'h';
+      }
+
+      function hasCredential(credentialId) {
+        return state.myCredentials.some(function(c) { return c.credential_id === credentialId; });
+      }
+
+      function getCredentialDef(credentialId) {
+        return state.credentials.find(function(c) { return c.id === credentialId; });
+      }
+
+      function getAllModules() {
+        var all = [];
+        state.tracks.forEach(function(t) {
+          t.modules.forEach(function(m) {
+            all.push(Object.assign({}, m, { track_id: t.id }));
+          });
+        });
+        return all;
+      }
+
+      function getModulesByPrefix(prefix) {
+        var allModules = getAllModules();
+        return allModules.filter(function(m) { return m.id.startsWith(prefix); });
+      }
+
+      function buildSharePanel(creds, tierLevel) {
+        // Find the earned credential(s) with certifier data
+        var earnedCreds = creds.filter(function(c) { return hasCredential(c.id); });
+        if (!earnedCreds.length) return '';
+
+        var html = '<div class="tier-share-panel">';
+
+        earnedCreds.forEach(function(credDef) {
+          var mc = state.myCredentials.find(function(m) { return m.credential_id === credDef.id; });
+          if (!mc) return;
+
+          var credName = credDef.name;
+          var hasCertifier = !!mc.certifier_public_id;
+          var certUrl = hasCertifier ? 'https://credsverse.com/credentials/' + mc.certifier_public_id : '';
+          var certPageUrl = window.location.origin + '/certification';
+          var shareUrl = certUrl || certPageUrl;
+          var badgeImgUrl = mc.certifier_badge_url || '';
+          var dateStr = new Date(mc.awarded_at).toLocaleDateString();
+
+          // Certifier badge image + verification link
+          if (badgeImgUrl || hasCertifier) {
+            html += '<div class="credential-badge-row">';
+            if (badgeImgUrl) {
+              var badgeLink = certUrl || certPageUrl;
+              html += '<a href="' + badgeLink + '" target="_blank" rel="noopener" class="credential-badge-link">';
+              html += '<img src="' + esc(badgeImgUrl) + '" alt="' + esc(credName) + ' credential badge" class="credential-badge-img" onerror="this.style.display=\'none\'" />';
+              html += '</a>';
+            }
+            html += '<div class="credential-badge-info">';
+            html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
+            html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
+            if (hasCertifier) {
+              html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
+            }
+            html += '</div>';
+            html += '</div>';
+          } else {
+            html += '<div class="credential-badge-info">';
+            html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
+            html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
+            html += '<p class="credential-pending-note">Digital badge is being processed.</p>';
+            html += '</div>';
+          }
+
+          // Share buttons
+          html += '<h4>Tell everyone</h4>';
+          html += '<div class="share-buttons">';
+
+          // X (Twitter) — separate text and url params for proper card rendering
+          var xText = 'I just earned the ' + credName + ' certification from @AgenticAds! AI agents are transforming advertising \u2014 learn AdCP and get certified yourself.';
+          html += '<a href="https://x.com/intent/tweet?text=' + encodeURIComponent(xText) + '&url=' + encodeURIComponent(shareUrl) + '" target="_blank" rel="noopener" class="share-btn share-btn-x">';
+          html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>';
+          html += 'Post on X';
+          html += '</a>';
+
+          // LinkedIn — share-offsite only carries the URL; LinkedIn auto-generates a preview card
+          html += '<a href="https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(shareUrl) + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+          html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>';
+          html += 'Share on LinkedIn';
+          html += '</a>';
+
+          // Add to LinkedIn profile (certification section)
+          var addToLinkedIn = 'https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME'
+            + '&name=' + encodeURIComponent(credName)
+            + '&organizationName=AgenticAdvertising.org'
+            + '&issueYear=' + new Date(mc.awarded_at).getFullYear()
+            + '&issueMonth=' + (new Date(mc.awarded_at).getMonth() + 1);
+          if (hasCertifier) {
+            addToLinkedIn += '&certId=' + encodeURIComponent(mc.certifier_public_id);
+            addToLinkedIn += '&certUrl=' + encodeURIComponent(certUrl);
+          }
+          html += '<a href="' + addToLinkedIn + '" target="_blank" rel="noopener" class="share-btn share-btn-linkedin">';
+          html += 'Add to LinkedIn profile';
+          html += '</a>';
+
+          html += '</div>';
+
+          // Embed section — uses the real Certifier badge image
+          html += '<details class="embed-section">';
+          html += '<summary>Embed in your email signature or website</summary>';
+          html += '<div class="embed-snippet" id="embed-' + credDef.id + '">';
+
+          html += '<div class="embed-tabs">';
+          html += '<button class="embed-tab embed-tab-active" onclick="switchEmbed(\'' + credDef.id + '\', \'html\', this)">HTML</button>';
+          html += '<button class="embed-tab" onclick="switchEmbed(\'' + credDef.id + '\', \'markdown\', this)">Markdown</button>';
+          html += '</div>';
+
+          // Use stored badge image URL, fall back to org logo
+          var embedImgSrc = badgeImgUrl || window.location.origin + '/AAo.svg';
+          var safeAltName = credName.replace(/"/g, '&quot;');
+          var embedHtml = '<a href="' + shareUrl + '" target="_blank" rel="noopener">'
+            + '<img src="' + embedImgSrc + '" alt="' + safeAltName + ' - AgenticAdvertising.org" height="80" />'
+            + '</a>';
+          var embedMarkdown = '[![' + credName.replace(/[\[\]]/g, '') + '](' + embedImgSrc + ')](' + shareUrl + ')';
+
+          html += '<pre class="embed-code" data-type="html">' + esc(embedHtml) + '</pre>';
+          html += '<pre class="embed-code" data-type="markdown" style="display:none">' + esc(embedMarkdown) + '</pre>';
+          html += '<button class="embed-copy-btn" onclick="copyEmbed(\'' + credDef.id + '\')">Copy</button>';
+
+          html += '</div>';
+          html += '</details>';
+        });
+
+        html += '</div>';
+        return html;
+      }
+
+      function countCompletedModules(moduleIds) {
+        var completed = new Set(
+          state.progress.filter(function(p) { return p.status === 'completed' || p.status === 'tested_out'; }).map(function(p) { return p.module_id; })
+        );
+        return moduleIds.filter(function(id) { return completed.has(id); }).length;
+      }
+
+      // Compute tier progress
+      function getTierProgress(credDef) {
+        if (!credDef) return { completed: 0, total: 0, pct: 0 };
+
+        var requiredModules = credDef.required_modules || [];
+        var total = requiredModules.length;
+        var completed = countCompletedModules(requiredModules);
+
+        // For tier 2 (requires_any_track_complete), count track completion too
+        if (credDef.requires_any_track_complete) {
+          total += 1; // one track needs completing
+          var anyTrackDone = state.trackProgress.some(function(tp) {
+            var trackId = tp.track_id;
+            return (trackId === 'B' || trackId === 'C' || trackId === 'D') &&
+                   tp.completed_modules === tp.total_modules && tp.total_modules > 0;
+          });
+          if (anyTrackDone) completed += 1;
+        }
+
+        // For tier 3 (requires_credential), check prerequisite credential
+        if (credDef.requires_credential) {
+          total += 1;
+          if (hasCredential(credDef.requires_credential)) completed += 1;
+        }
+
+        var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        return { completed: completed, total: total, pct: pct };
+      }
+
+      /* =====================================================================
+         Render
+         ===================================================================== */
+      function render() {
+        renderHeaderActions();
+        renderTiers();
+        renderLearningPath();
+      }
+
+      function renderHeaderActions() {
+        var container = document.getElementById('cert-header-actions');
+        if (!state.isAuthenticated) return;
+
+        var hasAnyProgress = state.progress.length > 0;
+        var html = '';
+
+        if (!hasAnyProgress) {
+          html += '<a href="/chat?topic=certification&action=assess" class="btn-assess">Assess my level</a>';
+        }
+
+        if (html) {
+          container.innerHTML = html;
+          container.style.display = '';
+        }
+      }
+
+      function renderTiers() {
+        var grid = document.getElementById('tier-grid');
+
+        // Group credentials by tier
+        var tiered = [
+          state.credentials.filter(function(c) { return c.tier === 1; }),
+          state.credentials.filter(function(c) { return c.tier === 2; }),
+          state.credentials.filter(function(c) { return c.tier === 3; }),
+        ];
+
+        // Tier display info
+        var tierMeta = [
+          { level: 1, fallbackName: 'AdCP Basics', fallbackReq: 'Complete A1 + A2 + A3 (free)', accent: '1' },
+          { level: 2, fallbackName: 'AdCP Practitioner', fallbackReq: 'Complete Basics + role track with build project', accent: '2' },
+          { level: 3, fallbackName: 'AdCP Specialist', fallbackReq: 'Complete Practitioner + protocol capstone', accent: '3' },
+        ];
+
+        var html = '';
+
+        tierMeta.forEach(function(meta, idx) {
+          var creds = tiered[idx];
+          var primaryCred = creds[0]; // main credential for this tier
+          var earned = primaryCred ? hasCredential(primaryCred.id) : false;
+          var prog = primaryCred && state.isAuthenticated ? getTierProgress(primaryCred) : null;
+
+          var name = primaryCred ? primaryCred.name : meta.fallbackName;
+          var req = primaryCred ? primaryCred.description : meta.fallbackReq;
+
+          // For tier 3, check if ANY specialist credential is earned
+          if (meta.level === 3 && creds.length > 1) {
+            earned = creds.some(function(c) { return hasCredential(c.id); });
+          }
+
+          html += '<div class="tier-card ' + (earned ? 'tier-card-earned' : '') + '" data-tier="' + meta.level + '">';
+          html += '  <div class="tier-card-header">';
+          html += '    <span class="tier-level tier-level-' + meta.accent + '">Level ' + meta.level + '</span>';
+          if (earned) {
+            html += '    <span class="tier-earned-badge">\u2713 Earned</span>';
+          }
+          html += '  </div>';
+          html += '  <div class="tier-name">' + esc(name) + '</div>';
+          html += '  <div class="tier-requirement">' + esc(req) + '</div>';
+
+          // Specialist badges for tier 3
+          if (meta.level === 3 && creds.length > 1) {
+            html += '  <div class="specialist-badges">';
+            creds.forEach(function(sc) {
+              var scEarned = hasCredential(sc.id);
+              html += '<div class="specialist-badge ' + (scEarned ? 'specialist-badge-earned' : '') + '">';
+              html += '  <span class="specialist-badge-icon ' + (scEarned ? 'specialist-badge-icon-earned' : 'specialist-badge-icon-default') + '">';
+              html += scEarned ? '\u2713' : '\u25CB';
+              html += '  </span>';
+              html += '  <span>' + esc(sc.name) + '</span>';
+              html += '</div>';
+            });
+            html += '  </div>';
+          }
+
+          // Progress bar (authenticated, not yet earned for tier 1/2; for tier 3 show overall)
+          if (state.isAuthenticated && prog && !earned) {
+            html += '  <div class="tier-progress">';
+            html += '    <div class="tier-progress-bar">';
+            html += '      <div class="tier-progress-fill tier-progress-fill-' + meta.accent + '" role="progressbar" aria-valuenow="' + prog.pct + '" aria-valuemin="0" aria-valuemax="100" style="width: ' + prog.pct + '%"></div>';
+            html += '    </div>';
+            html += '    <span class="tier-progress-text">' + prog.completed + ' / ' + prog.total + ' requirements met</span>';
+            html += '  </div>';
+          }
+
+          // Sharing panel for earned credentials
+          if (earned) {
+            html += buildSharePanel(creds, meta.level);
+          }
+
+          html += '</div>';
+        });
+
+        grid.innerHTML = html;
+      }
+
+      function renderLearningPath() {
+        var container = document.getElementById('learning-container');
+        if (!state.tracks.length) {
+          container.innerHTML = '<div class="empty-state">No certification modules available yet.</div>';
+          return;
+        }
+
+        var html = '';
+
+        // 1. Foundations (A-track modules)
+        var foundationModules = getModulesByPrefix('A');
+        if (foundationModules.length > 0) {
+          html += '<div class="module-group">';
+          html += '  <div class="section-label">Basics (free)</div>';
+          html += '  <div class="module-list">';
+          foundationModules.forEach(function(mod) {
+            html += renderModule(mod);
+          });
+          html += '  </div>';
+          html += '</div>';
+        }
+
+        // 2. Specialization tracks (tabbed: B, C, D)
+        var specTracks = ['B', 'C', 'D'];
+        var hasSpecModules = specTracks.some(function(prefix) {
+          return getModulesByPrefix(prefix).length > 0;
+        });
+
+        if (hasSpecModules) {
+          html += '<div class="module-group">';
+          html += '  <div class="section-label">Specialization tracks</div>';
+          html += '  <div class="tabs" role="tablist">';
+          specTracks.forEach(function(prefix, i) {
+            var info = SPEC_TRACKS[prefix];
+            var active = i === 0 ? ' tab-active' : '';
+            var selected = i === 0 ? 'true' : 'false';
+            html += '    <button class="tab' + active + '" role="tab" id="tab-spec-' + prefix + '" aria-selected="' + selected + '" aria-controls="panel-spec-' + prefix + '" data-tab="spec-' + prefix + '" onclick="switchTab(this, \'spec\')">' + info.label + '</button>';
+          });
+          html += '  </div>';
+
+          specTracks.forEach(function(prefix, i) {
+            var modules = getModulesByPrefix(prefix);
+            var active = i === 0 ? ' tab-panel-active' : '';
+            html += '  <div class="tab-panel' + active + '" id="panel-spec-' + prefix + '" role="tabpanel" aria-labelledby="tab-spec-' + prefix + '" data-panel="spec-' + prefix + '">';
+            if (modules.length > 0) {
+              html += '    <div class="module-list">';
+              modules.forEach(function(mod) {
+                html += renderModule(mod);
+              });
+              html += '    </div>';
+            } else {
+              html += '    <div class="empty-state">Modules coming soon.</div>';
+            }
+            html += '  </div>';
+          });
+
+          html += '</div>';
+        }
+
+        // 3. Specialist deep dives (S-track)
+        var capstoneModules = getModulesByPrefix('S');
+        if (capstoneModules.length > 0) {
+          html += '<div class="module-group">';
+          html += '  <div class="section-label">Specialist deep dives</div>';
+          html += '  <div class="capstone-grid">';
+          capstoneModules.forEach(function(mod) {
+            var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);
+            var meta = CAPSTONE_META[mod.id] || {};
+            var isLocked = status === 'locked';
+            var isCompleted = status === 'completed';
+            var canStart = status === 'available' || status === 'in_progress';
+
+            html += '<div class="capstone-card' + (isLocked ? ' capstone-card-locked' : '') + (isCompleted ? ' capstone-card-completed' : '') + '">';
+            html += '  <div class="capstone-header">';
+            html += '    <span class="capstone-id">' + esc(mod.id) + '</span>';
+            html += '    <span class="capstone-status-icon module-status module-status-' + status + '">' + statusIcon(status) + '</span>';
+            html += '  </div>';
+            html += '  <div class="capstone-title">' + esc(meta.title || mod.title) + '</div>';
+            html += '  <div class="capstone-desc">' + esc(meta.desc || mod.title) + '</div>';
+            html += '  <div class="module-meta">';
+            html += '    <span>' + formatDuration(mod.duration_minutes) + '</span>';
+            html += '    <span>' + esc(mod.format) + '</span>';
+            html += '  </div>';
+            html += '  <div class="capstone-action" style="margin-top: var(--space-3);">';
+            if (canStart) {
+              html += '    <button class="btn-start btn-start-primary" onclick="startModule(\'' + mod.id + '\')">';
+              html += status === 'in_progress' ? 'Continue' : 'Start';
+              html += '    </button>';
+            } else if (isCompleted) {
+              html += '    <span class="btn-start btn-start-secondary" style="cursor: default;">Completed</span>';
+            } else if (!state.isAuthenticated) {
+              html += '    <a href="/auth/login?return_to=/certification" class="btn-start btn-start-secondary">Sign in</a>';
+            } else if (!state.isMember) {
+              html += '    <a href="/membership" class="btn-start btn-start-secondary">Join</a>';
+            } else {
+              html += '    <button class="btn-start btn-start-secondary" disabled>Requires Practitioner</button>';
+            }
+            html += '  </div>';
+            html += '</div>';
+          });
+          html += '  </div>';
+          html += '</div>';
+        }
+
+        container.innerHTML = html;
+      }
+
+      function renderModule(mod) {
+        var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);
+        var canStart = status === 'available' || status === 'in_progress';
+        var isLocked = status === 'locked';
+
+        var html = '';
+        html += '<div class="module-item' + (isLocked ? ' module-item-locked' : '') + '">';
+        html += '  <div class="module-status module-status-' + status + '">' + statusIcon(status) + '</div>';
+        html += '  <div class="module-info">';
+        html += '    <div class="module-title">' + esc(mod.id) + ': ' + esc(mod.title) + '</div>';
+        html += '    <div class="module-meta">';
+        html += '      <span>' + formatDuration(mod.duration_minutes) + '</span>';
+        html += '      <span>' + esc(mod.format) + '</span>';
+        if (mod.is_free) {
+          html += '      <span class="module-badge-free">Free</span>';
+        }
+        html += '    </div>';
+        html += '  </div>';
+        html += '  <div class="module-action">';
+        if (canStart) {
+          html += '    <button class="btn-start btn-start-primary" onclick="startModule(\'' + mod.id + '\')">';
+          html += status === 'in_progress' ? 'Continue' : 'Start';
+          html += '    </button>';
+        } else if (status === 'completed') {
+          html += '    <span class="btn-start btn-start-secondary" style="cursor: default;">Completed</span>';
+        } else if (status === 'tested_out') {
+          html += '    <span class="btn-start btn-start-secondary" style="cursor: default;">Tested out</span>';
+        } else if (!state.isAuthenticated) {
+          html += '    <a href="/auth/login?return_to=/certification" class="btn-start btn-start-secondary">Sign in</a>';
+        } else if (!state.isMember) {
+          html += '    <a href="/membership" class="btn-start btn-start-secondary">Join</a>';
+        } else {
+          html += '    <button class="btn-start btn-start-secondary" disabled>Locked</button>';
+        }
+        html += '  </div>';
+        html += '</div>';
+        return html;
+      }
+
+      // Earned credentials are now rendered inline in tier cards via buildSharePanel()
+
+      /* =====================================================================
+         Global handlers
+         ===================================================================== */
+      window.switchEmbed = function(credId, type, btn) {
+        var container = document.getElementById('embed-' + credId);
+        if (!container) return;
+        container.querySelectorAll('.embed-code').forEach(function(el) {
+          el.style.display = el.dataset.type === type ? '' : 'none';
+        });
+        container.querySelectorAll('.embed-tab').forEach(function(t) {
+          t.classList.toggle('embed-tab-active', t === btn);
+        });
+      };
+
+      window.copyEmbed = function(credId) {
+        var container = document.getElementById('embed-' + credId);
+        if (!container) return;
+        var visible = container.querySelector('.embed-code[style=""], .embed-code:not([style*="display:none"])');
+        if (!visible) visible = container.querySelector('.embed-code');
+        if (visible) {
+          navigator.clipboard.writeText(visible.textContent).then(function() {
+            var btn = container.querySelector('.embed-copy-btn');
+            if (btn) {
+              btn.textContent = 'Copied!';
+              setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+            }
+          });
+        }
+      };
+
+      window.switchTab = function(btn, group) {
+        // Deactivate siblings
+        var siblings = btn.parentElement.querySelectorAll('.tab');
+        siblings.forEach(function(t) {
+          t.classList.remove('tab-active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('tab-active');
+        btn.setAttribute('aria-selected', 'true');
+
+        // Show correct panel
+        var targetPanel = btn.getAttribute('data-tab');
+        var panels = btn.parentElement.parentElement.querySelectorAll('.tab-panel');
+        panels.forEach(function(p) {
+          if (p.getAttribute('data-panel') === targetPanel) {
+            p.classList.add('tab-panel-active');
+          } else {
+            p.classList.remove('tab-panel-active');
+          }
+        });
+      };
+
+      window.startModule = async function(moduleId) {
+        if (!state.isAuthenticated) {
+          window.location.href = '/auth/login?return_to=/certification';
+          return;
+        }
+
+        try {
+          await fetch('/api/me/certification/modules/' + moduleId + '/start', { method: 'POST' });
+        } catch (e) { /* continue anyway */ }
+
+        window.location.href = '/chat?topic=certification&module=' + moduleId;
+      };
+
+      function esc(str) {
+        var d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

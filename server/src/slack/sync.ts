@@ -52,11 +52,11 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
   };
 
   try {
-    logger.info('Starting Slack user sync');
+    logger.debug('Starting Slack user sync');
 
     // Fetch all users from Slack
     const slackUsers = await getSlackUsers();
-    logger.info({ count: slackUsers.length }, 'Fetched users from Slack');
+    logger.debug({ count: slackUsers.length }, 'Fetched users from Slack');
 
     // Get existing mappings to track new vs updated
     const existingBefore = new Set<string>();
@@ -102,7 +102,11 @@ export async function syncSlackUsers(): Promise<SyncSlackUsersResult> {
     // - user.created webhook (website user signs up)
     // - organization_membership.created webhook (user joins org)
     // For historical users, use POST /api/admin/slack/auto-link-suggested
-    logger.info(result, 'Slack user sync completed');
+    if (result.new_users > 0) {
+      logger.info(result, 'Slack user sync completed');
+    } else {
+      logger.debug(result, 'Slack user sync completed');
+    }
     return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

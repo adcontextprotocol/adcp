@@ -204,6 +204,7 @@ export function registerAllJobs(): void {
     interval: { value: 1, unit: 'hours' },
     initialDelay: { value: 10, unit: 'seconds' },
     runner: runEngagementScoringJob,
+    shouldLogResult: (r) => r.usersUpdated > 0 || r.orgsUpdated > 0,
   });
 
   // Goal follow-up - sends follow-up messages during business hours
@@ -355,20 +356,24 @@ export function registerAllJobs(): void {
           const alreadySent = await notificationDb.exists(reg.workos_user_id, 'event_reminder', event.id);
           if (alreadySent) continue;
 
-          await notifyUser({
-            recipientUserId: reg.workos_user_id,
-            type: 'event_reminder',
-            referenceId: event.id,
-            referenceType: 'event',
-            title: `Reminder: ${event.title} is tomorrow`,
-            url: `/events/${event.slug}`,
-          }).catch(err => logger.error({ err }, 'Failed to send event reminder'));
-          remindersSent++;
+          try {
+            await notifyUser({
+              recipientUserId: reg.workos_user_id,
+              type: 'event_reminder',
+              referenceId: event.id,
+              referenceType: 'event',
+              title: `Reminder: ${event.title} is tomorrow`,
+              url: `/events/${event.slug}`,
+            });
+            remindersSent++;
+          } catch (err) {
+            logger.error({ err }, 'Failed to send event reminder');
+          }
         }
       }
       return { eventsChecked: events.length, remindersSent };
     },
-    shouldLogResult: (r) => r.eventsChecked > 0,
+    shouldLogResult: (r) => r.remindersSent > 0,
   });
 }
 

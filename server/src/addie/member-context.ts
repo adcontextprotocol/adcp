@@ -15,6 +15,7 @@ import { JoinRequestDatabase } from '../db/join-request-db.js';
 import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getThreadService } from './thread-service.js';
 import { workos } from '../auth/workos-client.js';
+import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { getPool, query } from '../db/client.js';
 import { resolveSlackUserDisplayName } from '../slack/client.js';
@@ -655,6 +656,21 @@ export async function getWebMemberContext(workosUserId: string): Promise<MemberC
     slack_linked: false,
   };
 
+  // Dev mode: build context from dev user config instead of calling WorkOS API
+  if (isDevModeEnabled() && workosUserId.startsWith('user_dev_')) {
+    const devUser = Object.values(DEV_USERS).find(u => u.id === workosUserId);
+    if (devUser) {
+      context.workos_user = {
+        workos_user_id: devUser.id,
+        email: devUser.email,
+        first_name: devUser.firstName,
+        last_name: devUser.lastName,
+      };
+      context.is_member = devUser.isMember;
+      return context;
+    }
+  }
+
   try {
     // Step 1: Get WorkOS user info
     let workosUser;
@@ -970,7 +986,8 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       lines.push('**Status**: Anonymous user (not signed in)');
       lines.push('');
       lines.push('This user is browsing the web chat without signing in.');
-      lines.push('They do not have access to: member directory search (search_members), profile management, working group operations, or introduction requests. If they need these, suggest signing in at https://agenticadvertising.org. They CAN use: list_members (public directory), search_docs, search_repos, and other knowledge tools.');
+      lines.push('You have access to directory tools (list_members, get_member, list_agents, get_agent, validate_agent, lookup_domain, list_publishers) to answer questions about members, agents, and publishers.');
+      lines.push('You do NOT have documentation search or protocol research tools. For questions about AdCP protocol details, schemas, or technical documentation, suggest the user sign in for free at https://agenticadvertising.org for a better experience.');
       lines.push('');
       return lines.join('\n');
     }

@@ -2436,6 +2436,7 @@
             <button class="suggested-prompt" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
             <button class="suggested-prompt" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
             <button class="suggested-prompt" data-prompt="How is agentic advertising different from programmatic, and why is it better for sustainability?">AdCP vs programmatic</button>
+            <button class="suggested-prompt" data-prompt="I'd like to learn about AdCP certification. What modules are available?">Get certified</button>
           </div>
         </div>
       </div>
@@ -3041,11 +3042,13 @@
 
           // Render messages and track last assistant message
           lastAssistantMessageId = null;
+          lastAssistantContent = '';
           clearSessionFeedbackTimer();
           data.messages.forEach(msg => {
             addMessage(msg.content, msg.role, msg.message_id);
             if (msg.role === 'assistant' && msg.message_id) {
               lastAssistantMessageId = msg.message_id;
+              lastAssistantContent = msg.content || '';
             }
           });
 
@@ -3606,6 +3609,7 @@
       // === Session-level feedback ===
       let sessionFeedbackTimer = null;
       let lastAssistantMessageId = null;
+      let lastAssistantContent = '';
       const sessionFeedbackShown = new Set(); // Track per conversation
 
       function scheduleSessionFeedback() {
@@ -3613,13 +3617,16 @@
         if (!conversationId || sessionFeedbackShown.has(conversationId)) return;
         if (!lastAssistantMessageId) return;
 
+        // Don't prompt when Addie asked a question — the user is expected to reply
+        if (lastAssistantContent.trimEnd().endsWith('?')) return;
+
         // Count assistant messages in current view
         const assistantMessages = messagesContainer.querySelectorAll('.message--assistant');
         if (assistantMessages.length < 3) return;
 
         sessionFeedbackTimer = setTimeout(() => {
           showSessionFeedback();
-        }, 45000); // 45 seconds of idle
+        }, 180000); // 3 minutes of idle
       }
 
       function clearSessionFeedbackTimer() {
@@ -4088,6 +4095,7 @@
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
           if (messageId) lastAssistantMessageId = messageId;
+          lastAssistantContent = fullContent;
 
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
@@ -4280,9 +4288,22 @@
       }
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
+      // Also handles certification deep links: ?topic=certification&module=A1
       function checkQueryPrompt() {
         const params = new URLSearchParams(window.location.search);
-        const prompt = params.get('prompt');
+        let prompt = params.get('prompt');
+
+        // Synthesize prompt from certification deep link params
+        if (!prompt && params.get('topic') === 'certification') {
+          const moduleId = params.get('module');
+          const action = params.get('action');
+          if (action === 'assess') {
+            prompt = 'I\'d like to assess my AdCP knowledge level. Run a placement assessment to figure out which certification modules I can skip and where I should focus.';
+          } else if (moduleId) {
+            prompt = `Start module ${moduleId}`;
+          }
+        }
+
         if (prompt && prompt.trim()) {
           // Wait for Addie to be ready before sending
           const waitForReady = setInterval(() => {
