@@ -28,10 +28,6 @@
               "agent"
             ],
             "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
-          },
-          "sandbox": {
-            "type": "boolean",
-            "description": "When true, provision this as a sandbox account. No real platform calls or billing. The sandbox flag is part of the natural key — use brand + operator + sandbox: true in subsequent account references."
           }
         },
         "required": [

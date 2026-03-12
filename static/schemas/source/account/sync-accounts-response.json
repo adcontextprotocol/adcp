@@ -129,10 +129,6 @@
                 "items": {
                   "type": "string"
                 }
-              },
-              "sandbox": {
-                "type": "boolean",
-                "description": "Whether this is a sandbox account, echoed from the request."
               }
             },
             "required": [
