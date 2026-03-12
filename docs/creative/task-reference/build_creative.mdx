@@ -19,6 +19,9 @@ For information about format IDs and how to reference formats, see [Creative For
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
+| `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
+| `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. |
+| `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 
 **Important**: Required input assets should be included in the `creative_manifest.assets` object, not as separate task parameters. The format definition specifies what assets it requires. Catalog context for dynamic creatives should be provided via the `creative_manifest.assets` map.
 
@@ -163,6 +166,8 @@ The response contains the transformed or generated creative manifest:
 - **format_id**: The target format (matches `target_format_id` from request)
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
 - **expires_at**: Optional ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs. Not present when the manifest contains no expiring URLs (e.g., pure text generation or assembly-only transforms).
+- **preview**: Optional. Present when `include_preview` was true in the request and the agent supports inline preview. Contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`) minus the `response_type` discriminator, so clients can reuse the same preview rendering logic.
+- **preview_error**: Optional. When `include_preview` was true but preview generation failed (e.g., rendering service unavailable), explains why. Distinguishes "agent doesn't support inline preview" (field absent, no error) from "preview generation failed" (field present with reason).
 
 ### Compliance Errors
 
@@ -197,8 +202,28 @@ Creative agents MUST validate that all `required_disclosures` can be satisfied i
 2. **Preview**: Use `preview_creative` to see how it renders (see [preview_creative](/docs/creative/task-reference/preview_creative))
 3. **Sync**: Use `sync_creatives` to traffic the finalized creative
 
+You can combine steps 1 and 2 by setting `include_preview: true` on the build request. If the agent supports it, the response includes a `preview` object alongside the manifest — same content fields as `preview_creative`, no extra round trip. If the agent doesn't support inline preview, the field is simply absent and you fall back to a separate `preview_creative` call. Always check for the presence of `preview` rather than assuming it will be there when requested.
+
 ```json
-// Step 1: Build (generative format)
+// Build + preview in one call
+{
+  "message": "Create a display banner for our winter sale",
+  "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+  "brand": { "domain": "mybrand.com" },
+  "include_preview": true,
+  "creative_manifest": {
+    "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+    "assets": {
+      "product_catalog": {
+        "type": "product",
+        "catalog_id": "winter-products"
+      }
+    }
+  }
+}
+
+// Or: Build first, preview separately
+// Step 1: Build
 {
   "message": "Create a display banner for our winter sale",
   "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
@@ -617,7 +642,111 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
 
 The brief and product catalog travel together in the manifest's `assets` map. The format declares both a `brief` and `catalog` asset type — the buying agent discovers this via `list_creative_formats` and syncs the required catalog before submitting.
 
-### Example 7: Draft Generation with Item Limit
+### Example 7: Build with inline preview
+
+Build a creative and get preview renders in the same response:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Create a banner for our spring campaign",
+  "target_format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250_generative"
+  },
+  "brand": {
+    "domain": "novabrands.com"
+  },
+  "include_preview": true,
+  "preview_inputs": [
+    { "name": "Default" },
+    { "name": "Dark mode", "macros": { "COLOR_SCHEME": "dark" } }
+  ],
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_generative"
+    },
+    "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "items": [
+          {
+            "offering_id": "spring-promo",
+            "name": "Spring Collection",
+            "description": "30% off new arrivals"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+**Response** (when the agent supports inline preview):
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    "assets": {
+      "offering_catalog": {
+        "type": "offering",
+        "catalog_id": "spring-promo"
+      },
+      "banner_image": {
+        "asset_type": "image",
+        "url": "https://cdn.creative-agent.com/generated/spring_abc123.png",
+        "width": 300,
+        "height": 250
+      },
+      "clickthrough_url": {
+        "asset_type": "url",
+        "url": "https://novabrands.com/spring"
+      }
+    }
+  },
+  "preview": {
+    "previews": [
+      {
+        "preview_id": "prev_default",
+        "renders": [
+          {
+            "render_id": "r1",
+            "output_format": "url",
+            "preview_url": "https://preview.creative-agent.com/abc123/default",
+            "role": "primary",
+            "dimensions": { "width": 300, "height": 250 }
+          }
+        ],
+        "input": { "name": "Default" }
+      },
+      {
+        "preview_id": "prev_dark",
+        "renders": [
+          {
+            "render_id": "r2",
+            "output_format": "url",
+            "preview_url": "https://preview.creative-agent.com/abc123/dark",
+            "role": "primary",
+            "dimensions": { "width": 300, "height": 250 }
+          }
+        ],
+        "input": { "name": "Dark mode", "macros": { "COLOR_SCHEME": "dark" } }
+      }
+    ],
+    "expires_at": "2026-03-13T06:00:00Z"
+  },
+  "expires_at": "2026-03-13T06:00:00Z"
+}
+```
+
+The `preview` object contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`). If the agent does not support inline preview, this field is absent — the buyer agent falls back to a separate `preview_creative` call. If preview generation fails, the response includes `preview_error` with a reason instead.
+
+### Example 8: Draft generation with item limit
 
 Generate a draft-quality creative from a large catalog, capping the number of items:
 
@@ -728,11 +857,13 @@ Both are optional. `brand` provides stable brand identity (colors, logos, tone) 
 - **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, catalog assets (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
 - **Transformation**: Provide complete `creative_manifest` with all existing assets. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
 
-### Integration with Other Tasks
+### Integration with other tasks
 
-1. **build_creative** → Generates manifest
-2. **preview_creative** → Renders the manifest (see [preview_creative](/docs/creative/task-reference/preview_creative))
+1. **build_creative** → Generates manifest (optionally with inline preview via `include_preview`)
+2. **preview_creative** → Renders the manifest separately (see [preview_creative](/docs/creative/task-reference/preview_creative))
 3. **sync_creatives** → Traffics the finalized manifest
+
+Use `include_preview: true` to combine build and preview into one call. If the agent doesn't support it, the response simply omits the `preview` field — fall back to a separate `preview_creative` call. Either way, the preview content fields (`previews`, `interactive_url`, `expires_at`) are the same.
 
 This separation allows you to:
 - Build once, preview multiple times with different contexts
