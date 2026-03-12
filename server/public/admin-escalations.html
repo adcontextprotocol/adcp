@@ -354,6 +354,8 @@
                 <span><span class="badge category-badge">${categoryLabels[e.category] || e.category}</span></span>
                 <span>${createdAt}</span>
                 ${e.user_display_name ? `<span>From: ${escapeHtml(e.user_display_name)}</span>` : ''}
+                ${e.user_email ? `<span>Email: ${escapeHtml(e.user_email)}</span>` : ''}
+                ${e.user_slack_handle ? `<span>Slack: ${escapeHtml(e.user_slack_handle)}</span>` : ''}
               </div>
             </div>
             ${!isResolved ? `
