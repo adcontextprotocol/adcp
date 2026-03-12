@@ -435,7 +435,6 @@ The buyer registers an `governance_agent` when syncing accounts with the seller.
             "schemes": ["Bearer"],
             "credentials": "gov_token_acme_pinnacle_2026_xyz..."
           },
-          "mode": "enforce"
         }
       }
     ]
@@ -447,19 +446,19 @@ The seller stores this endpoint and presents the credentials when calling `check
 
 ### Governance modes
 
-The `governance_agent` object accepts an optional `mode` field that controls how the governance agent treats findings:
+The governance agent's operating mode is configured by the buyer's policy team, not exposed to sellers via `sync_accounts`. The seller calls `check_governance` and acts on the response status -- it does not need to know whether the governance agent is in audit, advisory, or enforce mode. This avoids requiring account re-syncs when the mode changes and prevents sellers from adjusting behavior based on mode.
 
 | Mode | Behavior | Use case |
 |------|----------|----------|
 | `audit` | Log all checks. Never block -- always return `approved`, with findings attached for review. | Initial rollout. See what governance would flag without disrupting live campaigns. |
-| `advisory` | Return findings with real statuses (`denied`, `conditions`, `escalated`), but the seller treats all responses as non-blocking. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
+| `advisory` | Return findings with real statuses (`denied`, `conditions`, `escalated`), but do not block execution. | Post-hoc human review. The governance agent expresses opinions; humans act on them. |
 | `enforce` | Block on `denied` or `escalated`. Require resolution before proceeding. | Production governance. The default. |
 
-Default is `enforce` for backward compatibility. Organizations can start in `audit` mode to build confidence in the governance agent's calibration before enabling enforcement. The mode can be changed per-account by re-syncing with `sync_accounts`.
+Default is `enforce`. Organizations can start in `audit` mode to build confidence in the governance agent's calibration before enabling enforcement.
 
 In `audit` mode, the governance agent still performs full evaluation and returns findings -- the only difference is that the status is always `approved`. This produces a complete audit trail that the organization can review to assess false positive rates and calibrate policies before going live.
 
-In `advisory` mode, the governance agent returns the real status it would have returned under enforcement. The check response includes a `mode` field so sellers and auditors can distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
+In `advisory` mode, the governance agent returns the real status it would have returned under enforcement. The check response includes a `mode` field so auditors can distinguish "denied in advisory mode (action proceeded)" from "denied in enforce mode (action blocked)."
 
 In all modes, delegation violations, credential mismatches, and other authorization checks are logged as findings. In `audit` and `advisory` modes, these findings do not block the action -- they are recorded for review. Only in `enforce` mode are authorization violations blocking.
 
