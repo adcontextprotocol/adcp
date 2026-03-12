@@ -110,6 +110,16 @@
             "minItems": 1,
             "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts buys to these specific regions rather than the full country. Use for campaigns limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
           },
+          "policy_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
+          },
+          "custom_policies": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Natural language policy statements specific to this campaign (e.g., 'No advertising adjacent to competitor content'). Applied regardless of geography."
+          },
           "approved_sellers": {
             "type": ["array", "null"],
             "items": { "type": "string", "format": "uri" },

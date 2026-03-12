@@ -173,21 +173,17 @@ This model follows the pattern established by [IEEE 7012](https://standards.ieee
 
 ## Policy resolution
 
-When a plan is synced, the governance agent resolves applicable policies through the brand reference:
+Policies are declared directly on the plan via `policy_ids` and `custom_policies`. When a plan is synced, the governance agent resolves the active policy set:
 
-1. Resolve the brand from `brand.domain` via the [Brand Protocol](/docs/brand-protocol/index)
-2. Retrieve the brand's compliance configuration
-3. Load referenced registry policies by ID, plus any vertical-specific registry policies matched by the brand's `verticals` declaration
-4. Intersect with the plan's `countries` and `regions` -- only policies applicable to the plan markets are active
-5. Include all custom brand policies (these apply regardless of geography)
+1. Load registry policies referenced by `policy_ids`
+2. Intersect with the plan's `countries` and `regions` -- only policies applicable to the plan's markets are active
+3. Include all `custom_policies` (these apply regardless of geography)
 
 The plan's `countries` and `regions` fields also serve as **geo enforcement**: the governance agent MUST reject media buys targeting markets outside the plan's allowed geography. A plan with `regions: ["US-MA"]` rejects buys not explicitly targeting Massachusetts, even if they are otherwise compliant. These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy`.
 
 The resolved policy set is what the governance agent evaluates during [`check_governance`](/docs/governance/campaign/tasks/check_governance). For the `brand_policy` and `regulatory_compliance` categories, the governance agent validates against this resolved set.
 
-If the brand has no compliance configuration, the governance agent operates with an empty policy set for the `brand_policy` and `regulatory_compliance` categories. Other categories (`budget_authority`, `strategic_alignment`, etc.) still apply based on the plan's parameters.
-
-If the brand's compliance configuration changes (policies added or removed), existing plans pick up the changes on the next validation. The governance agent SHOULD re-resolve policies per request rather than caching indefinitely.
+If the plan has no `policy_ids` or `custom_policies`, the governance agent operates with an empty policy set for policy-based categories. Other categories (`budget_authority`, `strategic_alignment`, etc.) still apply based on the plan's parameters.
 
 ## State tracking
 

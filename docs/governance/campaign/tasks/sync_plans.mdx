@@ -5,7 +5,7 @@ title: sync_plans
 
 # sync_plans
 
-Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets -- and serves as the source of truth for all validation. Compliance policies are resolved from the brand's configuration, not carried in the plan.
+Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, authorized markets, and compliance policies -- and serves as the source of truth for all validation.
 
 ## Request
 
@@ -42,6 +42,10 @@ Push campaign plans to the governance agent. A plan defines the authorized param
           "end": "2026-06-15T00:00:00Z"
         },
         "countries": ["US"],
+        "policy_ids": ["us_coppa", "alcohol_advertising"],
+        "custom_policies": [
+          "No advertising adjacent to competitor content"
+        ],
         "approved_sellers": null,
         "ext": {}
       }
