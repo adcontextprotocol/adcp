@@ -658,15 +658,19 @@ async function buildRequestContext(
     }
 
     // Get insight goals to naturally work into conversation
+    // Skip in public channels — goals like enrollment drive unwanted pitching
+    const isPublicChannel = threadContext?.viewing_channel_is_private === false;
     const isMapped = !!memberContext?.is_mapped;
     let insightGoalsText = '';
-    try {
-      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
-      if (goalsPrompt) {
-        insightGoalsText = goalsPrompt;
+    if (!isPublicChannel) {
+      try {
+        const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+        if (goalsPrompt) {
+          insightGoalsText = goalsPrompt;
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
       }
-    } catch (error) {
-      logger.warn({ error }, 'Addie Bolt: Failed to get insight goals for prompt');
     }
 
     // Add certification module state so Addie remembers active modules
@@ -712,12 +716,18 @@ async function createUserScopedTools(
   const allHandlers = new Map(memberHandlers);
 
   // Add billing tools for all users (membership signup assistance)
-  const billingHandlers = createBillingToolHandlers(memberContext);
-  allTools.push(...BILLING_TOOLS);
-  for (const [name, handler] of billingHandlers) {
-    allHandlers.set(name, handler);
+  // Skip in public channels — billing tools enable enrollment pitching
+  const isPublicChannel = threadContext?.viewing_channel_is_private === false;
+  if (!isPublicChannel) {
+    const billingHandlers = createBillingToolHandlers(memberContext);
+    allTools.push(...BILLING_TOOLS);
+    for (const [name, handler] of billingHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Billing tools enabled');
+  } else {
+    logger.debug('Addie Bolt: Billing tools skipped (public channel)');
   }
-  logger.debug('Addie Bolt: Billing tools enabled');
 
   // Add escalation tools for all users
   const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
@@ -862,10 +872,11 @@ async function createUserScopedTools(
 function filterToolsBySet(
   userTools: RequestTools,
   selectedSets: string[],
-  isAAOAdmin: boolean
+  isAAOAdmin: boolean,
+  isPublicChannel: boolean = false
 ): { filteredTools: RequestTools; unavailableHint: string } {
   // Get all tool names that should be available based on selected sets
-  const allowedToolNames = new Set(getToolsForSets(selectedSets, isAAOAdmin));
+  const allowedToolNames = new Set(getToolsForSets(selectedSets, isAAOAdmin, isPublicChannel));
 
   // Filter tools to only those allowed
   const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
@@ -3105,7 +3116,7 @@ async function handleChannelMessage({
 
     // Get all user-scoped tools then filter by selected tool sets
     const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
-    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin);
+    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, plan.tool_sets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
 
     // Build SI context from retrieved agents
     const siContext = siRetrievalResult?.agents.length
