@@ -180,7 +180,6 @@ export class CrawlerService {
             // Invalid URL in authoritative_location — skip
           }
         } else if (result.variant === 'house_portfolio' ||
-                   result.variant === 'brand_agent' ||
                    result.variant === 'house_redirect') {
           const brandName = this.extractBrandName(result.raw_data, domain);
           await this.brandDb.upsertDiscoveredBrand({

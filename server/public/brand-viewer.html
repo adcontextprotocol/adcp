@@ -1283,23 +1283,6 @@
 
         const brands = data.brands || [];
         if (brands.length === 0) {
-          // Brand agent or simple format — show what we have
-          if (data.brand_agent) {
-            document.getElementById('brand-info-section').classList.remove('hidden');
-            document.getElementById('brand-info-content').innerHTML = `
-              <div class="card">
-                <div class="info-grid">
-                  <div class="info-item">
-                    <div class="info-label">Brand agent URL</div>
-                    <div class="info-value">${isSafeUrl(data.brand_agent.url) ? `<a href="${escapeAttr(data.brand_agent.url)}" target="_blank">${escapeHtml(data.brand_agent.url)}</a>` : escapeHtml(data.brand_agent.url)}</div>
-                  </div>
-                  <div class="info-item">
-                    <div class="info-label">Agent ID</div>
-                    <div class="info-value">${escapeHtml(data.brand_agent.id)}</div>
-                  </div>
-                </div>
-              </div>`;
-          }
           if (data.contact) renderContact(data.contact);
           return;
         }

@@ -3,7 +3,7 @@ title: Brand Protocol
 sidebarTitle: Overview
 ---
 
-The Brand Protocol enables brands to claim their identity and establish a verifiable source of truth through a standardized discovery mechanism. By hosting a `brand.json` file at a well-known location, brands can declare their identity, brand hierarchy, and optionally designate official brand agents.
+The Brand Protocol enables brands to claim their identity and establish a verifiable source of truth through a standardized discovery mechanism. By hosting a `brand.json` file at a well-known location, brands can declare their identity, brand hierarchy, and digital properties.
 
 ## Purpose
 
@@ -19,31 +19,28 @@ This parallel structure makes brands first-class citizens in AdCP.
 
 ## How it works
 
-Brands host a `brand.json` file at `/.well-known/brand.json` on their domain. The file can take one of four forms:
+Brands host a `brand.json` file at `/.well-known/brand.json` on their domain. The file can take one of three forms:
 
-1. **Brand Agent**: Points to an MCP agent that provides brand information
-2. **House Portfolio**: Contains full brand hierarchy with all brands and properties
-3. **House Redirect**: Points to a house domain that contains the portfolio
-4. **Authoritative Location**: Points to a hosted brand.json URL
+1. **House Portfolio**: Contains full brand hierarchy with all brands and properties
+2. **House Redirect**: Points to a house domain that contains the portfolio
+3. **Authoritative Location**: Points to a hosted brand.json URL
 
 ```mermaid
 sequenceDiagram
     participant Agent as Buyer Agent
     participant Domain as Brand Domain
     participant House as House Domain
-    participant BrandAgent as Brand Agent (MCP)
 
     Agent->>Domain: GET /.well-known/brand.json
     alt House Redirect
         Domain-->>Agent: { "house": "nikeinc.com" }
         Agent->>House: GET /.well-known/brand.json
         House-->>Agent: Full portfolio (house + brands)
-    else Brand Agent
-        Domain-->>Agent: { "brand_agent": { "url": "..." } }
-        Agent->>BrandAgent: MCP: get brand identity
-        BrandAgent-->>Agent: Brand identity data
     else House Portfolio
         Domain-->>Agent: Full portfolio (house + brands)
+    else Authoritative Location
+        Domain-->>Agent: { "authoritative_location": "https://..." }
+        Agent->>Agent: Fetch from authoritative URL
     end
 ```
 
@@ -95,23 +92,6 @@ A house domain with multiple brands:
 }
 ```
 
-## Example: brand agent
-
-A brand with an MCP agent that provides brand information:
-
-```json
-{
-  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
-  "version": "1.0",
-  "brand_agent": {
-    "url": "https://agent.acme.com/mcp",
-    "id": "acme_brand_agent"
-  }
-}
-```
-
-The agent provides brand identity data (logos, colors, tone) on behalf of the brand.
-
 ## Example: house redirect
 
 A brand domain pointing to its house:
@@ -156,7 +136,7 @@ Regardless of source, the result is a brand identity that can be referenced by a
 When a creative agent needs brand assets:
 
 1. Resolve domain to canonical brand via brand.json
-2. Get brand identity data (from brand.json, agent, or registry)
+2. Get brand identity data (from brand.json or registry)
 3. Generate on-brand creatives
 
 ### Brand verification
@@ -211,18 +191,6 @@ Brand information changes infrequently (logo updates, guideline refreshes). Reco
 
 Agents should respect HTTP caching headers when fetching brand.json files.
 
-## Future considerations
-
-### Digital asset management (DAM)
-
-For brands requiring fine-grained control over asset usage, the `brand_agent` variant provides a natural integration point for DAM systems. Agents can:
-- Enforce access control per asset
-- Track usage and licensing
-- Provide assets with usage terms
-- Log access for compliance
-
-This is optional—brands publishing static brand.json files grant implied permission for compliant creative use. DAM integration is for enterprises with complex licensing requirements.
-
 ## MCP tools
 
 The Brand Protocol provides MCP tools for programmatic access:
@@ -231,7 +199,6 @@ The Brand Protocol provides MCP tools for programmatic access:
 |------|-------------|
 | `resolve_brand` | Resolve domain to canonical brand identity |
 | `validate_brand_json` | Validate a domain's brand.json |
-| `validate_brand_agent` | Test brand agent reachability |
 
 ## Learn more
 

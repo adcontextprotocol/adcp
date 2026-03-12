@@ -5,7 +5,6 @@ import type {
   BrandProperty,
   BrandDefinition,
   HouseDefinition,
-  BrandAgentConfig,
   ResolvedBrand,
   KellerType,
 } from './types';
@@ -30,7 +29,7 @@ export interface BrandValidationResult {
   url: string;
   status_code?: number;
   raw_data?: unknown;
-  variant?: 'authoritative_location' | 'house_redirect' | 'brand_agent' | 'house_portfolio';
+  variant?: 'authoritative_location' | 'house_redirect' | 'house_portfolio';
 }
 
 // brand.json variant types
@@ -45,25 +44,6 @@ export interface HouseRedirectVariant {
   house: string;  // Domain string
   region?: string;
   note?: string;
-  last_updated?: string;
-}
-
-export interface BrandAgentVariant {
-  $schema?: string;
-  version?: string;
-  brand_agent: BrandAgentConfig;
-  auth?: {
-    required?: boolean;
-    method?: 'api_key' | 'oauth2' | 'bearer_token';
-    token_endpoint?: string;
-    scopes?: string[];
-    instructions_url?: string;
-  };
-  contact?: {
-    name: string;
-    email?: string;
-    domain?: string;
-  };
   last_updated?: string;
 }
 
@@ -85,16 +65,7 @@ export interface HousePortfolioVariant {
   last_updated?: string;
 }
 
-export type BrandJson = AuthoritativeLocationVariant | HouseRedirectVariant | BrandAgentVariant | HousePortfolioVariant;
-
-export interface BrandAgentValidationResult {
-  agent_url: string;
-  valid: boolean;
-  errors: string[];
-  status_code?: number;
-  response_time_ms?: number;
-  agent_data?: unknown;
-}
+export type BrandJson = AuthoritativeLocationVariant | HouseRedirectVariant | HousePortfolioVariant;
 
 export class BrandManager {
   // Cache for successful brand.json lookups (24 hours)
@@ -216,16 +187,13 @@ export class BrandManager {
         case 'house_redirect':
           this.validateHouseRedirectVariant(brandData as HouseRedirectVariant, result);
           break;
-        case 'brand_agent':
-          this.validateBrandAgentVariant(brandData as BrandAgentVariant, result);
-          break;
         case 'house_portfolio':
           this.validateHousePortfolioVariant(brandData as HousePortfolioVariant, result);
           break;
         default:
           result.errors.push({
             field: 'root',
-            message: 'Unable to determine brand.json variant. Must contain one of: authoritative_location, house (string), brand_agent, or house (object) + brands',
+            message: 'Unable to determine brand.json variant. Must contain one of: authoritative_location, house (string), or house (object) + brands',
             severity: 'error',
           });
       }
@@ -278,7 +246,7 @@ export class BrandManager {
    */
   private detectVariant(
     data: unknown
-  ): 'authoritative_location' | 'house_redirect' | 'brand_agent' | 'house_portfolio' | null {
+  ): 'authoritative_location' | 'house_redirect' | 'house_portfolio' | null {
     if (typeof data !== 'object' || data === null) {
       return null;
     }
@@ -288,11 +256,6 @@ export class BrandManager {
     // Check for authoritative_location redirect
     if ('authoritative_location' in obj && typeof obj.authoritative_location === 'string') {
       return 'authoritative_location';
-    }
-
-    // Check for brand_agent
-    if ('brand_agent' in obj && typeof obj.brand_agent === 'object') {
-      return 'brand_agent';
     }
 
     // Check for house - could be string (redirect) or object (portfolio)
@@ -376,67 +339,6 @@ export class BrandManager {
           field: 'region',
           message: 'region must be an ISO 3166-1 alpha-2 country code (e.g., US, GB)',
           severity: 'error',
-        });
-      }
-    }
-  }
-
-  /**
-   * Validate brand_agent variant
-   */
-  private validateBrandAgentVariant(
-    data: BrandAgentVariant,
-    result: BrandValidationResult
-  ): void {
-    if (!data.brand_agent || typeof data.brand_agent !== 'object') {
-      result.errors.push({
-        field: 'brand_agent',
-        message: 'brand_agent object is required',
-        severity: 'error',
-      });
-      return;
-    }
-
-    if (!data.brand_agent.id) {
-      result.errors.push({
-        field: 'brand_agent.id',
-        message: 'brand_agent.id is required',
-        severity: 'error',
-      });
-    }
-
-    if (!data.brand_agent.url) {
-      result.errors.push({
-        field: 'brand_agent.url',
-        message: 'brand_agent.url is required',
-        severity: 'error',
-      });
-    } else {
-      try {
-        const url = new URL(data.brand_agent.url);
-        if (!url.protocol.startsWith('https:')) {
-          result.errors.push({
-            field: 'brand_agent.url',
-            message: 'brand_agent.url must use HTTPS',
-            severity: 'error',
-          });
-        }
-      } catch {
-        result.errors.push({
-          field: 'brand_agent.url',
-          message: 'brand_agent.url must be a valid URL',
-          severity: 'error',
-        });
-      }
-    }
-
-    // Validate auth if present
-    if (data.auth) {
-      if (data.auth.method === 'oauth2' && !data.auth.token_endpoint) {
-        result.warnings.push({
-          field: 'auth.token_endpoint',
-          message: 'token_endpoint is recommended when using oauth2 authentication',
-          suggestion: 'Add token_endpoint for OAuth2 authentication flow',
         });
       }
     }
@@ -671,19 +573,6 @@ export class BrandManager {
           continue;
         }
 
-        case 'brand_agent': {
-          const agentData = data as BrandAgentVariant;
-          const result: ResolvedBrand = {
-            canonical_id: currentDomain,
-            canonical_domain: currentDomain,
-            brand_name: currentDomain, // Agent should provide the name via MCP
-            brand_agent_url: agentData.brand_agent.url,
-            source: 'brand_json',
-          };
-          this.resolutionCache.set(cacheKey, result);
-          return result;
-        }
-
         case 'house_portfolio': {
           const portfolioData = data as HousePortfolioVariant;
           // Find the brand that owns this domain
@@ -832,55 +721,6 @@ export class BrandManager {
   }
 
   /**
-   * Validate that a brand agent is reachable
-   */
-  async validateBrandAgent(agentUrl: string): Promise<BrandAgentValidationResult> {
-    const result: BrandAgentValidationResult = {
-      agent_url: agentUrl,
-      valid: false,
-      errors: [],
-    };
-
-    const startTime = Date.now();
-    const MCP_TIMEOUT_MS = 5000;
-
-    try {
-      const { AdCPClient } = await import('@adcp/client');
-      const multiClient = new AdCPClient([
-        {
-          id: 'brand-agent-check',
-          name: 'Brand Agent Checker',
-          agent_uri: agentUrl,
-          protocol: 'mcp',
-        },
-      ]);
-      const client = multiClient.agent('brand-agent-check');
-
-      const agentInfo = await Promise.race([
-        client.getAgentInfo(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('MCP connection timed out')), MCP_TIMEOUT_MS)
-        ),
-      ]);
-
-      result.response_time_ms = Date.now() - startTime;
-      result.valid = true;
-      result.agent_data = {
-        name: agentInfo.name,
-        protocol: 'mcp',
-        tools: agentInfo.tools?.map((t: { name: string }) => t.name) || [],
-        tools_count: agentInfo.tools?.length || 0,
-      };
-    } catch (error) {
-      result.response_time_ms = Date.now() - startTime;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      result.errors.push(`MCP connection failed: ${message}`);
-    }
-
-    return result;
-  }
-
-  /**
    * Create a house redirect brand.json file
    */
   createHouseRedirect(houseDomain: string, options?: { region?: string; note?: string }): string {
@@ -911,33 +751,6 @@ export class BrandManager {
       authoritative_location: authoritativeUrl,
       last_updated: new Date().toISOString(),
     };
-
-    return JSON.stringify(brandJson, null, 2);
-  }
-
-  /**
-   * Create a brand agent brand.json file
-   */
-  createBrandAgentFile(
-    agentUrl: string,
-    agentId: string,
-    capabilities?: string[],
-    auth?: BrandAgentVariant['auth']
-  ): string {
-    const brandJson: BrandAgentVariant = {
-      $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
-      version: '1.0',
-      brand_agent: {
-        url: agentUrl,
-        id: agentId,
-        capabilities: capabilities || [],
-      },
-      last_updated: new Date().toISOString(),
-    };
-
-    if (auth) {
-      brandJson.auth = auth;
-    }
 
     return JSON.stringify(brandJson, null, 2);
   }

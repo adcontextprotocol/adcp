@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand.json",
   "title": "Brand Discovery",
-  "description": "Brand identity and discovery file. Hosted at /.well-known/brand.json on house domains. Contains the full brand portfolio with identity, creative assets, and digital properties. Brands are identified by house + brand_id (like properties are identified by publisher + property_id). Supports variants: house portfolio (full brand data), brand agent (agent provides brand info via MCP), house redirect (pointer to house domain), or authoritative location redirect.",
+  "description": "Brand identity and discovery file. Hosted at /.well-known/brand.json on house domains. Contains the full brand portfolio with identity, creative assets, and digital properties. Brands are identified by house + brand_id (like properties are identified by publisher + property_id). Supports variants: house portfolio (full brand data), house redirect (pointer to house domain), or authoritative location redirect.",
   "definitions": {
     "domain": {
       "type": "string",
@@ -334,10 +334,6 @@
           },
           "additionalProperties": true
         },
-        "brand_agent": {
-          "$ref": "#/definitions/brand_agent",
-          "description": "Brand agent that provides dynamic brand data via MCP"
-        },
         "contact": {
           "type": "object",
           "description": "Brand-level contact information",
@@ -375,25 +371,6 @@
         }
       },
       "required": ["domain", "name"],
-      "additionalProperties": true
-    },
-    "brand_agent": {
-      "type": "object",
-      "description": "Reference to a brand agent that provides brand data via MCP",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "Brand agent MCP endpoint URL"
-        },
-        "id": {
-          "type": "string",
-          "description": "Agent identifier (useful for logging, multi-tenant DAMs)",
-          "pattern": "^[a-z0-9_]+$"
-        }
-      },
-      "required": ["url", "id"],
       "additionalProperties": true
     },
     "authorized_operator": {
@@ -478,20 +455,6 @@
     },
     {
       "type": "object",
-      "title": "Brand Agent",
-      "description": "Brand with an agent that provides brand info via MCP",
-      "properties": {
-        "$schema": { "type": "string" },
-        "version": { "type": "string" },
-        "brand_agent": { "$ref": "#/definitions/brand_agent" },
-        "contact": { "$ref": "#/definitions/contact" },
-        "last_updated": { "type": "string", "format": "date-time" }
-      },
-      "required": ["brand_agent"],
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
       "title": "House Portfolio",
       "description": "Full house/brand portfolio with hierarchy, creative assets, and properties",
       "properties": {
@@ -538,14 +501,6 @@
       "$schema": "/schemas/brand.json",
       "house": "nikeinc.com",
       "note": "Redirect to house domain for full brand portfolio"
-    },
-    {
-      "$schema": "/schemas/brand.json",
-      "version": "1.0",
-      "brand_agent": {
-        "url": "https://agent.acme.com/mcp",
-        "id": "acme_brand_agent"
-      }
     },
     {
       "$schema": "/schemas/brand.json",
@@ -677,11 +632,7 @@
           "properties": [
             {"type": "website", "identifier": "jordan.com", "primary": true},
             {"type": "website", "identifier": "jumpman23.com"}
-          ],
-          "brand_agent": {
-            "url": "https://dam.nike.com/mcp",
-            "id": "nike_dam"
-          }
+          ]
         },
         {
           "id": "converse",

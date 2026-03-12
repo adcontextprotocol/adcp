@@ -320,7 +320,6 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       house_domain: resolved.house_domain,
       house_name: resolved.house_name,
       keller_type: resolved.keller_type,
-      brand_agent_url: resolved.brand_agent_url,
       has_manifest: resolved.source === 'brand_json',
     }, null, 2);
   });

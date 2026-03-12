@@ -51,8 +51,6 @@ components:
           type: string
         house_name:
           type: string
-        brand_agent_url:
-          type: string
         brand_manifest:
           type: object
           additionalProperties: {}

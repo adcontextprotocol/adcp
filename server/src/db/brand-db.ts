@@ -42,8 +42,6 @@ export interface UpsertDiscoveredBrandInput {
   brand_names?: LocalizedName[];
   keller_type?: KellerType;
   parent_brand?: string;
-  brand_agent_url?: string;
-  brand_agent_capabilities?: string[];
   has_brand_manifest?: boolean;
   brand_manifest?: Record<string, unknown>;
   source_type: 'brand_json' | 'community' | 'enriched';
@@ -215,9 +213,9 @@ export class BrandDatabase {
     const result = await query<DiscoveredBrand>(
       `INSERT INTO discovered_brands (
         domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
-        keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
+        keller_type, parent_brand,
         has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)
       ON CONFLICT (domain) DO UPDATE SET
         brand_id = COALESCE(EXCLUDED.brand_id, discovered_brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
@@ -226,8 +224,6 @@ export class BrandDatabase {
         brand_names = EXCLUDED.brand_names,
         keller_type = EXCLUDED.keller_type,
         parent_brand = EXCLUDED.parent_brand,
-        brand_agent_url = EXCLUDED.brand_agent_url,
-        brand_agent_capabilities = EXCLUDED.brand_agent_capabilities,
         has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, discovered_brands.has_brand_manifest),
         brand_manifest = COALESCE(EXCLUDED.brand_manifest, discovered_brands.brand_manifest),
         source_type = EXCLUDED.source_type,
@@ -243,8 +239,6 @@ export class BrandDatabase {
         input.brand_names ? JSON.stringify(input.brand_names) : '[]',
         input.keller_type || null,
         input.parent_brand || null,
-        input.brand_agent_url || null,
-        input.brand_agent_capabilities || null,
         input.has_brand_manifest != null ? input.has_brand_manifest : null,
         input.brand_manifest ? JSON.stringify(input.brand_manifest) : null,
         input.source_type,
@@ -358,7 +352,6 @@ export class BrandDatabase {
     house_domain?: string;
     keller_type?: string;
     parent_brand?: string;
-    brand_agent_url?: string;
     source: string;
   }>> {
     const limit = options.limit ?? 10;
@@ -372,7 +365,6 @@ export class BrandDatabase {
       house_domain: string | null;
       keller_type: string | null;
       parent_brand: string | null;
-      brand_agent_url: string | null;
       source_type: string;
     }>(
       `SELECT
@@ -382,7 +374,6 @@ export class BrandDatabase {
         house_domain,
         keller_type,
         parent_brand,
-        brand_agent_url,
         source_type
       FROM discovered_brands
       WHERE
@@ -408,7 +399,6 @@ export class BrandDatabase {
       house_domain: row.house_domain ?? undefined,
       keller_type: row.keller_type ?? undefined,
       parent_brand: row.parent_brand ?? undefined,
-      brand_agent_url: row.brand_agent_url ?? undefined,
       source: row.source_type,
     }));
   }
@@ -519,9 +509,9 @@ export class BrandDatabase {
       const insertResult = await client.query<DiscoveredBrand>(
         `INSERT INTO discovered_brands (
           domain, canonical_domain, house_domain, brand_name, brand_names,
-          keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
+          keller_type, parent_brand,
           has_brand_manifest, brand_manifest, source_type, review_status, last_validated, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', NOW(), $13)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', NOW(), $11)
         RETURNING *`,
         [
           input.domain.toLowerCase(),
@@ -531,8 +521,6 @@ export class BrandDatabase {
           input.brand_names ? JSON.stringify(input.brand_names) : '[]',
           input.keller_type || null,
           input.parent_brand || null,
-          input.brand_agent_url || null,
-          input.brand_agent_capabilities || null,
           input.has_brand_manifest ?? false,
           input.brand_manifest ? JSON.stringify(input.brand_manifest) : null,
           input.source_type,
@@ -591,8 +579,6 @@ export class BrandDatabase {
       parent_brand?: string;
       house_domain?: string;
       canonical_domain?: string;
-      brand_agent_url?: string;
-      brand_agent_capabilities?: string[];
       brand_manifest?: Record<string, unknown>;
       has_brand_manifest?: boolean;
       edit_summary: string;
@@ -675,14 +661,6 @@ export class BrandDatabase {
       if (input.canonical_domain !== undefined) {
         updates.push(`canonical_domain = $${paramIndex++}`);
         values.push(input.canonical_domain);
-      }
-      if (input.brand_agent_url !== undefined) {
-        updates.push(`brand_agent_url = $${paramIndex++}`);
-        values.push(input.brand_agent_url);
-      }
-      if (input.brand_agent_capabilities !== undefined) {
-        updates.push(`brand_agent_capabilities = $${paramIndex++}`);
-        values.push(input.brand_agent_capabilities);
       }
       if (input.brand_manifest !== undefined) {
         updates.push(`brand_manifest = $${paramIndex++}`);
@@ -786,10 +764,8 @@ export class BrandDatabase {
           brand_names = $5,
           keller_type = $6,
           parent_brand = $7,
-          brand_agent_url = $8,
-          brand_agent_capabilities = $9,
-          has_brand_manifest = $10,
-          brand_manifest = $11
+          has_brand_manifest = $8,
+          brand_manifest = $9
         WHERE domain = $1
         RETURNING *`,
         [
@@ -800,8 +776,6 @@ export class BrandDatabase {
           snapshot.brand_names ? JSON.stringify(snapshot.brand_names) : '[]',
           snapshot.keller_type || null,
           snapshot.parent_brand || null,
-          snapshot.brand_agent_url || null,
-          snapshot.brand_agent_capabilities || null,
           snapshot.has_brand_manifest ?? false,
           snapshot.brand_manifest ? JSON.stringify(snapshot.brand_manifest) : null,
         ]
