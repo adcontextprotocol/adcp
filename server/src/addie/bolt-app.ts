@@ -707,7 +707,7 @@ async function createUserScopedTools(
   threadId?: string,
   threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
-  const memberHandlers = createMemberToolHandlers(memberContext);
+  const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
 

@@ -35,6 +35,7 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   'get_account_link',    // Check user's linked status
   'capture_learning',    // Save insights from conversations
   'web_search',          // Built-in Claude tool, always available
+  'set_outreach_preference', // Users can always opt out of proactive outreach
 ];
 
 /**
