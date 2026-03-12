@@ -31,7 +31,7 @@
           },
           "sandbox": {
             "type": "boolean",
-            "description": "When true, provision this as a sandbox account. No real platform calls or billing. The sandbox flag is part of the natural key — use brand + operator + sandbox: true in subsequent account references."
+            "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
           }
         },
         "required": [
