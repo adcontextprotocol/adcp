@@ -5,7 +5,7 @@ title: get_plan_audit_logs
 
 # get_plan_audit_logs
 
-Retrieve governance state and audit trail for a plan. Returns budget tracking, validation history, and compliance summary.
+Retrieve governance state and audit trail for a plan, multiple plans, or an entire portfolio. Returns budget tracking, validation history, and compliance summary.
 
 ## Request
 
@@ -13,7 +13,7 @@ Retrieve governance state and audit trail for a plan. Returns budget tracking, v
 {
   "tool": "get_plan_audit_logs",
   "arguments": {
-    "plan_id": "plan_q1_2026_launch",
+    "plan_ids": ["plan_q1_2026_launch"],
     "buyer_campaign_ref": "q1-2026-spring-launch",
     "include_entries": true
   }
@@ -21,6 +21,32 @@ Retrieve governance state and audit trail for a plan. Returns budget tracking, v
 ```
 
 Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the plan.
+
+**Multiple plans** -- retrieve specific plans in one call:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch", "plan_q1_2026_emea"],
+    "include_entries": false
+  }
+}
+```
+
+**Portfolio query** -- retrieve combined audit data for all member plans in one or more portfolios:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "portfolio_plan_ids": ["portfolio_nova_brands_2026"],
+    "include_entries": true
+  }
+}
+```
+
+You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans and portfolios in a single call.
 
 ## Response
 
@@ -83,23 +109,38 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
       "id": "chk_001",
       "type": "check",
       "timestamp": "2026-03-10T10:05:00Z",
+      "caller": "https://orchestrator.pinnacle-media.com/agent",
       "tool": "get_products",
       "status": "approved",
-      "binding": "proposed"
+      "binding": "proposed",
+      "explanation": "Product discovery within budget and channel constraints.",
+      "categories_evaluated": ["budget_authority", "strategic_alignment"],
+      "policies_evaluated": ["us_coppa"]
     },
     {
       "id": "chk_003",
       "type": "check",
       "timestamp": "2026-03-15T11:05:00Z",
+      "caller": "https://ads.seller-example.com/adcp",
       "tool": "create_media_buy",
       "status": "approved",
-      "binding": "committed"
+      "binding": "committed",
+      "explanation": "Media buy within plan budget ($150,000 of $500,000 remaining). Geo targeting matches authorized markets. COPPA compliance verified.",
+      "categories_evaluated": ["budget_authority", "regulatory_compliance", "brand_policy"],
+      "policies_evaluated": ["us_coppa", "alcohol_advertising"],
+      "findings": [
+        {
+          "category_id": "budget_authority",
+          "severity": "info",
+          "explanation": "Budget utilization at 70% after this buy."
+        }
+      ]
     },
     {
       "id": "out_001",
       "type": "outcome",
       "timestamp": "2026-03-15T11:10:00Z",
-      "tool": "create_media_buy",
+      "caller": "https://orchestrator.pinnacle-media.com/agent",
       "outcome": "completed",
       "committed_budget": 150000
     },
@@ -107,6 +148,7 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
       "id": "out_del_001",
       "type": "outcome",
       "timestamp": "2026-03-22T00:00:00Z",
+      "caller": "https://ads.seller-example.com/adcp",
       "outcome": "delivery",
       "media_buy_id": "mb_seller_456",
       "outcome_status": "accepted"
@@ -121,7 +163,8 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `plan_id` | string | Yes | The plan to retrieve. |
+| `plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Plan IDs to retrieve. |
+| `portfolio_plan_ids` | string[] | At least one of `plan_ids` or `portfolio_plan_ids` | Portfolio plan IDs. Expanded to member plans. |
 | `buyer_campaign_ref` | string | No | Filter to a specific campaign. Omit for plan-level aggregate. |
 | `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
 
@@ -170,9 +213,15 @@ Omit `buyer_campaign_ref` to get aggregate state across all campaigns in the pla
 | `entries[].id` | string | Entry identifier. |
 | `entries[].type` | enum | `check` or `outcome`. |
 | `entries[].timestamp` | string | ISO 8601 timestamp. |
+| `entries[].plan_id` | string | Plan this entry belongs to. Present when querying multiple plans or a portfolio. |
+| `entries[].caller` | string | URL of the agent that made the request. Resolved from the credentials used on the governance callback. |
 | `entries[].tool` | string | The AdCP tool (present for `check` entries). |
 | `entries[].status` | enum | Governance check status (present for `check` entries). |
 | `entries[].binding` | enum | `proposed` or `committed` (present for `check` entries). |
+| `entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
+| `entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
+| `entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). |
+| `entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
 | `entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
 | `entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
 | `entries[].media_buy_id` | string | Media buy ID (present for `delivery` outcome entries). |

@@ -2,12 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/get-plan-audit-logs-request.json",
   "title": "Get Plan Audit Logs Request",
-  "description": "Retrieve governance state and audit trail for a plan.",
+  "description": "Retrieve governance state and audit trail for one or more plans.",
   "type": "object",
   "properties": {
-    "plan_id": {
-      "type": "string",
-      "description": "The plan to retrieve."
+    "plan_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Plan IDs to retrieve. For a single plan, pass a one-element array."
+    },
+    "portfolio_plan_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."
     },
     "buyer_campaign_ref": {
       "type": "string",
@@ -19,6 +27,9 @@
       "default": false
     }
   },
-  "required": ["plan_id"],
+  "anyOf": [
+    { "required": ["plan_ids"] },
+    { "required": ["portfolio_plan_ids"] }
+  ],
   "additionalProperties": false
 }

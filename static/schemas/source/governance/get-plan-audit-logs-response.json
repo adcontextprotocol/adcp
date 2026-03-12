@@ -233,6 +233,15 @@
             "format": "date-time",
             "description": "ISO 8601 timestamp."
           },
+          "plan_id": {
+            "type": "string",
+            "description": "Plan this entry belongs to. Present when querying multiple plans or a portfolio."
+          },
+          "caller": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of the agent that made the request. Resolved from the credentials used on the governance callback."
+          },
           "tool": {
             "type": "string",
             "description": "The AdCP tool (present for check entries)."
@@ -246,6 +255,36 @@
             "type": "string",
             "enum": ["proposed", "committed"],
             "description": "Whether the check was proposed or committed (present for check entries)."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable explanation of the governance decision (present for check entries)."
+          },
+          "policies_evaluated": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Registry policy IDs evaluated during this check (present for check entries)."
+          },
+          "categories_evaluated": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Governance categories evaluated (e.g., 'budget_authority', 'regulatory_compliance'). Present for check entries."
+          },
+          "findings": {
+            "type": "array",
+            "description": "Findings from this check or outcome. Same structure as check_governance response findings.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "category_id": { "type": "string" },
+                "policy_id": { "type": "string" },
+                "severity": { "$ref": "/schemas/enums/escalation-severity.json" },
+                "explanation": { "type": "string" },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["category_id", "severity", "explanation"],
+              "additionalProperties": false
+            }
           },
           "outcome": {
             "$ref": "/schemas/enums/outcome-type.json",
