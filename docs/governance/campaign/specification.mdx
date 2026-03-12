@@ -400,18 +400,18 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 
 `planned_delivery` is the seller's interpretation of the request -- the actual delivery parameters they will use. It serves two purposes:
 
-1. **Governance checks** -- When the account has an `governance_agent`, the seller sends `planned_delivery` to the governance agent for verification before confirming the media buy.
+1. **Governance checks** -- When the account has `governance_agents`, the seller sends `planned_delivery` to the governance agent(s) for verification before confirming the media buy.
 2. **Transparency** -- The buyer can compare `planned_delivery` against what they requested to catch discrepancies early, before delivery begins.
 
 ## Governance checks
 
 Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Seller-side governance checks close this gap by giving sellers an independent way to confirm that purchases are approved.
 
-The seller POSTs to the buyer's `governance_agent` URL when media buy events occur. The governance agent maintains all state and correlates requests by `plan_id` + `media_buy_id` -- the seller does not need to track governance history or chain IDs across calls.
+The seller POSTs to the buyer's `governance_agents` URLs when media buy events occur. The governance agent maintains all state and correlates requests by `plan_id` + `media_buy_id` -- the seller does not need to track governance history or chain IDs across calls.
 
 ### Setup
 
-The buyer registers an `governance_agent` when syncing accounts with the seller. The agent includes authentication credentials so the governance agent can verify the seller's identity:
+The buyer registers `governance_agents` when syncing accounts with the seller. Each agent includes authentication credentials so the governance agent can verify the seller's identity:
 
 ```json
 {
@@ -422,20 +422,22 @@ The buyer registers an `governance_agent` when syncing accounts with the seller.
         "brand": { "domain": "acmecorp.com" },
         "operator": "pinnacle-media.com",
         "billing": "operator",
-        "governance_agent": {
-          "url": "https://governance.pinnacle-media.com",
-          "authentication": {
-            "schemes": ["Bearer"],
-            "credentials": "gov_token_acme_pinnacle_2026_xyz..."
+        "governance_agents": [
+          {
+            "url": "https://governance.pinnacle-media.com",
+            "authentication": {
+              "schemes": ["Bearer"],
+              "credentials": "gov_token_acme_pinnacle_2026_xyz..."
+            }
           }
-        }
+        ]
       }
     ]
   }
 }
 ```
 
-The seller stores this endpoint and presents the credentials when calling `check_governance`. The governance agent MUST verify that the Bearer token matches a registered credential for the account associated with the `plan_id`, and MUST reject requests with unrecognized or mismatched credentials.
+The seller stores these endpoints and presents the credentials when calling `check_governance`. The governance agent MUST verify that the Bearer token matches a registered credential for the account associated with the `plan_id`, and MUST reject requests with unrecognized or mismatched credentials.
 
 ### Governance modes
 
@@ -471,7 +473,7 @@ The governance agent maintains all state and correlates requests by `plan_id` + 
 
 ### Purchase phase
 
-When the seller receives a `create_media_buy` request on an account with an `governance_agent`:
+When the seller receives a `create_media_buy` request on an account with `governance_agents`:
 
 1. The seller interprets the request and determines its `planned_delivery`.
 2. The seller calls `check_governance` with `phase: "purchase"`, the `plan_id`, and `planned_delivery`.
@@ -499,7 +501,7 @@ sequenceDiagram
 When the seller receives an `update_media_buy` request:
 
 1. The seller interprets the update and determines the new `planned_delivery`.
-2. The seller POSTs to the `governance_agent` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`.
+2. The seller calls `check_governance` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`.
 3. The governance agent looks up the media buy by `plan_id` + `media_buy_id` and evaluates the changes against the plan.
 4. If `approved`, the seller confirms the update.
 5. If `denied` or `conditions`, the seller follows the same flow as purchase phase.
@@ -525,7 +527,7 @@ The governance agent can apply different logic to modifications than to initial 
 The seller calls `check_governance` with `phase: "delivery"` periodically during active delivery. This creates a direct reporting channel between the seller and the buyer's governance agent.
 
 1. The seller collects delivery metrics for the reporting period.
-2. The seller POSTs to the `governance_agent` with `phase: "delivery"`, the current `planned_delivery`, and `delivery_metrics`.
+2. The seller calls `check_governance` with `phase: "delivery"`, the current `planned_delivery`, and `delivery_metrics`.
 3. If `approved`, the response includes `next_check` -- when the seller should report again.
 4. If `denied`, the seller pauses delivery immediately.
 5. If `conditions`, the seller adjusts delivery (e.g., slow pacing, shift geo targeting) and re-verifies immediately.
@@ -640,15 +642,15 @@ The `next_check` field signals that the governance agent expects delivery report
 
 ### Enforcement
 
-When `governance_agent` is present on the account, the seller MUST call `check_governance` before confirming any media buy. The buyer provided the endpoint specifically so that purchases are independently verified -- skipping it defeats the purpose.
+When `governance_agents` is present on the account, the seller MUST call `check_governance` before confirming any media buy. The buyer provided the endpoints specifically so that purchases are independently verified -- skipping it defeats the purpose.
 
-When `governance_agent` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`check_governance(binding: proposed)` -> execute -> `report_plan_outcome`) still applies, but there is no seller-side verification.
+When `governance_agents` is absent, the seller processes media buy requests normally. The buyer-side governance loop (`check_governance(binding: proposed)` -> execute -> `report_plan_outcome`) still applies, but there is no seller-side verification.
 
-Sellers MUST NOT require governance checks as a prerequisite for all accounts. A seller that refuses to process media buys from accounts without an `governance_agent` would break interoperability with buyers who do not use Campaign Governance.
+Sellers MUST NOT require governance checks as a prerequisite for all accounts. A seller that refuses to process media buys from accounts without `governance_agents` would break interoperability with buyers who do not use Campaign Governance.
 
 The `delivery` phase is optional even when `purchase` phase governance is used. A seller MAY support purchase approval without ongoing delivery reporting. The governance agent indicates whether it expects delivery reports through the presence of `next_check` in the purchase response.
 
-If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with a registered `governance_agent`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
+If the governance agent is unreachable (timeout, network error), the seller MUST NOT proceed with the media buy. Governance checks are a prerequisite for confirming purchases on accounts with registered `governance_agents`. The seller SHOULD retry the check after a brief delay and reject the media buy with a `GOVERNANCE_UNAVAILABLE` error if the agent remains unreachable.
 
 When the orchestrator receives `GOVERNANCE_UNAVAILABLE` from a seller, it SHOULD retry the `create_media_buy` after a delay. If the governance agent remains unavailable, the orchestrator SHOULD escalate to a human rather than attempting alternative sellers -- the governance outage affects all sellers on the same account. A prior `proposed` approval from the orchestrator does not substitute for the seller's `committed` check; the seller validates independently and cannot use the orchestrator's approval.
 
@@ -658,7 +660,7 @@ Governance agent implementations SHOULD respond to `check_governance` calls with
 
 ### Wire format
 
-The seller calls the governance agent at the registered `governance_agent.url` using MCP over HTTP (Streamable HTTP transport). The request is an MCP `tools/call` invocation with tool name `check_governance` and the request arguments as the tool input. Authentication uses the Bearer token from `governance_agent.authentication.credentials` in the `Authorization` header.
+The seller calls each governance agent at its registered URL using MCP over HTTP (Streamable HTTP transport). The request is an MCP `tools/call` invocation with tool name `check_governance` and the request arguments as the tool input. Authentication uses the Bearer token from the agent's `authentication.credentials` in the `Authorization` header.
 
 ### Multi-agent composition
 
@@ -666,7 +668,7 @@ Accounts MAY register multiple governance agents via the `governance_agents` arr
 
 When multiple governance agents are registered, the seller MUST call each agent whose `categories` overlap with the action being validated. All applicable agents must approve for the action to proceed (unanimous approval). If any agent returns `denied` or `escalated`, the action is blocked.
 
-When `governance_agents` is present, it takes precedence over the singular `governance_agent` field. The singular field remains as a convenience for accounts with a single governance agent.
+For accounts with a single governance agent, pass a one-element array.
 
 ### Governance checks and the governance loop
 
@@ -683,7 +685,7 @@ Governance checks complement the buyer-side governance loop, they do not replace
 
 The `delivery` phase gives the governance agent real-time visibility into what sellers are actually delivering. The buyer-side `report_plan_outcome` depends on the orchestrator reporting honestly; the `delivery` phase gets reports directly from the seller.
 
-The buyer-side and seller-side governance checks MAY be handled by the same agent or by separate agents. The protocol does not prescribe the relationship -- only that the seller can call the `governance_agent` URL registered on the account.
+The buyer-side and seller-side governance checks MAY be handled by the same agent or by separate agents. The protocol does not prescribe the relationship -- only that the seller can call the `governance_agents` URLs registered on the account.
 
 ## Orchestrator integration pattern
 

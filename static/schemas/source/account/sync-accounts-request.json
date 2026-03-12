@@ -33,42 +33,9 @@
             "type": "boolean",
             "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
           },
-          "governance_agent": {
-            "type": "object",
-            "description": "Buyer's governance agent endpoint. When present, the seller MUST call this agent to get governance approval before confirming media buy requests. Shorthand for a single-entry governance_agents array. When governance_agents is also present, governance_agents takes precedence.",
-            "properties": {
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL of the governance agent endpoint."
-              },
-              "authentication": {
-                "type": "object",
-                "description": "Authentication the seller presents when calling the governance agent.",
-                "properties": {
-                  "schemes": {
-                    "type": "array",
-                    "description": "Authentication scheme. Supported: ['Bearer'] for token auth.",
-                    "items": { "$ref": "/schemas/enums/auth-scheme.json" },
-                    "minItems": 1,
-                    "maxItems": 1
-                  },
-                  "credentials": {
-                    "type": "string",
-                    "description": "Credentials for authentication. For Bearer: token sent in Authorization header when calling check_governance.",
-                    "minLength": 32
-                  }
-                },
-                "required": ["schemes", "credentials"],
-                "additionalProperties": false
-              }
-            },
-            "required": ["url", "authentication"],
-            "additionalProperties": false
-          },
           "governance_agents": {
             "type": "array",
-            "description": "Governance agent endpoints for this account, each responsible for specific validation categories. When present, takes precedence over governance_agent. The seller routes check_governance calls to the appropriate agent based on the action being validated. All applicable agents must approve for the action to proceed (unanimous approval).",
+            "description": "Governance agent endpoints for this account. When present, the seller MUST call these agents for governance approval before confirming media buy requests. Each agent can be scoped to specific validation categories. The seller routes check_governance calls to the appropriate agent based on the action being validated. All applicable agents must approve for the action to proceed (unanimous approval).",
             "items": {
               "type": "object",
               "properties": {

@@ -99,7 +99,7 @@ Every seller interaction follows a before/after pattern:
 
 1. **Before**: The orchestrator calls `check_governance` with `binding: "proposed"`, the tool, and payload it intends to send. The governance agent returns a status.
 2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `buyer_campaign_ref`.
-3. **Check**: If the account has a `governance_agent`, the seller calls `check_governance` with `binding: "committed"` and its `planned_delivery` -- what it will actually run. The governance agent approves or denies.
+3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `binding: "committed"` and its `planned_delivery` -- what it will actually run. The governance agent approves or denies.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 
 This pattern applies to discovery (`get_products`), purchase (`create_media_buy`, `update_media_buy`), and periodic delivery reporting.
@@ -117,7 +117,7 @@ When a seller confirms a media buy, it returns a `planned_delivery` object descr
 
 Buyer-side governance has a trust limitation: the orchestrator attests to its own compliance. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. You can't trust the agent that's spending money to also be the one that checks whether spending that money is OK.
 
-Seller-side governance checks solve this. The buyer registers a `governance_agent` URL (with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
+Seller-side governance checks solve this. The buyer registers `governance_agents` (URLs with credentials) when syncing accounts. When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
 
 This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the governance agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
 

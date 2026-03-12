@@ -90,41 +90,9 @@
       "enum": ["operator", "brand", "operator_brand", "agent"],
       "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
     },
-    "governance_agent": {
-      "type": "object",
-      "description": "Buyer's governance agent endpoint. Shorthand for a single-entry governance_agents array. When governance_agents is also present, governance_agents takes precedence.",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "URL of the governance agent endpoint."
-        },
-        "authentication": {
-          "type": "object",
-          "description": "Authentication the seller presents when calling the governance agent.",
-          "properties": {
-            "schemes": {
-              "type": "array",
-              "items": { "$ref": "/schemas/enums/auth-scheme.json" },
-              "minItems": 1,
-              "maxItems": 1
-            },
-            "credentials": {
-              "type": "string",
-              "description": "Credentials for authentication. For Bearer: token sent in Authorization header.",
-              "minLength": 32
-            }
-          },
-          "required": ["schemes", "credentials"],
-          "additionalProperties": false
-        }
-      },
-      "required": ["url", "authentication"],
-      "additionalProperties": false
-    },
     "governance_agents": {
       "type": "array",
-      "description": "Governance agent endpoints for this account, each responsible for specific validation categories. When present, takes precedence over governance_agent. All applicable agents must approve for the action to proceed (unanimous approval).",
+      "description": "Governance agent endpoints for this account. When present, the seller MUST call these agents for governance approval before confirming media buy requests. Each agent can be scoped to specific validation categories. All applicable agents must approve for the action to proceed (unanimous approval).",
       "items": {
         "type": "object",
         "properties": {

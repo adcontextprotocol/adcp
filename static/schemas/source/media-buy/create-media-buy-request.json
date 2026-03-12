@@ -15,7 +15,7 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. Required when the account has a governance_agent. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan."
+      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
