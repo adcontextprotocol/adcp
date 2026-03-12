@@ -5,6 +5,7 @@
 import type { SuggestedPrompt } from './types.js';
 import type { MemberContext } from './member-context.js';
 import { createLogger } from '../logger.js';
+import { SLACK_INVITE_URL } from '../notifications/email.js';
 import {
   trimConversationHistory,
   getConversationTokenLimit,
@@ -134,6 +135,17 @@ API key management is done through the member dashboard, not through Addie tools
 
 **Account Linking:**
 - get_account_link: Generate a sign-in link
+
+**Slack Workspace:**
+- The Slack workspace has a public join link: ${SLACK_INVITE_URL}
+- When members ask to invite colleagues to Slack, share this link directly. Do NOT escalate — this is self-service.
+
+**Account & Organization Setup:**
+- Users without an organization are redirected to /onboarding where they can create one (self-service).
+- Organization creators automatically become the owner with full admin permissions.
+- To create a company org, the user needs a corporate email (not Gmail/Yahoo/etc.).
+- If a user says they can't access their profile or dashboard, first check: do they have an organization? If not, direct them to https://agenticadvertising.org/onboarding
+- Role changes (promoting members to admin) require the org owner. If the owner is unreachable, escalate to admin.
 
 **File Handling:**
 - read_slack_file: Read file content shared in Slack

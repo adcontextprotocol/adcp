@@ -1040,7 +1040,7 @@ Update your profile: https://agenticadvertising.org/member-profile
 
 // ============== Slack Invite Email ==============
 
-export const SLACK_INVITE_URL = process.env.SLACK_INVITE_URL || 'https://join.slack.com/t/agenticads/shared_invite/your-invite-link';
+export const SLACK_INVITE_URL = process.env.SLACK_INVITE_URL || 'https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA';
 
 /**
  * Check if we've already sent a Slack invite email to this user

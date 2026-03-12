@@ -121,11 +121,6 @@ export class OutboundPlanner {
       return false;
     }
 
-    // Skip "Link Account" for users who are already linked
-    if (goal.category === 'admin' && goal.name === 'Link Account' && ctx.user.is_mapped && ctx.capabilities?.account_linked) {
-      return false;
-    }
-
     // Check company type requirement
     if (goal.requires_company_type.length > 0) {
       if (!ctx.company?.type) return false;
@@ -265,23 +260,7 @@ export class OutboundPlanner {
       };
     }
 
-    // PRIORITY 1: Account linking for unmapped users
-    if (!ctx.user.is_mapped || !caps?.account_linked) {
-      const linkGoal = goals.find(g =>
-        g.category === 'admin' && g.name.toLowerCase().includes('link')
-      );
-      if (linkGoal) {
-        return {
-          goal: linkGoal,
-          reason: 'User needs to link account first',
-          priority_score: 100,
-          alternative_goals: goals.filter(g => g.id !== linkGoal.id).slice(0, 3),
-          decision_method: 'rule_match',
-        };
-      }
-    }
-
-    // PRIORITY 2: Profile completion (only for paid members - profiles are only visible to members)
+    // PRIORITY 1: Profile completion (only for paid members - profiles are only visible to members)
     // Skip for personal workspaces since those aren't real company profiles
     if (caps && !caps.profile_complete && ctx.user.is_member && !ctx.company?.is_personal_workspace) {
       const profileGoal = goals.find(g =>
@@ -298,7 +277,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3: Community directory (for mapped users not yet in the directory)
+    // PRIORITY 2: Community directory (for mapped users not yet in the directory)
     if (caps && caps.account_linked && !caps.community_profile_public) {
       const communityGoal = goals.find(g =>
         g.name.toLowerCase().includes('community directory') && g.category === 'admin'
@@ -314,7 +293,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3.5: Founding member deadline (time-sensitive, expires April 1 2026)
+    // PRIORITY 3: Founding member deadline (time-sensitive, expires April 1 2026)
     if (new Date() < FOUNDING_DEADLINE && !ctx.user.is_member && !ctx.company?.is_personal_workspace) {
       const deadlineGoal = goals.find(g => g.name === 'Founding Member Deadline');
       if (deadlineGoal) {
@@ -328,7 +307,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 3.6: Addie-owned prospects — prioritize invitation/membership goals
+    // PRIORITY 4: Addie-owned prospects — prioritize invitation/membership goals
     // These are prospects Addie has triaged and claimed; she should nudge them toward membership
     if (ctx.company?.is_addie_prospect && !ctx.user.is_member) {
       const inviteGoal = goals.find(g => g.category === 'invitation');
@@ -343,7 +322,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 4: Vendor membership (tech companies benefit from profile visibility)
+    // PRIORITY 5: Vendor membership (tech companies benefit from profile visibility)
     // Only for non-members at vendor-type companies
     const vendorTypes = ['adtech', 'ai', 'data'];
     if (ctx.user.is_mapped && !ctx.user.is_member && ctx.company?.type && vendorTypes.includes(ctx.company.type)) {
@@ -361,7 +340,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 5: Working group discovery (for engaged users with none)
+    // PRIORITY 6: Working group discovery (for engaged users with none)
     // Skip for committee leaders - they lead working groups even if not counted as members
     // Note: Leaders are now included in working_group_count via the query, but this explicit
     // check is kept for clarity and defense against query changes
@@ -380,7 +359,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 5.5: Persona-based working group recommendation (for users with persona but no groups)
+    // PRIORITY 7: Persona-based working group recommendation (for users with persona but no groups)
     if (caps && caps.account_linked && !caps.is_committee_leader && caps.working_group_count === 0 && ctx.company?.persona) {
       const personaGoal = goals.find(g =>
         g.requires_persona?.includes(ctx.company!.persona!)
@@ -396,7 +375,7 @@ export class OutboundPlanner {
       }
     }
 
-    // PRIORITY 6: Re-engagement for dormant users
+    // PRIORITY 8: Re-engagement for dormant users
     if (caps && caps.last_active_days_ago !== null && caps.last_active_days_ago > 30) {
       const reengageGoal = goals.find(g =>
         g.name.toLowerCase().includes('re-engage') || g.name.toLowerCase().includes('dormant')

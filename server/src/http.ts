@@ -5629,6 +5629,16 @@ Disallow: /api/admin/
         const isAdmin = adminEmails.includes(user.email.toLowerCase());
         const isManage = isAdmin || await isWebUserAAOCouncil(user.id);
 
+        // Check Slack sync status
+        let isLinkedToSlack = false;
+        try {
+          const slackDb = new SlackDatabase();
+          const slackMapping = await slackDb.getByWorkosUserId(user.id);
+          isLinkedToSlack = !!slackMapping?.slack_user_id;
+        } catch {
+          // Default to not linked if lookup fails
+        }
+
         // Build response with optional impersonation info
         const response: Record<string, unknown> = {
           user: {
@@ -5638,6 +5648,7 @@ Disallow: /api/admin/
             last_name: user.lastName,
             isAdmin,
             isManage,
+            isLinkedToSlack,
           },
           organizations,
         };
@@ -6151,13 +6162,83 @@ Disallow: /api/admin/
           },
         });
 
-        // Notify org admins via Slack group DM (fire-and-forget)
+        // Check if org has any existing members
+        const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
+          organizationId: organization_id,
+        });
+
+        // If org has no members (e.g., prospect org) AND user's email domain matches,
+        // auto-approve as owner. Domain check prevents unauthorized org claims.
+        if (orgMemberships.data.length === 0) {
+          const userDomain = user.email.split('@')[1]?.toLowerCase();
+          const pool = getPool();
+          const orgDomainResult = await pool.query(
+            `SELECT domain FROM organization_domains WHERE workos_organization_id = $1
+             UNION
+             SELECT email_domain FROM organizations WHERE workos_organization_id = $1 AND email_domain IS NOT NULL`,
+            [organization_id]
+          );
+          const orgDomains = orgDomainResult.rows.map((r: { domain?: string; email_domain?: string }) =>
+            (r.domain || r.email_domain)?.toLowerCase()
+          );
+
+          if (userDomain && orgDomains.includes(userDomain)) {
+            logger.info({
+              userId: user.id,
+              orgId: organization_id,
+              requestId: request.id,
+              domain: userDomain,
+            }, 'Ownerless org with matching domain — auto-approving join request as owner');
+
+            // Add user as owner
+            await workos!.userManagement.createOrganizationMembership({
+              userId: user.id,
+              organizationId: organization_id,
+              roleSlug: 'owner',
+            });
+
+            // Mark join request as approved
+            await joinRequestDb.approveRequest(request.id, user.id);
+
+            // Record audit log
+            await orgDb.recordAuditLog({
+              workos_organization_id: organization_id,
+              workos_user_id: user.id,
+              action: 'join_request_auto_approved',
+              resource_type: 'join_request',
+              resource_id: request.id,
+              details: {
+                reason: 'First member of ownerless organization with matching email domain',
+                role: 'owner',
+                domain: userDomain,
+              },
+            });
+
+            return res.status(201).json({
+              success: true,
+              message: `You've been added as the owner of ${orgName}`,
+              request: {
+                id: request.id,
+                organization_id: organization_id,
+                organization_name: orgName,
+                status: 'approved',
+                created_at: request.created_at,
+                auto_approved: true,
+              },
+            });
+          }
+
+          logger.info({
+            userId: user.id,
+            orgId: organization_id,
+            userDomain,
+            orgDomains,
+          }, 'Ownerless org but domain mismatch — treating as normal join request');
+        }
+
+        // Org has members — notify admins via Slack group DM (fire-and-forget)
         (async () => {
           try {
-            // Get org admins/owners
-            const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-              organizationId: organization_id,
-            });
             const adminEmails: string[] = [];
             for (const membership of orgMemberships.data) {
               if (membership.role?.slug === 'admin' || membership.role?.slug === 'owner') {
