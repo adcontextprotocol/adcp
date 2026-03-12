@@ -8,7 +8,7 @@ sidebarTitle: Specification
 </Info>
 
 **Status**: Request for Comments
-**Last Updated**: February 2026
+**Last Updated**: March 2026
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
@@ -16,7 +16,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 The Creative Protocol defines a standard interface for creative format discovery, manifest validation, creative generation, and preview rendering. This protocol enables AI agents to discover format specifications, build compliant creative assets, and generate previews across advertising platforms.
 
-## Protocol Overview
+## Protocol overview
 
 The Creative Protocol provides:
 
@@ -26,7 +26,7 @@ The Creative Protocol provides:
 - Preview rendering for creative verification
 - Universal macros for cross-platform tracking
 
-## Transport Requirements
+## Transport requirements
 
 Creative agents MUST support at least one of the following transports:
 
@@ -43,13 +43,21 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "adcp": { "major_versions": [2] },
-  "supported_protocols": ["creative"]
+  "supported_protocols": ["creative"],
+  "creative": {
+    "has_creative_library": true,
+    "supports_generation": false,
+    "supports_transformation": true,
+    "supports_compliance": false
+  }
 }
 ```
 
-## Core Concepts
+The `creative` capabilities tell the buyer which interaction models this agent supports. See [Interaction models](#interaction-models) below.
 
-### Creative Agents
+## Core concepts
+
+### Creative agents
 
 Creative agents are authoritative sources for format definitions. A creative agent:
 
@@ -58,7 +66,27 @@ Creative agents are authoritative sources for format definitions. A creative age
 - Generates previews showing how creatives will render
 - Optionally generates or transforms creatives from natural language briefs
 
-### Format Authority
+### Interaction models
+
+Creative agents serve different roles depending on their capabilities. Buyers use `get_adcp_capabilities` to determine which interaction model applies:
+
+| Model | Description | Capabilities | Examples |
+|---|---|---|---|
+| **Transformation agent** | Resizes or adapts existing manifests to new formats | `supports_transformation: true` | Format conversion services |
+| **Generative agent** | Creates manifests from natural language briefs | `supports_generation: true` | AI creative platforms |
+| **Creative ad server** | Hosts a creative library, generates ad-serving tags | `has_creative_library: true` | Flashtalking, CM360, Celtra |
+
+These models compose — an agent can support multiple. A creative ad server with `supports_generation: true` and `has_creative_library: true` can both generate creatives from briefs and retrieve existing ones from its library. The `supports_compliance` flag is orthogonal — any interaction model can support compliance requirements in briefs.
+
+**Buyer workflow by model:**
+
+- **Transformation**: `list_creative_formats` → `build_creative` (with `creative_manifest` + `target_format_id`)
+- **Generation**: `list_creative_formats` → `build_creative` (with `message` + `target_format_id`)
+- **Library retrieval**: `list_creatives` → `build_creative` (with `creative_id` + `target_format_id`)
+
+Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
+
+### Format authority
 
 Each format has exactly one authoritative creative agent, identified by the `agent_url` in the format ID:
 
@@ -106,7 +134,7 @@ Manifests pair format specifications with actual asset content. A manifest provi
 
 Creative agents MUST validate manifests against format requirements before accepting them.
 
-### Universal Macros
+### Universal macros
 
 AdCP defines universal macros for cross-platform tracking. Creative agents MUST support these macros in tracking URLs:
 
@@ -119,7 +147,7 @@ Sales agents MUST translate universal macros to their ad server's native syntax.
 
 ## Tasks
 
-The Creative Protocol defines three tasks. See task reference pages for complete request/response schemas and examples.
+The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
 
 ### list_creative_formats
 
@@ -138,7 +166,10 @@ Discover creative formats and their specifications.
 
 **Reference**: [`build_creative` task](/docs/creative/task-reference/build_creative)
 
-Transform or generate creative manifests.
+Transform, generate, or retrieve creative manifests. Supports three modes:
+1. **Generation**: Create a manifest from a brief or seed assets
+2. **Transformation**: Adapt an existing manifest to a different format
+3. **Library retrieval**: Resolve a `creative_id` from the agent's library into a manifest with ad-serving assets (HTML/JavaScript/VAST tags)
 
 **Requirements:**
 - Creative agents MUST validate input manifests against format requirements
@@ -148,6 +179,11 @@ Transform or generate creative manifests.
 - Creative agents SHOULD respect `quality` for generative tasks (`"draft"` for fast iteration, `"production"` for final delivery) and MAY ignore it for non-generative transforms
 - Creative agents SHOULD honor `item_limit` when present, using the lesser of `item_limit` and the format's `max_items`
 - Creative agents MAY use AI/LLM processing for generation tasks
+- When `creative_id` is provided, creative agents MUST resolve the creative from their library
+- When `macro_values` is provided, creative agents SHOULD substitute the specified macros in the output manifest's assets and leave unresolved macros as `{MACRO}` placeholders
+- Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
+- Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
+- `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.
 
 ### preview_creative
 
@@ -162,7 +198,57 @@ Generate preview renderings of creative manifests.
 - Creative agents SHOULD support batch preview for multiple creatives
 - Creative agents MAY support multiple output formats (URL, HTML, image)
 
-## Error Handling
+### list_creatives
+
+**Schema**: [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) / [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json)
+
+**Reference**: [`list_creatives` task](/docs/creative/task-reference/list_creatives)
+
+Browse and filter creative assets in a creative library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Requirements:**
+- Agents MUST return creatives accessible to the authenticated account
+- Agents MUST include approval status for each creative
+- Agents SHOULD support filtering by format, status, tags, and date range
+- Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
+- Agents MAY include dynamic content variable definitions when `include_variables=true`
+- Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
+
+**Account requirements:**
+- Creative agents that host a library SHOULD implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying
+- This is the same accounts protocol used by sales agents — there is no separate version
+- Sales agents that already implement accounts for media buys do not need to do anything additional
+
+### sync_creatives
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) / [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json)
+
+**Reference**: [`sync_creatives` task](/docs/creative/task-reference/sync_creatives)
+
+Upload and synchronize creative assets in a library. Implemented by any agent that hosts a creative library — standalone creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Requirements:**
+- Agents MUST validate creatives against format specifications
+- Agents MUST return validation errors for non-compliant creatives
+- Agents MAY require approval before creatives are available for use
+- Agents SHOULD support `dry_run` for validation without applying changes
+- Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
+- Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
+- Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field
+
+### get_creative_delivery
+
+**Reference**: [`get_creative_delivery` task](/docs/creative/task-reference/get_creative_delivery)
+
+Retrieve creative delivery data with variant-level metrics.
+
+**Requirements:**
+- Creative agents MUST return delivery data for the requested creatives
+- Creative agents SHOULD include variant-level breakdowns when available
+
+## Error handling
 
 Creative agents MUST return errors using the [standard AdCP error schema](/docs/building/implementation/error-handling).
 
@@ -174,19 +260,19 @@ Common error codes:
 - `ASSET_INVALID`: Asset does not meet format constraints
 - `GENERATION_FAILED`: Creative generation could not be completed
 
-## Security Considerations
+## Security considerations
 
-### Transport Security
+### Transport security
 
 All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
-### Asset Security
+### Asset security
 
 - Creative agents SHOULD validate that asset URLs are accessible
 - Creative agents SHOULD scan assets for malware and malicious content
 - Creative agents MUST NOT execute untrusted JavaScript during validation
 
-### Preview Security
+### Preview security
 
 - Preview URLs SHOULD be time-limited (indicated by `expires_at`)
 - Creative agents SHOULD sandbox HTML previews to prevent script execution
@@ -194,7 +280,7 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 
 ## Conformance
 
-### Creative Agent Conformance
+### Creative agent conformance
 
 A conformant Creative Protocol agent MUST:
 
@@ -209,8 +295,13 @@ A conformant Creative Protocol agent SHOULD:
 1. Implement `build_creative` for creative generation
 2. Implement `preview_creative` for preview rendering
 3. Support universal macros in tracking URLs
+4. Implement `list_creatives` when the agent hosts a creative library
+5. Implement `sync_creatives` when the agent accepts creative uploads
+6. Support `creative_id` in `build_creative` when the agent hosts a creative library
+7. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
+8. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
 
-### Consumer Conformance
+### Consumer conformance
 
 A conformant Creative Protocol consumer MUST:
 
@@ -219,20 +310,22 @@ A conformant Creative Protocol consumer MUST:
 3. Handle validation errors appropriately
 4. Track visited URLs when recursively discovering formats to avoid infinite loops
 
-## Implementation Notes
+## Implementation notes
 
-### Response Time Expectations
+### Response time expectations
 
 Creative agents SHOULD target the following response times:
 
 | Operation Type | Target Latency |
 |----------------|----------------|
 | Format listing (list_creative_formats) | < 1 second |
+| Library query (list_creatives) | < 1 second |
+| Creative sync (sync_creatives) | < 5 seconds |
 | Preview generation (preview_creative) | < 5 seconds |
 | Batch preview (10 creatives) | < 10 seconds |
 | Creative generation (build_creative) | < 60 seconds |
 
-### Recursive Format Discovery
+### Recursive format discovery
 
 Creative agents MAY reference other creative agents in their `list_creative_formats` response:
 
@@ -250,7 +343,7 @@ Consumers MAY recursively query referenced agents to discover additional formats
 
 Consumers MUST track visited URLs to prevent infinite loops during recursive discovery.
 
-### Format-Aware Validation
+### Format-aware validation
 
 Manifest validation MUST be performed in the context of the format specification:
 
@@ -260,14 +353,18 @@ Manifest validation MUST be performed in the context of the format specification
 
 The format definition determines what type each asset_id should be. Asset type information is NOT included in the manifest itself.
 
-### Standard vs Custom Formats
+### Standard vs custom formats
 
 - **Standard formats**: Based on IAB specifications, hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
 - **Custom formats**: Defined by individual publishers or creative platforms for specialized inventory
 
 Both work identically—the `agent_url` field identifies which agent is authoritative for each format.
 
-## Schema Reference
+## Schema reference
+
+<Note>
+Some creative protocol schemas (`build_creative`, `list_creative_formats`, `preview_creative`) have paths under `media-buy/` because they were originally released as part of the media-buy protocol. The schema paths are stable identifiers and do not affect which protocol the task belongs to.
+</Note>
 
 | Schema | Description |
 |--------|-------------|
@@ -276,3 +373,7 @@ Both work identically—the `agent_url` field identifies which agent is authorit
 | [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v2/core/creative-asset.json) | Asset definition |
 | [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-request.json) | list_creative_formats request |
 | [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v2/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-request.json) | list_creatives request |
+| [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/list-creatives-response.json) | list_creatives response |
+| [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-request.json) | sync_creatives request |
+| [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/latest/creative/sync-creatives-response.json) | sync_creatives response |
