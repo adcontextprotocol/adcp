@@ -64,6 +64,7 @@ All parameters are optional. An empty request returns all accounts.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response

@@ -5,7 +5,7 @@ testable: false
 
 Sync advertiser accounts with a seller for one or more brand/operator pairs. The seller provisions or links accounts, returning per-account status and any setup instructions. Brands are identified by a `brand` object containing `domain` + optional `brand_id`, resolved via `/.well-known/brand.json`.
 
-`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For explicit accounts (`require_operator_auth: true`), discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts).
+`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. It declares the buyer's intent — the seller provisions or links accounts internally. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For explicit accounts (`require_operator_auth: true`), discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts). For sandbox on implicit accounts, include `sandbox: true` in the account entry — the seller provisions a test account with no real spend. For explicit accounts, sandbox accounts are pre-existing test accounts discovered via [`list_accounts`](/docs/accounts/tasks/list_accounts).
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
@@ -94,8 +94,9 @@ asyncio.run(main())
 | `brand` | object | Yes | Brand reference identifying the advertiser. Contains `domain` (house domain where brand.json is hosted) and optional `brand_id` (for multi-brand houses). See [brand-ref](/docs/brand-protocol/brand-json). |
 | `operator` | string | Yes | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
 | `billing` | string | Yes | Who should be invoiced: `operator` or `agent`. Check `get_adcp_capabilities` for `supported_billing` to see what the seller accepts. The seller must either accept this billing model or reject the request. |
+| `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (`require_operator_auth: false`). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via `list_accounts`. |
 
-**Natural key**: The tuple `(brand, operator)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency).
+**Natural key**: The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (via agency). Adding `sandbox: true` provisions a sandbox account for the same brand/operator pair — no real platform calls or billing.
 
 ## Response
 
@@ -126,6 +127,7 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 | `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
 | `errors` | Per-account errors (only present when `action: "failed"`). |
 | `warnings` | Non-fatal notices. |
+| `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for implicit accounts. |
 
 ### Account status
 

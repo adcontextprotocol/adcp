@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Remove sandbox from sync_accounts and list_accounts schemas. Sandbox accounts are natural-key-only constructs referenced via account-ref with `sandbox: true` — no provisioning or discovery needed.
+Clarify sandbox account protocol by account model. Explicit accounts (`require_operator_auth: true`) discover pre-existing sandbox test accounts via `list_accounts`. Implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` and reference by natural key.

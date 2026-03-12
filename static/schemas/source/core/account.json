@@ -92,7 +92,7 @@
     },
     "sandbox": {
       "type": "boolean",
-      "description": "When true, this is a sandbox account — no real platform calls, no real spend. Sandbox accounts are referenced via the account reference with `sandbox: true` and do not require provisioning via `sync_accounts`."
+      "description": "When true, this is a sandbox account — no real platform calls, no real spend. For explicit accounts (require_operator_auth: true), sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts. For implicit accounts, sandbox is part of the natural key: the same brand/operator pair can have both a production and sandbox account."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
