@@ -8,7 +8,7 @@ Sandbox mode lets buyers test the full media buying lifecycle — discovery, cam
 
 Sandbox is **account-level**, not per-request. Every request with `sandbox: true` in the account reference is automatically treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
 
-Sandbox is part of the account's **natural key**. The same brand/operator pair can have both a production and a sandbox account — distinguished by `sandbox: true` in the account reference. No separate provisioning step is needed — just include `sandbox: true` and the seller handles it.
+Sandbox is part of the account's **natural key**. The same brand/operator pair can have both a production and a sandbox account — distinguished by `sandbox: true` in the account reference. For implicit-account sellers (`require_operator_auth: false`), include `sandbox: true` in the account reference and the seller handles it. For explicit-account sellers (`require_operator_auth: true`), discover pre-existing sandbox test accounts via `list_accounts` and reference them by `account_id`.
 
 ## Capabilities discovery
 
@@ -26,7 +26,7 @@ Check this before using sandbox mode. If `account.sandbox` is not declared or is
 
 ## Usage
 
-Include `sandbox: true` in the account reference. No provisioning or account discovery is required — just add the flag:
+How you enter sandbox mode depends on the seller's account model. Implicit-account sellers accept `sandbox: true` directly in the account reference. Explicit-account sellers require you to discover a sandbox test account via `list_accounts` first, then reference it by `account_id`:
 
 ```json
 // get_products — sandbox via natural key
