@@ -133,6 +133,14 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           items: { type: 'string' },
           description: 'Specific product fields to include in the response. Omit for all fields.',
         },
+        time_budget: {
+          type: 'object',
+          description: 'Maximum time the buyer will commit to this request. Seller returns best results within this budget.',
+          properties: {
+            value: { type: 'number', description: 'Duration value' },
+            unit: { type: 'string', enum: ['seconds', 'minutes', 'hours', 'days'], description: 'Duration unit' },
+          },
+        },
         pagination: {
           type: 'object',
           description: 'Cursor-based pagination parameters.',
@@ -324,8 +332,18 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Limit sync scope to specific creative IDs for partial updates.',
         },
         assignments: {
-          type: 'object',
-          description: 'Map creative_id to array of package IDs',
+          type: 'array',
+          description: 'Assign creatives to packages with optional weight and placement targeting.',
+          items: {
+            type: 'object',
+            properties: {
+              creative_id: { type: 'string', description: 'Creative to assign' },
+              package_id: { type: 'string', description: 'Package to assign to' },
+              weight: { type: 'number', description: 'Relative delivery weight (0-100)' },
+              placement_ids: { type: 'array', items: { type: 'string' }, description: 'Restrict to specific placements within the package' },
+            },
+            required: ['creative_id', 'package_id'],
+          },
         },
         idempotency_key: {
           type: 'string',
@@ -444,6 +462,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Validation strictness for catalog data',
           enum: ['strict', 'lenient'],
         },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook configuration for async sync notifications.',
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -480,11 +502,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         type: {
           type: 'string',
           description: 'Filter by format type (video, display, audio, native, etc.)',
-        },
-        format_types: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Filter to specific format categories (video, display, audio, etc.)',
         },
         asset_types: {
           type: 'array',
@@ -523,6 +540,11 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'array',
           items: { type: 'string' },
           description: 'Filter to formats supporting all of these disclosure positions.',
+        },
+        disclosure_persistence: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to formats where each persistence mode is supported by at least one position.',
         },
         output_format_ids: {
           type: 'array',
@@ -613,10 +635,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             operator: { type: 'string', description: 'Domain of the operating entity' },
           },
         },
-        media_buy_id: {
-          type: 'string',
-          description: 'The campaign identifier from create_media_buy',
-        },
         media_buy_ids: {
           type: 'array',
           items: { type: 'string' },
@@ -631,11 +649,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Filter by media buy status. Can be a single status or array.',
         },
-        granularity: {
-          type: 'string',
-          enum: ['hourly', 'daily', 'weekly'],
-          description: 'Time granularity for timeseries data',
-        },
         start_date: {
           type: 'string',
           description: 'Start date for reporting period (YYYY-MM-DD).',
@@ -643,13 +656,6 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         end_date: {
           type: 'string',
           description: 'End date for reporting period (YYYY-MM-DD).',
-        },
-        date_range: {
-          type: 'object',
-          properties: {
-            start: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
-            end: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
-          },
         },
         include_package_daily_breakdown: {
           type: 'boolean',
@@ -668,7 +674,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'media_buy_id'],
+      required: ['agent_url'],
     },
   },
   {
@@ -897,15 +903,6 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
             id: { type: 'string' },
           },
           required: ['agent_url', 'id'],
-        },
-        brand: {
-          type: 'object',
-          description: "Brand for the creative. Required when the creative agent declares brand as a top-level parameter in its tool schema.",
-          properties: {
-            domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
-            brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
-          },
-          required: ['domain'],
         },
         creative_manifest: {
           type: 'object',
