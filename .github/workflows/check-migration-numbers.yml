@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'server/src/db/migrations/**'
+  push:
+    branches: [main]
+    paths:
+      - 'server/src/db/migrations/**'
 
 jobs:
   check:
