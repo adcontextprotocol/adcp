@@ -7292,30 +7292,18 @@ Disallow: /api/admin/
     // Register and start all scheduled jobs
     registerAllJobs();
 
-    // Start most jobs
-    jobScheduler.start(JOB_NAMES.DOCUMENT_INDEXER);
-    jobScheduler.start(JOB_NAMES.SUMMARY_GENERATOR);
-    jobScheduler.start(JOB_NAMES.PROACTIVE_OUTREACH);
-    jobScheduler.start(JOB_NAMES.ACCOUNT_ENRICHMENT);
-    jobScheduler.start(JOB_NAMES.CONTENT_CURATOR);
-    jobScheduler.start(JOB_NAMES.FEED_FETCHER);
-    jobScheduler.start(JOB_NAMES.ALERT_PROCESSOR);
-    jobScheduler.start(JOB_NAMES.TASK_REMINDER);
-    jobScheduler.start(JOB_NAMES.ENGAGEMENT_SCORING);
-    jobScheduler.start(JOB_NAMES.GOAL_FOLLOW_UP);
-    jobScheduler.start(JOB_NAMES.SLACK_AUTO_LINK);
+    // Start all registered jobs
+    jobScheduler.startAll();
 
-    // Start Moltbook jobs only if API key is configured
-    if (process.env.MOLTBOOK_API_KEY) {
-      jobScheduler.start(JOB_NAMES.MOLTBOOK_POSTER);
-      jobScheduler.start(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
+    // Stop jobs that require missing env vars
+    if (!process.env.MOLTBOOK_API_KEY) {
+      jobScheduler.stop(JOB_NAMES.MOLTBOOK_POSTER);
+      jobScheduler.stop(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
     }
-
-    // Start GEO visibility jobs only if LLM Pulse API key is configured
-    if (process.env.LLMPULSE_API_KEY) {
-      jobScheduler.start(JOB_NAMES.GEO_MONITOR);
-      jobScheduler.start(JOB_NAMES.GEO_SNAPSHOT);
-      jobScheduler.start(JOB_NAMES.GEO_CONTENT_PLANNER);
+    if (!process.env.LLMPULSE_API_KEY) {
+      jobScheduler.stop(JOB_NAMES.GEO_MONITOR);
+      jobScheduler.stop(JOB_NAMES.GEO_SNAPSHOT);
+      jobScheduler.stop(JOB_NAMES.GEO_CONTENT_PLANNER);
     }
 
     this.server = this.app.listen(port, () => {
