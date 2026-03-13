@@ -476,7 +476,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   logger.debug({ path: req.path, hasCookie: !!sessionCookie, isHtmlRequest }, 'Authentication check');
 
   if (!sessionCookie) {
-    logger.debug('No session cookie found');
+    logger.info({ path: req.path, isHtmlRequest }, 'No wos-session cookie present — user not logged in');
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
     }
@@ -530,7 +530,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     // If authentication failed, try to refresh the session (this makes an API call)
     if (!result.authenticated || !('user' in result) || !result.user) {
-      logger.debug('Session authentication failed, attempting refresh');
+      const reason = !result.authenticated ? 'not_authenticated'
+        : !('user' in result) ? 'no_user_field'
+        : 'user_null';
+      logger.info({ path: req.path, reason }, 'Session JWT expired, attempting refresh');
 
       try {
         const refreshResult = await session.refresh({
@@ -538,8 +541,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         });
 
         if (refreshResult.authenticated && refreshResult.sealedSession) {
-          // Refresh succeeded - update the cookie and re-authenticate
-          logger.debug('Session refreshed successfully');
+          logger.info({ path: req.path }, 'Session refresh succeeded');
           newSealedSession = refreshResult.sealedSession;
           setSessionCookie(res, refreshResult.sealedSession);
 
@@ -549,16 +551,24 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
             cookiePassword: WORKOS_COOKIE_PASSWORD,
           });
           result = await newSession.authenticate();
+        } else {
+          logger.warn(
+            { path: req.path, authenticated: refreshResult.authenticated },
+            'Session refresh returned but was not usable'
+          );
         }
       } catch (refreshError) {
-        logger.debug({ err: refreshError }, 'Session refresh failed');
+        logger.warn({ err: refreshError, path: req.path }, 'Session refresh threw an error');
         // Continue with the original failed result
       }
     }
 
     // Final check after potential refresh
     if (!result.authenticated || !('user' in result) || !result.user) {
-      logger.debug('Session validation failed (even after refresh attempt)');
+      const reason = !result.authenticated ? 'not_authenticated'
+        : !('user' in result) ? 'no_user_field'
+        : 'user_null';
+      logger.warn({ path: req.path, reason }, 'Session invalid after refresh attempt — user will be logged out');
       // Remove any stale cache entry
       sessionCache.delete(cacheKey);
       if (isHtmlRequest) {
@@ -619,7 +629,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
-    logger.error({ err: error }, 'Authentication middleware error');
+    logger.error({ err: error, path: req.path }, 'Authentication middleware threw unexpectedly — user will be logged out');
     if (isHtmlRequest) {
       return res.redirect(`/auth/login?return_to=${encodeURIComponent(req.originalUrl)}`);
     }
