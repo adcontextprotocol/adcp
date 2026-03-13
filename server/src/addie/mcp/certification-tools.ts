@@ -243,18 +243,18 @@ export async function buildCertificationContext(
   lines.push('- Vary turn structure: some bare questions, some "try this", some analogies. Not always explain-then-ask.');
   lines.push('- For non-basics modules: share doc links INLINE when discussing a concept, at least 2-3 per session. For basics (A track): save links for end of session as "go deeper" references — basics must be self-contained.');
   lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
-  lines.push('- NEVER re-ask something the learner already told you. If they stated their role or background earlier in the conversation, remember it and adapt — do not ask again. Repetitive questions destroy trust. This applies especially when the learner signals readiness to move on — transition to assessment questions about the material, not background questions about the learner.');
+  lines.push('- NEVER re-ask something the learner already told you. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" — they already told you (sell side, SSP). If they said "I run programmatic at an agency" do NOT ask "what is your role?" This is the #1 complaint from learners. Before asking ANY question about the learner, check: did they already answer this? If yes, use what they said.');
   lines.push('- If you research the learner\'s company, USE that knowledge — never ask them to explain what their company does. Instead, weave it into your teaching: "Given that Acme is an audio SSP, how would you..." Asking someone about their own company after you already looked it up feels like surveillance, not personalization.');
   lines.push('- Run a live demo (get_products against the sandbox training agent) within the first 3-4 turns. Do not wait for the learner to ask. Show, then discuss.');
   lines.push('- Use concrete, specific language. Never use abstract terms without grounding them. Say "evaluate whether a placement fits" not "reason about impressions."');
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
   lines.push('- At concept transitions, ask the learner to self-assess: "Which feels solid? Which needs more work?"');
-  lines.push('- BEFORE completing any module, call checkpoint_teaching_progress with preliminary_scores. Completion is rejected without it.');
+  lines.push('- Call checkpoint_teaching_progress EARLY — after the learner tells you their background (turn 2-3), save a checkpoint with learner_background filled in. This persists their identity so you never lose track of who they are, even when tool results push earlier messages out of view. Call it again before completion with preliminary_scores.');
   lines.push('');
   lines.push('**Mastery model**: There is no failing — teach until the learner masters every objective, then complete the module. Never share scores or percentages with the learner. Internal scores are for admin analytics only.');
   lines.push('');
-  lines.push('**Mastery fast-track**: If the learner provides correct, detailed explanations for 3+ concepts in a row without needing guidance or correction (not just "yes" or one-word answers — they must demonstrate real understanding), compress remaining teaching. Confirm untouched concepts with quick targeted questions rather than teaching from scratch, then move to assessment. Expert learners should not be forced through a tutorial for content they already know — respect their time.');
+  lines.push('**Mastery fast-track**: If the learner provides correct, detailed explanations for 3+ concepts in a row without needing guidance or correction (not just "yes" or one-word answers — they must demonstrate real understanding), SAY SO EXPLICITLY: "You clearly know this material — let me skip ahead and confirm a few remaining concepts before we wrap up." Then ask one quick question per remaining concept and move to assessment. Do NOT keep probing someone who has already demonstrated mastery. 10+ questions to someone who got the first 3 right is disrespectful of their time.');
 
   // Inject training agent URL for demos
   const trainingAgentUrl = process.env.TRAINING_AGENT_URL
@@ -349,8 +349,16 @@ export async function buildCertificationContext(
         if (checkpoint.learner_gaps.length > 0) {
           lines.push(`    Gaps: ${checkpoint.learner_gaps.join(', ')}`);
         }
+        // Extract learner_background from notes if present (stored as [LEARNER_BACKGROUND: ...] prefix)
+        const bgMatch = checkpoint.notes?.match(/\[LEARNER_BACKGROUND: (.+?)\]/);
+        if (bgMatch) {
+          lines.push(`    **Learner background**: ${bgMatch[1]} — DO NOT re-ask this information.`);
+        }
         if (checkpoint.notes) {
-          lines.push(`    Notes: ${checkpoint.notes}`);
+          const cleanNotes = checkpoint.notes.replace(/\[LEARNER_BACKGROUND: .+?\]\s*/, '');
+          if (cleanNotes) {
+            lines.push(`    Notes: ${cleanNotes}`);
+          }
         }
       }
     } catch {
@@ -482,7 +490,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'checkpoint_teaching_progress',
-    description: 'Save a snapshot of teaching progress for the current module. Required before calling complete_certification_module or complete_certification_exam. Call at these points: (a) after finishing each key concept group from the lesson plan, (b) before transitioning from teaching to assessment, (c) after the capstone lab phase before the exam phase, (d) if the learner needs to leave. This enables resuming where you left off if the conversation is lost or context is trimmed.',
+    description: 'Save a snapshot of teaching progress for the current module. Required before calling complete_certification_module or complete_certification_exam. Call at these points: (a) after finishing each key concept group from the lesson plan, (b) before transitioning from teaching to assessment, (c) after the capstone lab phase before the exam phase, (d) if the learner needs to leave. IMPORTANT: On the first checkpoint for a module, always include learner_background with their stated role, company, and experience level — this persists across turns so you do not lose track of who they are.',
     usage_hints: 'use after finishing key concepts, before assessment, after capstone lab phase, or when learner pauses',
     input_schema: {
       type: 'object',
@@ -520,6 +528,10 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
           type: 'object',
           additionalProperties: { type: 'number' },
           description: 'Preliminary per-dimension scores based on what you have observed so far (0-100)',
+        },
+        learner_background: {
+          type: 'string',
+          description: 'The learner\'s stated background, role, and company context (e.g., "8 years in ad tech, runs programmatic at a mid-size agency, buy-side focus"). Save this on first checkpoint so it persists across turns even when tool results push early messages out of view.',
         },
         notes: {
           type: 'string',
@@ -1004,7 +1016,7 @@ export function createCertificationToolHandlers(
         lines.push('- **Most responses should end with a question or task.** But when a learner gives a strong answer, it\'s OK to affirm and teach the next concept without immediately asking another question. Back-to-back questions without teaching feel like an interrogation, not a conversation. Aim for rhythm: question → answer → you build on it → question. Some turns can just be "Here\'s what that means in practice..." without a trailing question.');
         lines.push('- **Vary your turn structure.** Don\'t fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.');
         lines.push('- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.');
-        lines.push('- **NEVER re-ask information the learner already provided.** If they told you their role, background, or experience level, remember it for the entire session. Re-asking "what\'s your background?" after they already answered is the fastest way to lose trust and make the experience feel robotic.');
+        lines.push('- **NEVER re-ask information the learner already provided.** This is the #1 complaint from real learners. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" If they said "I run programmatic at an agency" do NOT ask "what is your role?" Before asking ANY question about the learner, mentally check: did they already answer this? If yes, reference what they said instead of asking again.');
         lines.push('- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
         lines.push('');
         lines.push('### Teaching flow');
@@ -1033,7 +1045,7 @@ export function createCertificationToolHandlers(
         lines.push('### Edge cases');
         lines.push('');
         lines.push('- **Disengaged learner.** If the learner gives repeated short answers, says "I don\'t know" multiple times, or seems checked out — switch modality. Try a different approach: run a demo, connect the concept to their stated goals, or acknowledge "this part can feel abstract — let me make it concrete." Don\'t just push through the same way.');
-        lines.push('- **Overqualified learner.** If the learner gives correct, detailed answers to your first 2-3 questions without needing any guidance, they are likely overqualified. Say so: "You clearly know this material well — let me skip the tutorial and just confirm a few things before we wrap up." Run quick confirmation questions on remaining concepts, then move to assessment. Do not ask 10+ questions to someone who got the first 3 right. Respect their time.');
+        lines.push('- **Overqualified learner (CHECK THIS EVERY TURN).** After each learner response, ask yourself: "Has this learner given correct, detailed answers to 3+ questions in a row without needing any correction?" If YES, you MUST say something like "You clearly know this material — let me fast-track this" and shift to quick confirmation mode: one question per remaining concept, then assessment. Do not keep exploring with an expert. 10+ questions to someone who got the first 3 right is the most common complaint from learners.');
         lines.push('- **No demos available.** For concept-heavy modules without working demos, maintain active learning by having the learner construct their own examples: "Describe how you\'d structure a media buy for your brand using what we just covered" or "Walk me through what the JSON would look like."');
         lines.push('- **Tangent questions.** If a learner asks about a topic covered in another module, answer briefly (1-2 sentences) and note which module covers it in depth. Don\'t derail the current module.');
         lines.push('- **Retaking a module.** If a learner is retrying after a previous attempt, use different scenarios and question framings than those stored in the checkpoint. Test the same concepts from new angles.');
@@ -1559,7 +1571,7 @@ export function createCertificationToolHandlers(
   // ----- checkpoint_teaching_progress -----
   handlers.set('checkpoint_teaching_progress', async (input) => {
     const { module_id: rawModuleId, concepts_covered, concepts_remaining, current_phase,
-            learner_strengths, learner_gaps, preliminary_scores, notes } = input as {
+            learner_strengths, learner_gaps, preliminary_scores, notes, learner_background } = input as {
       module_id: string;
       concepts_covered: string[];
       concepts_remaining: string[];
@@ -1568,8 +1580,13 @@ export function createCertificationToolHandlers(
       learner_gaps?: string[];
       preliminary_scores?: Record<string, number>;
       notes?: string;
+      learner_background?: string;
     };
     const moduleId = rawModuleId.toUpperCase();
+    // Persist learner_background in notes field (prefixed) so it survives context trimming
+    const enrichedNotes = learner_background
+      ? `[LEARNER_BACKGROUND: ${learner_background}]${notes ? ` ${notes}` : ''}`
+      : notes;
 
     try {
       const userId = getUserId();
@@ -1592,7 +1609,7 @@ export function createCertificationToolHandlers(
         learner_gaps,
         current_phase,
         preliminary_scores,
-        notes,
+        notes: enrichedNotes,
       });
 
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${current_phase}. Covered ${concepts_covered.length} concepts, ${concepts_remaining.length} remaining.`;
