@@ -6,7 +6,9 @@ keywords: [ai media, ai advertising, ai search ads, sponsored responses, generat
 
 AI media — advertising within AI assistants, AI search engines, and generative AI experiences — lets brands reach users in conversational and generative contexts. AdCP's `ai_media` channel handles the spectrum: sponsored responses, AI search results, generative display, and brand experience handoffs via Sponsored Intelligence.
 
-What makes AI media unique is **generative creative**. Rather than uploading pre-built assets, the platform generates creative at serve time from the brand's catalog, identity, and context. This means catalog quality directly determines ad quality. The other defining characteristic: AI platforms are walled gardens with explicit account relationships, closer to social platforms than open web publishers.
+What makes AI media unique is **generative creative**. Rather than uploading pre-built assets, the platform generates creative at serve time from the brand's catalog, identity, and context. This means catalog quality directly determines ad quality.
+
+AI media sellers come in two shapes: **first-party AI platforms** (a single AI assistant or search engine selling its own inventory) and **AI ad networks** (aggregating inventory across multiple AI platforms and publishers). The account model and publisher properties differ accordingly — a first-party platform is a walled garden with explicit accounts, while an ad network may use implicit accounts and represent multiple publisher properties.
 
 ## Concept mapping
 
@@ -22,7 +24,7 @@ What makes AI media unique is **generative creative**. Rather than uploading pre
 | Brand experience handoff | Sponsored Intelligence protocol | [SI Specification](/docs/sponsored-intelligence/specification) |
 | User engagement metrics | `metric_optimization` on product | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
 
-Each AI platform is a separate sales agent. Their ad offerings are modeled as products. The buyer's brand identity — including product catalogs and offerings — provides the raw material for generative creative. Account relationships between brands and AI platforms are managed via `list_accounts` with `require_operator_auth: true`, since AI platforms are walled gardens that require direct advertiser authentication.
+Each seller is a separate sales agent — whether that's a first-party AI platform or an ad network aggregating across multiple platforms. Their ad offerings are modeled as products. The buyer's brand identity — including product catalogs and offerings — provides the raw material for generative creative. Account relationships depend on the seller type: first-party platforms typically use explicit accounts (`require_operator_auth: true`), while ad networks may use implicit accounts where the agent is trusted to declare brands via `sync_accounts`.
 
 ## The product spectrum
 
@@ -176,9 +178,9 @@ Brand experience handoffs are unique to AI media. The brand syncs offerings via 
 
 ### Set up account
 
-AI platforms are walled gardens. The platform declares `require_operator_auth: true` in capabilities, meaning each advertiser must authenticate independently.
+Start by checking the seller's capabilities to understand the account model. First-party AI platforms typically require explicit accounts (each advertiser authenticates via OAuth), while AI ad networks may use implicit accounts (the agent declares brands via `sync_accounts`).
 
-Start by checking capabilities:
+**Example: first-party AI platform (explicit accounts)**
 
 ```json
 {
@@ -199,7 +201,9 @@ Key signals:
 - **`sandbox: true`** — test accounts available for integration validation
 - **`required_for_products: false`** — buyers can browse products before setting up an account
 
-After OAuth authentication, discover available accounts via `list_accounts`:
+An AI ad network that aggregates across multiple platforms would more likely declare `require_operator_auth: false` with `supported_billing: ["operator", "agent"]` — the agent is trusted and declares accounts via `sync_accounts`.
+
+For explicit accounts, after OAuth authentication discover available accounts via `list_accounts`:
 
 ```json
 {
@@ -398,16 +402,16 @@ AI platforms that support conversion tracking declare it in `get_adcp_capabiliti
 
 ### For buyers
 
-1. **Set up accounts early** — AI platforms require explicit accounts (`require_operator_auth: true`). Complete OAuth before creating buys.
+1. **Set up accounts early** — check `get_adcp_capabilities` for the account model. First-party platforms require OAuth; ad networks may accept `sync_accounts` directly.
 2. **Use sandbox first** — validate the full integration (catalog sync, product discovery, media buy, reporting) against sandbox accounts before committing real spend.
 3. **Sync rich product catalogs** — generative creative quality depends on catalog data. Include detailed descriptions, multiple images, and structured attributes.
 4. **Provide comprehensive brand identity** — brand voice, guidelines, and visual assets improve the quality of generated responses and creative.
 5. **Sync offering catalogs for SI** — if the platform supports brand experience handoffs, offering catalogs define what promotions and services are available for handoff.
 6. **Use keyword targeting for AI search** — specify relevant keywords on AI search packages to reach high-intent queries.
 
-### For AI platforms
+### For sellers
 
-1. **Implement accounts with `require_operator_auth: true`** — AI platforms are walled gardens. Each advertiser should authenticate independently.
+1. **Implement accounts** — first-party platforms should use `require_operator_auth: true` (each advertiser authenticates independently). Ad networks aggregating across publishers may use implicit accounts instead.
 2. **Support sandbox** — declare `account.sandbox: true` in capabilities. Buyers need to test generative creative quality before real spend.
 3. **Declare generative formats via `list_creative_formats`** — custom formats for sponsored responses should describe what catalog data they consume and what the generated output looks like.
 4. **Accept product and offering catalogs** — declare `catalog_types` on products so buyers know which catalog feeds to sync.
@@ -422,7 +426,7 @@ AI platforms that support conversion tracking declare it in `get_adcp_capabiliti
 | Creative production | Buyer-provided assets | Platform-generated from catalog and brand data |
 | Targeting | Audience segments, geo, demographics | Contextual relevance to user conversations and queries |
 | Primary KPIs | Impressions, clicks, CTR, viewability | Engagements, clicks, cost per engagement |
-| Account model | Varies (agent-trusted or operator) | Walled garden (`require_operator_auth: true`) |
+| Account model | Varies (agent-trusted or operator) | First-party platforms: walled garden. Ad networks: varies. |
 | Catalog dependency | Optional (retail media, job boards) | Central — catalog quality drives creative quality |
 | Creative iteration | Build, upload, A/B test | Sync better catalog data, refine brand identity |
 
