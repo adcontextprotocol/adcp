@@ -105,7 +105,7 @@
                   "net_90",
                   "prepay"
                 ],
-                "description": "Payment terms applied to this account. May differ from what was requested."
+                "description": "Payment terms agreed for this account. When the account is active, these are the binding terms for all invoices on this account."
               },
               "credit_limit": {
                 "type": "object",
@@ -269,6 +269,25 @@
               {
                 "code": "BILLING_NOT_SUPPORTED",
                 "message": "Operator billing is not supported. This seller only accepts agent billing."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Unsupported payment terms — seller rejects the request",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "action": "failed",
+            "status": "rejected",
+            "errors": [
+              {
+                "code": "PAYMENT_TERMS_NOT_SUPPORTED",
+                "message": "Net-60 payment terms are not available. Omit payment_terms to accept this seller's default terms (net_30)."
               }
             ]
           }

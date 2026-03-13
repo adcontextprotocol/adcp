@@ -47,7 +47,7 @@
     "payment_terms": {
       "type": "string",
       "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
-      "description": "Payment terms for this account"
+      "description": "Payment terms agreed for this account. Binding for all invoices when the account is active."
     },
     "credit_limit": {
       "type": "object",

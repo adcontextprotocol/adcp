@@ -39,7 +39,7 @@
               "net_90",
               "prepay"
             ],
-            "description": "Requested payment terms for this account. The seller may accept, reject, or apply different terms — check payment_terms in the response for what was actually applied."
+            "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms."
           },
           "sandbox": {
             "type": "boolean",
