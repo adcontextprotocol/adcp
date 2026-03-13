@@ -5954,54 +5954,32 @@ Disallow: /api/admin/
           });
         }
 
-        // If user has a company domain, find orgs with admins from the same domain
+        // If user has a company domain, find orgs with a matching verified domain
         if (userDomain) {
-          // Get all organizations
-          const allOrgs = await workos!.organizations.listOrganizations({ limit: 100 });
+          const pool = getPool();
+          const domainOrgs = await pool.query<{ workos_organization_id: string; name: string }>(
+            `SELECT o.workos_organization_id, o.name
+             FROM organization_domains od
+             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
+             WHERE od.domain = $1 AND od.verified = true AND o.is_personal = false`,
+            [userDomain]
+          );
 
-          for (const org of allOrgs.data) {
-            // Skip if user is already a member or if org is already in list
-            if (userOrgIds.has(org.id) || joinableOrgs.some(o => o.organization_id === org.id)) {
+          for (const org of domainOrgs.rows) {
+            if (userOrgIds.has(org.workos_organization_id) || joinableOrgs.some(o => o.organization_id === org.workos_organization_id)) {
               continue;
             }
 
-            // Get org's members to check admin domains
-            try {
-              const orgMemberships = await workos!.userManagement.listOrganizationMemberships({
-                organizationId: org.id,
-              });
+            const profile = await memberDb.getProfileByOrgId(org.workos_organization_id);
 
-              // Check if any admin/owner has the same company domain
-              const hasMatchingAdmin = orgMemberships.data.some(membership => {
-                const role = membership.role?.slug || 'member';
-                if (role !== 'admin' && role !== 'owner') {
-                  return false;
-                }
-                const memberEmail = membership.user?.email;
-                if (!memberEmail) {
-                  return false;
-                }
-                const memberDomain = getCompanyDomain(memberEmail);
-                return memberDomain === userDomain;
-              });
-
-              if (hasMatchingAdmin) {
-                // Try to get the member profile for logo/tagline
-                const profile = await memberDb.getProfileByOrgId(org.id);
-
-                joinableOrgs.push({
-                  organization_id: org.id,
-                  name: org.name,
-                  logo_url: profile?.resolved_brand?.logo_url || null,
-                  tagline: profile?.tagline || null,
-                  match_reason: 'domain',
-                  request_pending: pendingOrgIds.has(org.id),
-                });
-              }
-            } catch (error) {
-              // Skip orgs we can't get memberships for
-              logger.debug({ orgId: org.id, err: error }, 'Could not check org memberships');
-            }
+            joinableOrgs.push({
+              organization_id: org.workos_organization_id,
+              name: org.name,
+              logo_url: profile?.resolved_brand?.logo_url || null,
+              tagline: profile?.tagline || null,
+              match_reason: 'domain',
+              request_pending: pendingOrgIds.has(org.workos_organization_id),
+            });
           }
         }
 

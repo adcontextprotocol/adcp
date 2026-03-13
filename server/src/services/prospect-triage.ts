@@ -342,10 +342,65 @@ export async function triageEmailDomain(
   return result;
 }
 
+// ─── Assess + notify (no org creation) ─────────────────────────────────────
+
+/**
+ * Triage a domain and send a Slack notification if it looks like a prospect.
+ * Does NOT create an organization — the user creates their own org during onboarding.
+ * Used for inbound website signups where the user will self-serve.
+ */
+export async function triageAndNotify(
+  domain: string,
+  context?: TriageContext
+): Promise<{ triaged: boolean; result: TriageResult }> {
+  const enabled = await isTriageEnabled();
+  if (!enabled) {
+    return {
+      triaged: false,
+      result: { action: 'skip', reason: 'triage_disabled', owner: 'addie', priority: 'standard', verdict: 'Automatic triage is disabled.' },
+    };
+  }
+
+  let result: TriageResult;
+  try {
+    result = await triageEmailDomain(domain, context);
+  } catch (err) {
+    logger.error({ err, domain }, 'Triage assessment failed');
+    return {
+      triaged: false,
+      result: { action: 'skip', reason: 'assessment_error', owner: 'human', priority: 'standard', verdict: '' },
+    };
+  }
+
+  if (result.action === 'skip') {
+    logger.debug({ domain, reason: result.reason }, 'Triage: skip (assess-only)');
+    return { triaged: true, result };
+  }
+
+  logger.info({ domain, owner: result.owner, priority: result.priority, companyName: result.companyName }, 'Triage: prospect identified (assess-only, no org created)');
+
+  // Notify Slack so the team has visibility, but don't create an org
+  notifyNewProspect({
+    orgName: result.companyName ?? domain,
+    domain,
+    owner: result.owner,
+    priority: result.priority,
+    verdict: result.verdict,
+    companyType: result.companyType,
+    source: context?.source ?? 'inbound',
+    // No orgId — the user will create their own org during onboarding
+  }).catch(err => {
+    logger.warn({ err, domain }, 'Prospect notification failed');
+  });
+
+  return { triaged: true, result };
+}
+
 // ─── Create prospect + notify ──────────────────────────────────────────────
 
 /**
  * Triage a domain and, if warranted, create a prospect record and send a notification.
+ * Used for batch/Slack triage where there's no user actively onboarding.
  * Checks the kill switch before proceeding.
  */
 export async function triageAndCreateProspect(
