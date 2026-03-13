@@ -13,6 +13,10 @@
       "type": "string",
       "description": "Test event code for validation without affecting production data. Events with this code appear in the platform's test events UI."
     },
+    "is_test_event": {
+      "type": "boolean",
+      "description": "When true, marks the request as a test event that will not affect production data. Use this as a simpler alternative to test_event_code when no specific code is needed."
+    },
     "events": {
       "type": "array",
       "description": "Events to log",

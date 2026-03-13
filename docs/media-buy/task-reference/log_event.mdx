@@ -110,6 +110,7 @@ asyncio.run(main())
 | `event_source_id` | string | Yes | Event source configured on the account via `sync_event_sources` |
 | `events` | [Event](/docs/media-buy/conversion-tracking/#event)[] | Yes | Events to log (min 1, max 10,000) |
 | `test_event_code` | string | No | Test event code for validation without affecting production data |
+| `is_test_event` | boolean | No | When true, marks the request as a test event without affecting production data |
 
 ### Event Object
 
@@ -512,7 +513,7 @@ Choose `event_id` values that are stable across retries:
 
 2. **Include user_match** - Events without user identifiers cannot be attributed. Provide the strongest identifiers available: hashed email/phone > UIDs > click IDs > IP/UA. Send multiple identifier types when available to maximize match rates.
 
-3. **Use test events first** - Set `test_event_code` during integration to validate events appear correctly without affecting production data.
+3. **Use test events first** - Set `is_test_event: true` or provide a `test_event_code` during integration to validate events appear correctly without affecting production data.
 
 4. **Batch when possible** - Send up to 10,000 events per request to reduce API calls. Events within a batch are processed independently.
 
