@@ -54,6 +54,44 @@
       "minimum": 1,
       "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets."
     },
+    "include_preview": {
+      "type": "boolean",
+      "description": "When true, requests the creative agent to include preview renders in the response alongside the manifest. Agents that support this return a 'preview' object in the response using the same structure as preview_creative. Agents that do not support inline preview simply omit the field. This avoids a separate preview_creative round trip for platforms that generate previews as a byproduct of building."
+    },
+    "preview_inputs": {
+      "type": "array",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview variant",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "preview_output_format": {
+      "$ref": "/schemas/enums/preview-output-format.json",
+      "default": "url",
+      "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
+    },
     "macro_values": {
       "type": "object",
       "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
