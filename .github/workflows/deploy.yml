@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
+        uses: superfly/flyctl-actions/setup-flyctl@1.5
 
       - name: Deploy
         run: flyctl deploy --remote-only --wait-timeout 300
@@ -31,11 +31,17 @@ jobs:
         run: |
           echo "Checking that all app machines are running the same image..."
 
-          # Get image digests for app process group machines
+          # Get image digests for started app machines only
           images=$(flyctl machines list --json | \
-            jq -r '[.[] | select(.config.metadata.process_group == "app") | .image_ref.digest] | unique')
+            jq -r '[.[] | select(.config.metadata.process_group == "app" and .state == "started") | .image_ref.digest] | unique')
 
           count=$(echo "$images" | jq 'length')
+
+          if [ "$count" -eq 0 ]; then
+            echo "❌ No running app machines found"
+            flyctl machines list
+            exit 1
+          fi
 
           if [ "$count" -ne 1 ]; then
             echo "❌ Deploy split detected! App machines are running different images:"
