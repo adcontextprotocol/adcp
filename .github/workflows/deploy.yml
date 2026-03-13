@@ -33,7 +33,7 @@ jobs:
 
           # Get image digests for started app machines only
           images=$(flyctl machines list --json | \
-            jq -r '[.[] | select(.config.metadata.process_group == "app" and .state == "started") | .image_ref.digest] | unique')
+            jq -r '[.[] | select(.config.metadata.fly_process_group == "app" and .state == "started") | .image_ref.digest] | unique')
 
           count=$(echo "$images" | jq 'length')
 
@@ -57,7 +57,7 @@ jobs:
         run: |
           # Destroy any leftover fly_app_console machines
           consoles=$(flyctl machines list --json | \
-            jq -r '.[] | select(.config.metadata.process_group == "fly_app_console") | .id')
+            jq -r '.[] | select(.config.metadata.fly_process_group == "fly_app_console") | .id')
 
           if [ -n "$consoles" ]; then
             echo "Cleaning up stale console machines:"
