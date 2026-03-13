@@ -21,7 +21,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `placements` (list[Placement], optional): Specific ad placements within this product. When provided, buyers can target individual placements when assigning creatives. See [Placements](#placements).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
-- `delivery_measurement` (object, required): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). See [Delivery Measurement](#delivery-measurement-required).
+- `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions (e.g., "Google Ad Manager with IAS viewability"). When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
 - `outcome_measurement` (OutcomeMeasurement, optional): Business outcome measurement included with the product — incremental sales lift, brand lift studies, etc. Common for retail media products.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
@@ -127,9 +127,9 @@ For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid 
 }
 ```
 
-#### Delivery Measurement (Required)
+#### Delivery Measurement
 
-All products MUST declare their measurement provider:
+Products SHOULD declare their measurement provider when available:
 ```json
 {
   "delivery_measurement": {
