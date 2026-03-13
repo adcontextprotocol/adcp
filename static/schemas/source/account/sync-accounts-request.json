@@ -29,6 +29,18 @@
             ],
             "description": "Who should be invoiced. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing across brands. The seller must either accept this billing model or reject the request."
           },
+          "payment_terms": {
+            "type": "string",
+            "enum": [
+              "net_15",
+              "net_30",
+              "net_45",
+              "net_60",
+              "net_90",
+              "prepay"
+            ],
+            "description": "Payment terms for this account. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms."
+          },
           "sandbox": {
             "type": "boolean",
             "description": "When true, provision this as a sandbox account with no real platform calls or billing. Only applicable to implicit accounts (require_operator_auth: false). For explicit accounts, sandbox accounts are pre-existing test accounts discovered via list_accounts."
@@ -128,30 +140,33 @@
       }
     },
     {
-      "description": "Brand buying direct",
+      "description": "Brand buying direct with payment terms",
       "data": {
         "accounts": [
           {
-            "brand": { "domain": "acmecorp.com" },
-            "operator": "acmecorp.com",
-            "billing": "operator"
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "billing": "operator",
+            "payment_terms": "net_30"
           }
         ]
       }
     },
     {
-      "description": "Agent consolidating billing for all advertisers",
+      "description": "Agent consolidating billing with net-60 terms",
       "data": {
         "accounts": [
           {
             "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
             "operator": "pinnacle-media.com",
-            "billing": "agent"
+            "billing": "agent",
+            "payment_terms": "net_60"
           },
           {
             "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
             "operator": "pinnacle-media.com",
-            "billing": "agent"
+            "billing": "agent",
+            "payment_terms": "net_60"
           }
         ]
       }

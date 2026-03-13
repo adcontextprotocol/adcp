@@ -27,6 +27,7 @@ import {
 } from '../addie/index.js';
 import { queueForNoteExtraction } from '../addie/services/passive-note-extractor.js';
 import { triageAndCreateProspect } from '../services/prospect-triage.js';
+import { sendWelcomeSocialPosts } from '../notifications/welcome-social-posts.js';
 
 const slackDb = new SlackDatabase();
 const addieDb = new AddieDatabase();
@@ -161,6 +162,17 @@ export async function handleTeamJoin(event: SlackTeamJoinEvent): Promise<void> {
     }
 
     logger.info({ email }, 'New Slack user added');
+
+    // Fire-and-forget welcome social posts DM (skip bots)
+    if (!user.is_bot) {
+      sendWelcomeSocialPosts({
+        slackUserId: user.id,
+        displayName: displayName || realName || undefined,
+        isBot: false,
+      }).catch(err => {
+        logger.error({ err, userId: user.id }, 'Welcome social posts DM failed');
+      });
+    }
 
     // Fire-and-forget prospect triage for business emails
     if (email && process.env.ANTHROPIC_API_KEY) {

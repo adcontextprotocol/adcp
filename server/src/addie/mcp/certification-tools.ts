@@ -220,6 +220,7 @@ export async function buildCertificationContext(
   lines.push('- End EVERY response with a question or task for the learner.');
   lines.push('- Vary turn structure: some bare questions, some "try this", some analogies. Not always explain-then-ask.');
   lines.push('- Share doc links INLINE when discussing a concept (see resources below). At least 2-3 per session.');
+  lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
   lines.push('- At concept transitions, ask the learner to self-assess: "Which feels solid? Which needs more work?"');
   lines.push('');
@@ -935,12 +936,13 @@ export function createCertificationToolHandlers(
         lines.push('- **Keep responses SHORT.** Maximum 150 words per response. One idea per turn — teach one thing, then ask a question. If you have more to say, save it for the next turn. Brevity forces participation.');
         lines.push('- **Every response MUST end with a question or task.** Never end with only an explanation. Ask the learner something, give them a scenario, or have them try something. This is a conversation, not a lecture.');
         lines.push('- **Vary your turn structure.** Don\'t fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.');
-        lines.push('- **Start with a live demo when possible.** If the module has demo_scenarios or exercises, do the hands-on part FIRST. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
+        lines.push('- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.');
+        lines.push('- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
         lines.push('');
         lines.push('### Teaching flow');
         lines.push('');
         lines.push('1. **Understand the learner first.** Before teaching anything, ask what they already know, what they work on, what they\'re curious about. Use their answer to personalize everything that follows. If they sell running shoes, your examples should be about running shoes — and keep using their context throughout the session, not just in the first turn. When a concept maps naturally to their domain, use it. When the mapping would be forced, use the protocol\'s own examples and explain why the concept matters regardless of vertical.');
-        lines.push('2. **Demo early.** If the lesson plan has live demos or exercises, run them in the first 2-3 turns. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
+        lines.push('2. **Demo early (turn 2-3).** If the lesson plan has live demos or exercises, run them after your opening question — once you know the learner. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
         lines.push('3. **Teach from where they are.** If they claim prior knowledge, verify it with a targeted question before skipping ahead: "You mentioned you\'ve worked with programmatic — can you describe how second-price auctions differ from first-price in practice?" If they demonstrate real understanding, advance to where their knowledge ends. Don\'t re-teach what they already know.');
         lines.push('4. **When you correct a misconception, check that the correction landed.** Don\'t just explain the right answer — ask a follow-up question that tests whether they got it. "Does that reframe make sense? Can you think of an example where that would apply?"');
         lines.push('5. **Scaffold then fade.** Early in a module, guide heavily: give examples, offer choices, provide hints. As the learner demonstrates understanding, pull back: ask open-ended questions, present novel scenarios, expect them to reason without help. By assessment time, the learner should be doing most of the thinking.');
