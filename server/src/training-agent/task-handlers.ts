@@ -248,7 +248,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
 
     // If no keyword matches, return top products as suggestions
     if (products.length === 0) {
-      products = getCatalog().slice(0, 5).map(cp => ({
+      products = getCatalog().slice(0, MAX_BRIEF_RESULTS).map(cp => ({
         ...cp.product,
         brief_relevance: 'Suggested product — no direct keyword match with your brief.',
       }));
