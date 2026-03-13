@@ -424,7 +424,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
-    // Skip building package state if any errors for this package
+    // Don't build package state if there are any validation errors (atomic create)
     if (errors.length > 0) continue;
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;

@@ -113,11 +113,7 @@ export function createTrainingAgentRouter(): Router {
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req: Request) => {
-      const ip = req.ip || 'unknown';
-      if (ip.includes(':')) {
-        return ip.split(':').slice(0, 4).join(':') + '::/64';
-      }
-      return ip;
+      return req.ip || 'unknown';
     },
     handler: (_req: Request, res: Response) => {
       res.status(429).json({
