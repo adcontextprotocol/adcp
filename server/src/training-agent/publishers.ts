@@ -306,6 +306,42 @@ export const PUBLISHERS: PublisherProfile[] = [
   },
 
   {
+    id: 'beacon_search',
+    name: 'Beacon Search',
+    domain: 'beaconsearch.example',
+    description: 'Search engine and shopping network with 180M monthly queries. Text ads, shopping listings, and keyword-targeted placements across web and mobile.',
+    channels: ['search'],
+    deliveryTypes: ['non_guaranteed'],
+    catalogTypes: ['product'],
+    pricingTemplates: [
+      { model: 'cpc', currency: 'USD', floorPrice: 0.25, priceGuidance: { suggested: 1.80, range: { min: 0.25, max: 8.00 } } },
+      { model: 'cpa', currency: 'USD', fixedPrice: 15, eventType: 'purchase' },
+    ],
+    measurementProvider: 'Beacon first-party conversion tracking',
+    measurementNotes: 'Deterministic click-to-conversion attribution. 30-day click-through, 1-day view-through window. Keyword-level reporting with search term data.',
+    reportingFrequencies: ['daily', 'monthly'],
+    reportingMetrics: ['impressions', 'spend', 'clicks', 'ctr', 'conversions', 'conversion_value', 'cost_per_acquisition', 'roas'],
+    properties: [
+      {
+        propertyId: 'beacon_web',
+        name: 'Beacon Search Web',
+        identifierType: 'domain',
+        identifierValue: 'beaconsearch.example',
+        channels: ['search'],
+        tags: ['search', 'web', 'text_ads'],
+      },
+      {
+        propertyId: 'beacon_shopping',
+        name: 'Beacon Shopping',
+        identifierType: 'domain',
+        identifierValue: 'shopping.beaconsearch.example',
+        channels: ['search'],
+        tags: ['search', 'shopping', 'product_listing'],
+      },
+    ],
+  },
+
+  {
     id: 'novamind',
     name: 'NovaMind AI',
     domain: 'novamind.example',

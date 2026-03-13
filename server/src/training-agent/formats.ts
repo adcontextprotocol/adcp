@@ -296,6 +296,43 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
       ],
     },
 
+    // ── Search ──────────────────────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'search_text_ad' },
+      name: 'Search text ad',
+      description: 'Text-based search ad with headline, description, display URL, and sitelinks. Rendered in search results alongside organic listings.',
+      renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true } } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'headline_1', asset_type: 'text', asset_role: 'headline', required: true,
+          requirements: { max_length: 30 } },
+        { item_type: 'individual', asset_id: 'headline_2', asset_type: 'text', asset_role: 'headline', required: true,
+          requirements: { max_length: 30 } },
+        { item_type: 'individual', asset_id: 'headline_3', asset_type: 'text', asset_role: 'headline', required: false,
+          requirements: { max_length: 30 } },
+        { item_type: 'individual', asset_id: 'description_1', asset_type: 'text', asset_role: 'body_copy', required: true,
+          requirements: { max_length: 90 } },
+        { item_type: 'individual', asset_id: 'description_2', asset_type: 'text', asset_role: 'body_copy', required: false,
+          requirements: { max_length: 90 } },
+        { item_type: 'individual', asset_id: 'display_url', asset_type: 'text', asset_role: 'display_url', required: true,
+          requirements: { max_length: 35 } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
+          requirements: { url_type: 'click_through' } },
+      ],
+    },
+
+    {
+      format_id: { agent_url: agentUrl, id: 'search_shopping' },
+      name: 'Search shopping listing',
+      description: 'Product listing ad shown in search shopping results. Uses catalog data for product image, title, price, and merchant info.',
+      renders: [{ role: 'primary', dimensions: { responsive: { width: true, height: true }, min_width: 150, max_width: 300 } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'catalog', asset_type: 'catalog', asset_role: 'product_feed', required: true,
+          requirements: { catalog_types: ['product'] } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
+          requirements: { url_type: 'click_through' } },
+      ],
+    },
+
     // ── AI / Conversational ──────────────────────────────────
     {
       format_id: { agent_url: agentUrl, id: 'ai_sponsored_recommendation' },
@@ -363,6 +400,8 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   creator_brief: ['influencer'],
   gaming_interstitial: ['gaming'],
   gaming_rewarded_video: ['gaming'],
+  search_text_ad: ['search'],
+  search_shopping: ['search'],
   ai_sponsored_recommendation: ['display'],
   ai_sponsored_agent: ['display'],
 };

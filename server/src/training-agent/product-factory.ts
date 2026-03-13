@@ -75,6 +75,7 @@ function tierForProduct(pub: PublisherProfile, deliveryType: string, channels: s
   const highComplexity = ['ctv', 'linear_tv', 'dooh', 'ooh', 'influencer', 'product_placement'];
   const niche = ['gaming', 'cinema', 'affiliate'];
 
+  if (channels.includes('search')) return 'basics';
   if (channels.some(c => niche.includes(c))) return 'specialist';
   if (deliveryType === 'guaranteed' && channels.some(c => highComplexity.includes(c))) return 'practitioner';
   if (deliveryType === 'guaranteed') return 'practitioner';
@@ -107,14 +108,15 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
   for (const deliveryType of pub.deliveryTypes) {
     if (pub.channels.length <= 2) {
       // Small channel set — one product per delivery type
+      const channelLabel = pub.channels.join(' & ');
       templates.push({
         suffix: deliveryType === 'guaranteed' ? 'premium' : 'standard',
         name: deliveryType === 'guaranteed'
-          ? `${pub.name} premium`
-          : `${pub.name} standard`,
+          ? `${pub.name} ${channelLabel} guaranteed`
+          : `${pub.name} ${channelLabel}`,
         description: deliveryType === 'guaranteed'
-          ? `Guaranteed delivery across ${pub.name} inventory. ${pub.description}`
-          : `Auction-based delivery across ${pub.name} inventory. ${pub.description}`,
+          ? `Guaranteed delivery across ${pub.name} ${channelLabel} inventory. ${pub.description}`
+          : `Auction-based delivery across ${pub.name} ${channelLabel} inventory. ${pub.description}`,
         channels: pub.channels,
         deliveryType,
         pricingFilter: deliveryType === 'guaranteed'
@@ -126,14 +128,15 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
       const videoChannels = pub.channels.filter(c => ['olv', 'ctv', 'linear_tv'].includes(c));
       const displayChannels = pub.channels.filter(c => ['display', 'email'].includes(c));
       const socialChannels = pub.channels.filter(c => ['social', 'influencer'].includes(c));
+      const searchChannels = pub.channels.filter(c => ['search'].includes(c));
       const otherChannels = pub.channels.filter(c =>
-        !['olv', 'ctv', 'linear_tv', 'display', 'email', 'social', 'influencer'].includes(c),
+        !['olv', 'ctv', 'linear_tv', 'display', 'email', 'social', 'influencer', 'search'].includes(c),
       );
 
       if (videoChannels.length > 0) {
         templates.push({
           suffix: `video_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
-          name: `${pub.name} video${deliveryType === 'guaranteed' ? ' premium' : ''}`,
+          name: `${pub.name} video${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
           description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} video inventory across ${pub.name}. Channels: ${videoChannels.join(', ')}.`,
           channels: videoChannels,
           deliveryType,
@@ -146,7 +149,7 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
       if (displayChannels.length > 0) {
         templates.push({
           suffix: `display_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
-          name: `${pub.name} display${deliveryType === 'guaranteed' ? ' premium' : ''}`,
+          name: `${pub.name} display${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
           description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} display inventory across ${pub.name}. Channels: ${displayChannels.join(', ')}.`,
           channels: displayChannels,
           deliveryType,
@@ -159,9 +162,22 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
       if (socialChannels.length > 0) {
         templates.push({
           suffix: `social_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
-          name: `${pub.name} social${deliveryType === 'guaranteed' ? ' premium' : ''}`,
+          name: `${pub.name} social${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
           description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} social inventory on ${pub.name}. Channels: ${socialChannels.join(', ')}.`,
           channels: socialChannels,
+          deliveryType,
+          pricingFilter: deliveryType === 'guaranteed'
+            ? (t) => t.fixedPrice !== undefined
+            : (t) => t.fixedPrice === undefined,
+        });
+      }
+
+      if (searchChannels.length > 0) {
+        templates.push({
+          suffix: `search_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
+          name: `${pub.name} search${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
+          description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} search inventory on ${pub.name}. Keyword-targeted text and shopping ads.`,
+          channels: searchChannels,
           deliveryType,
           pricingFilter: deliveryType === 'guaranteed'
             ? (t) => t.fixedPrice !== undefined

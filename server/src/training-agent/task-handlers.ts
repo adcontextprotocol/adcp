@@ -313,6 +313,19 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     };
   }
 
+  // Validate dates
+  const buyStart = args.start_time as string;
+  const buyEnd = args.end_time as string;
+  if (buyStart !== 'asap' && isNaN(new Date(buyStart).getTime())) {
+    return { errors: [{ code: 'validation_error', message: `Invalid start_time: "${buyStart}". Use ISO 8601 format or "asap".` }] };
+  }
+  if (isNaN(new Date(buyEnd).getTime())) {
+    return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${buyEnd}". Use ISO 8601 format.` }] };
+  }
+  if (buyStart !== 'asap' && new Date(buyStart) >= new Date(buyEnd)) {
+    return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] };
+  }
+
   // Validate packages
   const createdPackages: PackageState[] = [];
   for (const pkg of packages) {
@@ -332,6 +345,18 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         errors: [{
           code: 'validation_error',
           message: `Pricing option not found: ${pricingOptionId}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
+        }],
+      };
+    }
+
+    // Check bid vs floor price
+    const floorPrice = pricing.floor_price as number | undefined;
+    const bidPrice = pkg.bid_price as number | undefined;
+    if (floorPrice !== undefined && bidPrice !== undefined && bidPrice < floorPrice) {
+      return {
+        errors: [{
+          code: 'validation_error',
+          message: `Bid price $${bidPrice} is below floor price of $${floorPrice} for pricing option ${pricingOptionId}`,
         }],
       };
     }
@@ -393,6 +418,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     media_buy_id: mediaBuyId,
     buyer_ref: buyerRef,
     buyer_campaign_ref: mediaBuy.buyerCampaignRef,
+    status: 'active',
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       buyer_ref: pkg.buyerRef,
@@ -420,12 +446,23 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
   }
 
+  const now = new Date();
   return {
-    media_buys: buys.map(mb => ({
+    media_buys: buys.map(mb => {
+      // Derive lifecycle state from dates
+      let status = mb.status;
+      const endDate = new Date(mb.endTime);
+      const startDate = new Date(mb.startTime);
+      if (status === 'active' && endDate < now) {
+        status = 'completed';
+      } else if (status === 'active' && startDate > now) {
+        status = 'scheduled';
+      }
+      return {
       media_buy_id: mb.mediaBuyId,
       buyer_ref: mb.buyerRef,
       buyer_campaign_ref: mb.buyerCampaignRef,
-      status: mb.status,
+      status,
       currency: mb.currency,
       start_time: mb.startTime,
       end_time: mb.endTime,
@@ -439,13 +476,16 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
         start_time: pkg.startTime,
         end_time: pkg.endTime,
       })),
-    })),
+    };
+    }),
     sandbox: true,
   };
 }
 
 function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
   const session = getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
+  const catalog = getCatalog();
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id as string, cp.product]));
   const mediaBuyId = (args.media_buy_id || args.buyer_ref) as string;
   const mb = session.mediaBuys.get(mediaBuyId) ||
     Array.from(session.mediaBuys.values()).find(b => b.buyerRef === mediaBuyId);
@@ -475,9 +515,27 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     media_buy_deliveries: mb.packages.map(pkg => {
       const budget = pkg.budget;
       const spend = Math.round(budget * elapsed * 100) / 100;
-      const cpm = 10; // simulated average CPM
-      const impressions = Math.round((spend / cpm) * 1000);
-      const clicks = Math.round(impressions * 0.001); // 0.1% CTR
+
+      // Derive CPM from the product's actual pricing
+      const product = productMap.get(pkg.productId);
+      const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
+      const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
+      const cpm = (pricing?.fixed_price as number)
+        || (pricing?.floor_price as number)
+        || 10;
+
+      // Channel-appropriate CTR
+      const channels = product?.channels as string[] | undefined;
+      let ctr: number;
+      if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
+      else if (channels?.some(c => ['search'].includes(c))) ctr = 0.035;
+      else if (channels?.some(c => ['retail_media'].includes(c))) ctr = 0.008;
+      else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) ctr = 0;
+      else if (channels?.some(c => ['streaming_audio', 'podcast'].includes(c))) ctr = 0.003;
+      else ctr = 0.001;
+
+      const impressions = cpm > 0 ? Math.round((spend / cpm) * 1000) : 0;
+      const clicks = Math.round(impressions * ctr);
       return {
         package_id: pkg.packageId,
         product_id: pkg.productId,
@@ -507,10 +565,24 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     };
   }
 
+  // Build a set of valid format IDs for validation
+  const validFormatIds = new Set(getFormats().map(f => (f.format_id as { id: string }).id));
+
   const results: Record<string, unknown>[] = [];
   for (const creative of creatives) {
     const creativeId = (creative.creative_id as string) || `cr_${randomUUID().slice(0, 8)}`;
     const formatId = creative.format_id as { agent_url: string; id: string };
+
+    // Validate format_id
+    if (formatId?.id && !validFormatIds.has(formatId.id)) {
+      return {
+        errors: [{
+          code: 'validation_error',
+          message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
+        }],
+      };
+    }
+
     const existing = session.creatives.has(creativeId);
 
     session.creatives.set(creativeId, {
@@ -529,7 +601,41 @@ function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext
     });
   }
 
-  return { creatives: results, sandbox: true };
+  // Process creative assignments
+  const assignments = args.assignments as Array<Record<string, unknown>> | undefined;
+  const assignmentResults: Record<string, unknown>[] = [];
+  if (assignments?.length) {
+    for (const assignment of assignments) {
+      const mediaBuyId = assignment.media_buy_id as string;
+      const packageId = assignment.package_id as string;
+      const creativeId = assignment.creative_id as string;
+
+      const mb = session.mediaBuys.get(mediaBuyId);
+      if (!mb) {
+        assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Media buy not found: ${mediaBuyId}` });
+        continue;
+      }
+      const pkg = mb.packages.find(p => p.packageId === packageId);
+      if (!pkg) {
+        assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Package not found: ${packageId}` });
+        continue;
+      }
+      if (!session.creatives.has(creativeId)) {
+        assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Creative not found: ${creativeId}` });
+        continue;
+      }
+      if (!pkg.creativeAssignments.includes(creativeId)) {
+        pkg.creativeAssignments.push(creativeId);
+      }
+      assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'assigned' });
+    }
+  }
+
+  return {
+    creatives: results,
+    ...(assignmentResults.length > 0 && { assignments: assignmentResults }),
+    sandbox: true,
+  };
 }
 
 function handleListCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {

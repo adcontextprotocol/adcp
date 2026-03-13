@@ -842,15 +842,15 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-001',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 50000,
         buyer_ref: 'pkg-buyer-001',
-        start_time: '2025-06-01T00:00:00Z',
-        end_time: '2025-07-01T00:00:00Z',
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
       }],
     });
 
@@ -871,15 +871,15 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-002',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 10000,
         buyer_ref: 'pkg-buyer-002',
-        start_time: '2025-06-01T00:00:00Z',
-        end_time: '2025-07-01T00:00:00Z',
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
       }],
     });
 
@@ -898,8 +898,8 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-003',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [],
     });
 
@@ -916,8 +916,8 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-004',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: 'nonexistent_product',
         pricing_option_id: 'whatever',
@@ -937,8 +937,8 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-005',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: productId,
         pricing_option_id: 'invalid_pricing',
@@ -977,8 +977,8 @@ describe('create_media_buy handler', () => {
       buyer_ref: 'test-buyer-006',
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: targetProduct.product_id,
         pricing_option_id: targetPricing.pricing_option_id,
@@ -1000,14 +1000,14 @@ describe('create_media_buy handler', () => {
       account: { brand: { domain: 'test.example' } },
       brand: { domain: 'test.example' },
       start_time: 'asap',
-      end_time: '2025-07-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: productId,
         pricing_option_id: pricingOptionId,
         budget: 50000,
         buyer_ref: 'pkg-asap',
         start_time: 'asap',
-        end_time: '2025-07-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
       }],
     });
 
@@ -1016,6 +1016,81 @@ describe('create_media_buy handler', () => {
     // The start_time should be a real ISO timestamp, not 'asap'
     expect(pkg.start_time).not.toBe('asap');
     expect(new Date(pkg.start_time as string).toISOString()).toBeDefined();
+  });
+
+  it('returns error when start_time is after end_time', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'test-buyer-bad-dates',
+      account: { brand: { domain: 'test.example' } },
+      brand: { domain: 'test.example' },
+      start_time: '2027-08-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+        buyer_ref: 'pkg-bad-dates',
+      }],
+    });
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('before end_time');
+  });
+
+  it('returns error when bid_price is below floor_price', async () => {
+    const catalog = buildCatalog();
+    let targetProduct: Record<string, unknown> | undefined;
+    let targetPricing: Record<string, unknown> | undefined;
+
+    for (const cp of catalog) {
+      const opts = cp.product.pricing_options as Array<Record<string, unknown>>;
+      const withFloor = opts.find(o => (o.floor_price as number) > 0);
+      if (withFloor) {
+        targetProduct = cp.product;
+        targetPricing = withFloor;
+        break;
+      }
+    }
+    if (!targetProduct || !targetPricing) return;
+
+    const floorPrice = targetPricing.floor_price as number;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'test-buyer-low-bid',
+      account: { brand: { domain: 'test.example' } },
+      brand: { domain: 'test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: targetProduct.product_id,
+        pricing_option_id: targetPricing.pricing_option_id,
+        budget: 50000,
+        bid_price: floorPrice - 0.01,
+        buyer_ref: 'pkg-low-bid',
+      }],
+    });
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('below floor price');
+  });
+
+  it('includes status field in create response', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'test-buyer-status',
+      account: { brand: { domain: 'test.example' } },
+      brand: { domain: 'test.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+        buyer_ref: 'pkg-status',
+      }],
+    });
+    expect(result.status).toBe('active');
   });
 });
 
@@ -1119,6 +1194,63 @@ describe('sync_creatives handler', () => {
     expect(creatives).toHaveLength(3);
     expect(creatives.map(c => c.creative_id)).toEqual(['cr_a', 'cr_b', 'cr_c']);
   });
+
+  it('returns error for invalid format_id', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      account: { brand: { domain: 'test.example' } },
+      creatives: [{
+        creative_id: 'cr_bad_format',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'nonexistent_format' },
+      }],
+    });
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Unknown format_id');
+  });
+
+  it('processes creative-to-package assignments', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Create a media buy first
+    const { result: buyResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'buyer-assign',
+      account: { brand: { domain: 'assign.example' } },
+      brand: { domain: 'assign.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        buyer_ref: 'pkg-assign',
+      }],
+    });
+    const mediaBuyId = buyResult.media_buy_id as string;
+    const packageId = (buyResult.packages as Array<Record<string, unknown>>)[0].package_id as string;
+
+    // Sync creative with assignment
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'sync_creatives', {
+      account: { brand: { domain: 'assign.example' } },
+      creatives: [{
+        creative_id: 'cr_to_assign',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+      }],
+      assignments: [{
+        media_buy_id: mediaBuyId,
+        package_id: packageId,
+        creative_id: 'cr_to_assign',
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    const assignments = result.assignments as Array<Record<string, unknown>>;
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0].status).toBe('assigned');
+  });
 });
 
 // ── get_media_buys handler ─────────────────────────────────────────
@@ -1156,8 +1288,8 @@ describe('get_media_buys handler', () => {
       buyer_ref: 'buyer-for-get',
       account,
       brand: { domain: 'getbuys.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -1173,7 +1305,8 @@ describe('get_media_buys handler', () => {
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
     expect(buys[0].buyer_ref).toBe('buyer-for-get');
-    expect(buys[0].status).toBe('active');
+    // Future dates => scheduled status
+    expect(buys[0].status).toBe('scheduled');
   });
 });
 
@@ -1235,8 +1368,8 @@ describe('update_media_buy handler', () => {
       buyer_ref: 'buyer-update',
       account,
       brand: { domain: 'update.example' },
-      start_time: '2025-06-01T00:00:00Z',
-      end_time: '2025-07-01T00:00:00Z',
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -1286,7 +1419,7 @@ describe('channel coverage across publishers', () => {
     const coreChannels = [
       'display', 'olv', 'ctv', 'streaming_audio', 'podcast',
       'dooh', 'ooh', 'gaming', 'retail_media', 'social', 'influencer',
-      'email', 'linear_tv',
+      'email', 'linear_tv', 'search',
     ];
     for (const ch of coreChannels) {
       expect(allChannels.has(ch)).toBe(true);
