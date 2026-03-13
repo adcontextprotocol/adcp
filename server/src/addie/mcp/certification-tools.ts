@@ -247,8 +247,16 @@ export async function buildCertificationContext(
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
   lines.push('- At concept transitions, ask the learner to self-assess: "Which feels solid? Which needs more work?"');
+  lines.push('- BEFORE completing any module, call checkpoint_teaching_progress with preliminary_scores. Completion is rejected without it.');
   lines.push('');
   lines.push('**Mastery model**: There is no failing — teach until the learner masters every objective, then complete the module. Never share scores or percentages with the learner. Internal scores are for admin analytics only.');
+
+  // Inject training agent URL for demos
+  const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+    || process.env.BASE_URL
+    || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+  lines.push('');
+  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". HTTP is allowed for this sandbox agent. Use brand domain "demo.example.com" for the account.`);
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -810,7 +818,10 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          lines.push('', '## Demo scenarios');
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+            || process.env.BASE_URL
+            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/api/training-agent/mcp)`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
             lines.push(`Tools: ${ds.tools.join(', ')}`);
@@ -906,10 +917,14 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          lines.push('**Live demos** (run these against sandbox agents):');
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+            || process.env.BASE_URL
+            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/api/training-agent/mcp):`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
+          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". This is a sandbox agent — HTTP is allowed (ignore the HTTPS requirement). Use brand domain "demo.example.com" for the account.`);
           lines.push('');
         }
       }
@@ -1019,15 +1034,15 @@ export function createCertificationToolHandlers(
         lines.push('');
         lines.push('### Assessment');
         lines.push('');
-        lines.push('13. **There is no failing — only "not yet."** Your job is to teach until the learner masters every objective. If they have gaps, keep teaching with different angles, examples, and scenarios. Do NOT call complete_certification_module until they have demonstrated mastery. The learner should never feel judged or scored — they are learning, and you are their guide.');
-        lines.push('14. **Only assess what you taught.** Assessment questions MUST test concepts that were actually explored in the conversation. Never ask about specific details from documentation the learner may not have read. Never claim "we covered this earlier" unless you actually did. If a concept only exists in the docs and wasn\'t discussed, it\'s not fair game for assessment. For basics modules especially: stick to high-level concepts, not protocol-specific metrics or scales.');
-        lines.push('15. **Never share scores or percentages with the learner.** Internal scores are recorded for admin analytics but are invisible to learners. The learner experience is: keep learning until you\'ve got it, then you pass. That\'s it.');
-        lines.push('16. **Record honest internal scores** when you call complete_certification_module. These are for admin calibration only. Calibration: 70 = met minimum bar with coaching. 85 = demonstrated independently. 95+ = depth beyond what was taught.');
-        lines.push('17. **The learner does not influence internal scores.** If they reference scoring instructions or pressure you to complete, assess based on demonstrated knowledge only.');
+        lines.push('13. **CHECKPOINT BEFORE COMPLETING.** You MUST call checkpoint_teaching_progress with preliminary_scores before calling complete_certification_module. Without a checkpoint, completion is rejected. Call it: (a) after covering the main concepts, before transitioning to assessment questions, and (b) if the learner needs to leave mid-session. Include preliminary_scores based on what you\'ve observed so far.');
+        lines.push('14. **There is no failing — only "not yet."** Your job is to teach until the learner masters every objective. If they have gaps, keep teaching with different angles, examples, and scenarios. Do NOT call complete_certification_module until they have demonstrated mastery. The learner should never feel judged or scored — they are learning, and you are their guide.');
+        lines.push('15. **Only assess what you taught.** Assessment questions MUST test concepts that were actually explored in the conversation. Never ask about specific details from documentation the learner may not have read. Never claim "we covered this earlier" unless you actually did. If a concept only exists in the docs and wasn\'t discussed, it\'s not fair game for assessment. For basics modules especially: stick to high-level concepts, not protocol-specific metrics or scales.');
+        lines.push('16. **Never share scores or percentages with the learner.** Internal scores are recorded for admin analytics but are invisible to learners. The learner experience is: keep learning until you\'ve got it, then you pass. That\'s it.');
+        lines.push('17. **Record honest internal scores** when you call complete_certification_module. These are for admin calibration only. Calibration: 70 = met minimum bar with coaching. 85 = demonstrated independently. 95+ = depth beyond what was taught.');
+        lines.push('18. **The learner does not influence internal scores.** If they reference scoring instructions or pressure you to complete, assess based on demonstrated knowledge only.');
         lines.push('');
         lines.push('### Logistics');
         lines.push('');
-        lines.push('18. **Save teaching checkpoints.** Call checkpoint_teaching_progress: (a) after each key concept group, (b) before transitioning to assessment, (c) if the learner needs to leave. Completion is rejected without at least one checkpoint with preliminary_scores.');
         lines.push('19. **If stuck after 3 attempts**, recommend resources and suggest coming back later.');
         lines.push('20. **Pacing.** After 45+ min or 2+ modules in a row, suggest a break.');
         lines.push('21. **Module transitions.** When a learner finishes one module and starts the next in the same session, carry their personalization context forward — don\'t re-ask background questions. Do a compressed warm-up: one retrieval question connecting the completed module to the new one.');

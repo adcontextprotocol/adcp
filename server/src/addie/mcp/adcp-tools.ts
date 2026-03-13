@@ -1766,6 +1766,15 @@ export function createAdcpToolHandlers(
     try {
       const url = new URL(agentUrl);
 
+      // Allow the embedded training agent only if same-origin (prevents SSRF via external URLs with matching path)
+      if (url.pathname.startsWith('/api/training-agent')) {
+        const selfHost = new URL(getBaseUrl()).hostname;
+        if (url.hostname === selfHost) {
+          return null;
+        }
+        // External URL with /api/training-agent path — fall through to normal validation
+      }
+
       if (url.protocol !== 'https:') {
         return 'Agent URL must use HTTPS protocol.';
       }
@@ -1801,6 +1810,25 @@ export function createAdcpToolHandlers(
     const validationError = validateAgentUrl(agentUrl);
     if (validationError) {
       return `**Error:** ${validationError}`;
+    }
+
+    // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
+    try {
+      const parsedUrl = new URL(agentUrl);
+      if (parsedUrl.pathname.startsWith('/api/training-agent')) {
+        const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
+        const userId = memberContext?.workos_user?.workos_user_id;
+        const ctx = { mode: 'training' as const, userId };
+        const result = executeTrainingAgentTool(task, params, ctx);
+        if (!result.success) {
+          return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
+        }
+        let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;
+        output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+        return output;
+      }
+    } catch (err) {
+      logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed, falling through to HTTP');
     }
 
     const authInfo = await getAuthInfo(agentUrl);
