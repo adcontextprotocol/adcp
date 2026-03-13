@@ -112,19 +112,5 @@
     }
   },
   "required": ["plan_id", "buyer_campaign_ref", "outcome"],
-  "allOf": [
-    {
-      "if": { "properties": { "outcome": { "const": "completed" } }, "required": ["outcome"] },
-      "then": { "required": ["check_id", "seller_response"] }
-    },
-    {
-      "if": { "properties": { "outcome": { "const": "failed" } }, "required": ["outcome"] },
-      "then": { "required": ["check_id", "error"] }
-    },
-    {
-      "if": { "properties": { "outcome": { "const": "delivery" } }, "required": ["outcome"] },
-      "then": { "required": ["delivery"] }
-    }
-  ],
   "additionalProperties": false
 }

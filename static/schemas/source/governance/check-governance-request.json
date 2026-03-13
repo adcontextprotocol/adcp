@@ -116,34 +116,5 @@
     }
   },
   "required": ["plan_id", "buyer_campaign_ref", "binding", "caller"],
-  "additionalProperties": false,
-  "allOf": [
-    {
-      "if": {
-        "properties": { "binding": { "const": "proposed" } },
-        "required": ["binding"]
-      },
-      "then": {
-        "required": ["tool", "payload"]
-      }
-    },
-    {
-      "if": {
-        "properties": { "binding": { "const": "committed" } },
-        "required": ["binding"]
-      },
-      "then": {
-        "required": ["planned_delivery", "media_buy_id", "phase"]
-      }
-    },
-    {
-      "if": {
-        "properties": { "phase": { "const": "delivery" } },
-        "required": ["phase"]
-      },
-      "then": {
-        "required": ["delivery_metrics"]
-      }
-    }
-  ]
+  "additionalProperties": false
 }
