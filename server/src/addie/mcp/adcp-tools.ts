@@ -141,6 +141,11 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             unit: { type: 'string', enum: ['seconds', 'minutes', 'hours', 'days'], description: 'Duration unit' },
           },
         },
+        required_policies: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Registry policy IDs that the buyer requires to be enforced for products in this response. Sellers filter products to only those that comply with or already enforce the requested policies.',
+        },
         pagination: {
           type: 'object',
           description: 'Cursor-based pagination parameters.',
@@ -260,6 +265,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         reporting_webhook: {
           type: 'object',
           description: 'Webhook configuration for automated reporting delivery.',
+        },
+        plan_id: {
+          type: 'string',
+          description: 'Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.',
         },
         artifact_webhook: {
           type: 'object',

@@ -37,6 +37,11 @@
         }
       }
     },
+    "registry_policy_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Registry policy IDs to use as the evaluation basis. When provided, the agent resolves policies from the registry and uses their policy text and exemplars as the evaluation criteria."
+    },
     "policy": {
       "type": "string",
       "description": "Updated natural language policy describing acceptable and unacceptable content contexts."

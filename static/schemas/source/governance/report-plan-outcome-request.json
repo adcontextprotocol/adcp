@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/report-plan-outcome-request.json",
+  "title": "Report Plan Outcome Request",
+  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "The plan this outcome is for."
+    },
+    "check_id": {
+      "type": "string",
+      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes."
+    },
+    "buyer_campaign_ref": {
+      "type": "string",
+      "description": "Campaign identifier."
+    },
+    "outcome": {
+      "$ref": "/schemas/enums/outcome-type.json",
+      "description": "Outcome type."
+    },
+    "seller_response": {
+      "type": "object",
+      "description": "The seller's full response. Required when outcome is 'completed'.",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "Seller's media buy identifier."
+        },
+        "buyer_ref": {
+          "type": "string",
+          "description": "The buyer reference echoed back by the seller."
+        },
+        "packages": {
+          "type": "array",
+          "description": "Confirmed packages with actual budget and targeting.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "planned_delivery": {
+          "$ref": "/schemas/core/planned-delivery.json",
+          "description": "What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters."
+        },
+        "creative_deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 deadline for creative submission."
+        }
+      },
+      "additionalProperties": true
+    },
+    "delivery": {
+      "type": "object",
+      "description": "Delivery metrics. Required when outcome is 'delivery'.",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "description": "The media buy being reported on."
+        },
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          },
+          "required": ["start", "end"],
+          "additionalProperties": false
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions delivered in the period."
+        },
+        "spend": {
+          "type": "number",
+          "description": "Spend in the period."
+        },
+        "cpm": {
+          "type": "number",
+          "description": "Effective CPM for the period."
+        },
+        "viewability_rate": {
+          "type": "number",
+          "description": "Viewability rate (0-1)."
+        },
+        "completion_rate": {
+          "type": "number",
+          "description": "Video completion rate (0-1)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details. Required when outcome is 'failed'.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code from the seller."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error description."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["plan_id", "buyer_campaign_ref", "outcome"],
+  "additionalProperties": false
+}
