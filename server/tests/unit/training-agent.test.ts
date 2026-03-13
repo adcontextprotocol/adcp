@@ -743,6 +743,19 @@ describe('get_products handler', () => {
     expect(hasRelevance).toBe(true);
   });
 
+  it('caps brief results at 5 most relevant products', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    // Use a broad term that matches many products
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'premium display video audio social search',
+    });
+
+    const products = result.products as Array<Record<string, unknown>>;
+    expect(products.length).toBeLessThanOrEqual(5);
+    expect(products.length).toBeGreaterThan(0);
+  });
+
   it('returns suggestions when brief has no keyword matches', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_products', {

@@ -239,7 +239,9 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
       .filter((s): s is NonNullable<typeof s> => s !== null)
       .sort((a, b) => b.matchCount - a.matchCount);
 
-    products = scored.map(s => ({
+    // Cap at top 5 most relevant products so learners see brief mode as curated discovery
+    const MAX_BRIEF_RESULTS = 5;
+    products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => ({
       ...s.product,
       brief_relevance: `Matches ${s.matchCount} of ${terms.length} brief terms. ${s.product.description}`,
     }));
