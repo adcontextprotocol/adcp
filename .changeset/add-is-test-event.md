@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": major
 ---
 
-Add `is_test_event` boolean field to log_event request schema as a simpler alternative to `test_event_code` for marking test events.
+Replace `test_event_code` string field with `is_test_event` boolean in the log_event request schema.
