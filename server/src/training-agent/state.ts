@@ -58,8 +58,13 @@ export { MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION };
 
 /**
  * Derive a session key from the request context.
- * Open mode: uses account brand domain or a default key.
- * Training mode: uses userId + moduleId.
+ *
+ * Open mode: keyed by account brand domain. This is intentionally shared —
+ * callers using the same brand.domain see the same session state, which
+ * mirrors how a real publisher scopes state per advertiser account.
+ * The bearer token is shared across all sandbox callers.
+ *
+ * Training mode: keyed by userId + moduleId for per-learner isolation.
  */
 export function sessionKeyFromArgs(
   args: Record<string, unknown>,
