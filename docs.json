@@ -392,6 +392,7 @@
             "group": "Certification",
             "pages": [
               "docs/learning/overview",
+              "docs/learning/instructional-design",
               {
                 "group": "Basics (free)",
                 "pages": [
@@ -416,6 +417,18 @@
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence"
+                ]
+              },
+              {
+                "group": "Policies",
+                "pages": [
+                  "docs/learning/policies/nondiscrimination",
+                  "docs/learning/policies/learner-records",
+                  "docs/learning/policies/complaints",
+                  "docs/learning/policies/conflict-of-interest",
+                  "docs/learning/policies/intellectual-property",
+                  "docs/learning/policies/personnel-qualifications",
+                  "docs/learning/policies/refund"
                 ]
               }
             ]
@@ -762,6 +775,7 @@
             "group": "Certification",
             "pages": [
               "docs/learning/overview",
+              "docs/learning/instructional-design",
               {
                 "group": "Basics (free)",
                 "pages": [
@@ -786,6 +800,18 @@
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
                   "docs/learning/specialist/sponsored-intelligence"
+                ]
+              },
+              {
+                "group": "Policies",
+                "pages": [
+                  "docs/learning/policies/nondiscrimination",
+                  "docs/learning/policies/learner-records",
+                  "docs/learning/policies/complaints",
+                  "docs/learning/policies/conflict-of-interest",
+                  "docs/learning/policies/intellectual-property",
+                  "docs/learning/policies/personnel-qualifications",
+                  "docs/learning/policies/refund"
                 ]
               }
             ]
