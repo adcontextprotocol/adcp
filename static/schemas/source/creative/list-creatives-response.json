@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/list-creatives-response.json",
+  "$id": "/schemas/creative/list-creatives-response.json",
   "title": "List Creatives Response",
   "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
   "type": "object",
@@ -39,7 +39,7 @@
           }
         }
       },
-      "required": [],
+      "required": ["total_matching", "returned"],
       "additionalProperties": true
     },
     "pagination": {
@@ -74,7 +74,7 @@
           "created_date": {
             "type": "string",
             "format": "date-time",
-            "description": "When the creative was uploaded to the library"
+            "description": "When the creative was created"
           },
           "updated_date": {
             "type": "string",
@@ -87,48 +87,20 @@
             "patternProperties": {
               "^[a-z0-9_]+$": {
                 "anyOf": [
-                  {
-                    "$ref": "/schemas/core/assets/image-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/video-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/audio-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/vast-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/text-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/url-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/html-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/javascript-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/webhook-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/css-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/daast-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/markdown-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/brief-asset.json"
-                  },
-                  {
-                    "$ref": "/schemas/core/assets/catalog-asset.json"
-                  }
+                  { "$ref": "/schemas/core/assets/image-asset.json" },
+                  { "$ref": "/schemas/core/assets/video-asset.json" },
+                  { "$ref": "/schemas/core/assets/audio-asset.json" },
+                  { "$ref": "/schemas/core/assets/vast-asset.json" },
+                  { "$ref": "/schemas/core/assets/text-asset.json" },
+                  { "$ref": "/schemas/core/assets/url-asset.json" },
+                  { "$ref": "/schemas/core/assets/html-asset.json" },
+                  { "$ref": "/schemas/core/assets/javascript-asset.json" },
+                  { "$ref": "/schemas/core/assets/webhook-asset.json" },
+                  { "$ref": "/schemas/core/assets/css-asset.json" },
+                  { "$ref": "/schemas/core/assets/daast-asset.json" },
+                  { "$ref": "/schemas/core/assets/markdown-asset.json" },
+                  { "$ref": "/schemas/core/assets/brief-asset.json" },
+                  { "$ref": "/schemas/core/assets/catalog-asset.json" }
                 ]
               }
             },
@@ -139,6 +111,21 @@
             "description": "User-defined tags for organization and searchability",
             "items": {
               "type": "string"
+            }
+          },
+          "concept_id": {
+            "type": "string",
+            "description": "Creative concept this creative belongs to. Concepts group related creatives across sizes and formats."
+          },
+          "concept_name": {
+            "type": "string",
+            "description": "Human-readable concept name"
+          },
+          "variables": {
+            "type": "array",
+            "description": "Dynamic content variables (DCO slots) for this creative. Included when include_variables=true.",
+            "items": {
+              "$ref": "/schemas/core/creative-variable.json"
             }
           },
           "assignments": {
@@ -183,54 +170,52 @@
             ],
             "additionalProperties": true
           },
-          "performance": {
+          "snapshot": {
             "type": "object",
-            "description": "Aggregated performance metrics (included when include_performance=true)",
+            "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
             "properties": {
-              "impressions": {
-                "type": "integer",
-                "description": "Total impressions across all assignments",
-                "minimum": 0
-              },
-              "clicks": {
-                "type": "integer",
-                "description": "Total clicks across all assignments",
-                "minimum": 0
-              },
-              "ctr": {
-                "type": "number",
-                "description": "Click-through rate (clicks/impressions)",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "conversion_rate": {
-                "type": "number",
-                "description": "Conversion rate across all assignments",
-                "minimum": 0,
-                "maximum": 1
-              },
-              "performance_score": {
-                "type": "number",
-                "description": "Aggregated performance score (0-100)",
-                "minimum": 0,
-                "maximum": 100
-              },
-              "last_updated": {
+              "as_of": {
                 "type": "string",
                 "format": "date-time",
-                "description": "When performance data was last updated"
+                "description": "When this snapshot was captured by the platform"
+              },
+              "staleness_seconds": {
+                "type": "integer",
+                "description": "Maximum age of this data in seconds. For example, 3600 means the data may be up to 1 hour old.",
+                "minimum": 0
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Lifetime impressions across all assignments. Not scoped to any date range.",
+                "minimum": 0
+              },
+              "last_served": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time this creative served an impression. Absent when the creative has never served."
               }
             },
             "required": [
-              "last_updated"
+              "as_of",
+              "staleness_seconds",
+              "impressions"
             ],
             "additionalProperties": true
           },
-          "sub_assets": {
+          "snapshot_unavailable_reason": {
+            "type": "string",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative.",
+            "enum": [
+              "SNAPSHOT_UNSUPPORTED",
+              "SNAPSHOT_TEMPORARILY_UNAVAILABLE",
+              "SNAPSHOT_PERMISSION_DENIED"
+            ]
+          },
+          "items": {
             "type": "array",
-            "description": "Sub-assets for multi-asset formats (included when include_sub_assets=true)",
+            "description": "Items for multi-asset formats like carousels and native ads (included when include_items=true)",
             "items": {
-              "$ref": "/schemas/core/sub-asset.json"
+              "$ref": "/schemas/core/creative-item.json"
             }
           }
         },
@@ -247,7 +232,7 @@
     },
     "format_summary": {
       "type": "object",
-      "description": "Breakdown of creatives by format type",
+      "description": "Breakdown of creatives by format. Keys are agent-defined format identifiers, optionally including dimensions (e.g., 'display_static_300x250', 'video_30s_vast'). Key construction is platform-specific — there is no required format.",
       "patternProperties": {
         "^[a-zA-Z0-9_-]+$": {
           "type": "integer",
@@ -289,6 +274,13 @@
       },
       "additionalProperties": true
     },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors (e.g., invalid filters, account not found)",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this response contains simulated data from sandbox mode."
@@ -308,101 +300,100 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Successful library query with results",
+      "description": "Library query with creatives and variables",
       "data": {
         "query_summary": {
-          "total_matching": 3,
-          "returned": 3,
+          "total_matching": 2,
+          "returned": 2,
           "filters_applied": [
-            "format=video",
-            "status=approved"
-          ],
-          "sort_applied": {
-            "field": "created_date",
-            "direction": "desc"
-          }
+            "concept_ids=concept_holiday_2026",
+            "statuses=approved"
+          ]
         },
         "pagination": {
           "has_more": false,
-          "total_count": 3
+          "total_count": 2
         },
         "creatives": [
           {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s",
+            "creative_id": "ft_88201",
+            "name": "Holiday Sale - Medium Rectangle",
             "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_30s_vast"
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
             },
             "status": "approved",
-            "created_date": "2024-01-15T10:30:00Z",
-            "updated_date": "2024-01-15T14:20:00Z",
+            "created_date": "2026-01-10T14:00:00Z",
+            "updated_date": "2026-02-20T09:30:00Z",
             "assets": {
-              "vast": {
-                "delivery_type": "url",
-                "url": "https://vast.example.com/video/123",
-                "vast_version": "4.1"
+              "banner_image": {
+                "url": "https://cdn.example.com/holiday_300x250.png",
+                "width": 300,
+                "height": 250
+              },
+              "clickthrough_url": {
+                "url": "https://acmecorp.example.com/holiday-sale"
               }
             },
-            "tags": [
-              "q1_2024",
-              "video",
-              "brand_awareness"
+            "tags": ["holiday_2026", "display"],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": [
+              {
+                "variable_id": "headline_text",
+                "name": "Headline",
+                "variable_type": "text",
+                "default_value": "Holiday Sale - 50% Off",
+                "required": true
+              },
+              {
+                "variable_id": "hero_image",
+                "name": "Hero Image",
+                "variable_type": "image",
+                "required": false
+              }
             ]
+          },
+          {
+            "creative_id": "ft_88202",
+            "name": "Holiday Sale - Leaderboard",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 728,
+              "height": 90
+            },
+            "status": "approved",
+            "created_date": "2026-01-10T14:30:00Z",
+            "updated_date": "2026-02-20T09:35:00Z",
+            "assets": {
+              "banner_image": {
+                "url": "https://cdn.example.com/holiday_728x90.png",
+                "width": 728,
+                "height": 90
+              },
+              "clickthrough_url": {
+                "url": "https://acmecorp.example.com/holiday-sale"
+              }
+            },
+            "tags": ["holiday_2026", "display"],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": []
           }
         ],
         "format_summary": {
-          "video_30s_vast": 2,
-          "display_300x250": 1
+          "display_static_300x250": 1,
+          "display_static_728x90": 1
         },
         "status_summary": {
-          "approved": 3,
+          "approved": 2,
           "pending_review": 0,
           "rejected": 0,
           "archived": 0
         }
-      }
-    },
-    {
-      "description": "Query with assignments and performance data",
-      "data": {
-        "query_summary": {
-          "total_matching": 1,
-          "returned": 1
-        },
-        "pagination": {
-          "has_more": false
-        },
-        "creatives": [
-          {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_30s_vast"
-            },
-            "status": "approved",
-            "created_date": "2024-01-15T10:30:00Z",
-            "updated_date": "2024-01-15T14:20:00Z",
-            "assignments": {
-              "assignment_count": 2,
-              "assigned_packages": [
-                {
-                  "package_id": "pkg_ctv_001",
-                  "buyer_ref": "ctv_prime_time_q1",
-                  "assigned_date": "2024-01-16T09:00:00Z"
-                }
-              ]
-            },
-            "performance": {
-              "impressions": 150000,
-              "clicks": 1200,
-              "ctr": 0.008,
-              "performance_score": 85.2,
-              "last_updated": "2024-01-20T12:00:00Z"
-            }
-          }
-        ]
       }
     }
   ]

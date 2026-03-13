@@ -59,6 +59,39 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
           required: ['domain'],
         },
+        buying_mode: {
+          type: 'string',
+          enum: ['brief', 'wholesale', 'refine'],
+          description: "Buyer intent: 'brief' for curated discovery, 'wholesale' for raw catalog access, 'refine' to iterate on previous results.",
+        },
+        refine: {
+          type: 'array',
+          description: 'Change requests for iterating on a previous get_products response. Each entry has scope (request/product/proposal), an action, and an ask.',
+          items: { type: 'object' },
+        },
+        catalog: {
+          type: 'object',
+          description: 'Catalog of items the buyer wants to promote. Reference by catalog_id or provide inline items.',
+        },
+        account: {
+          type: 'object',
+          description: 'Account for product lookup. Returns pricing specific to this account.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+            brand: {
+              type: 'object',
+              properties: {
+                domain: { type: 'string' },
+              },
+              required: ['domain'],
+            },
+            operator: { type: 'string', description: 'Domain of the operating entity' },
+          },
+        },
+        buyer_campaign_ref: {
+          type: 'string',
+          description: "Buyer's campaign reference label for CRM correlation.",
+        },
         filters: {
           type: 'object',
           description: 'Optional filters to narrow results',
@@ -86,6 +119,36 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             },
           },
         },
+        property_list: {
+          type: 'object',
+          description: 'Reference to an externally managed property list for filtering products.',
+          properties: {
+            agent_url: { type: 'string', description: 'URL of the agent managing the list' },
+            list_id: { type: 'string', description: 'Property list identifier' },
+          },
+          required: ['agent_url', 'list_id'],
+        },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific product fields to include in the response. Omit for all fields.',
+        },
+        time_budget: {
+          type: 'object',
+          description: 'Maximum time the buyer will commit to this request. Seller returns best results within this budget.',
+          properties: {
+            value: { type: 'number', description: 'Duration value' },
+            unit: { type: 'string', enum: ['seconds', 'minutes', 'hours', 'days'], description: 'Duration unit' },
+          },
+        },
+        pagination: {
+          type: 'object',
+          description: 'Cursor-based pagination parameters.',
+          properties: {
+            max_results: { type: 'integer', description: 'Max items per page (1-100)' },
+            cursor: { type: 'string', description: 'Cursor from previous response' },
+          },
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details (requests, responses, schema validation)',
@@ -111,6 +174,38 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Your unique identifier for this campaign',
         },
+        buyer_campaign_ref: {
+          type: 'string',
+          description: "Buyer's campaign reference label for CRM correlation.",
+        },
+        account: {
+          type: 'object',
+          description: 'Account to bill for this media buy.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+            brand: {
+              type: 'object',
+              properties: {
+                domain: { type: 'string' },
+              },
+              required: ['domain'],
+            },
+            operator: { type: 'string', description: 'Domain of the operating entity' },
+          },
+        },
+        proposal_id: {
+          type: 'string',
+          description: 'ID of a proposal from get_products to execute instead of providing packages.',
+        },
+        total_budget: {
+          type: 'object',
+          description: 'Total budget when executing a proposal. Publisher derives package budgets from allocation percentages.',
+          properties: {
+            amount: { type: 'number', description: 'Total budget amount' },
+            currency: { type: 'string', description: 'ISO 4217 currency code' },
+          },
+          required: ['amount', 'currency'],
+        },
         brand: {
           type: 'object',
           description: 'Brand reference — resolved to full brand identity at execution time',
@@ -119,6 +214,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
           },
           required: ['domain'],
+        },
+        po_number: {
+          type: 'string',
+          description: 'Purchase order number for tracking.',
         },
         packages: {
           type: 'array',
@@ -154,6 +253,18 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'ISO 8601 datetime when campaign ends',
         },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook configuration for async task status notifications.',
+        },
+        reporting_webhook: {
+          type: 'object',
+          description: 'Webhook configuration for automated reporting delivery.',
+        },
+        artifact_webhook: {
+          type: 'object',
+          description: 'Webhook configuration for content artifact delivery (governance validation).',
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -174,6 +285,21 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         agent_url: {
           type: 'string',
           description: 'The sales agent URL (must be HTTPS)',
+        },
+        account: {
+          type: 'object',
+          description: 'Account that owns these creatives.',
+          properties: {
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+            brand: {
+              type: 'object',
+              properties: {
+                domain: { type: 'string' },
+              },
+              required: ['domain'],
+            },
+            operator: { type: 'string', description: 'Domain of the operating entity' },
+          },
         },
         creatives: {
           type: 'array',
@@ -200,13 +326,45 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             required: ['creative_id', 'format_id', 'assets'],
           },
         },
+        creative_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Limit sync scope to specific creative IDs for partial updates.',
+        },
         assignments: {
-          type: 'object',
-          description: 'Map creative_id to array of package IDs',
+          type: 'array',
+          description: 'Assign creatives to packages with optional weight and placement targeting.',
+          items: {
+            type: 'object',
+            properties: {
+              creative_id: { type: 'string', description: 'Creative to assign' },
+              package_id: { type: 'string', description: 'Package to assign to' },
+              weight: { type: 'number', description: 'Relative delivery weight (0-100)' },
+              placement_ids: { type: 'array', items: { type: 'string' }, description: 'Restrict to specific placements within the package' },
+            },
+            required: ['creative_id', 'package_id'],
+          },
+        },
+        idempotency_key: {
+          type: 'string',
+          description: 'Client-generated key for safe retries (at-most-once execution).',
+        },
+        delete_missing: {
+          type: 'boolean',
+          description: 'When true, creatives not in this sync are archived.',
         },
         dry_run: {
           type: 'boolean',
           description: 'Preview changes without applying',
+        },
+        validation_mode: {
+          type: 'string',
+          enum: ['strict', 'lenient'],
+          description: "Validation strictness. 'strict' fails on any error, 'lenient' processes valid creatives.",
+        },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook configuration for async sync notifications.',
         },
         debug: {
           type: 'boolean',
@@ -304,6 +462,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           description: 'Validation strictness for catalog data',
           enum: ['strict', 'lenient'],
         },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook configuration for async sync notifications.',
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -325,10 +487,96 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The agent URL (must be HTTPS)',
         },
-        format_types: {
+        format_ids: {
+          type: 'array',
+          description: 'Return only these specific format IDs.',
+          items: {
+            type: 'object',
+            properties: {
+              agent_url: { type: 'string' },
+              id: { type: 'string' },
+            },
+            required: ['agent_url', 'id'],
+          },
+        },
+        type: {
+          type: 'string',
+          description: 'Filter by format type (video, display, audio, native, etc.)',
+        },
+        asset_types: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Filter to specific format categories (video, display, audio, etc.)',
+          description: "Filter to formats with these asset types (image, video, html, javascript, etc.).",
+        },
+        max_width: {
+          type: 'integer',
+          description: 'Maximum width in pixels (inclusive).',
+        },
+        max_height: {
+          type: 'integer',
+          description: 'Maximum height in pixels (inclusive).',
+        },
+        min_width: {
+          type: 'integer',
+          description: 'Minimum width in pixels (inclusive).',
+        },
+        min_height: {
+          type: 'integer',
+          description: 'Minimum height in pixels (inclusive).',
+        },
+        is_responsive: {
+          type: 'boolean',
+          description: 'Filter for responsive formats that adapt to container size.',
+        },
+        name_search: {
+          type: 'string',
+          description: 'Search formats by name (case-insensitive partial match).',
+        },
+        wcag_level: {
+          type: 'string',
+          description: 'Filter to formats meeting at least this WCAG level (A, AA, AAA).',
+        },
+        disclosure_positions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to formats supporting all of these disclosure positions.',
+        },
+        disclosure_persistence: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to formats where each persistence mode is supported by at least one position.',
+        },
+        output_format_ids: {
+          type: 'array',
+          description: 'Filter to formats that can produce these output formats.',
+          items: {
+            type: 'object',
+            properties: {
+              agent_url: { type: 'string' },
+              id: { type: 'string' },
+            },
+            required: ['agent_url', 'id'],
+          },
+        },
+        input_format_ids: {
+          type: 'array',
+          description: 'Filter to formats that accept these input formats.',
+          items: {
+            type: 'object',
+            properties: {
+              agent_url: { type: 'string' },
+              id: { type: 'string' },
+            },
+            required: ['agent_url', 'id'],
+          },
+        },
+        pagination: {
+          type: 'object',
+          description: 'Cursor-based pagination parameters.',
+          properties: {
+            max_results: { type: 'integer', description: 'Max items per page (1-100)' },
+            cursor: { type: 'string', description: 'Cursor from previous response' },
+          },
         },
         debug: {
           type: 'boolean',
@@ -372,28 +620,61 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The sales agent URL (must be HTTPS)',
         },
-        media_buy_id: {
-          type: 'string',
-          description: 'The campaign identifier from create_media_buy',
-        },
-        granularity: {
-          type: 'string',
-          enum: ['hourly', 'daily', 'weekly'],
-          description: 'Time granularity for timeseries data',
-        },
-        date_range: {
+        account: {
           type: 'object',
+          description: 'Filter delivery data to a specific account.',
           properties: {
-            start: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
-            end: { type: 'string', description: 'ISO date (YYYY-MM-DD)' },
+            account_id: { type: 'string', description: 'Seller-assigned account identifier' },
+            brand: {
+              type: 'object',
+              properties: {
+                domain: { type: 'string' },
+              },
+              required: ['domain'],
+            },
+            operator: { type: 'string', description: 'Domain of the operating entity' },
           },
+        },
+        media_buy_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of publisher media buy IDs to get delivery data for.',
+        },
+        buyer_refs: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of buyer reference IDs to get delivery data for.',
+        },
+        status_filter: {
+          type: 'string',
+          description: 'Filter by media buy status. Can be a single status or array.',
+        },
+        start_date: {
+          type: 'string',
+          description: 'Start date for reporting period (YYYY-MM-DD).',
+        },
+        end_date: {
+          type: 'string',
+          description: 'End date for reporting period (YYYY-MM-DD).',
+        },
+        include_package_daily_breakdown: {
+          type: 'boolean',
+          description: 'Include daily_breakdown arrays within each package for pacing analysis.',
+        },
+        attribution_window: {
+          type: 'object',
+          description: 'Attribution window for conversion metrics (post_click, post_view, model).',
+        },
+        reporting_dimensions: {
+          type: 'object',
+          description: 'Request dimensional breakdowns (geo, device_type, device_platform, audience, placement).',
         },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'media_buy_id'],
+      required: ['agent_url'],
     },
   },
   {
@@ -456,6 +737,18 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
             },
           },
         },
+        reporting_webhook: {
+          type: 'object',
+          description: 'Webhook configuration for automated reporting delivery.',
+        },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook configuration for async update notifications.',
+        },
+        idempotency_key: {
+          type: 'string',
+          description: 'Client-generated key for safe retries (at-most-once execution).',
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -497,7 +790,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         sort: {
           type: 'object',
           properties: {
-            field: { type: 'string', enum: ['created_date', 'updated_date', 'name', 'status', 'assignment_count', 'performance_score'] },
+            field: { type: 'string', enum: ['created_date', 'updated_date', 'name', 'status', 'assignment_count'] },
             direction: { type: 'string', enum: ['asc', 'desc'] },
           },
         },
@@ -509,7 +802,7 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
           },
         },
         include_assignments: { type: 'boolean', description: 'Include package assignments (default true)' },
-        include_performance: { type: 'boolean', description: 'Include performance metrics' },
+        include_snapshot: { type: 'boolean', description: 'Include lightweight delivery snapshot (lifetime impressions, last served date)' },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -534,6 +827,10 @@ export const ADCP_MEDIA_BUY_TOOLS: AddieTool[] = [
         media_buy_id: {
           type: 'string',
           description: 'Publisher\'s media buy identifier',
+        },
+        buyer_ref: {
+          type: 'string',
+          description: "Buyer's reference for the media buy.",
         },
         measurement_period: {
           type: 'object',
@@ -607,18 +904,69 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           },
           required: ['agent_url', 'id'],
         },
+        creative_manifest: {
+          type: 'object',
+          description: 'Source manifest - minimal for generation, complete for transformation',
+        },
         brand: {
           type: 'object',
-          description: "Brand for the creative. Required when the creative agent declares brand as a top-level parameter in its tool schema.",
+          description: 'Brand reference for creative generation. Resolved to full identity (colors, logos, tone).',
           properties: {
             domain: { type: 'string', description: "Domain where /.well-known/brand.json is hosted, or the brand's operating domain" },
             brand_id: { type: 'string', description: 'Brand identifier within the house portfolio. Optional for single-brand domains.' },
           },
           required: ['domain'],
         },
-        creative_manifest: {
+        quality: {
+          type: 'string',
+          enum: ['draft', 'production'],
+          description: "'draft' for fast iteration, 'production' for final delivery.",
+        },
+        item_limit: {
+          type: 'integer',
+          description: 'Max catalog items to use when generating.',
+        },
+        creative_id: {
+          type: 'string',
+          description: 'Reference to a creative in the agent library. Use instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation.',
+        },
+        concept_id: {
+          type: 'string',
+          description: 'Creative concept containing the creative. Required to disambiguate when creative_id is not globally unique.',
+        },
+        media_buy_id: {
+          type: 'string',
+          description: "Buyer's media buy reference for tag generation context. Provides trafficking context when the creative agent is also the ad server.",
+        },
+        package_id: {
+          type: 'string',
+          description: "Buyer's package or line item reference within the media buy. Used with media_buy_id for line-item-level tag generation context.",
+        },
+        macro_values: {
           type: 'object',
-          description: 'Source manifest - minimal for generation, complete for transformation',
+          description: 'Macro values to pre-substitute into output assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are substitution strings.',
+        },
+        include_preview: {
+          type: 'boolean',
+          description: 'When true, requests preview renders alongside the manifest. Agents that support this return a preview object in the response.',
+        },
+        preview_inputs: {
+          type: 'array',
+          description: 'Input sets for preview generation when include_preview is true. Each entry has name (required), optional macros, and optional context_description.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              macros: { type: 'object' },
+              context_description: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+        preview_output_format: {
+          type: 'string',
+          enum: ['url', 'html'],
+          description: "Output format for preview renders: 'url' (default) or 'html'. Only used when include_preview is true.",
         },
         debug: {
           type: 'boolean',

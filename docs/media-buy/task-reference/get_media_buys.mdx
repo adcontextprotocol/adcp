@@ -73,7 +73,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `approval_status` | `pending_review`, `approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
 
-Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected assets via [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives).
+Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected assets via [`sync_creatives`](/docs/creative/task-reference/sync_creatives).
 
 ### Snapshot Object
 
@@ -362,7 +362,7 @@ Use cursor pagination for broad status queries to avoid large payloads:
 
 ## Next Steps
 
-- **Upload missing creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) for formats in `format_ids_pending`
+- **Upload missing creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for formats in `format_ids_pending`
 - **Investigate zero delivery**: Check `delivery_status: "not_delivering"` and `start_time` to confirm the flight is active, then use [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) to adjust pricing or targeting
 - **Detailed reporting**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) for date-range reporting and daily breakdowns
 - **Optimize campaigns**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) to share results with the seller

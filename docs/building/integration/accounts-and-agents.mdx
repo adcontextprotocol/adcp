@@ -14,7 +14,7 @@ AdCP distinguishes four entities in every billable operation:
 
 **Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id`), resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` (explicit accounts) or a natural key (`brand`, `operator`) (implicit accounts). For sandbox, use the natural key with `sandbox: true`.
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` (explicit accounts) or a natural key (`brand`, `operator`) (implicit accounts). Sandbox accounts follow the same model — explicit sandboxes use `account_id`, implicit sandboxes use the natural key with `sandbox: true`.
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -43,7 +43,7 @@ When `false` (default) — **implicit accounts**: the seller trusts the agent. T
 
 When `true` — **explicit accounts**: each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using the seller's `authorization_endpoint`, or via API key out-of-band. The buyer discovers accounts via `list_accounts` and passes a seller-assigned `account_id`.
 
-For sandbox operations, use the natural key with `sandbox: true` regardless of account model — no account provisioning or discovery needed.
+For sandbox, the path follows the account model: explicit accounts (`require_operator_auth: true`) discover pre-existing test accounts via `list_accounts`; implicit accounts declare sandbox via `sync_accounts` with `sandbox: true` and reference by natural key.
 
 Sellers can also declare `account_financials: true` to expose account-level financial data (spend, credit, invoices) via [`get_account_financials`](/docs/accounts/tasks/get_account_financials). This only applies to operator-billed accounts.
 
@@ -354,7 +354,8 @@ The agent manages the buying relationship. It calls `sync_accounts` to tell the 
 | `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
 | `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
 | `billing` | Who gets the invoice — `operator` or `agent` |
-| `sandbox` | Whether this is a test account |
+| `payment_terms` | Payment terms for this account (`net_15`, `net_30`, `net_45`, `net_60`, `net_90`, `prepay`). The seller must accept these terms or reject the account — terms are never silently remapped. |
+| `sandbox` | Whether this is a sandbox (test) account — no real spend. Only used with implicit accounts; explicit sandbox accounts are pre-existing. |
 
 Every combination of flags that might require the seller to do something different — bill a different entity, set up a different rate card, create a sandbox — is a distinct declaration.
 
@@ -368,7 +369,8 @@ Every combination of flags that might require the seller to do something differe
 3. For subsequent requests, pass the account reference:
    - **Implicit accounts** (`require_operator_auth: false`): pass the natural key `{ "brand": { "domain": "acme-corp.com" }, "operator": "pinnacle-media.com" }`
    - **Explicit accounts** (`require_operator_auth: true`): pass `{ "account_id": "acc_acme_001" }` (discover via `list_accounts`)
-   - **Sandbox** (either model): pass the natural key with `sandbox: true`
+   - **Sandbox (implicit)**: pass the natural key with `sandbox: true` (declared via `sync_accounts`)
+   - **Sandbox (explicit)**: pass `{ "account_id": "test_acc_001" }` (pre-existing test account, discovered via `list_accounts`)
 4. When anything changes (billing model, new brand, new operator), call `sync_accounts` again
 
 The agent may be involved in billing (when `billing` is `"agent"` or `"operator"`). The seller may require human approval before activating accounts.
@@ -405,7 +407,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-`sync_accounts` does not return `account_id` — the seller manages account identifiers internally. For explicit accounts (`require_operator_auth: true`), discover account IDs via `list_accounts`. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests. For sandbox operations, use the natural key with `sandbox: true` regardless of account model.
+`sync_accounts` does not return `account_id` — the seller manages account identifiers internally. For explicit accounts (`require_operator_auth: true`), discover account IDs via `list_accounts` — including sandbox test accounts. For implicit accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests — adding `sandbox: true` for sandbox accounts.
 
 ## Error codes
 

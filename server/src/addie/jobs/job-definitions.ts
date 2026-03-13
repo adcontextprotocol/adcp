@@ -32,6 +32,7 @@ import { runGeoSnapshotJob } from './geo-snapshot.js';
 import { runGeoContentPlannerJob } from './geo-content-planner.js';
 import { processUntriagedDomains, escalateUnclaimedProspects } from '../../services/prospect-triage.js';
 import { runWeeklyDigestJob } from './weekly-digest.js';
+import { runSocialPostIdeasJob } from './social-post-ideas.js';
 import { autoLinkUnmappedSlackUsers, autoAddVerifiedDomainUsersAsMembers } from '../../slack/sync.js';
 import { eventsDb } from '../../db/events-db.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
@@ -284,6 +285,16 @@ export function registerAllJobs(): void {
     shouldLogResult: (r) => r.generated || r.sent > 0,
   });
 
+  // Social post ideas - generates social copy for members to share
+  jobScheduler.register({
+    name: 'social-post-ideas',
+    description: 'Social post ideas for member amplification',
+    interval: { value: 1, unit: 'hours' },
+    initialDelay: { value: 7, unit: 'minutes' },
+    runner: runSocialPostIdeasJob,
+    shouldLogResult: (r) => r.posted || r.skipped,
+  });
+
   jobScheduler.register({
     name: 'slack-auto-link',
     description: 'Reconcile unmapped Slack users to website accounts by email',
@@ -399,6 +410,7 @@ export const JOB_NAMES = {
   PROSPECT_TRIAGE: 'prospect-triage',
   PROSPECT_ESCALATION: 'prospect-escalation',
   WEEKLY_DIGEST: 'weekly-digest',
+  SOCIAL_POST_IDEAS: 'social-post-ideas',
   SLACK_AUTO_LINK: 'slack-auto-link',
   DOMAIN_MEMBER_BACKFILL: 'domain-member-backfill',
   EVENT_REMINDER: 'event-reminder',

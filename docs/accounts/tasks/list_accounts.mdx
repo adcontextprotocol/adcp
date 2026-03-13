@@ -64,7 +64,7 @@ All parameters are optional. An empty request returns all accounts.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
-| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only live accounts. |
+| `sandbox` | boolean | No | When true, return only sandbox accounts. When false or omitted, return only production accounts. Primarily used with explicit accounts (`require_operator_auth: true`) where sandbox accounts are pre-existing test accounts on the platform. |
 | `pagination` | object | No | Pagination cursor for large account sets. |
 
 ## Response
@@ -86,6 +86,7 @@ All parameters are optional. An empty request returns all accounts.
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/integration/accounts-and-agents#account-scope). |
+| `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. Binding for all invoices when the account is active. |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing setup and `message` explaining what's needed. |
 
 ## Common Scenarios

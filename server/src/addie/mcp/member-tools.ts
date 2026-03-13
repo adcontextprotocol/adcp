@@ -542,8 +542,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'test_adcp_agent',
     description:
-      'Run end-to-end tests against an AdCP agent to verify it works correctly. Automatically discovers the agent\'s capabilities and runs all applicable scenarios (discovery, media buy creation, creative sync, signals, governance, etc.). By default runs in dry-run mode - set dry_run=false for real testing. IMPORTANT: For agents requiring authentication (including the public test agent), users must first set up the agent. Use setup_test_agent for the public test agent, or save_agent for custom agents.',
-    usage_hints: 'use for "test my agent", "run the full test suite", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". If testing the public test agent and auth fails, suggest setup_test_agent first.',
+      'Run end-to-end tests against an AdCP agent to verify it works correctly. Automatically discovers the agent\'s capabilities and runs all applicable scenarios (discovery, media buy creation, creative sync, signals, governance, etc.). By default runs in dry-run mode - set dry_run=false for real testing. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.',
+    usage_hints: 'use for "test my agent", "run the full test suite", "verify my sales agent works", "test against test-agent", "test creative sync", "test pricing models", "try the API". The public test agent works immediately for any logged-in user — no organization or setup_test_agent needed.',
     input_schema: {
       type: 'object',
       properties: {
@@ -610,8 +610,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'setup_test_agent',
     description:
-      'Set up the public AdCP test agent for the user with one click. This saves the test agent URL and credentials so the user can immediately start testing. Use this when users want to try AdCP, explore the test agent, or say "set up the test agent". Requires the user to be logged in with an organization.',
-    usage_hints: 'use for "set up test agent", "I want to try AdCP", "help me get started testing", "configure the test agent"',
+      'Save the public AdCP test agent credentials for the user\'s organization so teammates can use them. Any logged-in user can already use the public test agent directly via test_adcp_agent without this step — no organization required. This is only needed for teams that want credentials stored.',
+    usage_hints: 'use for "set up test agent for my team", "save test agent credentials". For "I want to try AdCP" or "test the API", prefer test_adcp_agent directly — it works immediately for any logged-in user. No organization or member profile required to try the test agent.',
     input_schema: {
       type: 'object',
       properties: {},
@@ -2352,7 +2352,7 @@ export function createMemberToolHandlers(
 
     const saveOrgId = memberContext.organization?.workos_organization_id;
     if (!saveOrgId) {
-      return 'Your account is not associated with an organization. Please contact support.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
     }
 
     const agentUrl = input.agent_url as string;
@@ -2426,7 +2426,7 @@ export function createMemberToolHandlers(
 
     const listOrgId = memberContext.organization?.workos_organization_id;
     if (!listOrgId) {
-      return 'Your account is not associated with an organization. Please contact support.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
     }
 
     try {
@@ -2482,7 +2482,7 @@ export function createMemberToolHandlers(
 
     const removeOrgId = memberContext.organization?.workos_organization_id;
     if (!removeOrgId) {
-      return 'Your account is not associated with an organization. Please contact support.';
+      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `test_adcp_agent` without an organization.';
     }
 
     const agentUrl = input.agent_url as string;
@@ -2517,52 +2517,54 @@ export function createMemberToolHandlers(
   // TEST AGENT SETUP (one-click)
   // ============================================
   handlers.set('setup_test_agent', async () => {
-    // Require authenticated user with organization
     if (!memberContext?.workos_user?.workos_user_id) {
-      return 'You need to be logged in to set up the test agent. Please log in at https://agenticadvertising.org/dashboard first, then come back and try again.';
+      return 'You need to be logged in to set up the test agent. Please log in at https://agenticadvertising.org first, then come back and try again.';
     }
 
     const setupOrgId = memberContext.organization?.workos_organization_id;
-    if (!setupOrgId) {
-      return 'Your account is not associated with an organization. Please contact support.';
+    let credentialsSaved = false;
+
+    // If user has an org, save credentials so the whole team can use them
+    if (setupOrgId) {
+      try {
+        let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
+
+        if (context && context.has_auth_token) {
+          return `The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now:\n- Run \`test_adcp_agent\` to run the full test suite\n- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\``;
+        }
+
+        if (context) {
+          await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
+        } else {
+          context = await agentContextDb.create({
+            organization_id: setupOrgId,
+            agent_url: PUBLIC_TEST_AGENT.url,
+            agent_name: PUBLIC_TEST_AGENT.name,
+            protocol: 'mcp',
+            created_by: memberContext.workos_user.workos_user_id,
+          });
+          await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
+        }
+        credentialsSaved = true;
+      } catch (error) {
+        logger.error({ error, setupOrgId }, 'Addie: setup_test_agent failed to save org credentials');
+      }
     }
 
-    try {
-      // Check if already set up
-      let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
-
-      if (context && context.has_auth_token) {
-        return `✅ The test agent is already set up for your organization!\n\n**Agent:** ${PUBLIC_TEST_AGENT.name}\n**URL:** ${PUBLIC_TEST_AGENT.url}\n\nYou can now use \`test_adcp_agent\` to run tests against it.`;
-      }
-
-      if (context) {
-        // Context exists but no token - add the token
-        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
-      } else {
-        // Create new context with token
-        context = await agentContextDb.create({
-          organization_id: setupOrgId,
-          agent_url: PUBLIC_TEST_AGENT.url,
-          agent_name: PUBLIC_TEST_AGENT.name,
-          protocol: 'mcp',
-          created_by: memberContext.workos_user.workos_user_id,
-        });
-        await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
-      }
-
-      let response = `✅ **Test agent is ready!**\n\n`;
-      response += `**Agent:** ${PUBLIC_TEST_AGENT.name}\n`;
-      response += `**URL:** ${PUBLIC_TEST_AGENT.url}\n\n`;
-      response += `You can now:\n`;
-      response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
-      response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;
-      response += `Would you like me to run a quick test now?`;
-
-      return response;
-    } catch (error) {
-      logger.error({ error }, 'Addie: setup_test_agent failed');
-      return `Failed to set up test agent: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    // The public test agent works for any logged-in user — test_adcp_agent
+    // auto-injects public credentials when it detects the test agent URL.
+    let response = `**Test agent is ready!**\n\n`;
+    response += `**Agent:** ${PUBLIC_TEST_AGENT.name}\n`;
+    response += `**URL:** ${PUBLIC_TEST_AGENT.url}\n\n`;
+    response += `You can now:\n`;
+    response += `- Run \`test_adcp_agent\` to run the full test suite\n`;
+    response += `- Use different scenarios like \`discovery\`, \`pricing_models\`, or \`full_sales_flow\`\n\n`;
+    if (credentialsSaved) {
+      response += `Credentials are saved for your organization so your teammates can use them too.\n\n`;
     }
+    response += `Would you like me to run a quick test now?`;
+
+    return response;
   });
 
   // ============================================
@@ -2846,7 +2848,7 @@ export function createMemberToolHandlers(
 
     const orgId = memberContext.organization?.workos_organization_id;
     if (!orgId) {
-      return 'Your account is not associated with an organization. Please contact support.';
+      return 'Search analytics requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes).';
     }
 
     try {

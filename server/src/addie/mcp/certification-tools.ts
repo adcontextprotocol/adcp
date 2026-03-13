@@ -220,6 +220,7 @@ export async function buildCertificationContext(
   lines.push('- End EVERY response with a question or task for the learner.');
   lines.push('- Vary turn structure: some bare questions, some "try this", some analogies. Not always explain-then-ask.');
   lines.push('- Share doc links INLINE when discussing a concept (see resources below). At least 2-3 per session.');
+  lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
   lines.push('- At concept transitions, ask the learner to self-assess: "Which feels solid? Which needs more work?"');
   lines.push('');
@@ -493,131 +494,133 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
 // LEARNING RESOURCES — links Addie can share with learners
 // =====================================================
 
+const DOCS_BASE = 'https://docs.adcontextprotocol.org';
+
 const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> = {
   // Track A: Basics (all free)
   A1: [
-    { label: 'Introduction to AdCP', url: '/docs/intro' },
-    { label: 'Why AdCP — the fragmentation problem', url: '/docs/building/understanding' },
-    { label: 'Media channel taxonomy', url: '/docs/reference/media-channel-taxonomy' },
+    { label: 'Introduction to AdCP', url: `${DOCS_BASE}/docs/intro` },
+    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
+    { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
   ],
   A2: [
-    { label: 'AdCP quickstart', url: '/docs/quickstart' },
-    { label: 'Media buy protocol', url: '/docs/media-buy' },
-    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
+    { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
+    { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
   ],
   A3: [
-    { label: 'AdCP protocol overview', url: '/docs/intro' },
-    { label: 'Brand protocol and brand.json', url: '/docs/brand-protocol' },
-    { label: 'Governance protocol', url: '/docs/governance/overview' },
-    { label: 'Creative protocol', url: '/docs/creative' },
-    { label: 'Signals protocol', url: '/docs/signals/overview' },
-    { label: 'Sponsored Intelligence', url: '/docs/sponsored-intelligence/overview' },
-    { label: 'Capability discovery', url: '/docs/protocol/get_adcp_capabilities' },
+    { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
+    { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
+    { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
+    { label: 'Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
+    { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
   ],
   // Track B: Publisher / Seller
   B1: [
-    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
-    { label: 'Get products task', url: '/docs/media-buy/task-reference/get_products' },
-    { label: 'Catalogs and product data', url: '/docs/creative/catalogs' },
-    { label: 'Capability discovery', url: '/docs/protocol/get_adcp_capabilities' },
+    { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Get products task', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
+    { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
   ],
   B2: [
-    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
-    { label: 'Creative protocol', url: '/docs/creative' },
-    { label: 'List creative formats task', url: '/docs/creative/task-reference/list_creative_formats' },
+    { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'List creative formats task', url: `${DOCS_BASE}/docs/creative/task-reference/list_creative_formats` },
   ],
   B3: [
-    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
-    { label: 'Signals protocol', url: '/docs/signals/overview' },
-    { label: 'Delivery reporting', url: '/docs/media-buy/task-reference/get_media_buy_delivery' },
-    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+    { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
+    { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
+    { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
   B4: [
-    { label: 'Publisher track overview', url: '/docs/learning/tracks/publisher' },
-    { label: 'Schemas and SDKs (adcp client library)', url: '/docs/building/schemas-and-sdks' },
-    { label: 'Quickstart', url: '/docs/quickstart' },
-    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
-    { label: 'get_products task reference', url: '/docs/media-buy/task-reference/get_products' },
-    { label: 'create_media_buy task reference', url: '/docs/media-buy/task-reference/create_media_buy' },
-    { label: 'Error handling', url: '/docs/building/implementation/error-handling' },
+    { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
+    { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
   ],
   // Track C: Buyer / Brand
   C1: [
-    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
-    { label: 'Media buy protocol', url: '/docs/media-buy' },
-    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
-    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+    { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
   C2: [
-    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
-    { label: 'Brand protocol and brand.json', url: '/docs/brand-protocol' },
-    { label: 'Content standards', url: '/docs/governance/content-standards' },
+    { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Brand protocol and brand.json', url: `${DOCS_BASE}/docs/brand-protocol` },
+    { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
   ],
   C3: [
-    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
-    { label: 'Creative protocol', url: '/docs/creative' },
-    { label: 'Build creative task', url: '/docs/creative/task-reference/build_creative' },
+    { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
   ],
   C4: [
-    { label: 'Buyer track overview', url: '/docs/learning/tracks/buyer' },
-    { label: 'Schemas and SDKs (adcp client library)', url: '/docs/building/schemas-and-sdks' },
-    { label: 'Quickstart', url: '/docs/quickstart' },
-    { label: 'Orchestrator design patterns', url: '/docs/building/implementation/orchestrator-design' },
-    { label: 'get_products task reference', url: '/docs/media-buy/task-reference/get_products' },
-    { label: 'create_media_buy task reference', url: '/docs/media-buy/task-reference/create_media_buy' },
-    { label: 'sync_creatives task reference', url: '/docs/media-buy/task-reference/sync_creatives' },
-    { label: 'Error handling', url: '/docs/building/implementation/error-handling' },
+    { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
+    { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
+    { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
+    { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'sync_creatives task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/sync_creatives` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
   ],
   // Track D: Platform / Infrastructure
   D1: [
-    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
-    { label: 'MCP server implementation', url: '/docs/building/integration/mcp-guide' },
-    { label: 'Capability discovery', url: '/docs/protocol/get_adcp_capabilities' },
-    { label: 'Accounts and agent identity', url: '/docs/building/integration/accounts-and-agents' },
+    { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'MCP server implementation', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
+    { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
   D2: [
-    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
-    { label: 'Agent-to-Agent protocol', url: '/docs/building/integration/a2a-guide' },
-    { label: 'Property governance', url: '/docs/governance/property/index' },
+    { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Agent-to-Agent protocol', url: `${DOCS_BASE}/docs/building/integration/a2a-guide` },
+    { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
   ],
   D3: [
-    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
-    { label: 'How AdCP compares to OpenRTB', url: '/docs/building/understanding/protocol-comparison' },
+    { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/protocol-comparison` },
   ],
   D4: [
-    { label: 'Platform track overview', url: '/docs/learning/tracks/platform' },
-    { label: 'Schemas and SDKs (adcp client library)', url: '/docs/building/schemas-and-sdks' },
-    { label: 'Quickstart', url: '/docs/quickstart' },
-    { label: 'MCP integration guide', url: '/docs/building/integration/mcp-guide' },
-    { label: 'Capability discovery', url: '/docs/protocol/get_adcp_capabilities' },
-    { label: 'Authentication', url: '/docs/building/integration/authentication' },
-    { label: 'Error handling', url: '/docs/building/implementation/error-handling' },
+    { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Quickstart', url: `${DOCS_BASE}/docs/quickstart` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
+    { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
+    { label: 'Authentication', url: `${DOCS_BASE}/docs/building/integration/authentication` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
   ],
   // Track S: Specialist deep dives
   S1: [
-    { label: 'Media buy protocol', url: '/docs/media-buy' },
-    { label: 'Create media buy task', url: '/docs/media-buy/task-reference/create_media_buy' },
-    { label: 'Targeting strategies', url: '/docs/media-buy/advanced-topics/targeting' },
+    { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Targeting strategies', url: `${DOCS_BASE}/docs/media-buy/advanced-topics/targeting` },
   ],
   S2: [
-    { label: 'Creative protocol', url: '/docs/creative' },
-    { label: 'Build creative task', url: '/docs/creative/task-reference/build_creative' },
-    { label: 'Catalogs and product data', url: '/docs/creative/catalogs' },
+    { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
+    { label: 'Build creative task', url: `${DOCS_BASE}/docs/creative/task-reference/build_creative` },
+    { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
   ],
   S3: [
-    { label: 'Signals protocol', url: '/docs/signals/overview' },
-    { label: 'Signal activation', url: '/docs/signals/tasks/get_signals' },
-    { label: 'Event tracking', url: '/docs/media-buy/task-reference/sync_event_sources' },
+    { label: 'Signals protocol', url: `${DOCS_BASE}/docs/signals/overview` },
+    { label: 'Signal activation', url: `${DOCS_BASE}/docs/signals/tasks/get_signals` },
+    { label: 'Event tracking', url: `${DOCS_BASE}/docs/media-buy/task-reference/sync_event_sources` },
   ],
   S4: [
-    { label: 'Governance protocol', url: '/docs/governance/overview' },
-    { label: 'Content standards', url: '/docs/governance/content-standards' },
-    { label: 'Property governance', url: '/docs/governance/property/index' },
+    { label: 'Governance protocol', url: `${DOCS_BASE}/docs/governance/overview` },
+    { label: 'Content standards', url: `${DOCS_BASE}/docs/governance/content-standards` },
+    { label: 'Property governance', url: `${DOCS_BASE}/docs/governance/property/index` },
   ],
   S5: [
-    { label: 'Sponsored Intelligence overview', url: '/docs/sponsored-intelligence/overview' },
-    { label: 'SI specification', url: '/docs/sponsored-intelligence/specification' },
-    { label: 'Implementing SI agents', url: '/docs/sponsored-intelligence/implementing-si-agents' },
+    { label: 'Sponsored Intelligence overview', url: `${DOCS_BASE}/docs/sponsored-intelligence/overview` },
+    { label: 'SI specification', url: `${DOCS_BASE}/docs/sponsored-intelligence/specification` },
+    { label: 'Implementing SI agents', url: `${DOCS_BASE}/docs/sponsored-intelligence/implementing-si-agents` },
   ],
 };
 
@@ -657,7 +660,7 @@ export function createCertificationToolHandlers(
       const heldCredentials = new Set(userCredentials.map(c => c.credential_id));
       const progressMap = new Map(trackProgress.map(tp => [tp.track_id, tp]));
 
-      const lines: string[] = ['# AdCP certification program\n'];
+      const lines: string[] = ['# AdCP Academy\n'];
       lines.push('Three-tier credential system: Basics → Practitioner → Specialist\n');
 
       // Group credentials by tier
@@ -933,12 +936,13 @@ export function createCertificationToolHandlers(
         lines.push('- **Keep responses SHORT.** Maximum 150 words per response. One idea per turn — teach one thing, then ask a question. If you have more to say, save it for the next turn. Brevity forces participation.');
         lines.push('- **Every response MUST end with a question or task.** Never end with only an explanation. Ask the learner something, give them a scenario, or have them try something. This is a conversation, not a lecture.');
         lines.push('- **Vary your turn structure.** Don\'t fall into explain-then-ask every turn. Some turns should be a bare question with no preamble. Some should be "try this and tell me what you see." Some should be a short analogy followed by a scenario. Vary the rhythm.');
-        lines.push('- **Start with a live demo when possible.** If the module has demo_scenarios or exercises, do the hands-on part FIRST. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
+        lines.push('- **Your first turn is ALWAYS about the learner.** Greet them, ask what they work on and what they already know. Never run a tool call or demo on the first turn — build rapport first.');
+        lines.push('- **Demo early, but not first.** If the module has demo_scenarios or exercises, run them on turn 2-3 after you know the learner. If a demo fails or is blocked, pivot immediately — describe what the result would look like, or move to the next concept. Never offer the same failed demo twice.');
         lines.push('');
         lines.push('### Teaching flow');
         lines.push('');
         lines.push('1. **Understand the learner first.** Before teaching anything, ask what they already know, what they work on, what they\'re curious about. Use their answer to personalize everything that follows. If they sell running shoes, your examples should be about running shoes — and keep using their context throughout the session, not just in the first turn. When a concept maps naturally to their domain, use it. When the mapping would be forced, use the protocol\'s own examples and explain why the concept matters regardless of vertical.');
-        lines.push('2. **Demo early.** If the lesson plan has live demos or exercises, run them in the first 2-3 turns. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
+        lines.push('2. **Demo early (turn 2-3).** If the lesson plan has live demos or exercises, run them after your opening question — once you know the learner. Let the learner see a real agent response before you explain the theory. "Let me show you something" is more powerful than "Let me explain something."');
         lines.push('3. **Teach from where they are.** If they claim prior knowledge, verify it with a targeted question before skipping ahead: "You mentioned you\'ve worked with programmatic — can you describe how second-price auctions differ from first-price in practice?" If they demonstrate real understanding, advance to where their knowledge ends. Don\'t re-teach what they already know.');
         lines.push('4. **When you correct a misconception, check that the correction landed.** Don\'t just explain the right answer — ask a follow-up question that tests whether they got it. "Does that reframe make sense? Can you think of an example where that would apply?"');
         lines.push('5. **Scaffold then fade.** Early in a module, guide heavily: give examples, offer choices, provide hints. As the learner demonstrates understanding, pull back: ask open-ended questions, present novel scenarios, expect them to reason without help. By assessment time, the learner should be doing most of the thinking.');

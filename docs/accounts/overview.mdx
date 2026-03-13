@@ -33,7 +33,7 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance | Content standards billing |
 | Creative | Creative service billing |
 
-The account reference may be a seller-assigned `account_id` (explicit accounts, `require_operator_auth: true`) or a natural key — `brand` + `operator` (implicit accounts, `require_operator_auth: false`). For sandbox operations, use the natural key with `sandbox: true` regardless of account model. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
+The account reference may be a seller-assigned `account_id` (explicit accounts, `require_operator_auth: true`) or a natural key — `brand` + `operator` (implicit accounts, `require_operator_auth: false`). For sandbox, the path depends on the account model: explicit accounts discover pre-existing test accounts via `list_accounts`, while implicit accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
 
 ## Transaction lifecycle
 

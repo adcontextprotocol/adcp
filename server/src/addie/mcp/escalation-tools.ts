@@ -51,6 +51,7 @@ CONFIRM WITH USER BEFORE ESCALATING — you must get the user's consent first:
 BEFORE CALLING THIS TOOL — gather enough context to make the escalation actionable:
 - If the request is vague, ask clarifying questions first
 - Confirm who the request is from: their name and organization
+- ALWAYS collect an email address and/or Slack handle so the team can follow up. If the user hasn't provided one, ask before escalating.
 - If someone is asking on behalf of another person, capture that person's name and contact details in the summary
 - Include any relevant context (timeline, urgency, what they've already tried)
 
@@ -80,6 +81,14 @@ When you escalate, be honest with the user that you're passing this to a human w
         addie_context: {
           type: 'string',
           description: 'Why you are escalating - what you tried or why you cannot help',
+        },
+        user_email: {
+          type: 'string',
+          description: 'Email address of the user requesting help (ask for this if not already known)',
+        },
+        user_slack_handle: {
+          type: 'string',
+          description: 'Slack display name or handle of the user (e.g. "jean-sebastien")',
         },
       },
       required: ['summary', 'category'],
@@ -157,6 +166,8 @@ async function sendEscalationNotification(
     userDisplayName?: string;
     orgName?: string;
     slackUserId?: string;
+    userEmail?: string;
+    userSlackHandle?: string;
     threadId?: string;
     originalRequest?: string;
     addieContext?: string;
@@ -183,15 +194,28 @@ async function sendEscalationNotification(
       ? `<@${context.slackUserId}>`
       : 'Unknown user';
 
+  // Build contact line from available info
+  const contactParts: string[] = [];
+  if (context.userEmail) contactParts.push(context.userEmail);
+  if (context.userSlackHandle) contactParts.push(`Slack: ${context.userSlackHandle}`);
+  if (context.slackUserId && !context.userSlackHandle) contactParts.push(`Slack: <@${context.slackUserId}>`);
+
   const lines = [
     `${priorityEmoji[priority]} *New Escalation #${escalationId}*`,
     '',
     `*From:* ${userInfo}`,
+  ];
+
+  if (contactParts.length > 0) {
+    lines.push(`*Contact:* ${contactParts.join(' · ')}`);
+  }
+
+  lines.push(
     `*Category:* ${categoryLabel[category]}`,
     `*Priority:* ${priority}`,
     '',
     `*Summary:* ${summary}`,
-  ];
+  );
 
   if (context.originalRequest) {
     lines.push('', `*Original Request:* ${context.originalRequest}`);
@@ -244,6 +268,18 @@ export function createEscalationToolHandlers(
     const priority = (input.priority as EscalationPriority) || 'normal';
     const originalRequest = input.original_request as string | undefined;
     const addieContext = input.addie_context as string | undefined;
+    const userEmail = input.user_email as string | undefined;
+    const userSlackHandle = input.user_slack_handle as string | undefined;
+
+    // Validate email format if provided
+    if (userEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+      return 'Error: user_email does not look like a valid email address. Please ask the user to confirm their email.';
+    }
+
+    // Ensure we have some way to contact the user
+    if (!userEmail && !userSlackHandle && !memberContext?.workos_user?.email && !slackUserId) {
+      return 'Error: Please collect an email address or Slack handle from the user before escalating. The team needs a way to follow up.';
+    }
 
     // Get display name from slack_user or workos_user
     const userDisplayName = memberContext?.slack_user?.display_name
@@ -253,12 +289,17 @@ export function createEscalationToolHandlers(
     const orgName = memberContext?.organization?.name;
 
     try {
+      // Resolve email: explicit input > WorkOS user email > undefined
+      const resolvedEmail = userEmail || memberContext?.workos_user?.email;
+
       // 1. Create escalation record
       const escalation = await createEscalation({
         thread_id: threadId,
         slack_user_id: slackUserId,
         workos_user_id: memberContext?.workos_user?.workos_user_id,
         user_display_name: userDisplayName,
+        user_email: resolvedEmail,
+        user_slack_handle: userSlackHandle,
         category,
         priority,
         summary,
@@ -290,6 +331,8 @@ export function createEscalationToolHandlers(
             userDisplayName,
             orgName,
             slackUserId,
+            userEmail: resolvedEmail,
+            userSlackHandle,
             threadId,
             originalRequest,
             addieContext,

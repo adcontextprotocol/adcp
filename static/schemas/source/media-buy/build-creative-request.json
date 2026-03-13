@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform or generate a creative manifest. Takes a source manifest (which may be minimal for pure generation) and produces a target manifest in the specified format.",
+  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces a target manifest in the specified format.",
   "type": "object",
   "properties": {
     "message": {
@@ -11,7 +11,23 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt."
+      "description": "Creative manifest to transform or generate from. For pure generation, this should include the target format_id and any required input assets. For transformation (e.g., resizing, reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of creative_manifest when retrieving an existing creative for tag generation or format adaptation."
+    },
+    "concept_id": {
+      "type": "string",
+      "description": "Creative concept containing the creative. Creative agents SHOULD assign globally unique creative_id values; when they cannot guarantee uniqueness, concept_id is REQUIRED to disambiguate."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Buyer's media buy reference for tag generation context. When the creative agent is also the ad server, this provides the trafficking context needed to generate placement-specific tags (e.g., CM360 placement ID). Not needed when tags are generated at the creative level (most creative platforms). This is the buyer's reference — the same value used as buyer_ref in create_media_buy."
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Buyer's package or line item reference within the media buy. Used with media_buy_id when the creative agent needs line-item-level context for tag generation. Omit to get a tag not scoped to a specific package."
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
@@ -67,6 +83,13 @@
       "$ref": "/schemas/enums/preview-output-format.json",
       "default": "url",
       "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
+    },
+    "macro_values": {
+      "type": "object",
+      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "context": {
       "$ref": "/schemas/core/context.json"

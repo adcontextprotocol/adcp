@@ -731,14 +731,14 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
-- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
 
 ## Next Steps
 
 After updating a media buy:
 
 1. **Verify Changes**: Use [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) to confirm updates
-2. **Upload New Creatives**: Use [`sync_creatives`](/docs/media-buy/task-reference/sync_creatives) if creative assignments changed
+2. **Upload New Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) if creative assignments changed
 3. **Monitor Performance**: Track impact of changes on campaign metrics
 4. **Optimize Further**: Use [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
 

@@ -97,7 +97,15 @@
               },
               "payment_terms": {
                 "type": "string",
-                "description": "Payment terms (e.g., 'net_30', 'prepay')"
+                "enum": [
+                  "net_15",
+                  "net_30",
+                  "net_45",
+                  "net_60",
+                  "net_90",
+                  "prepay"
+                ],
+                "description": "Payment terms agreed for this account. When the account is active, these are the binding terms for all invoices on this account."
               },
               "credit_limit": {
                 "type": "object",
@@ -132,7 +140,7 @@
               },
               "sandbox": {
                 "type": "boolean",
-                "description": "Whether this is a sandbox account, echoed from the request."
+                "description": "Whether this is a sandbox account, echoed from the request. Only present for implicit accounts."
               }
             },
             "required": [
@@ -261,6 +269,25 @@
               {
                 "code": "BILLING_NOT_SUPPORTED",
                 "message": "Operator billing is not supported. This seller only accepts agent billing."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Unsupported payment terms — seller rejects the request",
+      "data": {
+        "accounts": [
+          {
+            "brand": { "domain": "acme-corp.com" },
+            "operator": "acme-corp.com",
+            "action": "failed",
+            "status": "rejected",
+            "errors": [
+              {
+                "code": "PAYMENT_TERMS_NOT_SUPPORTED",
+                "message": "Net-60 payment terms are not available. Omit payment_terms to accept this seller's default terms (net_30)."
               }
             ]
           }

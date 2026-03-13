@@ -1168,6 +1168,18 @@
 
     .tab-item.active {
       background: var(--color-primary-50);
+      font-weight: 500;
+    }
+
+    .tab-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 6px;
+      bottom: 6px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--color-brand);
     }
 
     .tab-item-indicator {
@@ -2436,7 +2448,7 @@
             <button class="suggested-prompt" data-prompt="What is AdCP and how does it work?">Learn about AdCP</button>
             <button class="suggested-prompt" data-prompt="How do I set up a sales agent with AdCP?">Get started building</button>
             <button class="suggested-prompt" data-prompt="How is agentic advertising different from programmatic, and why is it better for sustainability?">AdCP vs programmatic</button>
-            <button class="suggested-prompt" data-prompt="I'd like to learn about AdCP certification. What modules are available?">Get certified</button>
+            <button class="suggested-prompt" data-prompt="I'd like to start learning AdCP in the Academy. What modules are available?">Start the Academy</button>
           </div>
         </div>
       </div>
@@ -3389,9 +3401,9 @@
           // Validate URL scheme - only allow safe protocols
           const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
           const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          // Use target="_blank" only for external links
-          const isExternal = /^https?:\/\//i.test(href);
-          const targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+          // Open all navigable links in new tab — chat is an SPA, navigating away loses context
+          const isAnchor = /^#/.test(href);
+          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
           return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
         };
 

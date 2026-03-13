@@ -39,6 +39,14 @@ export const ALWAYS_AVAILABLE_TOOLS = [
 ];
 
 /**
+ * Tools excluded from ALWAYS_AVAILABLE in public channels
+ * to prevent enrollment pitching where it doesn't belong
+ */
+const ENROLLMENT_TOOLS = [
+  'get_account_link',
+];
+
+/**
  * Tool set definitions
  */
 export const TOOL_SETS: Record<string, ToolSet> = {
@@ -339,7 +347,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   certification: {
     name: 'certification',
-    description: 'AdCP certification program — list tracks, teach modules, run exercises, placement assessment, and track learner progress',
+    description: 'AdCP Academy — list tracks, teach modules, run exercises, placement assessment, and track learner progress',
     tools: [
       'list_certification_tracks',
       'get_certification_module',
@@ -364,14 +372,21 @@ export function getToolsInSet(setName: string): string[] {
 /**
  * Get all tool names for multiple sets, including always-available tools
  */
-export function getToolsForSets(setNames: string[], isAAOAdmin: boolean = false): string[] {
-  const tools = new Set<string>(ALWAYS_AVAILABLE_TOOLS);
+export function getToolsForSets(setNames: string[], isAAOAdmin: boolean = false, isPublicChannel: boolean = false): string[] {
+  const alwaysAvailable = isPublicChannel
+    ? ALWAYS_AVAILABLE_TOOLS.filter(t => !ENROLLMENT_TOOLS.includes(t))
+    : ALWAYS_AVAILABLE_TOOLS;
+  const tools = new Set<string>(alwaysAvailable);
 
   for (const setName of setNames) {
     const toolSet = TOOL_SETS[setName];
     if (toolSet) {
       // Skip admin-only sets if user is not admin
       if (toolSet.adminOnly && !isAAOAdmin) {
+        continue;
+      }
+      // Skip billing set in public channels
+      if (isPublicChannel && setName === 'billing') {
         continue;
       }
       for (const tool of toolSet.tools) {

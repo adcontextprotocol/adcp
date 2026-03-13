@@ -22,7 +22,7 @@
     },
     "sandbox": {
       "type": "boolean",
-      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts."
+      "description": "Filter by sandbox status. true returns only sandbox accounts, false returns only production accounts. Omit to return all accounts. Primarily used with explicit accounts (require_operator_auth: true) where sandbox accounts are pre-existing test accounts on the platform."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
