@@ -1294,6 +1294,39 @@
       "file_location": "/.well-known/brand.json",
       "purpose": "Declares brand identity and agent for a domain, enabling brand discovery and verification"
     },
+    "brand-protocol": {
+      "description": "Brand protocol schemas for identity retrieval, rights discovery, and rights acquisition",
+      "schemas": {
+        "get-brand-identity-request": {
+          "$ref": "/schemas/brand/get-brand-identity-request.json",
+          "description": "Request brand identity data from a brand agent"
+        },
+        "get-brand-identity-response": {
+          "$ref": "/schemas/brand/get-brand-identity-response.json",
+          "description": "Brand identity data response"
+        },
+        "get-rights-request": {
+          "$ref": "/schemas/brand/get-rights-request.json",
+          "description": "Search for licensable rights with pricing"
+        },
+        "get-rights-response": {
+          "$ref": "/schemas/brand/get-rights-response.json",
+          "description": "Matching rights with pricing options"
+        },
+        "acquire-rights-request": {
+          "$ref": "/schemas/brand/acquire-rights-request.json",
+          "description": "Acquire rights with contractual clearance"
+        },
+        "acquire-rights-response": {
+          "$ref": "/schemas/brand/acquire-rights-response.json",
+          "description": "Rights acquisition result with terms and generation credentials"
+        },
+        "rights-pricing-option": {
+          "$ref": "/schemas/brand/rights-pricing-option.json",
+          "description": "Pricing option for licensable rights"
+        }
+      }
+    },
     "extensions": {
       "description": "Typed extension schemas for vendor-specific or domain-specific data. Extensions define the structure of data within the ext.{namespace} field. Agents declare which extensions they support in their agent card.",
       "registry": {

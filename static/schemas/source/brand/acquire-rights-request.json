@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/acquire-rights-request.json",
+  "title": "Acquire Rights Request",
+  "description": "Binding contractual request to acquire rights from a brand agent. Parallels create_media_buy — the buyer selects a pricing_option_id from a get_rights response and provides campaign details. The agent clears against existing contracts and returns terms, generation credentials, and disclosure requirements.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "description": "Rights offering identifier from get_rights response"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Selected pricing option from the rights offering"
+    },
+    "buyer": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "The buyer's brand identity"
+    },
+    "campaign": {
+      "type": "object",
+      "description": "Campaign details for rights clearance",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Description of how the rights will be used"
+        },
+        "uses": {
+          "type": "array",
+          "description": "Specific rights uses for this campaign",
+          "items": { "$ref": "/schemas/enums/right-use.json" },
+          "minItems": 1
+        },
+        "countries": {
+          "type": "array",
+          "description": "Countries where the campaign will run (ISO 3166-1 alpha-2)",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        },
+        "format_ids": {
+          "type": "array",
+          "description": "Creative formats that will be produced",
+          "items": { "$ref": "/schemas/core/format-id.json" }
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Estimated total impressions for the campaign"
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Campaign start date (ISO 8601)"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Campaign end date (ISO 8601)"
+        }
+      },
+      "required": ["description", "uses"],
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["rights_id", "pricing_option_id", "buyer", "campaign"],
+  "additionalProperties": true
+}

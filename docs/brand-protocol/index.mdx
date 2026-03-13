@@ -211,17 +211,37 @@ Brand information changes infrequently (logo updates, guideline refreshes). Reco
 
 Agents should respect HTTP caching headers when fetching brand.json files.
 
-## Future considerations
+## Brand protocol tasks
 
-### Digital asset management (DAM)
+Agents that implement the brand protocol declare `supported_protocols: ["brand"]` in `get_adcp_capabilities`. The specific tasks they implement define their role:
 
-For brands requiring fine-grained control over asset usage, the `brand_agent` variant provides a natural integration point for DAM systems. Agents can:
-- Enforce access control per asset
-- Track usage and licensing
-- Provide assets with usage terms
-- Log access for compliance
+| Agent capability | Tasks | Example |
+|-----------------|-------|---------|
+| DAM | `get_brand_identity` | Enterprise brand portal, asset management |
+| Rights management | `get_rights` + `acquire_rights` | Talent licensing, music sync, stock media |
+| Both | All brand tasks | Talent agency managing identity and rights |
 
-This is optional—brands publishing static brand.json files grant implied permission for compliant creative use. DAM integration is for enterprises with complex licensing requirements.
+### get_brand_identity
+
+Returns brand identity data that's richer, more dynamic, or more access-controlled than static brand.json. Response depth depends on the caller's authorization — linked accounts (via `sync_accounts`) get full assets, voice configs, and rights availability.
+
+### get_rights
+
+Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first — no taxonomy, LLMs interpret intent from the query.
+
+### acquire_rights
+
+Binding contractual request to clear rights. The buyer selects a `pricing_option_id` from `get_rights` and provides campaign details. Returns terms, generation credentials for LLM providers, and disclosure requirements.
+
+### Generation credentials
+
+Rights management agents coordinate with LLM providers (Midjourney, ElevenLabs, etc.) to issue scoped credentials. The rights agent sets up the permission; the provider enforces at generation time. Any creative agent can use the credentials.
+
+### Creative lifecycle
+
+Creative manifests carry an optional `rights` array — each entry is a rights constraint from a different rights holder. A single creative may combine talent likeness + music license, each with different validity periods and country restrictions. For v1, rights constraints are informational metadata.
+
+Usage is reported back to the rights agent via `report_usage` with the `rights_id` field for cap tracking and billing.
 
 ## MCP tools
 
@@ -239,7 +259,13 @@ The Brand Protocol provides MCP tools for programmatic access:
   <Card title="brand.json spec" icon="code" href="/docs/brand-protocol/brand-json">
     Complete technical specification for the brand.json file format.
   </Card>
-  <Card title="Registry API" icon="database" href="/docs/registry/index">
-    Look up brands, resolve domains, and discover agents.
+  <Card title="get_brand_identity" icon="id-card" href="/docs/brand-protocol/tasks/get_brand_identity">
+    Retrieve brand identity data from a brand agent.
+  </Card>
+  <Card title="get_rights" icon="scale-balanced" href="/docs/brand-protocol/tasks/get_rights">
+    Search for licensable rights with pricing.
+  </Card>
+  <Card title="acquire_rights" icon="handshake" href="/docs/brand-protocol/tasks/acquire_rights">
+    Acquire rights with contractual clearance.
   </Card>
 </CardGroup>

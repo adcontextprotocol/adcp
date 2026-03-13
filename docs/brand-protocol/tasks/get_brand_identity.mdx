@@ -1,0 +1,117 @@
+---
+title: get_brand_identity
+testable: true
+---
+
+Retrieve brand identity data from a brand agent. Returns richer, more dynamic, or access-controlled data than static brand.json. Response depth depends on the caller's authorization — linked accounts get full assets, voice configs, and rights availability.
+
+## Schema
+
+- **Request**: [`get-brand-identity-request.json`](https://adcontextprotocol.org/schemas/latest/brand/get-brand-identity-request.json)
+- **Response**: [`get-brand-identity-response.json`](https://adcontextprotocol.org/schemas/latest/brand/get-brand-identity-response.json)
+
+<!-- Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. -->
+
+## Response time
+
+Typically under 2 seconds for identity data. Authorized responses with large asset collections may take longer.
+
+## Quick start
+
+<CodeGroup>
+```json Request
+{
+  "brand_id": "daan_janssen",
+  "fields": ["all"],
+  "use_case": "endorsement"
+}
+```
+
+```json Response (authorized)
+{
+  "brand_id": "daan_janssen",
+  "names": [{"en": "Daan Janssen"}],
+  "description": "Dutch Olympic speed skater, 2x gold medalist",
+  "industry": "sports",
+  "logos": [
+    { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" },
+    { "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg", "variant": "full-lockup", "width": 3000, "height": 2000 }
+  ],
+  "voice": {
+    "provider": "elevenlabs",
+    "voice_id": "janssen_v2",
+    "settings": { "stability": 0.7 }
+  },
+  "tone": {
+    "voice": "enthusiastic, warm, competitive",
+    "attributes": ["athletic", "Dutch pride", "approachable"],
+    "dos": ["Reference athletic achievements", "Use Dutch cultural touchpoints"],
+    "donts": ["No injury references", "No competitor comparisons"]
+  },
+  "assets": [
+    {
+      "asset_id": "janssen_hero_01",
+      "asset_type": "image",
+      "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg",
+      "tags": ["hero", "action", "skating"],
+      "width": 3000,
+      "height": 2000
+    }
+  ],
+  "rights": {
+    "available_uses": ["likeness", "voice", "name", "endorsement"],
+    "countries": ["Worldwide"],
+    "excluded_countries": ["JP", "KR"],
+    "exclusivity_model": "category",
+    "content_restrictions": ["approval_required"]
+  }
+}
+```
+</CodeGroup>
+
+## Parameters
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `brand_id` | string | Yes | Brand identifier from the agent's brand.json brands array |
+| `fields` | string[] | No | Sections to return. `["all"]` for everything authorized. Omit for default set. |
+| `use_case` | string | No | Intended use case (e.g., "endorsement", "voice", "likeness"). Agent tailors response accordingly. |
+
+### Response
+
+The response mirrors the brand.json brand definition, extended with dynamic data the agent controls:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `brand_id` | string | Brand identifier |
+| `names` | object[] | Localized names |
+| `description` | string | Brand description |
+| `industry` | string | Industry or category |
+| `logos` | object[] | Brand logos and visual assets |
+| `colors` | object | Brand color palette |
+| `fonts` | object | Brand typography |
+| `tone` | object | Voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
+| `tagline` | string | Brand tagline or slogan |
+| `voice` | object | Voice synthesis configuration for AI-generated audio |
+| `assets` | object[] | Available brand assets (images, audio, video) |
+| `rights` | object | Rights availability summary (for pricing, use `get_rights`) |
+
+## Authorization levels
+
+The same endpoint returns different depths based on the caller's relationship:
+
+| Level | What you get |
+|-------|-------------|
+| **Public** (no linked account) | Same data as brand.json — names, description, basic logos |
+| **Authorized** (linked via `sync_accounts`) | High-res assets, voice configs, tone guidelines, content restrictions, rights availability |
+
+Link your account first using the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`).
+
+## Use cases
+
+- **DAM**: Returns high-res assets, current campaign guidelines, seasonal creative toolkits
+- **Enterprise brand agent**: Returns approved copy, brand voice guidelines, current taglines
+- **Rights management agent**: Returns talent identity — tone, voice config, photos, rights availability

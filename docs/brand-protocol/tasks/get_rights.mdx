@@ -1,0 +1,146 @@
+---
+title: get_rights
+testable: true
+---
+
+Search for licensable rights across a brand agent's roster. Returns matches with pricing options. Discovery is natural-language-first — no taxonomy, LLMs interpret intent from the query.
+
+## Schema
+
+- **Request**: [`get-rights-request.json`](https://adcontextprotocol.org/schemas/latest/brand/get-rights-request.json)
+- **Response**: [`get-rights-response.json`](https://adcontextprotocol.org/schemas/latest/brand/get-rights-response.json)
+
+<!-- Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. -->
+
+## Response time
+
+Typically 2-10 seconds. The agent may perform compatibility checks against the buyer's brand.json, which adds latency.
+
+## Quick start
+
+<CodeGroup>
+```json Request
+{
+  "query": "Dutch athlete for restaurant brand in Amsterdam, budget 400 EUR/month",
+  "uses": ["likeness", "voice"],
+  "buyer_brand": { "domain": "bistro-oranje.nl" },
+  "include_excluded": true
+}
+```
+
+```json Response
+{
+  "rights": [
+    {
+      "rights_id": "janssen_likeness_voice",
+      "brand_id": "daan_janssen",
+      "name": "Daan Janssen",
+      "description": "Dutch Olympic speed skater, 2x gold medalist",
+      "right_type": "talent",
+      "match_score": 0.92,
+      "match_reasons": [
+        "Available for food/restaurant brands in NL",
+        "Within budget at 350 EUR/month",
+        "Athletic brand aligns with Bistro Oranje's quality positioning"
+      ],
+      "available_uses": ["likeness", "voice", "name", "endorsement"],
+      "countries": ["NL", "BE", "DE"],
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_endorsement",
+          "model": "cpm",
+          "price": 3.50,
+          "currency": "EUR",
+          "uses": ["likeness"],
+          "description": "Per-impression royalty for AI-generated creatives using likeness"
+        },
+        {
+          "pricing_option_id": "monthly_exclusive",
+          "model": "flat_rate",
+          "price": 350,
+          "currency": "EUR",
+          "period": "monthly",
+          "uses": ["likeness", "voice"],
+          "impression_cap": 100000,
+          "overage_cpm": 4.00,
+          "description": "Monthly exclusive license for likeness + voice, up to 100K impressions"
+        }
+      ],
+      "content_restrictions": ["approval_required"],
+      "preview_assets": [
+        { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "usage": "preview_only" }
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "brand_id": "pieter_van_dijk",
+      "name": "Pieter van Dijk",
+      "reason": "Dietary lifestyle conflict with steakhouse brand"
+    }
+  ]
+}
+```
+</CodeGroup>
+
+## Parameters
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Natural language description of desired rights. Include budget, geography, use case. |
+| `uses` | string[] | Yes | Rights uses being requested (`likeness`, `voice`, `name`, `endorsement`, etc.) |
+| `buyer_brand` | brand-ref | No | Buyer's brand. Agent fetches buyer's brand.json for compatibility filtering. |
+| `countries` | string[] | No | Countries where rights are needed (ISO 3166-1 alpha-2) |
+| `brand_id` | string | No | Search within a specific brand's rights |
+| `right_type` | string | No | Filter by rights type (`talent`, `music`, `stock_media`, etc.) |
+| `include_excluded` | boolean | No | Include filtered-out results in the `excluded` array with reasons. Defaults to false. |
+| `pagination` | object | No | Pagination parameters for large result sets |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rights` | object[] | Matching rights with pricing, ranked by relevance |
+| `rights[].rights_id` | string | Identifier for this offering — referenced in `acquire_rights` |
+| `rights[].brand_id` | string | Brand identifier |
+| `rights[].name` | string | Display name |
+| `rights[].match_score` | number | Relevance score (0-1) |
+| `rights[].match_reasons` | string[] | Why this result matches |
+| `rights[].available_uses` | string[] | Rights uses available |
+| `rights[].countries` | string[] | Countries where available |
+| `rights[].excluded_countries` | string[] | Countries excluded from availability |
+| `rights[].exclusivity_status` | object | Current exclusivity availability (`available`, `existing_exclusives`) |
+| `rights[].pricing_options` | object[] | Pricing options (see below) |
+| `excluded` | object[] | Filtered results with reasons (only when `include_excluded: true`) |
+
+### Rights pricing options
+
+Pricing options are specific to rights — they include period, impression caps, overage rates, and use-type scoping:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pricing_option_id` | string | Yes | Referenced in `acquire_rights` and `report_usage` |
+| `model` | string | Yes | Pricing model (`cpm`, `flat_rate`, etc.) |
+| `price` | number | Yes | Price amount |
+| `currency` | string | Yes | ISO 4217 currency code |
+| `uses` | string[] | Yes | Rights uses covered by this option |
+| `period` | string | No | Billing period (`monthly`, `quarterly`, etc.) |
+| `impression_cap` | integer | No | Max impressions included per period |
+| `overage_cpm` | number | No | CPM for impressions exceeding the cap |
+
+## Composite rights
+
+Request multiple uses (e.g., `["likeness", "voice"]`) and the agent bundles them into a single pricing option. One call, one price.
+
+## Buyer brand filtering
+
+When `buyer_brand` is provided, the agent fetches the buyer's brand.json and uses it for compatibility filtering. For example, a vegetarian athlete would be excluded from steakhouse campaigns. Set `include_excluded: true` to see filtered results with reasons.
+
+## Next steps
+
+After selecting a rights offering:
+1. Call [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity) for the selected brand's full identity data
+2. Call [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) with the `rights_id` and `pricing_option_id`

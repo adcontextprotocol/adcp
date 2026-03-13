@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/get-brand-identity-request.json",
+  "title": "Get Brand Identity Request",
+  "description": "Request brand identity data from a brand agent. Returns richer, more dynamic, or access-controlled data than static brand.json. Response depth depends on the caller's authorization level — linked accounts get full assets, voice configs, and rights availability.",
+  "type": "object",
+  "properties": {
+    "brand_id": {
+      "type": "string",
+      "description": "Brand identifier from brand.json brands array"
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific identity sections to return. Use [\"all\"] for everything the caller is authorized to see. Agents may return a subset based on authorization.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "use_case": {
+      "type": "string",
+      "description": "Intended use case, so the agent can tailor the response. A 'voice' use case returns voice configs; a 'likeness' use case returns high-res photos and appearance guidelines."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["brand_id"],
+  "additionalProperties": true
+}

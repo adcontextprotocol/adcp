@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/rights-constraint.json",
+  "title": "Rights Constraint",
+  "description": "Rights metadata attached to a creative manifest. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant identifier from the acquire_rights response"
+    },
+    "rights_agent": {
+      "type": "object",
+      "description": "The agent that granted these rights",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "MCP endpoint URL of the rights agent"
+        },
+        "id": {
+          "type": "string",
+          "description": "Agent identifier"
+        }
+      },
+      "required": ["url", "id"]
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the rights validity period"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of the rights validity period. Creative should not be served after this time."
+    },
+    "uses": {
+      "type": "array",
+      "description": "Rights uses covered by this constraint",
+      "items": {
+        "$ref": "/schemas/enums/right-use.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where this creative may be served under these rights (ISO 3166-1 alpha-2). If omitted, no country restriction. When both countries and excluded_countries are present, the effective set is countries minus excluded_countries.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "excluded_countries": {
+      "type": "array",
+      "description": "Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the grant is worldwide except specific markets.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum total impressions allowed under these rights terms for the full validity period"
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected"],
+      "description": "Current approval status from the rights holder"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["rights_id", "rights_agent", "uses"],
+  "additionalProperties": true
+}

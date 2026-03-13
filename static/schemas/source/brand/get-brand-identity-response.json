@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/get-brand-identity-response.json",
+  "title": "Get Brand Identity Response",
+  "description": "Brand identity data from a brand agent. The response shape mirrors brand.json's brand definition, extended with dynamic data the agent controls. Authorized callers receive richer data (high-res assets, voice configs, content restrictions).",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "GetBrandIdentitySuccess",
+      "properties": {
+        "brand_id": {
+          "type": "string",
+          "description": "Brand identifier"
+        },
+        "names": {
+          "type": "array",
+          "description": "Localized brand names",
+          "items": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Brand description"
+        },
+        "industry": {
+          "type": "string",
+          "description": "Industry or category"
+        },
+        "logos": {
+          "type": "array",
+          "description": "Brand logos and visual assets",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "variant": { "type": "string" },
+              "usage": { "type": "string" },
+              "width": { "type": "integer" },
+              "height": { "type": "integer" }
+            },
+            "required": ["url"],
+            "additionalProperties": true
+          }
+        },
+        "colors": {
+          "type": "object",
+          "description": "Brand color palette",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "fonts": {
+          "type": "object",
+          "description": "Brand typography",
+          "additionalProperties": true
+        },
+        "tone": {
+          "type": "object",
+          "description": "Brand voice and messaging guidelines",
+          "properties": {
+            "voice": { "type": "string" },
+            "attributes": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "dos": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "donts": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Brand tagline or slogan"
+        },
+        "voice": {
+          "type": "object",
+          "description": "Voice synthesis configuration for AI-generated audio",
+          "properties": {
+            "provider": { "type": "string" },
+            "voice_id": { "type": "string" },
+            "settings": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "assets": {
+          "type": "array",
+          "description": "Available brand assets (images, audio, video)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "asset_id": { "type": "string" },
+              "asset_type": {
+                "type": "string",
+                "enum": ["image", "video", "audio", "document"]
+              },
+              "url": { "type": "string", "format": "uri" },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "width": { "type": "integer" },
+              "height": { "type": "integer" },
+              "duration_seconds": { "type": "number" }
+            },
+            "required": ["asset_id", "asset_type", "url"],
+            "additionalProperties": true
+          }
+        },
+        "rights": {
+          "type": "object",
+          "description": "Rights availability summary. For detailed pricing, use get_rights.",
+          "properties": {
+            "available_uses": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/right-use.json" }
+            },
+            "countries": {
+              "type": "array",
+              "description": "Countries where rights are available. Use 'Worldwide' for global availability.",
+              "items": { "type": "string" }
+            },
+            "excluded_countries": {
+              "type": "array",
+              "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              }
+            },
+            "exclusivity_model": { "type": "string" },
+            "content_restrictions": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["brand_id", "names"],
+      "additionalProperties": true,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "GetBrandIdentityError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/error.json" },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["brand_id"] },
+          { "required": ["names"] }
+        ]
+      }
+    }
+  ]
+}

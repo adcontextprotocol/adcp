@@ -178,7 +178,15 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
-              "docs/brand-protocol/brand-json"
+              "docs/brand-protocol/brand-json",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/brand-protocol/tasks/get_brand_identity",
+                  "docs/brand-protocol/tasks/get_rights",
+                  "docs/brand-protocol/tasks/acquire_rights"
+                ]
+              }
             ]
           },
           {
@@ -548,7 +556,15 @@
             "group": "Brand Protocol",
             "pages": [
               "docs/brand-protocol/index",
-              "docs/brand-protocol/brand-json"
+              "docs/brand-protocol/brand-json",
+              {
+                "group": "Tasks",
+                "pages": [
+                  "docs/brand-protocol/tasks/get_brand_identity",
+                  "docs/brand-protocol/tasks/get_rights",
+                  "docs/brand-protocol/tasks/acquire_rights"
+                ]
+              }
             ]
           },
           {
