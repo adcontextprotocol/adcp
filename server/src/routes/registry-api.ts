@@ -33,6 +33,9 @@ import {
   FindCompanyResultSchema,
   BrandActivitySchema,
   PropertyActivitySchema,
+  PolicySchema,
+  PolicySummarySchema,
+  PolicyHistorySchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -795,6 +798,169 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+// ── Policy Registry ────────────────────────────────────────────
+
+registry.registerPath({
+  method: "get",
+  path: "/api/policies/registry",
+  operationId: "listPolicies",
+  summary: "List policies",
+  description:
+    "Browse and search the governance policy registry. Returns approved policies with optional filtering by category, enforcement level, jurisdiction, vertical, and governance domain.",
+  tags: ["Policy Registry"],
+  request: {
+    query: z.object({
+      search: z.string().optional().openapi({ description: "Full-text search on policy name and description" }),
+      category: z.enum(["regulation", "standard"]).optional(),
+      enforcement: z.enum(["must", "should", "may"]).optional(),
+      jurisdiction: z.string().optional().openapi({ example: "EU", description: "Filter by jurisdiction (includes region alias matching)" }),
+      vertical: z.string().optional().openapi({ example: "finance" }),
+      domain: z.string().optional().openapi({ example: "campaign", description: "Filter by governance domain" }),
+      limit: z.string().optional().openapi({ description: "Results per page (default 20, max 1000)" }),
+      offset: z.string().optional().openapi({ description: "Pagination offset (default 0)" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Policy listing with facet stats",
+      content: {
+        "application/json": {
+          schema: z.object({
+            policies: z.array(PolicySummarySchema),
+            stats: z.object({
+              total: z.number().int(),
+              regulation: z.number().int(),
+              standard: z.number().int(),
+            }),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/policies/resolve",
+  operationId: "resolvePolicy",
+  summary: "Resolve policy",
+  description:
+    "Resolve a single policy by ID. Optionally pin to a specific version — returns null if the version does not match.",
+  tags: ["Policy Registry"],
+  request: {
+    query: z.object({
+      policy_id: z.string().openapi({ example: "gdpr_consent" }),
+      version: z.string().optional().openapi({ description: "Return null if the current version does not match" }),
+    }),
+  },
+  responses: {
+    200: { description: "Policy resolved", content: { "application/json": { schema: PolicySchema } } },
+    400: { description: "Missing policy_id", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Policy not found", content: { "application/json": { schema: z.object({ error: z.string(), policy_id: z.string() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/policies/resolve/bulk",
+  operationId: "resolvePoliciesBulk",
+  summary: "Bulk resolve policies",
+  description:
+    "Resolve up to 100 policies by ID in a single request. Returns a map of policy_id to Policy (or null if not found).\n\n**Rate limit:** 20 requests per minute per IP address.",
+  tags: ["Policy Registry"],
+  request: {
+    body: { content: { "application/json": { schema: z.object({ policy_ids: z.array(z.string()).min(1).max(100).openapi({ example: ["gdpr_consent", "coppa_children"] }) }) } } },
+  },
+  responses: {
+    200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), PolicySchema.nullable()) }) } } },
+    400: { description: "Invalid request", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/policies/history",
+  operationId: "getPolicyHistory",
+  summary: "Policy revision history",
+  description:
+    "Retrieve the edit history for a policy. Each revision records who made the change, a summary, and whether it was a rollback.",
+  tags: ["Policy Registry"],
+  request: {
+    query: z.object({
+      policy_id: z.string().openapi({ example: "gdpr_consent" }),
+      limit: z.string().optional().openapi({ description: "Results per page (max 100, default 20)" }),
+      offset: z.string().optional().openapi({ description: "Pagination offset (default 0)" }),
+    }),
+  },
+  responses: {
+    200: { description: "Revision history", content: { "application/json": { schema: PolicyHistorySchema } } },
+    400: { description: "Missing policy_id", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Policy not found", content: { "application/json": { schema: z.object({ error: z.string(), policy_id: z.string() }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/policies/save",
+  operationId: "savePolicy",
+  summary: "Save policy",
+  description:
+    "Create or update a community-contributed policy. Requires authentication. Registry-sourced and pending-review policies cannot be edited (returns 409). Updates automatically create a revision record.",
+  tags: ["Policy Registry"],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            policy_id: z.string().openapi({ example: "my_brand_safety", description: "Lowercase alphanumeric with underscores" }),
+            version: z.string().openapi({ example: "1.0.0" }),
+            name: z.string().openapi({ example: "Acme Corp Brand Safety" }),
+            category: z.enum(["regulation", "standard"]),
+            enforcement: z.enum(["must", "should", "may"]),
+            policy: z.string().openapi({ example: "Ads must not appear adjacent to content depicting violence..." }),
+            description: z.string().optional(),
+            jurisdictions: z.array(z.string()).optional(),
+            region_aliases: z.record(z.string(), z.array(z.string())).optional(),
+            verticals: z.array(z.string()).optional(),
+            channels: z.array(z.string()).optional(),
+            effective_date: z.string().optional(),
+            sunset_date: z.string().optional(),
+            governance_domains: z.array(z.string()).optional(),
+            source_url: z.string().optional().openapi({ description: "Must use http:// or https://" }),
+            source_name: z.string().optional(),
+            guidance: z.string().optional(),
+            exemplars: z.object({
+              pass: z.array(z.object({ scenario: z.string(), explanation: z.string() })).optional(),
+              fail: z.array(z.object({ scenario: z.string(), explanation: z.string() })).optional(),
+            }).optional(),
+            ext: z.record(z.string(), z.unknown()).optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: "Policy saved",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            message: z.string(),
+            policy_id: z.string(),
+            revision_number: z.number().int().nullable(),
+          }),
+        },
+      },
+    },
+    400: { description: "Validation error", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Cannot edit registry-sourced or pending policy", content: { "application/json": { schema: z.object({ error: z.string(), policy_id: z.string() }) } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
