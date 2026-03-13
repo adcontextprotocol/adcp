@@ -860,8 +860,8 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     expect(result.sandbox).toBe(true);
-    // Future dates → scheduled status
-    expect(result.status).toBe('scheduled');
+    // Future dates → pending_activation status
+    expect(result.status).toBe('pending_activation');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
   });
@@ -1123,8 +1123,8 @@ describe('create_media_buy handler', () => {
         buyer_ref: 'pkg-status',
       }],
     });
-    // Future dates → scheduled (not active)
-    expect(result.status).toBe('scheduled');
+    // Future dates → pending_activation (not active)
+    expect(result.status).toBe('pending_activation');
   });
 });
 
@@ -1339,8 +1339,8 @@ describe('get_media_buys handler', () => {
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
     expect(buys[0].buyer_ref).toBe('buyer-for-get');
-    // Future dates => scheduled status
-    expect(buys[0].status).toBe('scheduled');
+    // Future dates => pending_activation status
+    expect(buys[0].status).toBe('pending_activation');
   });
 });
 
@@ -1512,6 +1512,71 @@ describe('update_media_buy end_time validation', () => {
 
     expect(result.errors).toBeDefined();
     expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time');
+  });
+});
+
+// ── Package-level date validation ────────────────────────────────────
+
+describe('create_media_buy package-level date validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('rejects invalid package start_time', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'pkgdate.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'pkgdate-buyer',
+      account,
+      brand: { domain: 'pkgdate.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-bad-start',
+        start_time: 'not-a-date',
+      }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid start_time for package');
+  });
+
+  it('rejects invalid package end_time', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'pkgdate2.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'pkgdate2-buyer',
+      account,
+      brand: { domain: 'pkgdate2.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-bad-end',
+        end_time: 'banana',
+      }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time for package');
   });
 });
 

@@ -26,7 +26,7 @@ function deriveStatus(mb: MediaBuyState): string {
   const now = new Date();
   if (mb.status === 'active') {
     if (new Date(mb.endTime) < now) return 'completed';
-    if (new Date(mb.startTime) > now) return 'scheduled';
+    if (new Date(mb.startTime) > now) return 'pending_activation';
   }
   return mb.status;
 }
@@ -96,11 +96,35 @@ const TOOLS = [
       properties: {
         buyer_ref: { type: 'string' },
         buyer_campaign_ref: { type: 'string' },
-        account: { type: 'object' },
-        brand: { type: 'object' },
-        packages: { type: 'array' },
+        account: {
+          type: 'object',
+          properties: {
+            brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
+          },
+          required: ['brand'],
+        },
+        brand: { type: 'object', properties: { domain: { type: 'string' }, name: { type: 'string' } } },
+        packages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              product_id: { type: 'string' },
+              pricing_option_id: { type: 'string' },
+              budget: { type: 'number' },
+              buyer_ref: { type: 'string' },
+              bid_price: { type: 'number' },
+              impressions: { type: 'number' },
+              paused: { type: 'boolean' },
+              start_time: { type: 'string' },
+              end_time: { type: 'string' },
+              format_ids: { type: 'array' },
+            },
+            required: ['product_id', 'pricing_option_id', 'budget'],
+          },
+        },
         proposal_id: { type: 'string' },
-        total_budget: { type: 'object' },
+        total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
       },
@@ -387,6 +411,15 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     const startTime = (pkg.start_time || args.start_time) as string;
     const endTime = (pkg.end_time || args.end_time) as string;
+
+    // Validate package-level dates if overridden
+    if (pkg.start_time && startTime !== 'asap' && isNaN(new Date(startTime).getTime())) {
+      return { errors: [{ code: 'validation_error', message: `Invalid start_time for package: "${startTime}". Use ISO 8601 format or "asap".` }] };
+    }
+    if (pkg.end_time && isNaN(new Date(endTime).getTime())) {
+      return { errors: [{ code: 'validation_error', message: `Invalid end_time for package: "${endTime}". Use ISO 8601 format.` }] };
+    }
+
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
     createdPackages.push({
@@ -514,14 +547,15 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   const byPackage = mb.packages.map(pkg => {
     // Paused packages stop accruing delivery
     if (pkg.paused) {
+      const { model, rate } = derivePricing(pkg, productMap);
       return {
         package_id: pkg.packageId,
         buyer_ref: pkg.buyerRef,
         spend: 0,
         impressions: 0,
         clicks: 0,
-        pricing_model: derivePricingModel(pkg, productMap),
-        rate: derivePricingRate(pkg, productMap),
+        pricing_model: model,
+        rate,
         currency: mb.currency,
         paused: true,
         delivery_status: 'delivering' as const,
@@ -531,16 +565,10 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     const budget = pkg.budget;
     const spend = Math.round(budget * elapsed * 100) / 100;
 
-    // Derive rate from the product's actual pricing
-    const product = productMap.get(pkg.productId);
-    const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
-    const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
-    const rate = (pricing?.fixed_price as number)
-      || (pricing?.floor_price as number)
-      || 10;
-    const pricingModel = (pricing?.pricing_model as string) || 'cpm';
+    const { model: pricingModel, rate } = derivePricing(pkg, productMap);
 
     // Channel-appropriate CTR
+    const product = productMap.get(pkg.productId);
     const channels = product?.channels as string[] | undefined;
     let ctr: number;
     if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
@@ -593,18 +621,14 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
   };
 }
 
-function derivePricingModel(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): string {
+function derivePricing(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
   const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
   const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
-  return (pricing?.pricing_model as string) || 'cpm';
-}
-
-function derivePricingRate(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): number {
-  const product = productMap.get(pkg.productId);
-  const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
-  const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
-  return (pricing?.fixed_price as number) || (pricing?.floor_price as number) || 10;
+  return {
+    model: (pricing?.pricing_model as string) || 'cpm',
+    rate: (pricing?.fixed_price as number) || (pricing?.floor_price as number) || 10,
+  };
 }
 
 function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
