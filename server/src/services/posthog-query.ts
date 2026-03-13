@@ -76,7 +76,9 @@ async function queryPostHog(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getResultsArray(response: unknown): any[] {
   const obj = response as Record<string, unknown> | null;
-  return Array.isArray(obj?.results) ? obj.results : [];
+  // PostHog query API returns "result" (singular); legacy insights API uses "results" (plural)
+  const arr = obj?.result ?? obj?.results;
+  return Array.isArray(arr) ? arr : [];
 }
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour

@@ -7311,6 +7311,13 @@ Disallow: /api/admin/
       jobScheduler.start(JOB_NAMES.MOLTBOOK_ENGAGEMENT);
     }
 
+    // Start GEO visibility jobs only if LLM Pulse API key is configured
+    if (process.env.LLMPULSE_API_KEY) {
+      jobScheduler.start(JOB_NAMES.GEO_MONITOR);
+      jobScheduler.start(JOB_NAMES.GEO_SNAPSHOT);
+      jobScheduler.start(JOB_NAMES.GEO_CONTENT_PLANNER);
+    }
+
     this.server = this.app.listen(port, () => {
       logger.info({
         port,
