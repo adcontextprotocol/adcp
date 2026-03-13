@@ -129,9 +129,18 @@ export function estimateTokens(text: string): number {
 /**
  * Message turn structure (matches prompts.ts)
  */
+export interface MessageTurnToolCall {
+  name: string;
+  input?: Record<string, unknown>;
+  result: string;
+  is_error?: boolean;
+}
+
 export interface MessageTurn {
   role: 'user' | 'assistant';
   content: string;
+  /** Tool calls made during this assistant turn (used to reconstruct proper API blocks) */
+  toolCalls?: MessageTurnToolCall[];
 }
 
 /**
@@ -175,11 +184,18 @@ export function trimConversationHistory(
 
   const originalCount = messages.length;
 
-  // Estimate tokens for each message
-  const messagesWithTokens = messages.map(msg => ({
-    message: msg,
-    tokens: estimateTokens(msg.content),
-  }));
+  // Estimate tokens for each message, including tool call content
+  const messagesWithTokens = messages.map(msg => {
+    let tokens = estimateTokens(msg.content);
+    if (msg.toolCalls) {
+      for (const tc of msg.toolCalls) {
+        tokens += estimateTokens(tc.name);
+        tokens += estimateTokens(tc.result);
+        if (tc.input) tokens += estimateTokens(JSON.stringify(tc.input));
+      }
+    }
+    return { message: msg, tokens };
+  });
 
   // Start from the end (most recent) and work backwards
   let totalTokens = 0;

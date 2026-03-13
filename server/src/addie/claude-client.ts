@@ -14,9 +14,85 @@ import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId, type RuleSnapshot } from './config-version.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
-import { formatTokenCount, getConversationTokenLimit } from '../utils/token-limiter.js';
+import { formatTokenCount, getConversationTokenLimit, type MessageTurn } from '../utils/token-limiter.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+/**
+ * Convert MessageTurn[] into Anthropic.MessageParam[] with proper tool_use/tool_result
+ * content blocks. When an assistant message has toolCalls, we:
+ * 1. Build the assistant content as [text, tool_use, tool_use, ...]
+ * 2. Insert a synthetic user message with [tool_result, tool_result, ...]
+ *
+ * This prevents the model from hallucinating tool calls as text (which happens when
+ * tool results are flattened into plain text in conversation history).
+ */
+function toAnthropicMessages(turns: MessageTurn[]): Anthropic.MessageParam[] {
+  const messages: Anthropic.MessageParam[] = [];
+  let toolIdCounter = 0;
+
+  for (const turn of turns) {
+    if (turn.role === 'assistant' && turn.toolCalls && turn.toolCalls.length > 0) {
+      // Build assistant content blocks: text + tool_use blocks
+      const content: Anthropic.ContentBlockParam[] = [];
+      if (turn.content.trim()) {
+        content.push({ type: 'text', text: turn.content });
+      }
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+      for (const tc of turn.toolCalls) {
+        const toolUseId = `hist_${toolIdCounter++}`;
+        content.push({
+          type: 'tool_use',
+          id: toolUseId,
+          name: tc.name,
+          input: (tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)) ? tc.input : {},
+        });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: tc.result,
+          is_error: tc.is_error ?? false,
+        });
+      }
+
+      // Defensive: skip if no content blocks were produced
+      if (content.length === 0) {
+        messages.push({ role: turn.role, content: turn.content });
+      } else {
+        messages.push({ role: 'assistant', content });
+        // Insert tool_result in a user turn (required by Anthropic API)
+        messages.push({ role: 'user', content: toolResults });
+      }
+    } else {
+      messages.push({ role: turn.role, content: turn.content });
+    }
+  }
+
+  // Anthropic API requires alternating roles — merge consecutive same-role messages
+  // The first merge (in buildMessageTurnsWithMetadata) handles raw MessageTurns for
+  // token estimation. This second merge handles synthetic user messages (tool_result
+  // blocks) that toAnthropicMessages inserts, which may collide with real user messages.
+  const merged: Anthropic.MessageParam[] = [];
+  for (const msg of messages) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      const prev = merged[merged.length - 1];
+      // Normalize both to arrays and concatenate
+      const prevContent = Array.isArray(prev.content)
+        ? prev.content
+        : [{ type: 'text' as const, text: prev.content }];
+      const newContent = Array.isArray(msg.content)
+        ? msg.content
+        : [{ type: 'text' as const, text: msg.content }];
+      prev.content = [...prevContent, ...newContent];
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+
+  return merged;
+}
 
 /**
  * Build Claude content blocks from multimodal file content.
@@ -417,10 +493,7 @@ export class AddieClaudeClient {
       );
     }
 
-    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
-      role: turn.role,
-      content: turn.content,
-    }));
+    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
@@ -924,10 +997,7 @@ export class AddieClaudeClient {
       );
     }
 
-    const messages: Anthropic.MessageParam[] = messageTurnsResult.messages.map(turn => ({
-      role: turn.role,
-      content: turn.content,
-    }));
+    const messages: Anthropic.MessageParam[] = toAnthropicMessages(messageTurnsResult.messages);
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.

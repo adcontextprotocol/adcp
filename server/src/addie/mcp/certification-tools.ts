@@ -13,6 +13,28 @@ import { createLogger } from '../../logger.js';
 
 const logger = createLogger('certification-tools');
 
+/**
+ * Build a membership-required message that gives Addie context about the user's
+ * account type so she can tailor the enrollment pitch appropriately.
+ */
+function membershipRequiredMessage(moduleId: string, memberContext: MemberContext | null): string {
+  const isPersonal = memberContext?.organization?.is_personal !== false;
+  const orgName = memberContext?.organization?.name;
+
+  if (isPersonal) {
+    return `Module ${moduleId} requires AgenticAdvertising.org membership. `
+      + `This user has an individual account. `
+      + `Use find_membership_products with customer_type "individual" to show them their options and help them sign up.`;
+  }
+
+  return `Module ${moduleId} requires AgenticAdvertising.org membership. `
+    + `This user works at ${orgName || 'a company'} which is not yet a member. `
+    + `Company membership covers everyone at the organization. `
+    + `Use find_membership_products with customer_type "company" to show pricing. `
+    + `Help this person become an internal champion — give them the value proposition and pricing they need to make the case internally. `
+    + `Also offer individual membership as an alternative if they want to start right away.`;
+}
+
 // Minimum user turns required before completion (module-scoped)
 const MIN_MODULE_TURNS = 4;
 const MIN_CAPSTONE_TURNS = 6;
@@ -735,7 +757,7 @@ export function createCertificationToolHandlers(
 
       // Check access
       if (!mod.is_free && !memberContext?.is_member) {
-        return `Module ${moduleId} (${mod.title}) requires AgenticAdvertising.org membership. Modules A1, A2, and A3 are free — start there!`;
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       const lines: string[] = [
@@ -819,7 +841,7 @@ export function createCertificationToolHandlers(
       if (!mod) return `Module "${moduleId}" not found.`;
 
       if (!mod.is_free && !memberContext?.is_member) {
-        return `Module ${moduleId} requires membership. Modules A1, A2, and A3 are free — try those first!`;
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
@@ -1192,7 +1214,7 @@ export function createCertificationToolHandlers(
         return mod && !mod.is_free;
       });
       if (paidModules.length > 0 && !memberContext?.is_member) {
-        return `Modules ${paidModules.join(', ')} require membership. Only free modules (A1, A2, A3) can be tested out without membership.`;
+        return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
       // Server-side minimum conversation turn count for placement assessments
@@ -1251,7 +1273,7 @@ export function createCertificationToolHandlers(
       }
 
       if (!memberContext?.is_member) {
-        return 'Specialist capstones require AgenticAdvertising.org membership.';
+        return membershipRequiredMessage(moduleId, memberContext);
       }
 
       // Check that they hold the Practitioner credential
