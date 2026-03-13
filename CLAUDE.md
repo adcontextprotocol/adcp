@@ -258,6 +258,9 @@ mintlify dev               # Docs dev server (requires mintlify CLI)
 AgenticAdvertising.org runs a three-tier certification program (Basics → Practitioner → Specialist) taught by Addie through interactive chat. Key files:
 
 - **Curriculum**: `server/src/addie/mcp/certification-tools.ts` (teaching tools, module resources, scoring)
+- **Teaching methodology**: `TEACHING_METHODOLOGY`, `BUILD_PROJECT_METHODOLOGY`, `CAPSTONE_METHODOLOGY` constants in certification-tools.ts
+- **Framework doc**: `docs/learning/instructional-design.mdx` (authoritative source for teaching methodology)
+- **Policies**: `docs/learning/policies/` (nondiscrimination, learner records, complaints, conflict of interest, IP, personnel)
 - **Database**: `server/src/db/certification-db.ts` (progress, credentials, tracks)
 - **API routes**: `server/src/routes/certification.ts` (public/authenticated endpoints)
 - **UI**: `server/public/certification.html` (dashboard, LinkedIn sharing, credential display)
@@ -270,10 +273,15 @@ When making protocol changes (new tasks, schema changes, renamed fields, removed
 2. **Consider continuing education** — Breaking changes (`major` version bumps) that alter core concepts may require notifying credential holders. Credentials reference the protocol version at time of issuance.
 3. **Update learning resources** — If you add or move documentation pages referenced in `MODULE_RESOURCES`, update the URLs.
 
+When updating teaching methodology:
+
+4. **Keep framework aligned** — When updating `TEACHING_METHODOLOGY`, `BUILD_PROJECT_METHODOLOGY`, or `CAPSTONE_METHODOLOGY` constants in `certification-tools.ts`, verify alignment with `docs/learning/instructional-design.mdx` and update both.
+5. **Update policies if needed** — Changes to assessment, data handling, or personnel processes may require updates to the corresponding policy page in `docs/learning/policies/`.
+
 When building new features (member profiles, dashboards, community pages):
 
-4. **Surface credentials** — If the feature displays user identity or professional context, consider showing earned credentials.
-5. **Link to certification** — New capability areas may warrant new modules or tracks. Note this in the changeset description so it can be planned.
+6. **Surface credentials** — If the feature displays user identity or professional context, consider showing earned credentials.
+7. **Link to certification** — New capability areas may warrant new modules or tracks. Note this in the changeset description so it can be planned.
 
 ### Security
 
