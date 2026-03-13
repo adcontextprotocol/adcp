@@ -752,8 +752,8 @@ describe('get_products handler', () => {
     });
 
     const products = result.products as Array<Record<string, unknown>>;
-    expect(products.length).toBeLessThanOrEqual(5);
-    expect(products.length).toBeGreaterThan(0);
+    // Broad terms match well over 5 catalog products, so the cap must be exercised
+    expect(products.length).toEqual(5);
   });
 
   it('returns suggestions when brief has no keyword matches', async () => {
