@@ -636,6 +636,16 @@
           orgId: currentOrg?.id || null,
         });
 
+        // Set up org switcher callback for multi-org users
+        if (orgs.length > 1) {
+          DashboardNav.setOrgOptions(orgs, currentOrg?.id, (newOrgId) => {
+            localStorage.setItem('selectedOrgId', newOrgId);
+            const url = new URL(window.location);
+            url.searchParams.set('org', newOrgId);
+            window.location.href = url.toString();
+          });
+        }
+
         // Fetch certification summary for this org (non-blocking)
         let certSummary = null;
         if (currentOrg?.id) {
