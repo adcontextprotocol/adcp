@@ -311,6 +311,30 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
           requirements: { url_type: 'click_through' } },
       ],
     },
+
+    {
+      format_id: { agent_url: agentUrl, id: 'ai_sponsored_agent' },
+      name: 'Sponsored intelligence agent',
+      description: 'Brand-sponsored AI agent on NovaMind AI platform. Buyers provide agent persona instructions, brand identity, and an optional knowledge base URL. The platform hosts the agent in discovery and conversational surfaces. System prompt limited to 4,000 characters (~1,000 tokens). Knowledge base content retrieved dynamically with up to 8,000 tokens per conversation turn.',
+      renders: [
+        { role: 'agent_card', dimensions: { width: 300, height: 250, responsive: { width: true, height: false } } },
+        { role: 'conversational', dimensions: { responsive: { width: true, height: true } } },
+      ],
+      assets: [
+        { item_type: 'individual', asset_id: 'agent_name', asset_type: 'text', asset_role: 'agent_identity', required: true,
+          requirements: { max_length: 60 } },
+        { item_type: 'individual', asset_id: 'system_prompt', asset_type: 'text', asset_role: 'system_prompt', required: true,
+          requirements: { min_length: 50, max_length: 4000 } },
+        { item_type: 'individual', asset_id: 'welcome_message', asset_type: 'text', asset_role: 'greeting', required: true,
+          requirements: { max_length: 300 } },
+        { item_type: 'individual', asset_id: 'agent_icon', asset_type: 'image', asset_role: 'brand_logo', required: true,
+          requirements: { mime_types: ['image/png', 'image/webp'], min_width: 256, min_height: 256, max_file_size_bytes: 500000 } },
+        { item_type: 'individual', asset_id: 'knowledge_base', asset_type: 'url', asset_role: 'data_source', required: false,
+          requirements: { url_type: 'data_feed' } },
+        { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
+          requirements: { url_type: 'click_through' } },
+      ],
+    },
   ];
 }
 
@@ -340,4 +364,5 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   gaming_interstitial: ['gaming'],
   gaming_rewarded_video: ['gaming'],
   ai_sponsored_recommendation: ['display'],
+  ai_sponsored_agent: ['display'],
 };

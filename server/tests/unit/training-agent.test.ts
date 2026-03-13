@@ -342,6 +342,46 @@ describe('buildCatalog', () => {
   });
 });
 
+// ── NovaMind AI publisher ──────────────────────────────────────────
+
+describe('NovaMind AI publisher', () => {
+  const novamind = PUBLISHERS.find(p => p.id === 'novamind')!;
+
+  it('has vertical properties for travel, shopping, and wellness', () => {
+    const propIds = novamind.properties.map(p => p.propertyId);
+    expect(propIds).toContain('novamind_travel');
+    expect(propIds).toContain('novamind_shopping');
+    expect(propIds).toContain('novamind_wellness');
+  });
+
+  it('has CPA pricing with agent_session event type', () => {
+    const cpa = novamind.pricingTemplates.find(t => t.model === 'cpa');
+    expect(cpa).toBeDefined();
+    expect(cpa!.eventType).toBe('agent_session');
+    expect(cpa!.fixedPrice).toBeGreaterThan(0);
+  });
+
+  it('has flat_rate pricing for exclusive sponsorships', () => {
+    const flatRate = novamind.pricingTemplates.find(t => t.model === 'flat_rate');
+    expect(flatRate).toBeDefined();
+    expect(flatRate!.fixedPrice).toBeGreaterThanOrEqual(50000);
+    expect(flatRate!.minSpendPerPackage).toBeGreaterThanOrEqual(50000);
+  });
+
+  it('generates products that include the ai_sponsored_agent format', () => {
+    const allProducts = buildCatalog();
+    const novamindProducts = allProducts.filter(cp => cp.publisherId === 'novamind');
+    expect(novamindProducts.length).toBeGreaterThan(0);
+
+    const allFormatIds = novamindProducts.flatMap(cp => {
+      const fids = cp.product.format_ids as Array<Record<string, unknown>>;
+      return fids.map(f => f.id);
+    });
+    expect(allFormatIds).toContain('ai_sponsored_agent');
+    expect(allFormatIds).toContain('ai_sponsored_recommendation');
+  });
+});
+
 // ── Formats (buildFormats) ─────────────────────────────────────────
 
 describe('buildFormats', () => {
@@ -427,6 +467,51 @@ describe('buildFormats', () => {
         }
       }
     }
+  });
+});
+
+describe('ai_sponsored_agent format', () => {
+  const formats = buildFormats(TEST_AGENT_URL);
+  const agentFormat = formats.find(f =>
+    (f.format_id as Record<string, unknown>).id === 'ai_sponsored_agent',
+  ) as Record<string, unknown>;
+
+  it('exists in the format catalog', () => {
+    expect(agentFormat).toBeDefined();
+  });
+
+  it('has two renders: agent_card and conversational', () => {
+    const renders = agentFormat.renders as Array<Record<string, unknown>>;
+    expect(renders.length).toBe(2);
+    const roles = renders.map(r => r.role);
+    expect(roles).toContain('agent_card');
+    expect(roles).toContain('conversational');
+  });
+
+  it('requires system_prompt, agent_name, welcome_message, agent_icon, and click_url', () => {
+    const assets = agentFormat.assets as Array<Record<string, unknown>>;
+    const requiredIds = assets.filter(a => a.required === true).map(a => a.asset_id);
+    expect(requiredIds).toContain('system_prompt');
+    expect(requiredIds).toContain('agent_name');
+    expect(requiredIds).toContain('welcome_message');
+    expect(requiredIds).toContain('agent_icon');
+    expect(requiredIds).toContain('click_url');
+  });
+
+  it('has optional knowledge_base URL asset', () => {
+    const assets = agentFormat.assets as Array<Record<string, unknown>>;
+    const kb = assets.find(a => a.asset_id === 'knowledge_base');
+    expect(kb).toBeDefined();
+    expect(kb!.required).toBe(false);
+    expect(kb!.asset_type).toBe('url');
+  });
+
+  it('system_prompt has min_length and max_length requirements', () => {
+    const assets = agentFormat.assets as Array<Record<string, unknown>>;
+    const sp = assets.find(a => a.asset_id === 'system_prompt');
+    const reqs = sp!.requirements as Record<string, unknown>;
+    expect(reqs.min_length).toBe(50);
+    expect(reqs.max_length).toBe(4000);
   });
 });
 
