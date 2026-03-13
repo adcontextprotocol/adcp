@@ -6058,10 +6058,21 @@ Disallow: /api/admin/
 
           if (verifiedDomainResult.rows.length > 0) {
             // Domain is verified - auto-add user to organization
+            // If org has no admin/owner yet, promote this user to owner
+            const existingMembers = await workos!.userManagement.listOrganizationMemberships({
+              organizationId: organization_id,
+              limit: 100,
+            });
+            const hasAdmin = existingMembers.data.some((m) => {
+              const role = m.role?.slug;
+              return role === 'admin' || role === 'owner';
+            });
+            const roleSlug = hasAdmin ? 'member' : 'owner';
+
             const membership = await workos!.userManagement.createOrganizationMembership({
               userId: user.id,
               organizationId: organization_id,
-              roleSlug: 'member',
+              roleSlug,
             });
 
             // Get org name for response
@@ -6077,7 +6088,16 @@ Disallow: /api/admin/
               userId: user.id,
               orgId: organization_id,
               domain: userDomain,
+              role: roleSlug,
             }, 'User auto-added to organization via verified domain');
+
+            // Mirror membership locally so it's visible immediately
+            const pool2 = getPool();
+            await pool2.query(`
+              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
+              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
+            `, [user.id, organization_id, user.email, roleSlug]);
 
             // Record audit log
             await orgDb.recordAuditLog({
@@ -6090,18 +6110,21 @@ Disallow: /api/admin/
                 user_email: user.email,
                 method: 'verified_domain_auto_join',
                 domain: userDomain,
+                role: roleSlug,
               },
             });
 
             return res.status(201).json({
               success: true,
-              message: `You have been added to ${orgName}`,
+              message: roleSlug === 'owner'
+                ? `You've been added as the owner of ${orgName}`
+                : `You have been added to ${orgName}`,
               auto_joined: true,
               membership: {
                 id: membership.id,
                 organization_id: organization_id,
                 organization_name: orgName,
-                role: 'member',
+                role: roleSlug,
               },
             });
           }
