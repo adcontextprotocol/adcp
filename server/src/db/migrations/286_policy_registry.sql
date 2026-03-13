@@ -1,4 +1,4 @@
--- Migration: 284_policy_registry.sql
+-- Migration: 286_policy_registry.sql
 -- Purpose: Shared policy registry for governance domains.
 -- Policies are standardized, machine-readable advertising regulations and standards
 -- that governance agents resolve and evaluate at runtime.
