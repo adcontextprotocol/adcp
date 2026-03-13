@@ -323,6 +323,91 @@ describe('OutboundPlanner', () => {
     });
   });
 
+  describe('membership acquisition filtering', () => {
+    it('skips membership acquisition goals for active members', async () => {
+      const membershipGoal = makeGoal({
+        id: 1,
+        name: 'Founding Member Deadline',
+        category: 'invitation',
+        success_insight_type: 'membership_interest',
+        base_priority: 95,
+      });
+
+      mockListGoals.mockResolvedValue([membershipGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: true,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it('allows membership acquisition goals for non-members', async () => {
+      const membershipGoal = makeGoal({
+        id: 1,
+        name: 'Founding Member Deadline',
+        category: 'invitation',
+        success_insight_type: 'membership_interest',
+        base_priority: 95,
+      });
+
+      mockListGoals.mockResolvedValue([membershipGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: false,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.goal.id).toBe(1);
+    });
+
+    it('allows non-membership invitation goals for active members', async () => {
+      const councilGoal = makeGoal({
+        id: 1,
+        name: 'Invite to Open Web Council',
+        category: 'invitation',
+        success_insight_type: 'council_interest',
+        base_priority: 70,
+      });
+
+      mockListGoals.mockResolvedValue([councilGoal]);
+
+      const result = await planner.planNextAction(
+        makeContext({
+          user: {
+            slack_user_id: 'U123',
+            display_name: 'Test User',
+            is_mapped: true,
+            is_member: true,
+            engagement_score: 50,
+            insights: [],
+          },
+        })
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.goal.id).toBe(1);
+    });
+  });
+
   describe('deferred regression: null next_attempt_at was previously treated as available', () => {
     it('does not select a goal that is deferred with no retry time, even when other logic would permit it', async () => {
       // This test captures the pre-fix behavior where a deferred goal with
