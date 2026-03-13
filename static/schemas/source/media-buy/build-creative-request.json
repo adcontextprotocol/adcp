@@ -60,7 +60,7 @@
     },
     "preview_inputs": {
       "type": "array",
-      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Ignored when include_preview is false or omitted.",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
       "items": {
         "type": "object",
         "properties": {

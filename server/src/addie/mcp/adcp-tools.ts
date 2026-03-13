@@ -972,11 +972,12 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         include_preview: {
           type: 'boolean',
-          description: 'When true, requests preview renders alongside the manifest. Agents that support this return a preview object in the response.',
+          description: 'When true, requests preview renders alongside the manifest. Response includes a preview object if supported, or preview_error (standard error with code/message/recovery) if generation failed. If neither is present, the agent does not support inline preview.',
         },
         preview_inputs: {
           type: 'array',
-          description: 'Input sets for preview generation when include_preview is true. Each entry has name (required), optional macros, and optional context_description.',
+          minItems: 1,
+          description: 'Input sets for preview generation when include_preview is true. Each entry has name (required), optional macros, and optional context_description. Only supported with target_format_id (single-format) — ignored for multi-format requests.',
           items: {
             type: 'object',
             properties: {

@@ -29,7 +29,7 @@ For information about format IDs and how to reference formats, see [Creative For
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
 | `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
-| `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. |
+| `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_format_id` (single-format) — ignored for multi-format requests. |
 | `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 | `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
 
@@ -344,8 +344,8 @@ When the request uses `target_format_ids`, the response contains an array of cre
 - **format_id**: The target format (matches the requested format)
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
 - **expires_at**: Optional ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs. Not present when the manifest contains no expiring URLs (e.g., pure text generation or assembly-only transforms).
-- **preview**: Optional. Present when `include_preview` was true in the request and the agent supports inline preview. Contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`) minus the `response_type` discriminator, so clients can reuse the same preview rendering logic.
-- **preview_error**: Optional. When `include_preview` was true but preview generation failed (e.g., rendering service unavailable), explains why. Distinguishes "agent doesn't support inline preview" (field absent, no error) from "preview generation failed" (field present with reason).
+- **preview**: Optional. Present when `include_preview` was true in the request and the agent supports inline preview. Contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`) minus the `response_type` discriminator, so clients can reuse the same preview rendering logic. For single-format responses, each entry in `previews[]` corresponds to an input set from `preview_inputs`. For multi-format responses, each entry includes a `format_id` and corresponds to one requested format (one default preview per format; `preview_inputs` is ignored).
+- **preview_error**: Optional. Standard error object (`code`, `message`, `recovery`) present when `include_preview` was true but preview generation failed. The `recovery` field indicates whether the failure is `transient` (retry later), `correctable`, or `terminal`. Distinguishes "agent doesn't support inline preview" (field absent, no error) from "preview generation failed" (field present with structured error).
 
 ### Compliance errors
 
@@ -958,7 +958,7 @@ Build a creative and get preview renders in the same response:
 }
 ```
 
-The `preview` object contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`). If the agent does not support inline preview, this field is absent — the buyer agent falls back to a separate `preview_creative` call. If preview generation fails, the response includes `preview_error` with a reason instead.
+The `preview` object contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`). If the agent does not support inline preview, this field is absent — the buyer agent falls back to a separate `preview_creative` call. If preview generation fails, the response includes `preview_error` with a standard error object (`code`, `message`, `recovery`) instead.
 
 ### Example 8: Draft generation with item limit
 
