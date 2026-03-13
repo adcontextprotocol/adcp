@@ -8,6 +8,8 @@ import {
   clearSessions,
   startSessionCleanup,
   stopSessionCleanup,
+  MAX_MEDIA_BUYS_PER_SESSION,
+  MAX_CREATIVES_PER_SESSION,
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
@@ -1550,7 +1552,7 @@ describe('create_media_buy package-level date validation', () => {
     });
 
     expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid start_time for package');
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid start_time');
   });
 
   it('rejects invalid package end_time', async () => {
@@ -1576,7 +1578,7 @@ describe('create_media_buy package-level date validation', () => {
     });
 
     expect(result.errors).toBeDefined();
-    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time for package');
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time');
   });
 });
 
@@ -1896,5 +1898,468 @@ describe('get_products refine mode', () => {
     const refinedProducts = refined.products as Array<Record<string, unknown>>;
     const refinedIds = refinedProducts.map(p => p.product_id);
     expect(refinedIds).not.toContain(firstProductId);
+  });
+
+  it('finds similar products with more_like_this', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'morelike.example' } };
+
+    // Get wholesale catalog first to populate session context
+    const { result: initial } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+    const products = initial.products as Array<Record<string, unknown>>;
+    const sourceProduct = products[0];
+    const sourceId = sourceProduct.product_id as string;
+    const sourceChannels = sourceProduct.channels as string[];
+
+    // Refine: more_like_this on the first product
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: refined } = await simulateCallTool(server2, 'get_products', {
+      buying_mode: 'refine',
+      account,
+      refine: [{ scope: 'product', action: 'more_like_this', id: sourceId }],
+    });
+
+    const refinedProducts = refined.products as Array<Record<string, unknown>>;
+    const refinedIds = refinedProducts.map(p => p.product_id);
+
+    // Source product should be included
+    expect(refinedIds).toContain(sourceId);
+
+    // All returned products should share at least one channel with the source
+    for (const p of refinedProducts) {
+      const channels = p.channels as string[];
+      const hasOverlap = channels.some(c => sourceChannels.includes(c));
+      expect(hasOverlap).toBe(true);
+    }
+
+    // Should have more than just the source product
+    expect(refinedProducts.length).toBeGreaterThan(1);
+  });
+});
+
+// ── get_media_buy_delivery handler ──────────────────────────────────
+
+describe('get_media_buy_delivery handler', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns not_found for nonexistent media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account: { brand: { domain: 'delivery404.example' } },
+      media_buy_id: 'mb_nonexistent',
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('not_found');
+  });
+
+  it('looks up by buyer_ref fallback', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'deliveryref.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'delivery-ref-test',
+      account,
+      brand: { domain: 'deliveryref.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-dr',
+      }],
+    });
+
+    // Look up delivery by buyer_ref instead of media_buy_id
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: 'delivery-ref-test',
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.media_buy_deliveries).toBeDefined();
+  });
+
+  it('returns delivery metrics for multi-package buy', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'deliverymulti.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'multi-pkg-delivery',
+      account,
+      brand: { domain: 'deliverymulti.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [
+        {
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 50000,
+          buyer_ref: 'pkg-a',
+        },
+        {
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 30000,
+          buyer_ref: 'pkg-b',
+        },
+      ],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    const deliveries = result.media_buy_deliveries as Array<Record<string, unknown>>;
+    expect(deliveries).toHaveLength(1);
+    const byPackage = deliveries[0].by_package as Array<Record<string, unknown>>;
+    expect(byPackage).toHaveLength(2);
+    expect(byPackage[0].buyer_ref).toBe('pkg-a');
+    expect(byPackage[1].buyer_ref).toBe('pkg-b');
+
+    // Totals should be the sum of package metrics
+    const totals = deliveries[0].totals as Record<string, number>;
+    const sumSpend = byPackage.reduce((s, p) => s + (p.spend as number), 0);
+    expect(totals.spend).toBeCloseTo(sumSpend, 1);
+  });
+
+  it('returns zero delivery for future-dated buy', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'deliveryfuture.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'future-delivery',
+      account,
+      brand: { domain: 'deliveryfuture.example' },
+      start_time: '2028-01-01T00:00:00Z',
+      end_time: '2028-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-future',
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    const deliveries = result.media_buy_deliveries as Array<Record<string, unknown>>;
+    const totals = deliveries[0].totals as Record<string, number>;
+    expect(totals.spend).toBe(0);
+    expect(totals.impressions).toBe(0);
+    expect(totals.clicks).toBe(0);
+  });
+});
+
+// ── Session limits ──────────────────────────────────────────────────
+
+describe('session limits', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('rejects create_media_buy when session media buy limit reached', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'limit-mb.example' } };
+
+    // Fill the session to the limit by directly manipulating state
+    const sessionKey = sessionKeyFromArgs({ account }, 'open');
+    const session = getSession(sessionKey);
+    for (let i = 0; i < MAX_MEDIA_BUYS_PER_SESSION; i++) {
+      session.mediaBuys.set(`mb_fill_${i}`, {
+        mediaBuyId: `mb_fill_${i}`,
+        buyerRef: `fill-${i}`,
+        status: 'active',
+        currency: 'USD',
+        packages: [],
+        startTime: '2027-01-01T00:00:00Z',
+        endTime: '2027-12-31T00:00:00Z',
+        accountRef: account,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as any);
+    }
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'one-too-many',
+      account,
+      brand: { domain: 'limit-mb.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-limit',
+      }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('limit_exceeded');
+  });
+
+  it('rejects sync_creatives when session creative limit reached', async () => {
+    const account = { brand: { domain: 'limit-cr.example' } };
+
+    // Fill creatives to the limit
+    const sessionKey = sessionKeyFromArgs({ account }, 'open');
+    const session = getSession(sessionKey);
+    for (let i = 0; i < MAX_CREATIVES_PER_SESSION; i++) {
+      session.creatives.set(`cr_fill_${i}`, {
+        creativeId: `cr_fill_${i}`,
+        status: 'active',
+        syncedAt: new Date().toISOString(),
+      } as any);
+    }
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{ name: 'one-too-many' }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].code).toBe('limit_exceeded');
+  });
+});
+
+// ── Pause/resume on update_media_buy ────────────────────────────────
+
+describe('update_media_buy pause/resume', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('pauses and resumes a package', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'pauseresume.example' } };
+
+    // Create a media buy
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'pause-test',
+      account,
+      brand: { domain: 'pauseresume.example' },
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-pause',
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgs = createResult.packages as Array<Record<string, unknown>>;
+    const packageId = pkgs[0].package_id as string;
+
+    // Pause the package
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: pauseResult } = await simulateCallTool(server2, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, paused: true }],
+    });
+
+    const pausedPkgs = pauseResult.packages as Array<Record<string, unknown>>;
+    expect(pausedPkgs[0].paused).toBe(true);
+
+    // Verify via get_media_buys
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: listResult } = await simulateCallTool(server3, 'get_media_buys', { account });
+    const buys = listResult.media_buys as Array<Record<string, unknown>>;
+    const buyPkgs = buys[0].packages as Array<Record<string, unknown>>;
+    expect(buyPkgs[0].paused).toBe(true);
+
+    // Resume the package
+    const server4 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: resumeResult } = await simulateCallTool(server4, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, paused: false }],
+    });
+
+    const resumedPkgs = resumeResult.packages as Array<Record<string, unknown>>;
+    expect(resumedPkgs[0].paused).toBe(false);
+  });
+});
+
+// ── Multi-error collection in create_media_buy ──────────────────────
+
+describe('create_media_buy multi-error collection', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('collects errors from multiple invalid packages', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'multierr.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'multi-err-buyer',
+      account,
+      brand: { domain: 'multierr.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        {
+          product_id: 'nonexistent_product_1',
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 50000,
+          buyer_ref: 'pkg-bad-1',
+        },
+        {
+          product_id: 'nonexistent_product_2',
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 50000,
+          buyer_ref: 'pkg-bad-2',
+        },
+        {
+          product_id: product.product_id,
+          pricing_option_id: 'nonexistent_pricing',
+          budget: 50000,
+          buyer_ref: 'pkg-bad-3',
+        },
+      ],
+    });
+
+    const errors = result.errors as Array<Record<string, unknown>>;
+    expect(errors).toBeDefined();
+    // At minimum: 2 bad product IDs + 1 bad pricing option = 3 errors
+    expect(errors.length).toBeGreaterThanOrEqual(3);
+    // Each error should identify the package
+    expect(errors[0].message).toContain('pkg-bad-1');
+    expect(errors[1].message).toContain('pkg-bad-2');
+    expect(errors[2].message).toContain('pkg-bad-3');
+  });
+
+  it('rejects negative budget', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'negbudget.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'neg-budget-buyer',
+      account,
+      brand: { domain: 'negbudget.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: -1000,
+        buyer_ref: 'pkg-neg',
+      }],
+    });
+
+    expect(result.errors).toBeDefined();
+    const errors = result.errors as Array<Record<string, unknown>>;
+    expect(errors[0].message).toContain('non-negative');
+  });
+});
+
+// ── update_media_buy budget validation ──────────────────────────────
+
+describe('update_media_buy budget validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('rejects negative budget on update', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'negupdate.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'negupdate-buyer',
+      account,
+      brand: { domain: 'negupdate.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-nu',
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgs = createResult.packages as Array<Record<string, unknown>>;
+    const packageId = pkgs[0].package_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, budget: -500 }],
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('non-negative');
   });
 });

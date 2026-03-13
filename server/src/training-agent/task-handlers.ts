@@ -58,7 +58,7 @@ export function invalidateCache(): void {
 const TOOLS = [
   {
     name: 'get_products',
-    description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes.',
+    description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -77,7 +77,7 @@ const TOOLS = [
   },
   {
     name: 'list_creative_formats',
-    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications.',
+    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Filter by channels to see formats relevant to specific media types. Not for uploading creatives (use sync_creatives) or checking creative status.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -89,7 +89,7 @@ const TOOLS = [
   },
   {
     name: 'create_media_buy',
-    description: 'Create a media buy with one or more packages targeting specific products.',
+    description: 'Create a media buy with one or more packages targeting specific products. Requires valid product_id and pricing_option_id from get_products. Not for updating existing buys (use update_media_buy). Cannot add packages to an existing buy after creation.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     inputSchema: {
       type: 'object' as const,
@@ -133,7 +133,7 @@ const TOOLS = [
   },
   {
     name: 'get_media_buys',
-    description: 'List media buys for the current session/account.',
+    description: 'List media buys for the current session/account. Returns buy configuration and status only — not delivery metrics (use get_media_buy_delivery for that). Only returns buys created in the current session; buys from other sessions are not visible.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -145,7 +145,7 @@ const TOOLS = [
   },
   {
     name: 'get_media_buy_delivery',
-    description: 'Get delivery metrics for a media buy. Requires a media_buy_id from create_media_buy.',
+    description: 'Get delivery metrics for a media buy including impressions, spend, and clicks by package. Requires a media_buy_id from create_media_buy. Returns simulated metrics proportional to elapsed flight time. Not for creating or updating buys.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -159,7 +159,7 @@ const TOOLS = [
   },
   {
     name: 'sync_creatives',
-    description: 'Upload or update creative assets and optionally assign them to packages.',
+    description: 'Upload or update creative assets and optionally assign them to packages. Validates format_id against list_creative_formats. Not for listing existing creatives (use list_creatives). Creative content is not validated — only format_id is checked.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -173,7 +173,7 @@ const TOOLS = [
   },
   {
     name: 'list_creatives',
-    description: 'List creative assets for the current account.',
+    description: 'List creative assets for the current session. Filter by creative_ids or media_buy_id to narrow results. Not for uploading or updating creatives (use sync_creatives). Only returns creatives from the current session.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -186,7 +186,7 @@ const TOOLS = [
   },
   {
     name: 'update_media_buy',
-    description: 'Update an existing media buy (budget, flight dates, pause/resume packages). Cannot add new packages — only update existing ones.',
+    description: 'Update an existing media buy. Supports changing package budget, paused state, and end_time. Cannot add new packages or change product_id/pricing_option_id — only update existing package fields. Not for creating new buys (use create_media_buy).',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -362,51 +362,55 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     return { errors: [{ code: 'validation_error', message: 'start_time must be before end_time' }] };
   }
 
-  // Validate packages
+  // Validate all packages and collect errors before returning
+  const errors: Array<{ code: string; message: string }> = [];
   const createdPackages: PackageState[] = [];
-  for (const pkg of packages) {
+  for (let i = 0; i < packages.length; i++) {
+    const pkg = packages[i];
+    const pkgLabel = pkg.buyer_ref ? `Package "${pkg.buyer_ref}"` : `Package ${i}`;
+
     const productId = pkg.product_id as string;
     const product = productMap.get(productId);
     if (!product) {
-      return {
-        errors: [{ code: 'validation_error', message: `Product not found: ${productId}` }],
-      };
+      errors.push({ code: 'validation_error', message: `${pkgLabel}: Product not found: ${productId}` });
+      continue;
     }
 
     const pricingOptionId = pkg.pricing_option_id as string;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
     const pricing = pricingOptions?.find(po => po.pricing_option_id === pricingOptionId);
     if (!pricing) {
-      return {
-        errors: [{
-          code: 'validation_error',
-          message: `Pricing option not found: ${pricingOptionId}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
-        }],
-      };
+      errors.push({
+        code: 'validation_error',
+        message: `${pkgLabel}: Pricing option not found: ${pricingOptionId}. Available: ${pricingOptions?.map(po => po.pricing_option_id).join(', ')}`,
+      });
+      continue;
+    }
+
+    const budget = pkg.budget as number;
+
+    // Check negative budget
+    if (budget < 0) {
+      errors.push({ code: 'validation_error', message: `${pkgLabel}: Budget must be non-negative, got ${budget}` });
     }
 
     // Check bid vs floor price
     const floorPrice = pricing.floor_price as number | undefined;
     const bidPrice = pkg.bid_price as number | undefined;
     if (floorPrice !== undefined && bidPrice !== undefined && bidPrice < floorPrice) {
-      return {
-        errors: [{
-          code: 'validation_error',
-          message: `Bid price $${bidPrice} is below floor price of $${floorPrice} for pricing option ${pricingOptionId}`,
-        }],
-      };
+      errors.push({
+        code: 'validation_error',
+        message: `${pkgLabel}: Bid price $${bidPrice} is below floor price of $${floorPrice} for pricing option ${pricingOptionId}`,
+      });
     }
 
     // Check min spend
     const minSpend = pricing.min_spend_per_package as number | undefined;
-    const budget = pkg.budget as number;
     if (minSpend && budget < minSpend) {
-      return {
-        errors: [{
-          code: 'validation_error',
-          message: `Budget $${budget} is below minimum spend of $${minSpend} for pricing option ${pricingOptionId}`,
-        }],
-      };
+      errors.push({
+        code: 'validation_error',
+        message: `${pkgLabel}: Budget $${budget} is below minimum spend of $${minSpend} for pricing option ${pricingOptionId}`,
+      });
     }
 
     const startTime = (pkg.start_time || args.start_time) as string;
@@ -414,11 +418,14 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
     // Validate package-level dates if overridden
     if (pkg.start_time && startTime !== 'asap' && isNaN(new Date(startTime).getTime())) {
-      return { errors: [{ code: 'validation_error', message: `Invalid start_time for package: "${startTime}". Use ISO 8601 format or "asap".` }] };
+      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid start_time: "${startTime}". Use ISO 8601 format or "asap".` });
     }
     if (pkg.end_time && isNaN(new Date(endTime).getTime())) {
-      return { errors: [{ code: 'validation_error', message: `Invalid end_time for package: "${endTime}". Use ISO 8601 format.` }] };
+      errors.push({ code: 'validation_error', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
+
+    // Skip building package state if any errors for this package
+    if (errors.length > 0) continue;
 
     const resolvedStart = startTime === 'asap' ? new Date().toISOString() : startTime;
 
@@ -436,6 +443,10 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       formatIds: pkg.format_ids as Record<string, unknown>[] | undefined,
       creativeAssignments: [],
     });
+  }
+
+  if (errors.length > 0) {
+    return { errors };
   }
 
   const mediaBuyId = `mb_${randomUUID().slice(0, 8)}`;
@@ -774,7 +785,13 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
         warnings.push(`Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}`);
         continue;
       }
-      if (update.budget !== undefined) pkg.budget = update.budget as number;
+      if (update.budget !== undefined) {
+        const newBudget = update.budget as number;
+        if (newBudget < 0) {
+          return { errors: [{ code: 'validation_error', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
+        }
+        pkg.budget = newBudget;
+      }
       if (update.paused !== undefined) pkg.paused = update.paused as boolean;
       if (update.end_time) {
         const pkgEnd = update.end_time as string;

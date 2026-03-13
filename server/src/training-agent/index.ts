@@ -8,6 +8,7 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import rateLimit from 'express-rate-limit';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
@@ -105,8 +106,30 @@ export function createTrainingAgentRouter(): Router {
     res.status(204).end();
   });
 
+  // Rate limiting: 60 requests/minute per IP (in-memory, no DB dependency)
+  const mcpRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => {
+      const ip = req.ip || 'unknown';
+      if (ip.includes(':')) {
+        return ip.split(':').slice(0, 4).join(':') + '::/64';
+      }
+      return ip;
+    },
+    handler: (_req: Request, res: Response) => {
+      res.status(429).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Rate limit exceeded. Please try again later.' },
+      });
+    },
+  });
+
   // MCP endpoint
-  router.post('/mcp', requireToken, async (req: Request, res: Response) => {
+  router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
     setCORSHeaders(res);
 
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
