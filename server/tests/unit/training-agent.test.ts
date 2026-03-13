@@ -305,6 +305,28 @@ describe('buildCatalog', () => {
     });
   });
 
+  describe('reporting_capabilities compliance', () => {
+    it('uses available_reporting_frequencies (not reporting_frequency) and includes required fields', () => {
+      const withReporting = catalog.filter(cp => cp.product.reporting_capabilities);
+      expect(withReporting.length).toBeGreaterThan(0);
+
+      for (const cp of withReporting) {
+        const rc = cp.product.reporting_capabilities as Record<string, unknown>;
+        // Must use correct field name
+        expect(rc.available_reporting_frequencies).toBeDefined();
+        expect(Array.isArray(rc.available_reporting_frequencies)).toBe(true);
+        expect((rc.available_reporting_frequencies as unknown[]).length).toBeGreaterThan(0);
+        // Must NOT have old field name
+        expect(rc).not.toHaveProperty('reporting_frequency');
+        // Required fields per schema
+        expect(typeof rc.expected_delay_minutes).toBe('number');
+        expect(typeof rc.timezone).toBe('string');
+        expect(typeof rc.supports_webhooks).toBe('boolean');
+        expect(typeof rc.date_range_support).toBe('string');
+      }
+    });
+  });
+
   describe('training metadata', () => {
     it('every catalog product has a valid trainingTier', () => {
       for (const cp of catalog) {

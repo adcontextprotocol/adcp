@@ -214,7 +214,10 @@ function buildProduct(
 
   if (pub.reportingFrequencies || pub.reportingMetrics) {
     product.reporting_capabilities = {
-      ...(pub.reportingFrequencies && { reporting_frequency: pub.reportingFrequencies }),
+      available_reporting_frequencies: pub.reportingFrequencies || ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
       ...(pub.reportingMetrics && { available_metrics: pub.reportingMetrics }),
       date_range_support: 'date_range',
       supports_creative_breakdown: true,
