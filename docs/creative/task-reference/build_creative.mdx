@@ -23,7 +23,8 @@ For information about format IDs and how to reference formats, see [Creative For
 | `concept_id` | string | No | Creative concept containing the creative. Used to disambiguate when the same `creative_id` exists in multiple concepts. |
 | `media_buy_id` | string | No | Buyer's media buy reference for tag generation context. When the creative agent is also the ad server (e.g., CM360), this provides the trafficking context needed to generate placement-specific tags. Omit when the platform generates tags at the creative level (Flashtalking, Celtra). This is the buyer's reference — the same value used as `buyer_ref` in `create_media_buy`. |
 | `package_id` | string | No | Buyer's package or line item reference within the media buy. Used with `media_buy_id` when the creative agent needs line-item-level context. Omit to get a tag not scoped to a specific package — the ad server may return the same tag regardless. |
-| `target_format_id` | object | Yes | Format ID to generate. Object with `agent_url` and `id` fields. The format definition specifies required input assets. |
+| `target_format_id` | object | Conditional | Single format ID to generate. Object with `agent_url` and `id` fields. Mutually exclusive with `target_format_ids` — provide exactly one. |
+| `target_format_ids` | array | Conditional | Array of format IDs to generate in a single call. Each element is an object with `agent_url` and `id` fields. Mutually exclusive with `target_format_id` — provide exactly one. Returns one manifest per format. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use when generating. Caps generation cost for catalog-driven formats. |
@@ -181,9 +182,105 @@ The `CLICK_URL` macro was substituted with the provided value; `CACHEBUSTER` rem
 **Cross-agent workflow**: When the creative agent and sales agent are different systems, use `build_creative` on the creative agent to produce a manifest with tags, then [`sync_creatives`](/docs/creative/task-reference/sync_creatives) on the sales agent to upload it. For example: `list_creatives` on Flashtalking → `build_creative` on Flashtalking → `sync_creatives` on the DSP.
 </Note>
 
+### Multi-format generation
+
+Generate creatives for multiple formats in a single call using `target_format_ids`. The creative agent produces one manifest per format from the same source assets and brief:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-request.json",
+  "message": "Create display banners for our spring campaign",
+  "target_format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 300,
+      "height": 250
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 728,
+      "height": 90
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static",
+      "width": 320,
+      "height": 50
+    }
+  ],
+  "brand": {
+    "domain": "acmecorp.com"
+  },
+  "creative_manifest": {
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_static"
+    },
+    "assets": {
+      "banner_image": {
+        "asset_type": "image",
+        "url": "https://cdn.acmecorp.com/spring-hero.png",
+        "width": 1200,
+        "height": 628
+      },
+      "headline": {
+        "asset_type": "text",
+        "content": "Spring Collection Now Available"
+      },
+      "clickthrough_url": {
+        "asset_type": "url",
+        "url": "https://acmecorp.com/spring"
+      }
+    }
+  }
+}
+```
+
+The response uses `creative_manifests` (array) instead of `creative_manifest` (singular). Each manifest is a complete creative manifest with its own `format_id`, ready for `sync_creatives` or `preview_creative`:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifests": [
+    {
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "display_static",
+        "width": 300,
+        "height": 250
+      },
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.creative-agent.com/generated/spring_300x250.png",
+          "width": 300,
+          "height": 250
+        },
+        "headline": { "asset_type": "text", "content": "Spring Collection Now Available" },
+        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.com/spring" }
+      }
+    },
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 728, "height": 90 },
+      "assets": { /* same structure, adapted for 728x90 */ }
+    },
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 320, "height": 50 },
+      "assets": { /* same structure, adapted for 320x50 */ }
+    }
+  ]
+}
+```
+
+Multi-format requests are atomic — if any format fails (e.g., `FORMAT_NOT_SUPPORTED`), the entire request fails with an error response. The response array order corresponds to the `target_format_ids` request order. Match manifests to requested formats by array position or by comparing the `format_id` on each manifest.
+
 ## Response format
 
-The response contains the transformed or generated creative manifest:
+### Single-format response
+
+When the request uses `target_format_id`, the response contains a single creative manifest:
 
 ```json
 {
@@ -217,10 +314,31 @@ The response contains the transformed or generated creative manifest:
 }
 ```
 
+### Multi-format response
+
+When the request uses `target_format_ids`, the response contains an array of creative manifests:
+
+```json
+{
+  "$schema": "/schemas/media-buy/build-creative-response.json",
+  "creative_manifests": [
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 300, "height": 250 },
+      "assets": { /* ... */ }
+    },
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 728, "height": 90 },
+      "assets": { /* ... */ }
+    }
+  ]
+}
+```
+
 ### Field descriptions
 
-- **creative_manifest**: The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
-- **format_id**: The target format (matches `target_format_id` from request)
+- **creative_manifest**: (single-format) The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
+- **creative_manifests**: (multi-format) Array of complete creative manifests, one per requested format. Each contains its own `format_id`.
+- **format_id**: The target format (matches the requested format)
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
 - **expires_at**: Optional ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs. Not present when the manifest contains no expiring URLs (e.g., pure text generation or assembly-only transforms).
 
