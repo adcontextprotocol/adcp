@@ -245,22 +245,26 @@ export function isAddieReady(): boolean {
  * Returns context separately from the user message.
  */
 async function buildRequestContext(
-  userId: string
+  userId: string,
+  options?: { skipGoals?: boolean }
 ): Promise<{ requestContext: string; memberContext: MemberContext | null }> {
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
 
     // Get insight goals to naturally work into conversation
+    // Skip goals in channel contexts to prevent membership pitching
     const isMapped = !!memberContext?.is_mapped;
     let insightGoalsText = '';
-    try {
-      const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
-      if (goalsPrompt) {
-        insightGoalsText = goalsPrompt;
+    if (!options?.skipGoals) {
+      try {
+        const goalsPrompt = await getGoalsForSystemPrompt(isMapped);
+        if (goalsPrompt) {
+          insightGoalsText = goalsPrompt;
+        }
+      } catch (error) {
+        logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
       }
-    } catch (error) {
-      logger.warn({ error }, 'Addie: Failed to get insight goals for prompt');
     }
 
     const sections = [memberContextText, insightGoalsText].filter(Boolean);
@@ -613,7 +617,18 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   const inputValidation = sanitizeInput(textWithResolvedMentions);
 
   // Build per-request context for system prompt
-  const { requestContext, memberContext } = await buildRequestContext(event.user);
+  // Skip goals in channel mentions to prevent membership pitching
+  const { requestContext: baseContext, memberContext } = await buildRequestContext(event.user, { skipGoals: true });
+
+  // Add channel guardrails — mentions always happen in channels
+  const channelGuardrails = [
+    '',
+    '## Channel context',
+    '**IMPORTANT: This is a channel message visible to all channel members.**',
+    '- You MUST NOT pitch membership, send join links, or recruit in channels — membership conversations belong in DMs.',
+    '- You MUST NOT share financial data, member counts, invoice information, individual member details, pricing information, or any other sensitive organizational data.',
+  ].join('\n');
+  const requestContext = baseContext + channelGuardrails;
 
   // Add admin prefix to user message if applicable
   const userMessage = isAAOAdmin ? `[ADMIN USER] ${inputValidation.sanitized}` : inputValidation.sanitized;
