@@ -11,7 +11,7 @@
 --   B3: Seller-side governance checks and planned delivery
 --   C2: Campaign plans, governance loop, policy registry
 --   D2: Platform implementation of governance flow
---   E4: Expanded governance capstone with campaign governance labs
+--   S4: Expanded governance capstone with campaign governance labs
 
 -- ============================================================
 -- TIER 1: BASICS
@@ -114,14 +114,14 @@ UPDATE certification_modules SET lesson_plan = jsonb_set(
 -- TIER 3: SPECIALIST CAPSTONE (E4/S4)
 -- ============================================================
 
--- E4: Update title and description to reflect expanded scope
+-- S4: Update title and description to reflect expanded scope
 UPDATE certification_modules SET
   title = 'Capstone: Governance',
   description = 'Protocol-specific capstone combining hands-on lab and adaptive exam. Covers the full governance protocol: property lists, content standards, creative governance, campaign governance, and the policy registry. Multi-party validation, budget authority, compliance automation, and audit trails.',
   duration_minutes = 45
-WHERE id = 'E4';
+WHERE id = 'S4';
 
--- E4: Replace lesson plan with expanded version including campaign governance
+-- S4: Replace lesson plan with expanded version including campaign governance
 UPDATE certification_modules SET lesson_plan = '{
   "objectives": [
     "Configure governance controls: property lists, content standards, and creative policies",
@@ -156,9 +156,9 @@ UPDATE certification_modules SET lesson_plan = '{
     {"description": "Policy resolution and enforcement", "tools": ["sync_plans", "check_governance"], "expected_outcome": "Configure policies from the registry and verify enforcement on media buys"}
   ]
 }'::jsonb
-WHERE id = 'E4';
+WHERE id = 'S4';
 
--- E4: Replace exercise definitions with expanded set including campaign governance
+-- S4: Replace exercise definitions with expanded set including campaign governance
 UPDATE certification_modules SET exercise_definitions = '[
   {
     "id": "e4_ex1",
@@ -194,9 +194,9 @@ UPDATE certification_modules SET exercise_definitions = '[
     "success_criteria": ["Configures a plan with policy references matched to campaign jurisdictions", "Demonstrates that policy violations are caught during governance checks", "Can explain the difference between regulation (must) and standard (should) enforcement", "Reasons about how jurisdiction scope affects policy application"]
   }
 ]'::jsonb
-WHERE id = 'E4';
+WHERE id = 'S4';
 
--- E4: Replace assessment criteria with updated dimensions
+-- S4: Replace assessment criteria with updated dimensions
 UPDATE certification_modules SET assessment_criteria = '{
   "dimensions": [
     {"name": "protocol_mastery", "weight": 25, "description": "Full governance protocol mastery across all domains", "scoring_guide": {"high": "Completes all lab exercises including campaign governance lifecycle. Demonstrates CRUD for content standards and property lists, plus the full governance loop (sync_plans, check_governance, report_plan_outcome, get_plan_audit_logs).", "medium": "Completes most exercises but needs guidance on campaign governance or policy resolution.", "low": "Cannot complete the governance lifecycle exercises."}},
@@ -206,4 +206,4 @@ UPDATE certification_modules SET assessment_criteria = '{
   ],
   "passing_threshold": 70
 }'::jsonb
-WHERE id = 'E4';
+WHERE id = 'S4';
