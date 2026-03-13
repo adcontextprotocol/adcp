@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
+import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
 
@@ -67,6 +68,9 @@ export function createCertificationRouters() {
       }
 
       const isAuthenticated = !!req.user;
+      if (isAuthenticated) {
+        await enrichUserWithMembership(req.user as any);
+      }
       const isMember = isAuthenticated && (req.user as any).isMember;
 
       // Omit lesson plan and exercise details for gated modules if not a member
@@ -153,6 +157,7 @@ export function createCertificationRouters() {
       }
 
       // Check membership for gated modules
+      await enrichUserWithMembership(req.user as any);
       if (!mod.is_free && !(req.user as any).isMember) {
         return res.status(403).json({
           error: 'Membership required',
