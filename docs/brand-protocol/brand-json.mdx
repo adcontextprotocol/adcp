@@ -128,6 +128,7 @@ Each brand in the `brands` array:
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
 | `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
+| `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_type, countries }` |
 | `logos` | array | No | Brand logo assets |
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
@@ -673,6 +674,49 @@ Maximum redirect depth: 3 hops.
   }
 }
 ```
+
+### Talent Agency with Rights
+
+A talent agency managing athlete brands with licensable rights:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "lotientertainment.com",
+    "name": "Loti Entertainment",
+    "architecture": "house_of_brands"
+  },
+  "brands": [
+    {
+      "id": "daan_janssen",
+      "names": [{"en": "Daan Janssen"}],
+      "description": "Dutch Olympic speed skater, 2x gold medalist",
+      "industry": "sports",
+      "logos": [
+        {
+          "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+          "variant": "primary"
+        }
+      ],
+      "brand_agent": {
+        "url": "https://rights.lotientertainment.com/mcp",
+        "id": "loti_entertainment"
+      },
+      "rights_agent": {
+        "url": "https://rights.lotientertainment.com/mcp",
+        "id": "loti_entertainment",
+        "available_uses": ["likeness", "voice", "endorsement"],
+        "right_type": "talent",
+        "countries": ["NL", "BE", "DE"]
+      }
+    }
+  ]
+}
+```
+
+The `rights_agent` field tells crawlers what's licensable without any MCP calls — available uses, rights type, and countries. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
 
 ### Regional Domain Redirect
 

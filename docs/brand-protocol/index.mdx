@@ -225,6 +225,27 @@ Agents that implement the brand protocol declare `supported_protocols: ["brand"]
 
 Returns brand identity data that's richer, more dynamic, or more access-controlled than static brand.json. Response depth depends on the caller's authorization — linked accounts (via `sync_accounts`) get full assets, voice configs, and rights availability.
 
+### Rights discovery via brand.json
+
+Brands with licensable rights declare a `rights_agent` in their brand.json. This makes rights crawlable and indexable without MCP calls:
+
+```json
+{
+  "id": "daan_janssen",
+  "names": [{"en": "Daan Janssen"}],
+  "description": "Dutch Olympic speed skater, 2x gold medalist",
+  "rights_agent": {
+    "url": "https://rights.lotientertainment.com/mcp",
+    "id": "loti_entertainment",
+    "available_uses": ["likeness", "voice", "endorsement"],
+    "right_type": "talent",
+    "countries": ["NL", "BE", "DE"]
+  }
+}
+```
+
+The `brand_agent` provides identity data (logos, tone, assets). The `rights_agent` provides licensing (discovery, pricing, acquisition). They can be the same agent or different ones.
+
 ### get_rights
 
 Search for licensable rights across a brand agent's roster. Returns matches with pricing. Discovery is natural-language-first — no taxonomy, LLMs interpret intent from the query.
