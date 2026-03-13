@@ -897,22 +897,32 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
         },
         target_format_id: {
           type: 'object',
-          description: 'Single format to generate. Mutually exclusive with target_format_ids.',
+          description:
+            'Single format to generate. Exactly one of target_format_id or target_format_ids must be provided.',
           properties: {
             agent_url: { type: 'string' },
             id: { type: 'string' },
+            width: { type: 'integer', description: 'Width in pixels for visual formats' },
+            height: { type: 'integer', description: 'Height in pixels for visual formats' },
+            duration_ms: { type: 'number', description: 'Duration in ms for time-based formats' },
           },
           required: ['agent_url', 'id'],
         },
         target_format_ids: {
           type: 'array',
           description:
-            'Array of formats to generate in a single call. Mutually exclusive with target_format_id. Returns one manifest per format.',
+            'Array of formats to generate in a single call. Exactly one of target_format_id or target_format_ids must be provided. Returns one manifest per format.',
           items: {
             type: 'object',
             properties: {
               agent_url: { type: 'string' },
               id: { type: 'string' },
+              width: { type: 'integer', description: 'Width in pixels for visual formats' },
+              height: { type: 'integer', description: 'Height in pixels for visual formats' },
+              duration_ms: {
+                type: 'number',
+                description: 'Duration in ms for time-based formats',
+              },
             },
             required: ['agent_url', 'id'],
           },
@@ -965,7 +975,7 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           description: 'Enable debug logging to see protocol-level details',
         },
       },
-      required: ['agent_url', 'target_format_id'],
+      required: ['agent_url'],
     },
   },
   {
