@@ -24,6 +24,27 @@ const slackDb = new SlackDatabase();
 const workingGroupDb = new WorkingGroupDatabase();
 
 /**
+ * Determine the role for a new org member. If the org has no admin or owner,
+ * the first member gets 'owner' to prevent ownerless orgs.
+ */
+async function roleForNewMember(orgId: string): Promise<'owner' | 'member'> {
+  if (!workos) return 'member';
+  try {
+    const memberships = await workos.userManagement.listOrganizationMemberships({
+      organizationId: orgId,
+      limit: 100,
+    });
+    const hasAdmin = memberships.data.some((m) => {
+      const role = m.role?.slug;
+      return role === 'admin' || role === 'owner';
+    });
+    return hasAdmin ? 'member' : 'owner';
+  } catch {
+    return 'member';
+  }
+}
+
+/**
  * Sync all Slack users to the database
  *
  * 1. Fetches all users from Slack workspace
@@ -636,25 +657,27 @@ export async function checkAndAssignOrganizationByDomain(
       return null;
     }
 
+    const role = await roleForNewMember(targetOrgId);
+
     logger.info(
-      { workosUserId, email, domain, targetOrgId, targetOrgName, currentOrgId, currentOrgName },
+      { workosUserId, email, domain, targetOrgId, targetOrgName, currentOrgId, currentOrgName, role },
       'Adding user to organization based on email domain'
     );
 
     await workos.userManagement.createOrganizationMembership({
       userId: workosUserId,
       organizationId: targetOrgId,
-      roleSlug: 'member',
+      roleSlug: role,
     });
 
     await pool.query(`
-      INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, created_at, updated_at, synced_at)
-      SELECT $1, $2, email, NOW(), NOW(), NOW()
+      INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+      SELECT $1, $2, email, $3, NOW(), NOW(), NOW()
       FROM organization_memberships
       WHERE workos_user_id = $1
       LIMIT 1
       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-    `, [workosUserId, targetOrgId]);
+    `, [workosUserId, targetOrgId, role]);
 
     return {
       assigned: true,
@@ -827,6 +850,7 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
     const orgId = row.workos_organization_id;
 
     const existingMemberUserIds = new Set<string>();
+    let hasAdmin = false;
     try {
       let after: string | undefined;
       do {
@@ -837,6 +861,9 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
         });
         for (const m of memberships.data) {
           existingMemberUserIds.add(m.userId);
+          if (m.role?.slug === 'admin' || m.role?.slug === 'owner') {
+            hasAdmin = true;
+          }
         }
         after = memberships.listMetadata?.after ?? undefined;
       } while (after);
@@ -853,21 +880,25 @@ export async function autoAddVerifiedDomainUsersAsMembers(): Promise<{
         continue;
       }
 
+      // First member added to an ownerless org becomes owner
+      const role = hasAdmin ? 'member' : 'owner';
+
       try {
         await workos.userManagement.createOrganizationMembership({
           userId: user.workos_user_id,
           organizationId: orgId,
-          roleSlug: 'member',
+          roleSlug: role,
         });
         // Mirror the WorkOS membership locally so code reading organization_memberships
         // sees the change immediately rather than waiting for the webhook to fire.
         await pool.query(`
-          INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, created_at, updated_at, synced_at)
-          VALUES ($1, $2, $3, NOW(), NOW(), NOW())
+          INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
           ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING
-        `, [user.workos_user_id, orgId, user.email]);
+        `, [user.workos_user_id, orgId, user.email, role]);
         totalAdded++;
-        logger.info({ orgId, orgName: row.org_name, email: user.email }, 'Auto-added domain user as org member');
+        if (!hasAdmin) hasAdmin = true; // Only promote the first one
+        logger.info({ orgId, orgName: row.org_name, email: user.email, role }, 'Auto-added domain user as org member');
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         if (code === 'organization_membership_already_exists') {

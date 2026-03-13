@@ -2396,6 +2396,7 @@ export function setupDomainRoutes(
 
           // Get existing members for this org (paginate through all)
           const existingMemberUserIds = new Set<string>();
+          let hasAdmin = false;
           try {
             let after: string | undefined;
             do {
@@ -2406,6 +2407,9 @@ export function setupDomainRoutes(
               });
               for (const m of memberships.data) {
                 existingMemberUserIds.add(m.userId);
+                if (m.role?.slug === 'admin' || m.role?.slug === 'owner') {
+                  hasAdmin = true;
+                }
               }
               after = memberships.listMetadata?.after ?? undefined;
             } while (after);
@@ -2422,18 +2426,23 @@ export function setupDomainRoutes(
               continue;
             }
 
+            // First member added to an ownerless org becomes owner
+            const role = hasAdmin ? 'member' : 'owner';
+
             try {
               await config.workos!.userManagement.createOrganizationMembership({
                 userId: user.workos_user_id,
                 organizationId: orgId,
-                roleSlug: 'member',
+                roleSlug: role,
               });
               orgAdded++;
+              if (!hasAdmin) hasAdmin = true;
 
               logger.info({
                 orgId,
                 email: user.email,
                 userId: user.workos_user_id,
+                role,
                 addedBy: adminUser.id,
               }, 'Domain user auto-added to organization via backfill');
             } catch (err: any) {
