@@ -127,11 +127,13 @@ async function getProjectId(): Promise<number> {
 
 function getLatestValue(data: Array<{ date: string; value: number }>): number {
   if (!data?.length) return 0;
-  // Walk backwards from the end to find the most recent non-zero value
-  for (let i = data.length - 1; i >= 0; i--) {
+  // Check last 3 entries to skip incomplete current-day zeros,
+  // but don't reach far back into stale data
+  const lookback = Math.min(3, data.length);
+  for (let i = data.length - 1; i >= data.length - lookback; i--) {
     if (data[i].value !== 0) return data[i].value;
   }
-  return 0;
+  return data[data.length - 1].value ?? 0;
 }
 
 function computeTrend(data: Array<{ date: string; value: number }>): "up" | "down" | "flat" {
@@ -193,32 +195,60 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
       sort: "mentions",
       sort_dir: "desc",
       per_page: "20",
+      range: "30",
+    }).then((result) => {
+      const r = result as { data: LLMPulseModelSummary[] };
+      logger.info({ modelCount: r.data?.length ?? 0 }, "LLM Pulse model summary fetched");
+      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch model summary from LLM Pulse");
-      return { data: [] };
-    }) as Promise<{ data: LLMPulseModelSummary[] }>,
+      return { data: [] as LLMPulseModelSummary[] };
+    }),
     fetchLLMPulse("/answers", {
       project_id: pidStr,
       per_page: "500",
+    }).then((result) => {
+      const r = result as { data: LLMPulseAnswer[] };
+      logger.info({ answerCount: r.data?.length ?? 0 }, "LLM Pulse answers fetched");
+      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch answers from LLM Pulse");
-      return { data: [] };
-    }) as Promise<{ data: LLMPulseAnswer[] }>,
+      return { data: [] as LLMPulseAnswer[] };
+    }),
     fetchLLMPulse("/dimensions/competitor_mentions", {
       project_id: pidStr,
+    }).then((result) => {
+      const r = result as { data: LLMPulseCompetitorMention[] };
+      logger.info({ competitorMentionCount: r.data?.length ?? 0 }, "LLM Pulse competitor mentions fetched");
+      return r;
     }).catch((err) => {
       logger.warn({ err }, "Failed to fetch competitor mentions from LLM Pulse");
-      return { data: [] };
-    }) as Promise<{ data: LLMPulseCompetitorMention[] }>,
+      return { data: [] as LLMPulseCompetitorMention[] };
+    }),
   ]);
 
-  // Extract brand mention rate from visibility metric
+  // Log available metric series keys for debugging
+  const seriesKeys = Object.keys(metricsResult.series || {});
+  logger.info({ seriesKeys }, "LLM Pulse metrics summary series keys");
+
+  // Extract brand mention rate from mentions metric
+  const mentionsSeries = metricsResult.series?.mentions?.find(
+    (s) => s.actor.type === "project"
+  );
+  // Fall back to visibility metric if mentions not available
   const visibilitySeries = metricsResult.series?.visibility?.find(
     (s) => s.actor.type === "project"
   );
-  const brandMentionRate = visibilitySeries
-    ? getLatestValue(visibilitySeries.data)
+  const brandMentionSeries = mentionsSeries || visibilitySeries;
+  const brandMentionRate = brandMentionSeries
+    ? getLatestValue(brandMentionSeries.data)
     : 0;
+
+  if (!mentionsSeries && visibilitySeries) {
+    logger.warn("Using 'visibility' series as fallback for brand mention rate — 'mentions' series not found");
+  } else if (!mentionsSeries && !visibilitySeries) {
+    logger.warn({ seriesKeys }, "Neither 'mentions' nor 'visibility' series found in metrics response");
+  }
 
   // Extract citation rate from citations metric
   const citationsSeries = metricsResult.series?.citations?.find(
@@ -320,7 +350,7 @@ async function fetchVisibilityData(): Promise<GeoVisibilityData> {
     updated_at: new Date().toISOString(),
     summary: {
       brand_mention_rate: Math.round(brandMentionRate * 10) / 10,
-      brand_mention_rate_change: visibilitySeries ? computeChange(visibilitySeries.data) : null,
+      brand_mention_rate_change: brandMentionSeries ? computeChange(brandMentionSeries.data) : null,
       share_of_voice: Math.round(shareOfVoice * 10) / 10,
       share_of_voice_change: projectSov ? computeChange(projectSov.data) : null,
       total_prompts: promptsResult.total || prompts.length,

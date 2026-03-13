@@ -17,6 +17,9 @@
     },
     {
       "pattern": "^https://github.com/adcontextprotocol/adcp$"
+    },
+    {
+      "pattern": "^https://agenticadvertising.org"
     }
   ],
   "timeout": "30s",

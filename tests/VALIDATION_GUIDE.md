@@ -71,7 +71,7 @@ const constraints = {
     (actual, path) => {
       const product = actual.products[0];
       if (product.delivery_type === 'guaranteed' && !product.delivery_measurement) {
-        throw new Error(`${path}: Guaranteed products must have delivery_measurement`);
+        console.warn(`${path}: Guaranteed products should have delivery_measurement`);
       }
     }
   ]

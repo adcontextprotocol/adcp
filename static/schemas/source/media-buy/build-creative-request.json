@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces a target manifest in the specified format.",
+  "description": "Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) retrieval from a creative library by creative_id. Produces target manifest(s) in the specified format(s). Provide either target_format_id for a single format or target_format_ids for multiple formats.",
   "type": "object",
   "properties": {
     "message": {
@@ -31,7 +31,15 @@
     },
     "target_format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Format ID to generate. The format definition specifies required input assets and output structure."
+      "description": "Single format ID to generate. Mutually exclusive with target_format_ids. The format definition specifies required input assets and output structure."
+    },
+    "target_format_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1,
+      "description": "Array of format IDs to generate in a single call. Mutually exclusive with target_format_id. The creative agent produces one manifest per format. Each format definition specifies its own required input assets and output structure."
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -45,6 +53,44 @@
       "type": "integer",
       "minimum": 1,
       "description": "Maximum number of catalog items to use when generating. When a catalog asset contains more items than this limit, the creative agent selects the top items based on relevance or catalog ordering. When item_limit exceeds the format's max_items, the creative agent SHOULD use the lesser of the two. Ignored when the manifest contains no catalog assets."
+    },
+    "include_preview": {
+      "type": "boolean",
+      "description": "When true, requests the creative agent to include preview renders in the response alongside the manifest. Agents that support this return a 'preview' object in the response using the same structure as preview_creative. Agents that do not support inline preview simply omit the field. This avoids a separate preview_creative round trip for platforms that generate previews as a byproduct of building."
+    },
+    "preview_inputs": {
+      "type": "array",
+      "description": "Input sets for preview generation when include_preview is true. Each input set defines macros and context values for one preview variant. If include_preview is true but this is omitted, the agent generates a single default preview. Only supported with target_format_id (single-format requests). Ignored when using target_format_ids — multi-format requests generate one default preview per format. Ignored when include_preview is false or omitted.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad')"
+          },
+          "macros": {
+            "type": "object",
+            "description": "Macro values to use for this preview variant",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "context_description": {
+            "type": "string",
+            "description": "Natural language description of the context for AI-generated content"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "preview_output_format": {
+      "$ref": "/schemas/enums/preview-output-format.json",
+      "default": "url",
+      "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
     },
     "macro_values": {
       "type": "object",
@@ -60,8 +106,15 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": [
-    "target_format_id"
+  "oneOf": [
+    {
+      "required": ["target_format_id"],
+      "properties": { "target_format_ids": false }
+    },
+    {
+      "required": ["target_format_ids"],
+      "properties": { "target_format_id": false }
+    }
   ],
   "additionalProperties": true
 }

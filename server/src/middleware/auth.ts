@@ -251,6 +251,37 @@ export const DEV_USERS: Record<string, DevUserConfig> = {
     isMember: true,
     description: 'Kitchen cabinet member with manage-tier access',
   },
+  // Learner personas for certification testing (isolated user IDs prevent cross-contamination)
+  learner1: {
+    id: 'user_dev_learner_001',
+    email: 'learner1@test.local',
+    firstName: 'Learner',
+    lastName: 'One',
+    isAdmin: false,
+    isManage: false,
+    isMember: true,
+    description: 'Certification test persona 1',
+  },
+  learner2: {
+    id: 'user_dev_learner_002',
+    email: 'learner2@test.local',
+    firstName: 'Learner',
+    lastName: 'Two',
+    isAdmin: false,
+    isManage: false,
+    isMember: true,
+    description: 'Certification test persona 2',
+  },
+  learner3: {
+    id: 'user_dev_learner_003',
+    email: 'learner3@test.local',
+    firstName: 'Learner',
+    lastName: 'Three',
+    isAdmin: false,
+    isManage: false,
+    isMember: true,
+    description: 'Certification test persona 3',
+  },
 };
 
 // Dev session cookie name

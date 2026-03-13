@@ -1,0 +1,41 @@
+---
+title: Personnel qualifications
+sidebarTitle: Personnel qualifications
+description: Qualification standards for curriculum designers, content reviewers, and the AI teaching assistant.
+---
+
+# Personnel qualifications
+
+**Adopted:** March 2026
+**Responsible party:** AgenticAdvertising.org program leadership
+
+## Purpose
+
+This policy establishes qualification standards for everyone involved in designing, reviewing, and delivering the AdCP certification program.
+
+## Curriculum design
+
+Module lesson plans, assessment criteria, and scoring rubrics are designed by subject matter experts with demonstrated expertise in advertising technology and/or the AdCP protocol. Expertise is established through direct involvement in protocol development, industry experience, or both.
+
+## Content review
+
+Curriculum changes are reviewed through the standard code review process (pull requests) before deployment. Protocol accuracy is validated against the AdCP specification. Changes that do not meet review standards are not deployed.
+
+## AI teaching assistant
+
+Addie is powered by Claude (Anthropic). Teaching behavior is governed by operational rules documented in the [instructional design framework](/docs/learning/instructional-design), covering:
+
+- Socratic methodology and turn structure
+- Assessment fairness and scoring calibration
+- Learner data handling and privacy
+- When and how to use tools for demos and exercises
+
+Addie cannot award credentials without meeting server-side validation requirements: minimum engagement time, minimum conversational turns, checkpoint requirements, and score consistency checks. These are enforced by the application, not by AI judgment alone.
+
+## Ongoing qualification
+
+Curriculum contributors stay current through participation in the AdCP working group, protocol development, and quarterly curriculum reviews.
+
+## Non-compliance
+
+Teaching behavior changes require a `CODE_VERSION` bump to enable performance comparison. Curriculum changes that bypass the review process are reverted.

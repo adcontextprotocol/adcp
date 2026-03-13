@@ -68,7 +68,7 @@
     },
     "delivery_measurement": {
       "type": "object",
-      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. REQUIRED for all products.",
+      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. When absent, buyers should apply their own measurement defaults.",
       "properties": {
         "provider": {
           "type": "string",
@@ -296,7 +296,6 @@
     "publisher_properties",
     "format_ids",
     "delivery_type",
-    "delivery_measurement",
     "pricing_options"
   ],
   "additionalProperties": true

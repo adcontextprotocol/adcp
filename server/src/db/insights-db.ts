@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { logger } from '../logger.js';
 
 // =====================================================
 // TYPES
@@ -795,7 +796,100 @@ export class InsightsDatabase {
       [id, goalStatus, responseText, analysis.sentiment, analysis.intent]
     );
 
+    // For non-refusal responses, persist any insight defined by the goal's outcomes.
+    // Without this, information-category goals (like Welcome) never get reconciled
+    // as successful because the reconciliation job checks member_insights.
+    if (analysis.sentiment !== 'refusal') {
+      try {
+        await this.recordGoalInsight(id, responseText);
+      } catch (err) {
+        logger.error({ err, outreachId: id }, 'Failed to record goal insight after response');
+      }
+    }
+
     return analysis;
+  }
+
+  /**
+   * When a user responds to goal-linked outreach, look up the goal's outcomes
+   * to find what insight should be recorded and persist it. This closes the loop
+   * for information-category goals whose reconciliation checks member_insights.
+   */
+  private async recordGoalInsight(outreachId: number, responseText: string): Promise<void> {
+    // Find the goal linked to this outreach via user_goal_history
+    const goalResult = await query<{
+      slack_user_id: string;
+      workos_user_id: string | null;
+      goal_id: number;
+      goal_category: string;
+    }>(
+      `SELECT ugh.slack_user_id, sm.workos_user_id, ugh.goal_id, og.category as goal_category
+       FROM user_goal_history ugh
+       JOIN outreach_goals og ON og.id = ugh.goal_id
+       JOIN slack_user_mappings sm ON sm.slack_user_id = ugh.slack_user_id
+       WHERE ugh.outreach_id = $1
+       LIMIT 1`,
+      [outreachId]
+    );
+
+    if (!goalResult.rows[0]) return;
+    const { slack_user_id, workos_user_id, goal_id, goal_category } = goalResult.rows[0];
+
+    // Only relevant for information goals that use insight-based reconciliation
+    if (goal_category !== 'information') return;
+
+    // Find the best matching outcome that has an insight_to_record.
+    // Use the default outcome as fallback (trigger_type = 'default').
+    const outcomeResult = await query<{
+      insight_to_record: string;
+      insight_value: string | null;
+      trigger_type: string;
+      trigger_value: string | null;
+    }>(
+      `SELECT insight_to_record, insight_value, trigger_type, trigger_value
+       FROM goal_outcomes
+       WHERE goal_id = $1
+         AND insight_to_record IS NOT NULL
+       ORDER BY priority DESC`,
+      [goal_id]
+    );
+
+    if (outcomeResult.rows.length === 0) return;
+
+    // Try to match a keyword outcome against the response text
+    const lower = responseText.toLowerCase();
+    let matched = outcomeResult.rows.find(o => {
+      if (o.trigger_type !== 'keyword' || !o.trigger_value) return false;
+      return o.trigger_value.split(',').some(kw => lower.includes(kw.trim().toLowerCase()));
+    });
+
+    // Fall back to default outcome if no keyword match
+    if (!matched) {
+      matched = outcomeResult.rows.find(o => o.trigger_type === 'default');
+    }
+
+    // If no keyword or default outcome matched, don't record an insight.
+    // Recording a mismatched keyword outcome would store the wrong value.
+    if (!matched) return;
+
+    // Look up the insight type ID by name
+    const typeResult = await query<{ id: number }>(
+      `SELECT id FROM member_insight_types WHERE name = $1 AND is_active = TRUE`,
+      [matched.insight_to_record]
+    );
+
+    if (!typeResult.rows[0]) return;
+
+    await this.addInsight({
+      slack_user_id,
+      workos_user_id: workos_user_id ?? undefined,
+      insight_type_id: typeResult.rows[0].id,
+      value: matched.insight_value ?? 'responded',
+      confidence: 'medium',
+      source_type: 'conversation',
+      extracted_from: responseText,
+      created_by: 'goal_outcome',
+    });
   }
 
   /**
