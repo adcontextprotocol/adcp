@@ -1,0 +1,276 @@
+---
+title: Policy Registry
+sidebarTitle: Policy Registry
+---
+
+
+The Policy Registry is a community-maintained library of standardized, machine-readable advertising policies. It provides a shared vocabulary of regulations and industry standards that any governance domain can reference by ID.
+
+## Quick start
+
+Fetch a policy by ID:
+
+```bash
+curl https://adcontextprotocol.org/api/policies/resolve?policy_id=us_coppa
+```
+
+List all regulation-category policies:
+
+```bash
+curl https://adcontextprotocol.org/api/policies/registry?category=regulation
+```
+
+Bulk-resolve policies for an LLM evaluation prompt:
+
+```bash
+curl -X POST https://adcontextprotocol.org/api/policies/resolve/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"policy_ids": ["us_coppa", "eu_gdpr_advertising", "uk_hfss"]}'
+```
+
+Use the `policy` text and `exemplars` from the response in your governance agent's evaluation prompt. The exemplars calibrate the agent's interpretation of the policy -- include them as few-shot examples.
+
+## Why a shared registry
+
+Advertising compliance involves the same regulations and standards across many campaigns, brands, and governance agents. Without a shared registry, every governance agent would independently define policies for COPPA, GDPR, HFSS, and other well-known regulations -- creating inconsistency and duplication.
+
+The registry solves this by providing:
+
+- **Standardized policy definitions** with structured metadata (jurisdiction, vertical, enforcement level)
+- **Natural language policy text** that governance agents (LLMs) use directly for evaluation
+- **Calibration exemplars** (pass/fail scenarios) that align agent behavior
+- **Version tracking** so brands can pin to specific policy versions
+
+## Policy categories
+
+Policies fall into two categories based on the nature of the obligation:
+
+| Category | Enforcement | Description |
+|----------|-------------|-------------|
+| **Regulation** | `must` | Legal requirements with jurisdiction scope. Violations have legal consequences. Governance agents reject actions that violate these policies. |
+| **Standard** | `should` | Industry best practices, voluntary but recommended. Protects brand value and campaign effectiveness. Governance agents warn on violations but do not block. |
+
+Enforcement levels follow RFC 2119 keywords:
+
+- **`must`** -- Legal requirement. Governance agents reject violations.
+- **`should`** -- Best practice. Governance agents warn but do not block.
+- **`may`** -- Recommendation. Governance agents log for informational purposes only.
+
+## How governance agents use policies
+
+Governance agents are LLMs that interpret natural language policy text -- the same pattern used by [Content Standards](/docs/governance/content-standards/index). The registry's value is in structured metadata and calibration exemplars, not a custom rule language.
+
+1. **Resolve applicable policies** from the brand's compliance configuration or buyer request
+2. **Bulk-resolve from the registry** via `POST /api/policies/resolve/bulk`
+3. **Filter by context** -- intersect policy jurisdictions/verticals/channels with campaign parameters
+4. **Include policy text + exemplars** in the evaluation prompt
+5. **Apply enforcement level** -- `must` violations result in rejection, `should` violations result in warnings
+
+## Policy structure
+
+Each policy in the registry follows the [policy-entry schema](https://adcontextprotocol.org/schemas/latest/governance/policy-entry.json):
+
+```json
+{
+  "policy_id": "uk_hfss",
+  "version": "1.0.0",
+  "name": "UK HFSS Advertising Restrictions",
+  "description": "UK ban on paid online advertising of less healthy food and drink products.",
+  "category": "regulation",
+  "enforcement": "must",
+  "jurisdictions": ["GB"],
+  "verticals": ["food", "beverage"],
+  "governance_domains": ["campaign", "property", "content_standards"],
+  "effective_date": "2025-10-01",
+  "source_url": "https://www.legislation.gov.uk/ukpga/2022/17/contents",
+  "source_name": "UK Parliament",
+  "policy": "The UK Health and Social Care Act 2022 restricts paid online advertising of food and drink products classified as 'less healthy' under the Nutrient Profiling Model...",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A breakfast cereal brand runs a display ad featuring their low-sugar granola (NPM score 2) on UK websites.",
+        "explanation": "The product scores below the NPM threshold (4 for food), so it is not classified as less healthy."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A large snack company runs paid Instagram ads in the UK featuring their crisps (NPM score 8) at 2:00 PM.",
+        "explanation": "The product is less healthy (NPM >= 4), the company has 250+ employees, and paid online ads are prohibited."
+      }
+    ]
+  }
+}
+```
+
+## Temporal enforcement
+
+Policies have optional `effective_date` and `sunset_date` fields. Governance agents use these dates to determine enforcement behavior automatically:
+
+| Condition | Behavior |
+|-----------|----------|
+| Before `effective_date` | Evaluate but treat as informational. Findings are reported at `info` severity regardless of the policy's declared enforcement level. |
+| Between `effective_date` and `sunset_date` (or no `sunset_date`) | Enforce at the declared level (`must` = reject, `should` = warn). |
+| After `sunset_date` | Stop evaluating. The policy no longer applies. |
+| No `effective_date` | Enforce immediately (the policy has always been in effect). |
+
+This means brands can reference upcoming regulations before they take effect. The governance agent evaluates them and reports what *would* have been flagged, without blocking campaigns. Once the effective date passes, enforcement activates automatically -- no configuration change needed.
+
+For example, the EU AI Act Article 50 has `effective_date: "2026-08-02"`. A brand referencing this policy before August 2026 sees informational findings about AI disclosure compliance. After August 2026, violations are rejected.
+
+## Three tiers of policy application
+
+| Tier | Source | Example |
+|------|--------|---------|
+| **Always-on** | Regulations that apply automatically based on brand category and campaign jurisdictions | COPPA for US children's brands, GDPR for EU campaigns |
+| **Best practices** | Standards that brands opt into based on their vertical | Alcohol advertising standards for beverage brands |
+| **Brand-specific** | Custom policies in the brand's compliance configuration | Brand-specific competitor exclusions, custom content rules |
+
+## Brand compliance configuration
+
+Brands reference registry policies through their compliance configuration. See the [Campaign Governance specification](/docs/governance/campaign/specification#brand-compliance-configuration) for the conceptual model.
+
+## Integration across governance domains
+
+The registry is a shared resource consumed by all governance domains:
+
+| Domain | How it uses registry policies |
+|--------|------------------------------|
+| **[Campaign Governance](/docs/governance/campaign/index)** | Resolves policies via brand compliance config, evaluates actions against policy text in `check_governance` |
+| **[Content Standards](/docs/governance/content-standards/index)** | Creates content standards from registry policies using `registry_policy_ids` |
+| **[Property Governance](/docs/governance/property/index)** | Declares `registry:` prefixed features in `get_adcp_capabilities`, evaluates properties against policy text |
+| **[Creative Governance](/docs/governance/creative/index)** | Declares `registry:` prefixed creative features, evaluates creatives for AI disclosure and content compliance |
+| **[Media Buy](/docs/media-buy/index)** | Sellers declare `enforced_policies` on products, buyers send `required_policies` in requests |
+
+## Governance domains
+
+Each policy declares which governance sub-domains it applies to via `governance_domains`. This determines which types of governance agents can evaluate and declare the policy as a feature.
+
+| Domain | Description |
+|--------|-------------|
+| `campaign` | Campaign governance agents evaluate this policy during `check_governance` |
+| `property` | Property governance agents can declare this policy as a property feature |
+| `creative` | Creative governance agents can evaluate creatives against this policy |
+| `content_standards` | Content standards agents can create standards from this policy |
+
+For example, `eu_ai_act_article_50` has `governance_domains: ["creative", "content_standards"]` because it's about AI-generated content disclosure -- relevant to creative evaluation and content standards, but not to property or campaign-level governance.
+
+Filter by domain via the API: `GET /api/policies/registry?domain=creative`
+
+## The `registry:` prefix
+
+Governance agents declare standardized capabilities using `registry:` prefixed feature IDs. This creates a shared vocabulary so buyers searching for "EU AI Act compliance" find agents using the same terminology.
+
+**Convention:** `registry:{policy_id}` maps a feature ID to a registry policy. Unprefixed feature IDs are agent-defined.
+
+**Property governance agent declares:**
+```json
+{
+  "governance": {
+    "property_features": [
+      { "feature_id": "registry:us_coppa", "type": "binary", "name": "COPPA compliance" },
+      { "feature_id": "registry:uk_hfss", "type": "binary", "name": "UK HFSS compliance" }
+    ]
+  }
+}
+```
+
+**Creative governance agent declares:**
+```json
+{
+  "governance": {
+    "creative_features": [
+      { "feature_id": "registry:eu_ai_act_article_50", "type": "binary", "name": "EU AI Act Article 50 compliance" },
+      { "feature_id": "registry:ca_sb_942", "type": "binary", "name": "California SB 942 compliance" }
+    ]
+  }
+}
+```
+
+**Buyer filters by feature:**
+```json
+{
+  "feature_requirements": [
+    { "feature_id": "registry:us_coppa", "allowed_values": [true] }
+  ]
+}
+```
+
+The governance agent fetches the policy text and exemplars from the registry to evaluate against. The buyer just references the policy ID. The `governance_domains` field on the policy validates that the agent type is appropriate for the policy.
+
+## Buyer-seller transparency
+
+Buyers list enforced policies in media buy requests. Sellers declare which policies they already enforce on their products.
+
+**Buyer requests policies:**
+```json
+{
+  "tool": "get_products",
+  "arguments": {
+    "brief": "UK video inventory for Q1",
+    "required_policies": ["uk_hfss", "eu_gdpr_advertising"]
+  }
+}
+```
+
+**Seller declares enforcement:**
+```json
+{
+  "product_id": "premium_video_uk",
+  "enforced_policies": ["uk_hfss", "eu_gdpr_advertising"]
+}
+```
+
+## API
+
+The registry is served via the AgenticAdvertising.org API:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/policies/registry` | GET | List policies with filtering by category, jurisdiction, vertical, domain |
+| `/api/policies/resolve` | GET | Resolve a single policy by ID (+ optional version) |
+| `/api/policies/resolve/bulk` | POST | Bulk resolve multiple policy IDs |
+| `/api/policies/history` | GET | Revision history for a policy |
+| `/api/policies/save` | POST | Create or edit a community policy (auth required) |
+
+Registry-sourced policies (authoritative) cannot be edited via the community save endpoint. Community-contributed policies go through a review process.
+
+## Seeded policies
+
+The registry ships with 14 seeded policies covering common advertising regulations and standards:
+
+### Regulations
+
+| ID | Jurisdictions | Description |
+|----|---------------|-------------|
+| `uk_hfss` | GB | UK ban on paid online advertising of less healthy food/drink |
+| `us_coppa` | US | Children's Online Privacy Protection Act |
+| `eu_gdpr_advertising` | EU | GDPR requirements for advertising data processing |
+| `eu_ai_act_article_50` | EU | AI-generated content disclosure and C2PA provenance |
+| `ca_sb_942` | US | California AI Transparency Act for large platforms |
+| `us_cannabis` | US | Cannabis advertising restrictions (state-by-state) |
+| `tobacco_nicotine` | Global | Tobacco and nicotine advertising restrictions -- most jurisdictions ban tobacco advertising outright |
+| `political_advertising` | EU | Political advertising transparency and disclosure (EU DSA, US state-level AI disclosure laws) |
+
+### Standards
+
+| ID | Verticals | Description |
+|----|-----------|-------------|
+| `alcohol_advertising` | alcohol, beverage | Responsible alcohol advertising practices |
+| `pharma_us_fda` | pharmaceutical, healthcare | FDA-aligned pharmaceutical advertising |
+| `gambling_advertising` | gambling, gaming | Responsible gambling advertising |
+| `financial_services` | financial_services, insurance | Financial product advertising disclosure |
+| `scope3_brand_safety` | All | Scope3 Common Sense brand safety framework -- content adjacency baseline (enforcement: `must`) donated to AgenticAdvertising.org |
+| `childrens_advertising` | All | Global standards for advertising directed at or seen by children (UK CAP/BCAP, EU AVMSD, ICC) |
+
+<Note>
+The Scope3 Common Sense brand safety framework was donated to AgenticAdvertising.org as the industry baseline for brand safety, replacing the defunct GARM framework. It defines common-sense content adjacency standards applicable to all verticals and channels.
+</Note>
+
+## Contributing policies
+
+Community members can contribute new policies via the API or admin interface. Contributed policies:
+
+- Must include `policy_id`, `version`, `name`, `category`, `enforcement`, and `policy` text
+- Are created with `source_type: community` and `review_status: pending`
+- Go through review before becoming available in the registry
+- Cannot overwrite registry-sourced (authoritative) policies

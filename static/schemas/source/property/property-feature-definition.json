@@ -7,7 +7,7 @@
   "properties": {
     "feature_id": {
       "type": "string",
-      "description": "Unique identifier for this feature (e.g., 'consent_quality', 'carbon_score', 'coppa_certified')"
+      "description": "Unique identifier for this feature (e.g., 'consent_quality', 'carbon_score'). Features prefixed with 'registry:' reference standardized policies from the shared policy registry (e.g., 'registry:us_coppa', 'registry:uk_hfss'). Unprefixed feature IDs are agent-defined."
     },
     "name": {
       "type": "string",

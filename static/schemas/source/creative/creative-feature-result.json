@@ -7,7 +7,7 @@
   "properties": {
     "feature_id": {
       "type": "string",
-      "description": "The feature that was evaluated (e.g., 'auto_redirect', 'brand_consistency', 'iab_casinos_gambling')"
+      "description": "The feature that was evaluated (e.g., 'auto_redirect', 'brand_consistency'). Features prefixed with 'registry:' reference standardized policies from the shared policy registry (e.g., 'registry:eu_ai_act_article_50'). Unprefixed feature IDs are agent-defined."
     },
     "value": {
       "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical.",

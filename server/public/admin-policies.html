@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <title>Admin - Policies - AdCP Registry</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: var(--container-wide);
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .card {
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      box-shadow: var(--shadow-xs);
+    }
+    h1 { margin-bottom: var(--space-2.5); color: var(--color-text-heading); }
+    .subtitle { color: var(--color-text-secondary); margin-bottom: var(--space-5); }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+      padding: var(--space-5);
+      background: var(--color-gray-50);
+      border-radius: var(--radius-md);
+    }
+    .filter-group label {
+      display: block;
+      margin-bottom: var(--space-1);
+      font-weight: var(--font-semibold);
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+    }
+    .filter-group select,
+    .filter-group input {
+      width: 100%;
+      padding: var(--space-2);
+      border: var(--border-1) solid var(--color-gray-200);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+    }
+    .policies-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: var(--space-5);
+    }
+    .policies-table th {
+      background: var(--color-gray-50);
+      padding: var(--space-3);
+      text-align: left;
+      font-weight: var(--font-semibold);
+      color: var(--color-text-heading);
+      border-bottom: var(--border-2) solid var(--color-gray-200);
+    }
+    .policies-table td {
+      padding: var(--space-3);
+      border-bottom: var(--border-1) solid var(--color-gray-200);
+    }
+    .policies-table tr:hover {
+      background: var(--color-gray-50);
+      cursor: pointer;
+    }
+    .policy-id {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      color: var(--color-text-heading);
+    }
+    .badge {
+      display: inline-block;
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+    }
+    .badge-regulation {
+      background: var(--color-danger-100);
+      color: var(--color-danger-700);
+    }
+    .badge-standard {
+      background: var(--color-info-100);
+      color: var(--color-info-700);
+    }
+    .badge-must {
+      background: var(--color-danger-100);
+      color: var(--color-danger-700);
+    }
+    .badge-should {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .badge-may {
+      background: var(--color-gray-200);
+      color: var(--color-gray-600);
+    }
+    .badge-registry {
+      background: var(--color-success-100);
+      color: var(--color-success-700);
+    }
+    .badge-community {
+      background: var(--color-warning-100);
+      color: var(--color-warning-700);
+    }
+    .jurisdiction-tag {
+      display: inline-block;
+      padding: 1px var(--space-1.5);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-xs);
+      background: var(--color-gray-100);
+      color: var(--color-gray-600);
+      margin-right: 2px;
+    }
+    .loading {
+      text-align: center;
+      padding: var(--space-12);
+      color: var(--color-text-secondary);
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-4);
+      margin-bottom: var(--space-5);
+    }
+    .stat-card {
+      background: var(--color-gray-50);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      text-align: center;
+    }
+    .stat-number {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+    }
+    .stat-label {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+    }
+    .modal-content {
+      background: var(--color-bg-card);
+      margin: 5vh auto;
+      padding: var(--space-6);
+      border-radius: var(--radius-md);
+      max-width: 800px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-close {
+      float: right;
+      font-size: var(--text-xl);
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      border: none;
+      background: none;
+    }
+    .modal-close:hover { color: var(--color-text-heading); }
+    .detail-section {
+      margin-bottom: var(--space-5);
+    }
+    .detail-section h3 {
+      color: var(--color-text-heading);
+      margin-bottom: var(--space-2);
+      font-size: var(--text-base);
+    }
+    .policy-text {
+      white-space: pre-wrap;
+      font-size: var(--text-sm);
+      line-height: 1.6;
+      color: var(--color-text-secondary);
+      background: var(--color-gray-50);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+    }
+    .exemplar {
+      background: var(--color-gray-50);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-2);
+      font-size: var(--text-sm);
+    }
+    .exemplar-pass { border-left: 3px solid var(--color-success-500); }
+    .exemplar-fail { border-left: 3px solid var(--color-danger-500); }
+    .exemplar strong { color: var(--color-text-heading); }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-3);
+    }
+    .meta-item label {
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+    }
+    .meta-item p {
+      font-size: var(--text-sm);
+      color: var(--color-text-heading);
+      margin: var(--space-1) 0 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav-root"></div>
+  <div style="display: flex;">
+    <div id="admin-sidebar-root"></div>
+    <main class="container">
+      <div class="card">
+        <h1>Policy registry</h1>
+        <p class="subtitle">Community-maintained library of advertising regulations and standards.</p>
+
+        <div class="stats-row" id="stats"></div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label for="search">Search</label>
+            <input type="text" id="search" placeholder="Search by name or ID...">
+          </div>
+          <div class="filter-group">
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="">All</option>
+              <option value="regulation">Regulation</option>
+              <option value="standard">Standard</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="enforcement">Enforcement</label>
+            <select id="enforcement">
+              <option value="">All</option>
+              <option value="must">Must</option>
+              <option value="should">Should</option>
+              <option value="may">May</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="domain">Governance domain</label>
+            <select id="domain">
+              <option value="">All</option>
+              <option value="campaign">Campaign</option>
+              <option value="property">Property</option>
+              <option value="creative">Creative</option>
+              <option value="content_standards">Content standards</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="policies-list">
+          <div class="loading">Loading policies...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal" id="detail-modal">
+    <div class="modal-content">
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <div id="detail-content"></div>
+    </div>
+  </div>
+
+  <script>
+    let allPolicies = [];
+
+    async function loadPolicies() {
+      try {
+        const params = new URLSearchParams();
+        const search = document.getElementById('search').value;
+        const category = document.getElementById('category').value;
+        const enforcement = document.getElementById('enforcement').value;
+        const domain = document.getElementById('domain').value;
+        if (search) params.set('search', search);
+        if (category) params.set('category', category);
+        if (enforcement) params.set('enforcement', enforcement);
+        if (domain) params.set('domain', domain);
+        params.set('limit', '1000');
+
+        const res = await fetch(`/api/policies/registry?${params}`);
+        const data = await res.json();
+        allPolicies = data.policies || [];
+        renderStats(data.stats || {});
+        renderPolicies(allPolicies);
+      } catch (err) {
+        document.getElementById('policies-list').innerHTML =
+          `<div class="loading">Failed to load policies: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderStats(stats) {
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-number">${stats.total || 0}</div>
+          <div class="stat-label">Total policies</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${stats.regulation || 0}</div>
+          <div class="stat-label">Regulations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${stats.standard || 0}</div>
+          <div class="stat-label">Standards</div>
+        </div>
+      `;
+    }
+
+    function renderPolicies(policies) {
+      if (policies.length === 0) {
+        document.getElementById('policies-list').innerHTML =
+          '<div class="loading">No policies found.</div>';
+        return;
+      }
+
+      const rows = policies.map(p => {
+        const jurisdictions = (p.jurisdictions || []).map(j =>
+          `<span class="jurisdiction-tag">${escapeHtml(j)}</span>`
+        ).join('');
+        const regionKeys = Object.keys(p.region_aliases || {});
+        const regions = regionKeys.map(r =>
+          `<span class="jurisdiction-tag">${escapeHtml(r)}</span>`
+        ).join('');
+        const verticals = (p.verticals || []).map(v =>
+          `<span class="jurisdiction-tag">${escapeHtml(v)}</span>`
+        ).join('');
+        const domains = (p.governance_domains || []).map(d =>
+          `<span class="jurisdiction-tag">${escapeHtml(d)}</span>`
+        ).join('');
+
+        return `<tr onclick="showDetail('${escapeHtml(p.policy_id)}')">
+          <td><span class="policy-id">${escapeHtml(p.policy_id)}</span></td>
+          <td>${escapeHtml(p.name)}</td>
+          <td><span class="badge badge-${escapeHtml(p.category)}">${escapeHtml(p.category)}</span></td>
+          <td><span class="badge badge-${escapeHtml(p.enforcement)}">${escapeHtml(p.enforcement)}</span></td>
+          <td>${jurisdictions || regions || '<span style="color: var(--color-text-secondary)">global</span>'}</td>
+          <td>${domains || '<span style="color: var(--color-text-secondary)">all</span>'}</td>
+          <td><span class="badge badge-${escapeHtml(p.source_type)}">${escapeHtml(p.source_type)}</span></td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('policies-list').innerHTML = `
+        <table class="policies-table">
+          <thead><tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Enforcement</th>
+            <th>Jurisdictions</th>
+            <th>Domains</th>
+            <th>Source</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function showDetail(policyId) {
+      const p = allPolicies.find(x => x.policy_id === policyId);
+      if (!p) return;
+
+      const jurisdictions = (p.jurisdictions || []).join(', ') ||
+        Object.keys(p.region_aliases || {}).join(', ') || 'Global';
+      const verticals = (p.verticals || []).join(', ') || 'All';
+      const domains = (p.governance_domains || []).join(', ') || 'All';
+
+      let exemplarsHtml = '';
+      if (p.exemplars) {
+        const passes = (p.exemplars.pass || []).map(e =>
+          `<div class="exemplar exemplar-pass">
+            <strong>Pass:</strong> ${escapeHtml(e.scenario)}<br>
+            <em>${escapeHtml(e.explanation)}</em>
+          </div>`
+        ).join('');
+        const fails = (p.exemplars.fail || []).map(e =>
+          `<div class="exemplar exemplar-fail">
+            <strong>Fail:</strong> ${escapeHtml(e.scenario)}<br>
+            <em>${escapeHtml(e.explanation)}</em>
+          </div>`
+        ).join('');
+        exemplarsHtml = `
+          <div class="detail-section">
+            <h3>Calibration exemplars</h3>
+            ${passes}${fails}
+          </div>
+        `;
+      }
+
+      document.getElementById('detail-content').innerHTML = `
+        <h2 style="margin-bottom: var(--space-2); color: var(--color-text-heading);">${escapeHtml(p.name)}</h2>
+        <p style="font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text-secondary); margin-bottom: var(--space-5);">${p.policy_id} v${p.version}</p>
+
+        <div class="detail-section">
+          <div class="meta-grid">
+            <div class="meta-item">
+              <label>Category</label>
+              <p><span class="badge badge-${p.category}">${p.category}</span></p>
+            </div>
+            <div class="meta-item">
+              <label>Enforcement</label>
+              <p><span class="badge badge-${p.enforcement}">${p.enforcement}</span></p>
+            </div>
+            <div class="meta-item">
+              <label>Jurisdictions</label>
+              <p>${escapeHtml(jurisdictions)}</p>
+            </div>
+            <div class="meta-item">
+              <label>Verticals</label>
+              <p>${escapeHtml(verticals)}</p>
+            </div>
+            <div class="meta-item">
+              <label>Governance domains</label>
+              <p>${escapeHtml(domains)}</p>
+            </div>
+            <div class="meta-item">
+              <label>Source</label>
+              <p>${p.source_name ? escapeHtml(p.source_name) : 'N/A'}${p.source_url && /^https?:\/\//i.test(p.source_url) ? ` (<a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener">link</a>)` : ''}</p>
+            </div>
+            <div class="meta-item">
+              <label>Effective date</label>
+              <p>${p.effective_date || 'N/A'}</p>
+            </div>
+            <div class="meta-item">
+              <label>Sunset date</label>
+              <p>${p.sunset_date || 'None'}</p>
+            </div>
+          </div>
+        </div>
+
+        ${p.description ? `<div class="detail-section"><h3>Description</h3><p style="font-size: var(--text-sm); color: var(--color-text-secondary);">${escapeHtml(p.description)}</p></div>` : ''}
+
+        <div class="detail-section">
+          <h3>Policy text</h3>
+          <div class="policy-text">${escapeHtml(p.policy)}</div>
+        </div>
+
+        ${p.guidance ? `<div class="detail-section"><h3>Implementation guidance</h3><div class="policy-text">${escapeHtml(p.guidance)}</div></div>` : ''}
+
+        ${exemplarsHtml}
+      `;
+
+      document.getElementById('detail-modal').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('detail-modal').style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Close modal on outside click
+    document.getElementById('detail-modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+
+    // Debounced search
+    let searchTimeout;
+    document.getElementById('search').addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(loadPolicies, 300);
+    });
+    document.getElementById('category').addEventListener('change', loadPolicies);
+    document.getElementById('enforcement').addEventListener('change', loadPolicies);
+    document.getElementById('domain').addEventListener('change', loadPolicies);
+
+    loadPolicies();
+  </script>
+</body>
+</html>

@@ -79,6 +79,13 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
+  pageRouter.get("/policies", requireAuth, requireAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, "admin-policies.html").catch((err) => {
+      logger.error({ err }, "Error serving policies page");
+      res.status(500).send("Internal server error");
+    });
+  });
+
   // =========================================================================
   // SET UP ROUTE MODULES
   // =========================================================================

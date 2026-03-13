@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/delegation-authority.json",
+  "title": "Delegation Authority",
+  "description": "Authority level granted to a delegated agent operating against a campaign plan.",
+  "type": "string",
+  "enum": [
+    "full",
+    "execute_only",
+    "propose_only"
+  ],
+  "enumDescriptions": {
+    "full": "Can execute any action within the delegation's budget and market constraints.",
+    "execute_only": "Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget.",
+    "propose_only": "Can propose actions for governance review but cannot execute without explicit approval."
+  }
+}

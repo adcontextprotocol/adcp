@@ -91,6 +91,46 @@
       "enum": ["operator", "brand", "operator_brand", "agent"],
       "description": "How the seller scoped this account. operator: shared across all brands for this operator. brand: shared across all operators for this brand. operator_brand: dedicated to a specific operator+brand combination. agent: the agent's default account with no brand or operator association."
     },
+    "governance_agents": {
+      "type": "array",
+      "description": "Governance agent endpoints for this account. When present, the seller MUST call these agents for governance approval before confirming media buy requests. Each agent can be scoped to specific validation categories. All applicable agents must approve for the action to proceed (unanimous approval).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Governance agent endpoint URL."
+          },
+          "authentication": {
+            "type": "object",
+            "properties": {
+              "schemes": {
+                "type": "array",
+                "items": { "$ref": "/schemas/enums/auth-scheme.json" },
+                "minItems": 1,
+                "maxItems": 1
+              },
+              "credentials": {
+                "type": "string",
+                "description": "Authentication credential (e.g., Bearer token).",
+                "minLength": 32
+              }
+            },
+            "required": ["schemes", "credentials"],
+            "additionalProperties": false
+          },
+          "categories": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Governance categories this agent handles (e.g., ['budget_authority', 'strategic_alignment']). When omitted, the agent handles all categories."
+          }
+        },
+        "required": ["url", "authentication"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
     "sandbox": {
       "type": "boolean",
       "description": "When true, this is a sandbox account — no real platform calls, no real spend. For explicit accounts (require_operator_auth: true), sandbox accounts are pre-existing test accounts on the platform discovered via list_accounts. For implicit accounts, sandbox is part of the natural key: the same brand/operator pair can have both a production and sandbox account."

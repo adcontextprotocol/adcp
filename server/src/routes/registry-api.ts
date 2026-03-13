@@ -15,6 +15,7 @@ import { MemberDatabase } from "../db/member-db.js";
 import { query } from "../db/client.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { bulkResolveRateLimiter, brandCreationRateLimiter } from "../middleware/rate-limit.js";
+import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import {
   registry,
@@ -824,6 +825,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       endpoints: {
         brands: "/api/brands/registry",
         properties: "/api/properties/registry",
+        policies: "/api/policies/registry",
         agents: "/api/registry/agents",
         search: "/api/search",
       },
@@ -2347,6 +2349,213 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, domain }, "Failed to set up brand");
       return res.status(500).json({ error: "Failed to set up brand" });
+    }
+  });
+
+  // ── Policy Registry ────────────────────────────────────────────
+
+  router.get("/policies/registry", async (req, res) => {
+    try {
+      const options: policiesDb.ListPoliciesOptions = {
+        search: req.query.search as string,
+        category: req.query.category as any,
+        enforcement: req.query.enforcement as any,
+        jurisdiction: req.query.jurisdiction as string,
+        vertical: req.query.vertical as string,
+        domain: req.query.domain as string,
+        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 1000) : undefined,
+        offset: parseInt(req.query.offset as string) || 0,
+      };
+
+      const { policies, total, regulation, standard } = await policiesDb.listPolicies(options);
+
+      return res.json({ policies, stats: { total, regulation, standard } });
+    } catch (error) {
+      logger.error({ error }, "Failed to list policies");
+      return res.status(500).json({ error: "Failed to list policies" });
+    }
+  });
+
+  router.get("/policies/resolve", async (req, res) => {
+    try {
+      const policyId = req.query.policy_id as string;
+      if (!policyId) {
+        return res.status(400).json({ error: "policy_id parameter required" });
+      }
+      const version = req.query.version as string | undefined;
+      const policy = await policiesDb.resolvePolicy(policyId, version);
+      if (!policy) {
+        return res.status(404).json({ error: "Policy not found", policy_id: policyId });
+      }
+      return res.json(policy);
+    } catch (error) {
+      logger.error({ error }, "Failed to resolve policy");
+      return res.status(500).json({ error: "Failed to resolve policy" });
+    }
+  });
+
+  router.post("/policies/resolve/bulk", bulkResolveRateLimiter, async (req, res) => {
+    try {
+      const { policy_ids } = req.body;
+      if (!Array.isArray(policy_ids) || policy_ids.length === 0) {
+        return res.status(400).json({ error: "policy_ids array required" });
+      }
+      if (policy_ids.length > 100) {
+        return res.status(400).json({ error: "Maximum 100 policy IDs per request" });
+      }
+      const results = await policiesDb.bulkResolve(policy_ids);
+      return res.json({ results });
+    } catch (error) {
+      logger.error({ error }, "Failed to bulk resolve policies");
+      return res.status(500).json({ error: "Failed to bulk resolve policies" });
+    }
+  });
+
+  router.get("/policies/history", async (req, res) => {
+    try {
+      const policyId = req.query.policy_id as string;
+      if (!policyId) {
+        return res.status(400).json({ error: "policy_id parameter required" });
+      }
+      const rawLimit = parseInt(req.query.limit as string, 10);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+      const rawOffset = parseInt(req.query.offset as string, 10);
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+      const { revisions, total } = await policiesDb.getPolicyHistory(policyId, { limit, offset });
+
+      if (total === 0) {
+        const policy = await policiesDb.resolvePolicy(policyId);
+        if (!policy) {
+          return res.status(404).json({ error: "Policy not found", policy_id: policyId });
+        }
+      }
+
+      return res.json({
+        policy_id: policyId,
+        total,
+        revisions: revisions.map((r) => ({
+          revision_number: r.revision_number,
+          editor_name: r.editor_name || "system",
+          edit_summary: r.edit_summary,
+          is_rollback: r.is_rollback,
+          rolled_back_to: r.rolled_back_to,
+          created_at: r.created_at.toISOString(),
+        })),
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to get policy history");
+      return res.status(500).json({ error: "Failed to get policy history" });
+    }
+  });
+
+  const policySaveMiddleware = authMiddleware ? [authMiddleware, brandCreationRateLimiter] : [brandCreationRateLimiter];
+
+  router.post("/policies/save", ...policySaveMiddleware, async (req, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required to save policies" });
+      }
+
+      const { policy_id, version, name, category, enforcement, policy: policyText } = req.body;
+
+      if (!policy_id || typeof policy_id !== "string") {
+        return res.status(400).json({ error: "policy_id is required" });
+      }
+      if (!version || typeof version !== "string") {
+        return res.status(400).json({ error: "version is required" });
+      }
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({ error: "name is required" });
+      }
+      if (!["regulation", "standard"].includes(category)) {
+        return res.status(400).json({ error: "category must be 'regulation' or 'standard'" });
+      }
+      if (!["must", "should", "may"].includes(enforcement)) {
+        return res.status(400).json({ error: "enforcement must be 'must', 'should', or 'may'" });
+      }
+      if (!policyText || typeof policyText !== "string") {
+        return res.status(400).json({ error: "policy text is required" });
+      }
+
+      const policyIdPattern = /^[a-z][a-z0-9_]*$/;
+      if (!policyIdPattern.test(policy_id)) {
+        return res.status(400).json({ error: "policy_id must be lowercase alphanumeric with underscores" });
+      }
+
+      // Validate source_url scheme to prevent XSS via javascript: URIs
+      if (req.body.source_url && typeof req.body.source_url === "string") {
+        if (!/^https?:\/\//i.test(req.body.source_url)) {
+          return res.status(400).json({ error: "source_url must use http:// or https:// scheme" });
+        }
+      }
+
+      // Validate JSONB array fields
+      if (req.body.jurisdictions !== undefined && !Array.isArray(req.body.jurisdictions)) {
+        return res.status(400).json({ error: "jurisdictions must be an array" });
+      }
+      if (req.body.verticals !== undefined && !Array.isArray(req.body.verticals)) {
+        return res.status(400).json({ error: "verticals must be an array" });
+      }
+      if (req.body.channels !== undefined && req.body.channels !== null && !Array.isArray(req.body.channels)) {
+        return res.status(400).json({ error: "channels must be an array" });
+      }
+      if (req.body.governance_domains !== undefined && !Array.isArray(req.body.governance_domains)) {
+        return res.status(400).json({ error: "governance_domains must be an array" });
+      }
+      if (req.body.region_aliases !== undefined && (typeof req.body.region_aliases !== "object" || Array.isArray(req.body.region_aliases))) {
+        return res.status(400).json({ error: "region_aliases must be an object" });
+      }
+      if (req.body.exemplars !== undefined && (typeof req.body.exemplars !== "object" || Array.isArray(req.body.exemplars))) {
+        return res.status(400).json({ error: "exemplars must be an object" });
+      }
+
+      const { policy: saved, revision_number } = await policiesDb.savePolicy(
+        {
+          policy_id,
+          version,
+          name,
+          description: req.body.description,
+          category,
+          enforcement,
+          jurisdictions: req.body.jurisdictions,
+          region_aliases: req.body.region_aliases,
+          verticals: req.body.verticals,
+          channels: req.body.channels,
+          effective_date: req.body.effective_date,
+          sunset_date: req.body.sunset_date,
+          governance_domains: req.body.governance_domains,
+          source_url: req.body.source_url,
+          source_name: req.body.source_name,
+          policy: policyText,
+          guidance: req.body.guidance,
+          exemplars: req.body.exemplars,
+          ext: req.body.ext,
+        },
+        {
+          user_id: req.user!.id,
+          email: req.user!.email,
+          name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
+        }
+      );
+
+      return res.json({
+        success: true,
+        message: revision_number
+          ? `Policy "${name}" updated (revision ${revision_number})`
+          : `Policy "${name}" created`,
+        policy_id: saved.policy_id,
+        revision_number,
+      });
+    } catch (error: any) {
+      if (error.message?.includes("Cannot edit authoritative")) {
+        return res.status(409).json({ error: error.message, policy_id: req.body.policy_id });
+      }
+      if (error.message?.includes("pending review")) {
+        return res.status(409).json({ error: error.message, policy_id: req.body.policy_id });
+      }
+      logger.error({ error }, "Failed to save policy");
+      return res.status(500).json({ error: "Failed to save policy" });
     }
   });
 

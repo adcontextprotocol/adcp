@@ -278,6 +278,13 @@
       ],
       "additionalProperties": true
     },
+    "enforced_policies": {
+      "type": "array",
+      "description": "Registry policy IDs the seller enforces for this product. Enforcement level comes from the policy registry. Buyers can filter products by required policies.",
+      "items": {
+        "type": "string"
+      }
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }

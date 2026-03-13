@@ -40,6 +40,12 @@
         ]
       },
       {
+        label: 'Registry',
+        items: [
+          { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
+        ]
+      },
+      {
         label: 'Programs',
         items: [
           { href: '/admin/certification', label: 'Certification', icon: '🎓' },

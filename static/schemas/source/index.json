@@ -46,6 +46,10 @@
           "$ref": "/schemas/core/frequency-cap.json",
           "description": "Frequency capping settings"
         },
+        "planned-delivery": {
+          "$ref": "/schemas/core/planned-delivery.json",
+          "description": "The seller's interpreted delivery parameters for a media buy"
+        },
         "geo-breakdown-support": {
           "$ref": "/schemas/core/geo-breakdown-support.json",
           "description": "Geographic breakdown capability declaration for reporting"
@@ -719,6 +723,22 @@
         "digital-source-type": {
           "$ref": "/schemas/enums/digital-source-type.json",
           "description": "IPTC-aligned classification of AI involvement in content creation (digital_capture, trained_algorithmic_media, composite_with_trained_algorithmic_media, etc.)"
+        },
+        "governance-phase": {
+          "$ref": "/schemas/enums/governance-phase.json",
+          "description": "Media buy lifecycle phase for governance checks (purchase, modification, delivery)"
+        },
+        "governance-domain": {
+          "$ref": "/schemas/enums/governance-domain.json",
+          "description": "Governance sub-domains a registry policy applies to (campaign, property, creative, content_standards)"
+        },
+        "governance-mode": {
+          "$ref": "/schemas/enums/governance-mode.json",
+          "description": "Operating mode for a governance agent (audit, advisory, enforce)"
+        },
+        "delegation-authority": {
+          "$ref": "/schemas/enums/delegation-authority.json",
+          "description": "Authority level for a delegated agent on a campaign plan (full, execute_only, propose_only)"
         }
       }
     },
@@ -1073,6 +1093,14 @@
         "artifact-webhook-payload": {
           "$ref": "/schemas/content-standards/artifact-webhook-payload.json",
           "description": "Webhook payload for content artifact delivery from sales agents to orchestrators"
+        },
+        "policy-entry": {
+          "$ref": "/schemas/governance/policy-entry.json",
+          "description": "A complete policy in the policy registry with natural language text, metadata, and calibration exemplars"
+        },
+        "policy-ref": {
+          "$ref": "/schemas/governance/policy-ref.json",
+          "description": "Reference to a registry policy by ID with optional version pin"
         }
       },
       "tasks": {
@@ -1204,6 +1232,46 @@
           "response": {
             "$ref": "/schemas/creative/get-creative-features-response.json",
             "description": "Response payload with feature values for the evaluated creative"
+          }
+        },
+        "sync-plans": {
+          "request": {
+            "$ref": "/schemas/governance/sync-plans-request.json",
+            "description": "Push campaign plans to the governance agent"
+          },
+          "response": {
+            "$ref": "/schemas/governance/sync-plans-response.json",
+            "description": "Sync result with active validation categories and resolved policies per plan"
+          }
+        },
+        "report-plan-outcome": {
+          "request": {
+            "$ref": "/schemas/governance/report-plan-outcome-request.json",
+            "description": "Report the outcome of an action to the governance agent"
+          },
+          "response": {
+            "$ref": "/schemas/governance/report-plan-outcome-response.json",
+            "description": "Outcome acceptance status with budget impact and findings"
+          }
+        },
+        "get-plan-audit-logs": {
+          "request": {
+            "$ref": "/schemas/governance/get-plan-audit-logs-request.json",
+            "description": "Retrieve governance state and audit trail for a plan"
+          },
+          "response": {
+            "$ref": "/schemas/governance/get-plan-audit-logs-response.json",
+            "description": "Plan state with budget tracking, validation history, and compliance summary"
+          }
+        },
+        "check-governance": {
+          "request": {
+            "$ref": "/schemas/governance/check-governance-request.json",
+            "description": "Orchestrator or seller calls the governance agent to validate an action against the campaign plan"
+          },
+          "response": {
+            "$ref": "/schemas/governance/check-governance-response.json",
+            "description": "Governance decision with findings and conditions"
           }
         }
       }

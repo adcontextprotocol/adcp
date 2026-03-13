@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/policy-entry.json",
+  "title": "Policy Entry",
+  "description": "A complete policy in the policy registry. Policies use natural language text evaluated by governance agents (LLMs), following the same pattern as Content Standards. The registry's value is in structured metadata (jurisdiction, vertical, source, enforcement level) and calibration exemplars.",
+  "type": "object",
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "description": "Unique identifier for this policy (e.g., \"uk_hfss\", \"us_coppa\", \"alcohol_advertising\")."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name (e.g., \"UK HFSS Restrictions\")."
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief summary of what this policy covers."
+    },
+    "category": {
+      "$ref": "/schemas/enums/policy-category.json",
+      "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice)."
+    },
+    "enforcement": {
+      "$ref": "/schemas/enums/policy-enforcement.json",
+      "description": "How governance agents treat violations. Regulations are typically \"must\"; standards are typically \"should\"."
+    },
+    "jurisdictions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means the policy is not jurisdiction-specific."
+    },
+    "region_aliases": {
+      "type": "object",
+      "description": "Named groups of jurisdictions for convenience (e.g., {\"EU\": [\"AT\",\"BE\",\"BG\",...]}). Governance agents expand aliases when matching against a plan's target jurisdictions.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "verticals": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Industry verticals this policy applies to (e.g., [\"alcohol\", \"beverage\"]). Used for automatic matching against a brand's declared verticals."
+    },
+    "channels": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/channels.json" },
+      "description": "Advertising channels this policy applies to. If omitted or null, the policy applies to all channels."
+    },
+    "governance_domains": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/governance-domain.json" },
+      "description": "Governance sub-domains this policy applies to. Determines which types of governance agents can declare registry:{policy_id} features. For example, a policy with domains [\"creative\", \"property\"] can be declared as a feature by both creative and property governance agents."
+    },
+    "effective_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date when the regulation or standard takes effect. Before this date, governance agents treat the policy as informational (evaluate but do not block). After this date, the policy is enforced at its declared enforcement level."
+    },
+    "sunset_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date when the regulation or standard is no longer enforced. After this date, governance agents stop evaluating this policy. Omit if the policy has no expiration."
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Link to the source regulation, standard, or legislation."
+    },
+    "source_name": {
+      "type": "string",
+      "description": "Name of the issuing body (e.g., \"UK Food Standards Agency\", \"US Federal Trade Commission\")."
+    },
+    "policy": {
+      "type": "string",
+      "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy."
+    },
+    "guidance": {
+      "type": "string",
+      "description": "Implementation notes for governance agent developers. Not used in evaluation prompts."
+    },
+    "exemplars": {
+      "type": "object",
+      "description": "Calibration examples for governance agents, following the Content Standards pattern.",
+      "properties": {
+        "pass": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/exemplar" },
+          "description": "Scenarios that comply with this policy."
+        },
+        "fail": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/exemplar" },
+          "description": "Scenarios that violate this policy."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["policy_id", "version", "name", "category", "enforcement", "policy"],
+  "additionalProperties": false,
+  "$defs": {
+    "exemplar": {
+      "type": "object",
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "description": "A concrete scenario describing an advertising action or configuration."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Why this scenario passes or fails the policy."
+        }
+      },
+      "required": ["scenario", "explanation"],
+      "additionalProperties": false
+    }
+  }
+}
