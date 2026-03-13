@@ -116,6 +116,11 @@ export class OutboundPlanner {
    * Check if a goal is eligible for this user (rule-based)
    */
   private isEligible(goal: OutreachGoal, ctx: PlannerContext): boolean {
+    // Skip membership acquisition goals for active members
+    if (ctx.user.is_member && goal.success_insight_type === 'membership_interest') {
+      return false;
+    }
+
     // Check mapping requirement
     if (goal.requires_mapped && !ctx.user.is_mapped) {
       return false;

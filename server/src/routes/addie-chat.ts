@@ -702,11 +702,11 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
         flag_reason: inputValidation.reason,
       });
 
-      // Build context from history (last N messages), passing tool calls as structured
-      // data so they are reconstructed as proper tool_use/tool_result API blocks
+      // Build context from history, passing tool calls as structured
+      // data so they are reconstructed as proper tool_use/tool_result API blocks.
+      // Token-aware trimming in processMessage handles length; no hard slice here.
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-10)
         .map((m) => ({
           user: m.role === "user" ? "User" : "Addie",
           text: m.content,
@@ -937,9 +937,9 @@ export function createAddieChatRouter(): { pageRouter: Router; apiRouter: Router
       });
 
       // Build context messages, passing tool calls as structured data
+      // Token-aware trimming in processMessageStream handles length; no hard slice here.
       const contextMessages = threadMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-10)
         .map((m) => ({
           user: m.role === "user" ? "User" : "Addie",
           text: m.content,

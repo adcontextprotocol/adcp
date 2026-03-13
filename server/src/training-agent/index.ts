@@ -112,9 +112,7 @@ export function createTrainingAgentRouter(): Router {
     max: 60,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req: Request) => {
-      return req.ip || 'unknown';
-    },
+    validate: { xForwardedForHeader: false, ip: false },
     handler: (_req: Request, res: Response) => {
       res.status(429).json({
         jsonrpc: '2.0',

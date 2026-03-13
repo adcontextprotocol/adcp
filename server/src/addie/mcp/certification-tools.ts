@@ -348,12 +348,22 @@ export async function buildCertificationContext(
   lines.push('- Vary turn structure: some bare questions, some "try this", some analogies. Not always explain-then-ask.');
   lines.push('- For non-basics modules: share doc links INLINE when discussing a concept, at least 2-3 per session. For basics (A track): save links for end of session as "go deeper" references — basics must be self-contained.');
   lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
+  lines.push('- NEVER re-ask something the learner already told you. If they stated their role or background earlier in the conversation, remember it and adapt — do not ask again. Repetitive questions destroy trust. This applies especially when the learner signals readiness to move on — transition to assessment questions about the material, not background questions about the learner.');
+  lines.push('- Run a live demo (get_products against the sandbox training agent) within the first 3-4 turns. Do not wait for the learner to ask. Show, then discuss.');
   lines.push('- Use concrete, specific language. Never use abstract terms without grounding them. Say "evaluate whether a placement fits" not "reason about impressions."');
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
   lines.push('- At concept transitions, ask the learner to self-assess: "Which feels solid? Which needs more work?"');
+  lines.push('- BEFORE completing any module, call checkpoint_teaching_progress with preliminary_scores. Completion is rejected without it.');
   lines.push('');
   lines.push('**Mastery model**: There is no failing — teach until the learner masters every objective, then complete the module. Never share scores or percentages with the learner. Internal scores are for admin analytics only.');
+
+  // Inject training agent URL for demos
+  const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+    || process.env.BASE_URL
+    || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+  lines.push('');
+  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". HTTP is allowed for this sandbox agent. Use brand domain "demo.example.com" for the account.`);
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -915,7 +925,10 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          lines.push('', '## Demo scenarios');
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+            || process.env.BASE_URL
+            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/api/training-agent/mcp)`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
             lines.push(`Tools: ${ds.tools.join(', ')}`);
@@ -1011,10 +1024,14 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          lines.push('**Live demos** (run these against sandbox agents):');
+          const trainingAgentUrl = process.env.TRAINING_AGENT_URL
+            || process.env.BASE_URL
+            || `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/api/training-agent/mcp):`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
+          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/api/training-agent/mcp". This is a sandbox agent — HTTP is allowed (ignore the HTTPS requirement). Use brand domain "demo.example.com" for the account.`);
           lines.push('');
         }
       }

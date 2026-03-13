@@ -970,6 +970,29 @@ export const ADCP_CREATIVE_TOOLS: AddieTool[] = [
           type: 'object',
           description: 'Macro values to pre-substitute into output assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are substitution strings.',
         },
+        include_preview: {
+          type: 'boolean',
+          description: 'When true, requests preview renders alongside the manifest. Response includes a preview object if supported, or preview_error (standard error with code/message/recovery) if generation failed. If neither is present, the agent does not support inline preview.',
+        },
+        preview_inputs: {
+          type: 'array',
+          minItems: 1,
+          description: 'Input sets for preview generation when include_preview is true. Each entry has name (required), optional macros, and optional context_description. Only supported with target_format_id (single-format) — ignored for multi-format requests.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              macros: { type: 'object' },
+              context_description: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+        preview_output_format: {
+          type: 'string',
+          enum: ['url', 'html'],
+          description: "Output format for preview renders: 'url' (default) or 'html'. Only used when include_preview is true.",
+        },
         debug: {
           type: 'boolean',
           description: 'Enable debug logging to see protocol-level details',
@@ -1790,6 +1813,15 @@ export function createAdcpToolHandlers(
     try {
       const url = new URL(agentUrl);
 
+      // Allow the embedded training agent only if same-origin (prevents SSRF via external URLs with matching path)
+      if (url.pathname.startsWith('/api/training-agent')) {
+        const selfHost = new URL(getBaseUrl()).hostname;
+        if (url.hostname === selfHost) {
+          return null;
+        }
+        // External URL with /api/training-agent path — fall through to normal validation
+      }
+
       if (url.protocol !== 'https:') {
         return 'Agent URL must use HTTPS protocol.';
       }
@@ -1825,6 +1857,25 @@ export function createAdcpToolHandlers(
     const validationError = validateAgentUrl(agentUrl);
     if (validationError) {
       return `**Error:** ${validationError}`;
+    }
+
+    // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
+    try {
+      const parsedUrl = new URL(agentUrl);
+      if (parsedUrl.pathname.startsWith('/api/training-agent')) {
+        const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
+        const userId = memberContext?.workos_user?.workos_user_id;
+        const ctx = { mode: 'training' as const, userId };
+        const result = executeTrainingAgentTool(task, params, ctx);
+        if (!result.success) {
+          return `**Task failed:** \`${task}\`\n\n**Error:** ${result.error}`;
+        }
+        let output = `**Task:** \`${task}\`\n**Status:** Success (sandbox)\n\n`;
+        output += `**Response:**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+        return output;
+      }
+    } catch (err) {
+      logger.warn({ error: err, agentUrl, task }, 'Training agent in-process shortcut failed, falling through to HTTP');
     }
 
     const authInfo = await getAuthInfo(agentUrl);

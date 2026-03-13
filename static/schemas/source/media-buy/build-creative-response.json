@@ -23,6 +23,82 @@
           "format": "date-time",
           "description": "ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs."
         },
+        "preview": {
+          "type": "object",
+          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains the same content fields as a preview_creative single response (previews, interactive_url, expires_at) minus the response_type discriminator, so clients can reuse the same preview rendering logic.",
+          "properties": {
+            "previews": {
+              "type": "array",
+              "description": "Array of preview variants. Each preview corresponds to an input set from preview_inputs, or a single default preview if no inputs were provided.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "preview_id": {
+                    "type": "string",
+                    "description": "Unique identifier for this preview variant"
+                  },
+                  "renders": {
+                    "type": "array",
+                    "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
+                    "items": {
+                      "$ref": "/schemas/creative/preview-render.json"
+                    },
+                    "minItems": 1
+                  },
+                  "input": {
+                    "type": "object",
+                    "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Human-readable name for this variant"
+                      },
+                      "macros": {
+                        "type": "object",
+                        "description": "Macro values applied to this variant",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "context_description": {
+                        "type": "string",
+                        "description": "Context description applied to this variant"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "preview_id",
+                  "renders",
+                  "input"
+                ]
+              },
+              "minItems": 1
+            },
+            "interactive_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional URL to an interactive testing page that shows all preview variants with controls to switch between them."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when preview URLs expire. May differ from the manifest's expires_at."
+            }
+          },
+          "required": [
+            "previews",
+            "expires_at"
+          ]
+        },
+        "preview_error": {
+          "$ref": "/schemas/core/error.json",
+          "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Distinguishes 'agent does not support inline preview' (preview and preview_error both absent) from 'preview generation failed' (preview absent, preview_error present). Omitted when preview succeeded or was not requested."
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -56,6 +132,87 @@
           "type": "string",
           "format": "date-time",
           "description": "ISO 8601 timestamp when the earliest generated asset URL expires across all manifests. Re-build after this time to get fresh URLs."
+        },
+        "preview": {
+          "type": "object",
+          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains one default preview per requested format. preview_inputs is ignored for multi-format requests.",
+          "properties": {
+            "previews": {
+              "type": "array",
+              "description": "Array of preview entries, one per requested format. Array order matches creative_manifests. Each entry includes a format_id for explicit correlation.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "preview_id": {
+                    "type": "string",
+                    "description": "Unique identifier for this preview"
+                  },
+                  "format_id": {
+                    "$ref": "/schemas/core/format-id.json",
+                    "description": "The format this preview was generated for. Matches one of the requested target_format_ids."
+                  },
+                  "renders": {
+                    "type": "array",
+                    "description": "Array of rendered pieces for this format's preview. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
+                    "items": {
+                      "$ref": "/schemas/creative/preview-render.json"
+                    },
+                    "minItems": 1
+                  },
+                  "input": {
+                    "type": "object",
+                    "description": "The input parameters that generated this preview. For multi-format responses, this is always a default input.",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Human-readable name for this preview"
+                      },
+                      "macros": {
+                        "type": "object",
+                        "description": "Macro values applied to this preview",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "context_description": {
+                        "type": "string",
+                        "description": "Context description applied to this preview"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "preview_id",
+                  "format_id",
+                  "renders",
+                  "input"
+                ]
+              },
+              "minItems": 1
+            },
+            "interactive_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Optional URL to an interactive testing page that shows all format previews with controls to switch between them."
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp when preview URLs expire. May differ from the manifest's expires_at."
+            }
+          },
+          "required": [
+            "previews",
+            "expires_at"
+          ]
+        },
+        "preview_error": {
+          "$ref": "/schemas/core/error.json",
+          "description": "When include_preview was true in the request but preview generation failed. Uses the standard error structure with code, message, and recovery classification. Omitted when preview succeeded or was not requested."
         },
         "context": {
           "$ref": "/schemas/core/context.json"

@@ -89,7 +89,7 @@ describe('buildCatalog', () => {
 
   describe('schema-required fields on every product', () => {
     // product.json required: product_id, name, description,
-    // publisher_properties, format_ids, delivery_type, delivery_measurement, pricing_options
+    // publisher_properties, format_ids, delivery_type, pricing_options
 
     it('has product_id as a non-empty string', () => {
       for (const cp of catalog) {
@@ -134,12 +134,13 @@ describe('buildCatalog', () => {
       }
     });
 
-    it('has delivery_measurement with required provider field', () => {
+    it('has valid delivery_measurement when present', () => {
       for (const cp of catalog) {
-        const dm = cp.product.delivery_measurement as Record<string, unknown>;
-        expect(dm).toBeDefined();
-        expect(typeof dm.provider).toBe('string');
-        expect((dm.provider as string).length).toBeGreaterThan(0);
+        const dm = cp.product.delivery_measurement as Record<string, unknown> | undefined;
+        if (dm) {
+          expect(typeof dm.provider).toBe('string');
+          expect((dm.provider as string).length).toBeGreaterThan(0);
+        }
       }
     });
 
@@ -781,7 +782,6 @@ describe('get_products handler', () => {
       expect(Array.isArray(p.publisher_properties)).toBe(true);
       expect(Array.isArray(p.format_ids)).toBe(true);
       expect(typeof p.delivery_type).toBe('string');
-      expect(p.delivery_measurement).toBeDefined();
       expect(Array.isArray(p.pricing_options)).toBe(true);
     }
   });
