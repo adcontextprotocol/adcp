@@ -3,7 +3,7 @@ title: get_brand_identity
 testable: true
 ---
 
-Retrieve brand identity data from a brand agent. Returns richer, more dynamic, or access-controlled data than static brand.json. Response depth depends on the caller's authorization — linked accounts get full assets, voice configs, and rights availability.
+Retrieve brand identity data from a brand agent. Core identity (house, names, description, logos) is always public — any agent can discover who a brand is without authentication. Linked accounts get deeper data: high-res assets, voice synthesis configs, tone guidelines, and rights availability.
 
 ## Schema
 
@@ -17,13 +17,51 @@ Retrieve brand identity data from a brand agent. Returns richer, more dynamic, o
 
 Typically under 2 seconds for identity data. Authorized responses with large asset collections may take longer.
 
+## Public by default
+
+Brand identity is public data. Any agent can call `get_brand_identity` without a linked account and receive the brand's core identity: house, names, description, industry, and basic logos. This is the same data available in `brand.json` — `get_brand_identity` provides it via MCP for agents that prefer a structured call over fetching and parsing the file.
+
+The registry enforces this: every brand indexed from `brand.json` is publicly discoverable. You can always find out what house a brand belongs to, what it's called, and what it does.
+
+Authorized callers (linked via [`sync_accounts`](/docs/accounts/overview)) get deeper data on top of the public baseline:
+
+| Level | What you get |
+|-------|-------------|
+| **Public** (no linked account) | House, names, description, industry, keller_type, basic logos, tagline |
+| **Authorized** (linked via `sync_accounts`) | Everything above, plus: high-res assets, voice synthesis, tone guidelines, content restrictions, rights availability |
+
+If a request includes `fields` that require authorization the caller does not have, those fields are silently omitted. The response includes `available_fields` listing what sections exist but were not returned, so the caller knows what they would gain by linking their account.
+
 ## Quick start
 
 <CodeGroup>
-```json Request
+```json Request (public)
+{
+  "brand_id": "daan_janssen"
+}
+```
+
+```json Response (public)
 {
   "brand_id": "daan_janssen",
-  "fields": ["all"],
+  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
+  "names": [{"en": "Daan Janssen"}],
+  "description": "Dutch Olympic speed skater, 2x gold medalist",
+  "industry": "sports",
+  "keller_type": "independent",
+  "logos": [
+    { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" }
+  ],
+  "available_fields": ["tone", "voice_synthesis", "assets", "rights"]
+}
+```
+</CodeGroup>
+
+<CodeGroup>
+```json Request (authorized, specific fields)
+{
+  "brand_id": "daan_janssen",
+  "fields": ["logos", "tone", "voice_synthesis"],
   "use_case": "endorsement"
 }
 ```
@@ -31,14 +69,13 @@ Typically under 2 seconds for identity data. Authorized responses with large ass
 ```json Response (authorized)
 {
   "brand_id": "daan_janssen",
+  "house": { "domain": "lotientertainment.com", "name": "Loti Entertainment" },
   "names": [{"en": "Daan Janssen"}],
-  "description": "Dutch Olympic speed skater, 2x gold medalist",
-  "industry": "sports",
   "logos": [
     { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "variant": "primary" },
     { "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg", "variant": "full-lockup", "width": 3000, "height": 2000 }
   ],
-  "voice": {
+  "voice_synthesis": {
     "provider": "elevenlabs",
     "voice_id": "janssen_v2",
     "settings": { "stability": 0.7 }
@@ -48,23 +85,17 @@ Typically under 2 seconds for identity data. Authorized responses with large ass
     "attributes": ["athletic", "Dutch pride", "approachable"],
     "dos": ["Reference athletic achievements", "Use Dutch cultural touchpoints"],
     "donts": ["No injury references", "No competitor comparisons"]
-  },
-  "assets": [
-    {
-      "asset_id": "janssen_hero_01",
-      "asset_type": "image",
-      "url": "https://assets.lotientertainment.com/janssen/hero_01_highres.jpg",
-      "tags": ["hero", "action", "skating"],
-      "width": 3000,
-      "height": 2000
-    }
-  ],
-  "rights": {
-    "available_uses": ["likeness", "voice", "name", "endorsement"],
-    "excluded_countries": ["JP", "KR"],
-    "exclusivity_model": "category",
-    "content_restrictions": ["approval_required"]
   }
+}
+```
+</CodeGroup>
+
+<CodeGroup>
+```json Response (error)
+{
+  "errors": [
+    { "code": "brand_not_found", "message": "No brand with id 'unknown_brand' in this agent's roster" }
+  ]
 }
 ```
 </CodeGroup>
@@ -76,41 +107,46 @@ Typically under 2 seconds for identity data. Authorized responses with large ass
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `brand_id` | string | Yes | Brand identifier from the agent's brand.json brands array |
-| `fields` | string[] | No | Sections to return. `["all"]` for everything authorized. Omit for default set. |
-| `use_case` | string | No | Intended use case (e.g., "endorsement", "voice", "likeness"). Agent tailors response accordingly. |
+| `fields` | string[] | No | Optional sections to include. Omit for all authorized sections. Core fields (`brand_id`, `house`, `names`) are always returned and do not need to be requested. |
+| `use_case` | string | No | Intended use case (e.g., "endorsement", "voice_synthesis", "likeness"). Agent tailors content within the returned sections — a "likeness" use case returns action photos, a "voice_synthesis" use case returns voice configs. Does not override `fields`. |
+
+Valid `fields` values: `description`, `industry`, `keller_type`, `logos`, `colors`, `fonts`, `tone`, `tagline`, `voice_synthesis`, `assets`, `rights`
 
 ### Response
 
 The response mirrors the brand.json brand definition, extended with dynamic data the agent controls:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `brand_id` | string | Brand identifier |
-| `names` | object[] | Localized names |
-| `description` | string | Brand description |
-| `industry` | string | Industry or category |
-| `logos` | object[] | Brand logos and visual assets |
-| `colors` | object | Brand color palette |
-| `fonts` | object | Brand typography |
-| `tone` | object | Voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
-| `tagline` | string | Brand tagline or slogan |
-| `voice` | object | Voice synthesis configuration for AI-generated audio |
-| `assets` | object[] | Available brand assets (images, audio, video) |
-| `rights` | object | Rights availability summary (for pricing, use `get_rights`) |
-
-## Authorization levels
-
-The same endpoint returns different depths based on the caller's relationship:
-
-| Level | What you get |
-|-------|-------------|
-| **Public** (no linked account) | Same data as brand.json — names, description, basic logos |
-| **Authorized** (linked via `sync_accounts`) | High-res assets, voice configs, tone guidelines, content restrictions, rights availability |
-
-Link your account first using the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`).
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `brand_id` | string | Yes | Brand identifier |
+| `house` | object | Yes | House (corporate entity): `domain` and `name` |
+| `names` | object[] | Yes | Localized names |
+| `description` | string | No | Brand description |
+| `industry` | string | No | Industry or category |
+| `keller_type` | string | No | Brand architecture type: `master`, `sub_brand`, `endorsed`, `independent` |
+| `logos` | object[] | No | Brand logos (matches brand.json logo shape: `url`, `variant`, `orientation`, `background`, `tags`) |
+| `colors` | object | No | Brand color palette with structured roles (`primary`, `secondary`, `accent`, `background`, `text`) |
+| `fonts` | object | No | Brand typography (`primary`, `secondary`, `font_urls`) |
+| `tone` | object | No | Brand voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
+| `tagline` | string | No | Brand tagline or slogan |
+| `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`) |
+| `assets` | object[] | No | Available brand assets — matches brand.json asset shape (`asset_id`, `asset_type`, `url`, `tags`) |
+| `rights` | object | No | Rights availability summary (for pricing, use `get_rights`) |
+| `available_fields` | string[] | No | Sections available but not returned due to authorization level. Tells the caller what linking their account would unlock. |
 
 ## Use cases
 
 - **DAM**: Returns high-res assets, current campaign guidelines, seasonal creative toolkits
 - **Enterprise brand agent**: Returns approved copy, brand voice guidelines, current taglines
-- **Rights management agent**: Returns talent identity — tone, voice config, photos, rights availability
+- **Rights management agent**: Returns talent identity — tone, voice synthesis, photos, rights availability
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="get_rights" icon="scale-balanced" href="/docs/brand-protocol/tasks/get_rights">
+    Search for licensable rights with pricing.
+  </Card>
+  <Card title="acquire_rights" icon="handshake" href="/docs/brand-protocol/tasks/acquire_rights">
+    Acquire rights with contractual clearance.
+  </Card>
+</CardGroup>

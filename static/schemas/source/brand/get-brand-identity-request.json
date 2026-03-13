@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/get-brand-identity-request.json",
   "title": "Get Brand Identity Request",
-  "description": "Request brand identity data from a brand agent. Returns richer, more dynamic, or access-controlled data than static brand.json. Response depth depends on the caller's authorization level — linked accounts get full assets, voice configs, and rights availability.",
+  "description": "Request brand identity data from a brand agent. Core identity (house, names, description, logos) is always public. Linked accounts get deeper data: high-res assets, voice configs, tone guidelines, and rights availability.",
   "type": "object",
   "properties": {
     "brand_id": {
@@ -11,15 +11,28 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific identity sections to return. Use [\"all\"] for everything the caller is authorized to see. Agents may return a subset based on authorization.",
+      "description": "Optional identity sections to include in the response. When omitted, all sections the caller is authorized to see are returned. Core fields (brand_id, house, names) are always returned and do not need to be requested.",
+      "minItems": 1,
       "items": {
-        "type": "string"
-      },
-      "minItems": 1
+        "type": "string",
+        "enum": [
+          "description",
+          "industry",
+          "keller_type",
+          "logos",
+          "colors",
+          "fonts",
+          "tone",
+          "tagline",
+          "voice_synthesis",
+          "assets",
+          "rights"
+        ]
+      }
     },
     "use_case": {
       "type": "string",
-      "description": "Intended use case, so the agent can tailor the response. A 'voice' use case returns voice configs; a 'likeness' use case returns high-res photos and appearance guidelines."
+      "description": "Intended use case, so the agent can tailor the response. A 'voice_synthesis' use case returns voice configs; a 'likeness' use case returns high-res photos and appearance guidelines."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

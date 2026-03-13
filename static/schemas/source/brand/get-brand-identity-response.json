@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/get-brand-identity-response.json",
   "title": "Get Brand Identity Response",
-  "description": "Brand identity data from a brand agent. The response shape mirrors brand.json's brand definition, extended with dynamic data the agent controls. Authorized callers receive richer data (high-res assets, voice configs, content restrictions).",
+  "description": "Brand identity data from a brand agent. Core identity (house, names, description, logos) is always public. Authorized callers receive richer data (high-res assets, voice synthesis, tone guidelines, rights availability). Includes available_fields to signal what the caller could unlock by linking their account.",
   "type": "object",
   "oneOf": [
     {
@@ -11,6 +11,22 @@
         "brand_id": {
           "type": "string",
           "description": "Brand identifier"
+        },
+        "house": {
+          "type": "object",
+          "description": "The house (corporate entity) this brand belongs to. Always returned regardless of authorization level.",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "House domain (e.g., nikeinc.com)"
+            },
+            "name": {
+              "type": "string",
+              "description": "House display name"
+            }
+          },
+          "required": ["domain", "name"],
+          "additionalProperties": true
         },
         "names": {
           "type": "array",
@@ -31,17 +47,41 @@
           "type": "string",
           "description": "Industry or category"
         },
+        "keller_type": {
+          "type": "string",
+          "enum": ["master", "sub_brand", "endorsed", "independent"],
+          "description": "Brand architecture type: master (primary brand of house), sub_brand (carries parent name), endorsed (independent identity backed by parent), independent (operates separately)"
+        },
         "logos": {
           "type": "array",
-          "description": "Brand logos and visual assets",
+          "description": "Brand logos. Public callers get standard logos; authorized callers also receive high-res variants. Shape matches brand.json logo definition.",
           "items": {
             "type": "object",
             "properties": {
-              "url": { "type": "string", "format": "uri" },
-              "variant": { "type": "string" },
-              "usage": { "type": "string" },
-              "width": { "type": "integer" },
-              "height": { "type": "integer" }
+              "url": { "type": "string", "format": "uri", "description": "URL to the logo asset" },
+              "orientation": {
+                "type": "string",
+                "enum": ["square", "horizontal", "vertical", "stacked"],
+                "description": "Logo aspect ratio orientation"
+              },
+              "background": {
+                "type": "string",
+                "enum": ["dark-bg", "light-bg", "transparent-bg"],
+                "description": "Background compatibility"
+              },
+              "variant": {
+                "type": "string",
+                "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+                "description": "Logo variant type"
+              },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Additional semantic tags"
+              },
+              "usage": { "type": "string", "description": "When to use this logo variant" },
+              "width": { "type": "integer", "description": "Width in pixels" },
+              "height": { "type": "integer", "description": "Height in pixels" }
             },
             "required": ["url"],
             "additionalProperties": true
@@ -49,14 +89,28 @@
         },
         "colors": {
           "type": "object",
-          "description": "Brand color palette",
-          "additionalProperties": {
-            "type": "string"
-          }
+          "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors. Shape matches brand.json colors definition.",
+          "properties": {
+            "primary": { "oneOf": [{ "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }] },
+            "secondary": { "oneOf": [{ "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }] },
+            "accent": { "oneOf": [{ "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }] },
+            "background": { "oneOf": [{ "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }] },
+            "text": { "oneOf": [{ "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }] }
+          },
+          "additionalProperties": true
         },
         "fonts": {
           "type": "object",
-          "description": "Brand typography",
+          "description": "Brand typography. Shape matches brand.json fonts definition.",
+          "properties": {
+            "primary": { "type": "string", "description": "Primary font family" },
+            "secondary": { "type": "string", "description": "Secondary font family" },
+            "font_urls": {
+              "type": "array",
+              "items": { "type": "string", "format": "uri" },
+              "description": "URLs to web font files"
+            }
+          },
           "additionalProperties": true
         },
         "tone": {
@@ -83,7 +137,7 @@
           "type": "string",
           "description": "Brand tagline or slogan"
         },
-        "voice": {
+        "voice_synthesis": {
           "type": "object",
           "description": "Voice synthesis configuration for AI-generated audio",
           "properties": {
@@ -98,23 +152,28 @@
         },
         "assets": {
           "type": "array",
-          "description": "Available brand assets (images, audio, video)",
+          "description": "Available brand assets (images, audio, video). Authorized callers only. Shape matches brand.json asset definition.",
           "items": {
             "type": "object",
             "properties": {
-              "asset_id": { "type": "string" },
+              "asset_id": { "type": "string", "description": "Unique identifier" },
               "asset_type": {
-                "type": "string",
-                "enum": ["image", "video", "audio", "document"]
+                "$ref": "/schemas/enums/asset-content-type.json",
+                "description": "Type of asset content"
               },
-              "url": { "type": "string", "format": "uri" },
+              "url": { "type": "string", "format": "uri", "description": "URL to CDN-hosted asset file" },
               "tags": {
                 "type": "array",
-                "items": { "type": "string" }
+                "items": { "type": "string" },
+                "description": "Tags for discovery"
               },
-              "width": { "type": "integer" },
-              "height": { "type": "integer" },
-              "duration_seconds": { "type": "number" }
+              "name": { "type": "string", "description": "Human-readable name" },
+              "description": { "type": "string", "description": "Asset description or usage notes" },
+              "width": { "type": "integer", "description": "Image/video width in pixels" },
+              "height": { "type": "integer", "description": "Image/video height in pixels" },
+              "duration_seconds": { "type": "number", "description": "Video/audio duration in seconds" },
+              "file_size_bytes": { "type": "integer", "description": "File size in bytes" },
+              "format": { "type": "string", "description": "File format (e.g., 'jpg', 'mp4')" }
             },
             "required": ["asset_id", "asset_type", "url"],
             "additionalProperties": true
@@ -152,6 +211,26 @@
           },
           "additionalProperties": true
         },
+        "available_fields": {
+          "type": "array",
+          "description": "Fields available but not returned in this response due to authorization level. Tells the caller what they would gain by linking their account via sync_accounts. Values match the request fields enum.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "description",
+              "industry",
+              "keller_type",
+              "logos",
+              "colors",
+              "fonts",
+              "tone",
+              "tagline",
+              "voice_synthesis",
+              "assets",
+              "rights"
+            ]
+          }
+        },
         "context": {
           "$ref": "/schemas/core/context.json"
         },
@@ -159,7 +238,7 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["brand_id", "names"],
+      "required": ["brand_id", "house", "names"],
       "additionalProperties": true,
       "not": { "required": ["errors"] }
     },
@@ -183,6 +262,7 @@
       "not": {
         "anyOf": [
           { "required": ["brand_id"] },
+          { "required": ["house"] },
           { "required": ["names"] }
         ]
       }

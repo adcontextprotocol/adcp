@@ -223,7 +223,7 @@ Agents that implement the brand protocol declare `supported_protocols: ["brand"]
 
 ### get_brand_identity
 
-Returns brand identity data that's richer, more dynamic, or more access-controlled than static brand.json. Response depth depends on the caller's authorization — linked accounts (via `sync_accounts`) get full assets, voice configs, and rights availability.
+Returns brand identity data that's richer, more dynamic, or more access-controlled than static brand.json. Core identity (house, names, description, logos) is always public. Linked accounts (via `sync_accounts`) get deeper data: high-res assets, voice synthesis configs, tone guidelines, and rights availability.
 
 ### Rights discovery via brand.json
 

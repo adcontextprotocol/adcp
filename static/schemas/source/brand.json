@@ -319,9 +319,9 @@
           },
           "description": "Legal disclaimers for creatives"
         },
-        "voice": {
+        "voice_synthesis": {
           "type": "object",
-          "description": "TTS voice configuration",
+          "description": "TTS voice synthesis configuration for AI-generated audio",
           "properties": {
             "provider": { "type": "string" },
             "voice_id": { "type": "string" },
