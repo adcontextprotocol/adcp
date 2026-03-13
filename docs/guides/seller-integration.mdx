@@ -103,6 +103,19 @@ Your platform processes the buy according to your normal workflow — whether th
 
 </Steps>
 
+## Accounts and sandbox
+
+Production sales agents should implement the accounts protocol. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) let buyers establish billing relationships, track spend per advertiser, and manage multiple operators buying on behalf of different brands through a single agent.
+
+The account model depends on your platform:
+
+- **Walled gardens** (social platforms, AI platforms, retail media networks) typically use explicit accounts — set `require_operator_auth: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) so each operator authenticates independently.
+- **Open platforms** (publishers, SSPs) can use implicit accounts — the agent is trusted and declares accounts via `sync_accounts`.
+
+See [Accounts and Agents](/docs/building/integration/accounts-and-agents) for full workflows.
+
+**Sandbox support is strongly recommended.** Declare `account.sandbox: true` in your capabilities so buyers can provision test accounts and validate the full integration — product discovery, media buy creation, delivery reporting — before committing real spend. Without sandbox, buyers must test against live inventory, which slows adoption and increases onboarding friction. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for implementation details.
+
 ## Optional: delivery reporting
 
 Implement `get_media_buy_delivery` to let buyer agents pull performance data — impressions, clicks, spend, conversions — in a standardized format. This is how agents monitor campaigns across platforms without logging into each dashboard individually.
