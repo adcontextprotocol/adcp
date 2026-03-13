@@ -157,14 +157,8 @@ export async function initializeAddie(): Promise<void> {
     }
   }
 
-  // Register billing tools (for membership signup assistance)
-  const billingHandlers = createBillingToolHandlers();
-  for (const tool of BILLING_TOOLS) {
-    const handler = billingHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Billing tools are registered per-request in createUserScopedTools
+  // to allow filtering them out in channel mentions (prevents enrollment pitching)
 
   // Register admin tools (available to admin users only - enforced via instructions)
   const adminHandlers = createAdminToolHandlers();
@@ -287,11 +281,22 @@ async function buildRequestContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string,
-  threadId?: string
+  threadId?: string,
+  options?: { isChannelMention?: boolean }
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Add billing tools (for membership signup assistance)
+  // Skip in channel mentions to prevent enrollment pitching
+  if (!options?.isChannelMention) {
+    const billingHandlers = createBillingToolHandlers(memberContext);
+    allTools.push(...BILLING_TOOLS);
+    for (const [name, handler] of billingHandlers) {
+      allHandlers.set(name, handler);
+    }
+  }
 
   // Add escalation tools (available to all users)
   const escalationHandlers = createEscalationToolHandlers(memberContext, slackUserId, threadId);
@@ -660,7 +665,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
 
     // Admin users get higher iteration limit for bulk operations
     const processOptions = userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS, requestContext } : { requestContext };
