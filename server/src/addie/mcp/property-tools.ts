@@ -56,8 +56,8 @@ export const PROPERTY_TOOLS: AddieTool[] = [
   },
   {
     name: 'save_property',
-    description: 'Save a synthetic adagents.json for a publisher that doesn\'t self-host. Creates a hosted property in the registry.',
-    usage_hints: 'Use to create a hosted property for a publisher. Requires publisher_domain and adagents_json content.',
+    description: 'Save or approve a hosted property in the registry. Creates new properties, approves pending ones, or updates existing ones.',
+    usage_hints: 'Use to create, update, or approve hosted properties. For pending properties from enhance_property, calling save_property approves and publishes them.',
     input_schema: {
       type: 'object',
       properties: {
@@ -209,17 +209,24 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
 
     // Check hosted first
     const hosted = await propertyDb.getHostedPropertyByDomain(domain);
-    if (hosted && hosted.is_public) {
+    if (hosted) {
       const adagents = hosted.adagents_json as Record<string, unknown>;
-      return JSON.stringify({
+      const result: Record<string, unknown> = {
         source: 'hosted',
         publisher_domain: hosted.publisher_domain,
         verified: hosted.domain_verified,
         authorized_agents: (adagents.authorized_agents as unknown[])?.length || 0,
         properties: (adagents.properties as unknown[])?.length || 0,
         has_contact: !!adagents.contact,
-        hint: 'This is a synthetic adagents.json we host for this publisher',
-      }, null, 2);
+        is_public: hosted.is_public,
+        review_status: hosted.review_status,
+      };
+      if (!hosted.is_public || hosted.review_status === 'pending') {
+        result.hint = 'This property exists but is not visible in the registry. Use save_property to approve and publish it.';
+      } else {
+        result.hint = 'This is a synthetic adagents.json we host for this publisher';
+      }
+      return JSON.stringify(result, null, 2);
     }
 
     // Check discovered
@@ -291,6 +298,39 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
           error: 'Cannot edit authoritative property (managed via adagents.json)',
           domain: publisherDomain,
         });
+      }
+
+      // If the property is pending review, approve and publish it (Addie is trusted)
+      if (existing.review_status === 'pending') {
+        const existingAdagents = existing.adagents_json as Record<string, unknown>;
+        const mergedAdagents: Record<string, unknown> = {
+          ...existingAdagents,
+          ...adagentsJson,
+        };
+        // Preserve existing data when caller didn't provide replacements
+        if (!args.authorized_agents && existingAdagents.authorized_agents) {
+          mergedAdagents.authorized_agents = existingAdagents.authorized_agents;
+        }
+        if (!args.properties && existingAdagents.properties) {
+          mergedAdagents.properties = existingAdagents.properties;
+        }
+        if (!args.contact && existingAdagents.contact) {
+          mergedAdagents.contact = existingAdagents.contact;
+        }
+
+        const updated = await propertyDb.approveAndPublishProperty(publisherDomain, mergedAdagents);
+        if (!updated) {
+          return JSON.stringify({
+            error: 'Property could not be approved — it may have been modified concurrently',
+            domain: publisherDomain,
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          message: `Property "${publisherDomain}" approved and published to registry`,
+          id: existing.id,
+        }, null, 2);
       }
 
       // Use revision-tracked edit
