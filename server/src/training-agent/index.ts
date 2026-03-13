@@ -14,6 +14,7 @@ import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { startSessionCleanup } from './state.js';
 import { PUBLISHERS } from './publishers.js';
+import { getAgentUrl } from './config.js';
 import type { TrainingContext } from './types.js';
 
 const logger = createLogger('training-agent-routes');
@@ -53,13 +54,6 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
-function getBaseUrl(req: Request): string {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-  return `${proto}://${host}`;
-}
-
 export function createTrainingAgentRouter(): Router {
   const router = Router();
 
@@ -72,9 +66,8 @@ export function createTrainingAgentRouter(): Router {
   });
 
   // adagents.json discovery
-  router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
-    const baseUrl = getBaseUrl(req);
-    const agentUrl = `${baseUrl}/api/training-agent`;
+  router.get('/.well-known/adagents.json', (_req: Request, res: Response) => {
+    const agentUrl = getAgentUrl();
 
     res.json({
       $schema: '/schemas/adagents.json',
@@ -115,6 +108,7 @@ export function createTrainingAgentRouter(): Router {
     keyGenerator: (req: Request) => {
       return req.ip || 'unknown';
     },
+    validate: { keyGeneratorIpFallback: false },
     handler: (_req: Request, res: Response) => {
       res.status(429).json({
         jsonrpc: '2.0',
