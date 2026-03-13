@@ -128,7 +128,7 @@ Each brand in the `brands` array:
 | `parent_brand` | string | No | Parent brand's id |
 | `properties` | array | No | Digital properties owned by brand |
 | `brand_agent` | object | No | Agent providing brand identity data `{ url, id }` |
-| `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_type, countries }` |
+| `rights_agent` | object | No | Rights licensing agent `{ url, id, available_uses, right_types, countries }` |
 | `logos` | array | No | Brand logo assets |
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
@@ -708,7 +708,7 @@ A talent agency managing athlete brands with licensable rights:
         "url": "https://rights.lotientertainment.com/mcp",
         "id": "loti_entertainment",
         "available_uses": ["likeness", "voice", "endorsement"],
-        "right_type": "talent",
+        "right_types": ["talent"],
         "countries": ["NL", "BE", "DE"]
       }
     }

@@ -64,10 +64,14 @@
       "minimum": 1,
       "description": "Maximum total impressions allowed under these rights terms for the full validity period"
     },
+    "right_type": {
+      "$ref": "/schemas/enums/right-type.json",
+      "description": "Type of rights (talent, music, etc.). Helps identify constraints when a creative combines multiple rights types."
+    },
     "approval_status": {
       "type": "string",
       "enum": ["pending", "approved", "rejected"],
-      "description": "Current approval status from the rights holder"
+      "description": "Approval status from the rights holder at manifest creation time (snapshot, not a live value)"
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"

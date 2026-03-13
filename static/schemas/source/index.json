@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2026-02-27",
+  "lastUpdated": "2026-03-13",
   "baseUrl": "/schemas/latest",
   "schemas": {
     "core": {
@@ -77,6 +77,14 @@
         "error": {
           "$ref": "/schemas/core/error.json",
           "description": "Standard error structure"
+        },
+        "generation-credential": {
+          "$ref": "/schemas/core/generation-credential.json",
+          "description": "Scoped credential for generating rights-cleared content via LLM providers"
+        },
+        "rights-constraint": {
+          "$ref": "/schemas/core/rights-constraint.json",
+          "description": "Rights metadata attached to creative manifests for tracking validity and constraints"
         },
         "pagination-request": {
           "$ref": "/schemas/core/pagination-request.json",
@@ -546,7 +554,15 @@
         },
         "adcp-domain": {
           "$ref": "/schemas/enums/adcp-domain.json",
-          "description": "AdCP protocol domains (media-buy, signals, governance, creative)"
+          "description": "AdCP protocol domains (media-buy, signals, governance, creative, brand)"
+        },
+        "right-use": {
+          "$ref": "/schemas/enums/right-use.json",
+          "description": "Types of rights usage (likeness, voice, endorsement, sync, etc.)"
+        },
+        "right-type": {
+          "$ref": "/schemas/enums/right-type.json",
+          "description": "Categories of licensable rights (talent, music, brand_ip, stock_media)"
         },
         "http-method": {
           "$ref": "/schemas/enums/http-method.json",

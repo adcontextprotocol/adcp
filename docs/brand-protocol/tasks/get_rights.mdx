@@ -114,6 +114,10 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
 | `rights[].excluded_countries` | string[] | Countries excluded from availability |
 | `rights[].exclusivity_status` | object | Current exclusivity availability (`available`, `existing_exclusives`) |
 | `rights[].pricing_options` | object[] | Pricing options (see below) |
+| `rights[].description` | string | Description of the rights subject |
+| `rights[].right_type` | string | Type of rights (`talent`, `music`, `stock_media`, etc.) |
+| `rights[].content_restrictions` | string[] | Content restrictions or approval requirements |
+| `rights[].preview_assets` | object[] | Preview-only assets for evaluation |
 | `excluded` | object[] | Filtered results with reasons (only when `include_excluded: true`) |
 
 ### Rights pricing options

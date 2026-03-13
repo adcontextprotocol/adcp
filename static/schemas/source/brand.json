@@ -430,9 +430,11 @@
           "items": { "$ref": "/schemas/enums/right-use.json" },
           "minItems": 1
         },
-        "right_type": {
-          "$ref": "/schemas/enums/right-type.json",
-          "description": "Type of rights available"
+        "right_types": {
+          "type": "array",
+          "description": "Types of rights available",
+          "items": { "$ref": "/schemas/enums/right-type.json" },
+          "minItems": 1
         },
         "countries": {
           "type": "array",

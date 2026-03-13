@@ -130,8 +130,11 @@
             },
             "countries": {
               "type": "array",
-              "description": "Countries where rights are available. Use 'Worldwide' for global availability.",
-              "items": { "type": "string" }
+              "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$"
+              }
             },
             "excluded_countries": {
               "type": "array",
