@@ -111,7 +111,7 @@ const TOOLS = [
   },
   {
     name: 'get_media_buy_delivery',
-    description: 'Get delivery metrics for a media buy.',
+    description: 'Get delivery metrics for a media buy. Requires a media_buy_id from create_media_buy.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -120,6 +120,7 @@ const TOOLS = [
         media_buy_id: { type: 'string' },
         buyer_ref: { type: 'string' },
       },
+      required: ['media_buy_id'] as const,
     },
   },
   {
@@ -151,7 +152,7 @@ const TOOLS = [
   },
   {
     name: 'update_media_buy',
-    description: 'Update an existing media buy (budget, flight dates, pause/resume packages).',
+    description: 'Update an existing media buy (budget, flight dates, pause/resume packages). Cannot add new packages — only update existing ones.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     inputSchema: {
       type: 'object' as const,
@@ -162,6 +163,7 @@ const TOOLS = [
         packages: { type: 'array' },
         end_time: { type: 'string' },
       },
+      required: ['media_buy_id'] as const,
     },
   },
 ];
@@ -262,7 +264,7 @@ function handleGetProducts(args: Record<string, unknown>, ctx: TrainingContext):
   return { products, sandbox: true };
 }
 
-function handleListCreativeFormats(args: Record<string, unknown>): Record<string, unknown> {
+function handleListCreativeFormats(args: Record<string, unknown>, _ctx: TrainingContext): Record<string, unknown> {
   let formats = getFormats();
 
   // Filter by channels
@@ -513,6 +515,19 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       end_date: now.toISOString(),
     },
     media_buy_deliveries: mb.packages.map(pkg => {
+      // Paused packages stop accruing delivery
+      if (pkg.paused) {
+        return {
+          package_id: pkg.packageId,
+          product_id: pkg.productId,
+          impressions: 0,
+          spend: 0,
+          clicks: 0,
+          ctr: 0,
+          paused: true,
+        };
+      }
+
       const budget = pkg.budget;
       const spend = Math.round(budget * elapsed * 100) / 100;
 
@@ -531,7 +546,8 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
       else if (channels?.some(c => ['search'].includes(c))) ctr = 0.035;
       else if (channels?.some(c => ['retail_media'].includes(c))) ctr = 0.008;
       else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) ctr = 0;
-      else if (channels?.some(c => ['streaming_audio', 'podcast'].includes(c))) ctr = 0.003;
+      else if (channels?.some(c => ['streaming_audio', 'podcast', 'radio'].includes(c))) ctr = 0.003;
+      else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
       else ctr = 0.001;
 
       const impressions = cpm > 0 ? Math.round((spend / cpm) * 1000) : 0;
@@ -678,21 +694,25 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
 
   // Update packages
   const packageUpdates = args.packages as Array<Record<string, unknown>> | undefined;
+  const warnings: string[] = [];
   if (packageUpdates?.length) {
+    const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
     for (const update of packageUpdates) {
       const pkgId = (update.package_id || update.buyer_ref) as string;
       const pkg = mb.packages.find(p => p.packageId === pkgId || p.buyerRef === pkgId);
-      if (pkg) {
-        if (update.budget !== undefined) pkg.budget = update.budget as number;
-        if (update.paused !== undefined) pkg.paused = update.paused as boolean;
-        if (update.end_time) pkg.endTime = update.end_time as string;
+      if (!pkg) {
+        warnings.push(`Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}`);
+        continue;
       }
+      if (update.budget !== undefined) pkg.budget = update.budget as number;
+      if (update.paused !== undefined) pkg.paused = update.paused as boolean;
+      if (update.end_time) pkg.endTime = update.end_time as string;
     }
   }
 
   mb.updatedAt = new Date().toISOString();
 
-  return {
+  const result: Record<string, unknown> = {
     media_buy_id: mb.mediaBuyId,
     buyer_ref: mb.buyerRef,
     packages: mb.packages.map(pkg => ({
@@ -707,6 +727,8 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     })),
     sandbox: true,
   };
+  if (warnings.length) result.warnings = warnings;
+  return result;
 }
 
 // ── Handler dispatch ──────────────────────────────────────────────
@@ -715,7 +737,7 @@ type ToolHandler = (args: Record<string, unknown>, ctx: TrainingContext) => Reco
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
-  list_creative_formats: (args) => handleListCreativeFormats(args),
+  list_creative_formats: handleListCreativeFormats,
   create_media_buy: handleCreateMediaBuy,
   get_media_buys: handleGetMediaBuys,
   get_media_buy_delivery: handleGetMediaBuyDelivery,

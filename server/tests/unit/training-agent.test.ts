@@ -1401,6 +1401,97 @@ describe('update_media_buy handler', () => {
 
     expect(result.errors).toBeDefined();
   });
+
+  it('warns when updating a nonexistent package', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'update-warn.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'buyer-warn',
+      account,
+      brand: { domain: 'update-warn.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: 'nonexistent_pkg', budget: 5000 }],
+    });
+
+    expect(result.warnings).toBeDefined();
+    expect((result.warnings as string[])[0]).toContain('Package not found: nonexistent_pkg');
+  });
+});
+
+// ── Paused package delivery ─────────────────────────────────────────
+
+describe('paused package delivery', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns zero metrics for paused packages', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'paused.example' } };
+
+    // Create a buy with asap start so it has elapsed time
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'buyer-paused',
+      account,
+      brand: { domain: 'paused.example' },
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+
+    // Pause the package
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server2, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: pkgId, paused: true }],
+    });
+
+    // Get delivery
+    const server3 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: delivery } = await simulateCallTool(server3, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    const deliveries = delivery.media_buy_deliveries as Array<Record<string, unknown>>;
+    expect(deliveries[0].paused).toBe(true);
+    expect(deliveries[0].spend).toBe(0);
+    expect(deliveries[0].impressions).toBe(0);
+  });
 });
 
 // ── Channel coverage ───────────────────────────────────────────────
@@ -1419,11 +1510,125 @@ describe('channel coverage across publishers', () => {
     const coreChannels = [
       'display', 'olv', 'ctv', 'streaming_audio', 'podcast',
       'dooh', 'ooh', 'gaming', 'retail_media', 'social', 'influencer',
-      'email', 'linear_tv', 'search',
+      'email', 'linear_tv', 'search', 'radio', 'print',
     ];
     for (const ch of coreChannels) {
       expect(allChannels.has(ch)).toBe(true);
     }
+  });
+});
+
+// ── Multi-currency and new features ───────────────────────────────
+
+describe('multi-currency support', () => {
+  it('has EUR pricing on Pinnacle News', () => {
+    const pinnacle = PUBLISHERS.find(p => p.id === 'pinnacle_news')!;
+    const eurPricing = pinnacle.pricingTemplates.filter(t => t.currency === 'EUR');
+    expect(eurPricing.length).toBeGreaterThan(0);
+  });
+
+  it('has GBP pricing on StreetLevel Media', () => {
+    const streetlevel = PUBLISHERS.find(p => p.id === 'streetlevel')!;
+    const gbpPricing = streetlevel.pricingTemplates.filter(t => t.currency === 'GBP');
+    expect(gbpPricing.length).toBeGreaterThan(0);
+  });
+
+  it('has EUR pricing on Viewpoint Sports', () => {
+    const viewpoint = PUBLISHERS.find(p => p.id === 'viewpoint_sports')!;
+    const eurPricing = viewpoint.pricingTemplates.filter(t => t.currency === 'EUR');
+    expect(eurPricing.length).toBeGreaterThan(0);
+  });
+});
+
+describe('time pricing model', () => {
+  it('StreetLevel has time pricing', () => {
+    const streetlevel = PUBLISHERS.find(p => p.id === 'streetlevel')!;
+    const timePricing = streetlevel.pricingTemplates.find(t => t.model === 'time');
+    expect(timePricing).toBeDefined();
+    expect(timePricing!.timeParameters).toBeDefined();
+    expect(timePricing!.timeParameters!.unit).toBe('week');
+  });
+
+  it('Meridian Print has time pricing', () => {
+    const meridian = PUBLISHERS.find(p => p.id === 'meridian_print')!;
+    const timePricing = meridian.pricingTemplates.find(t => t.model === 'time');
+    expect(timePricing).toBeDefined();
+    expect(timePricing!.timeParameters!.unit).toBe('month');
+  });
+
+  it('time pricing produces valid pricing options in products', () => {
+    const catalog = buildCatalog();
+    const streetlevelProducts = catalog.filter(cp => cp.publisherId === 'streetlevel');
+    const allPricing = streetlevelProducts.flatMap(cp =>
+      (cp.product.pricing_options as Array<Record<string, unknown>>),
+    );
+    const timePricing = allPricing.find(po => po.pricing_model === 'time');
+    expect(timePricing).toBeDefined();
+    expect(timePricing!.parameters).toBeDefined();
+  });
+});
+
+describe('forecast data', () => {
+  it('non-guaranteed products have forecast field', () => {
+    const catalog = buildCatalog();
+    const nonGuaranteed = catalog.filter(cp =>
+      cp.product.delivery_type === 'non_guaranteed',
+    );
+    expect(nonGuaranteed.length).toBeGreaterThan(0);
+    for (const cp of nonGuaranteed) {
+      expect(cp.product.forecast).toBeDefined();
+      const forecast = cp.product.forecast as Record<string, unknown>;
+      expect(forecast.method).toBe('modeled');
+      const points = forecast.points as Array<Record<string, unknown>>;
+      expect(points.length).toBe(2);
+    }
+  });
+
+  it('guaranteed products do not have forecast', () => {
+    const catalog = buildCatalog();
+    const guaranteed = catalog.filter(cp =>
+      cp.product.delivery_type === 'guaranteed',
+    );
+    expect(guaranteed.length).toBeGreaterThan(0);
+    for (const cp of guaranteed) {
+      expect(cp.product.forecast).toBeUndefined();
+    }
+  });
+});
+
+describe('new publishers', () => {
+  it('Crestline Radio covers radio and streaming_audio channels', () => {
+    const crestline = PUBLISHERS.find(p => p.id === 'crestline_radio')!;
+    expect(crestline).toBeDefined();
+    expect(crestline.channels).toContain('radio');
+    expect(crestline.channels).toContain('streaming_audio');
+  });
+
+  it('Meridian Print covers print and display channels', () => {
+    const meridian = PUBLISHERS.find(p => p.id === 'meridian_print')!;
+    expect(meridian).toBeDefined();
+    expect(meridian.channels).toContain('print');
+    expect(meridian.channels).toContain('display');
+  });
+
+  it('print_full_page format exists and maps to print channel', () => {
+    expect(FORMAT_CHANNEL_MAP.print_full_page).toEqual(['print']);
+  });
+
+  it('radio_spot format exists and maps to radio channel', () => {
+    expect(FORMAT_CHANNEL_MAP.radio_spot).toEqual(['radio']);
+  });
+
+  it('Crestline Radio products appear in catalog', () => {
+    const catalog = buildCatalog();
+    const crestlineProducts = catalog.filter(cp => cp.publisherId === 'crestline_radio');
+    expect(crestlineProducts.length).toBeGreaterThan(0);
+  });
+
+  it('Meridian Print products appear in catalog', () => {
+    const catalog = buildCatalog();
+    const meridianProducts = catalog.filter(cp => cp.publisherId === 'meridian_print');
+    expect(meridianProducts.length).toBeGreaterThan(0);
   });
 });
 

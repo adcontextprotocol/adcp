@@ -372,6 +372,31 @@ export function buildFormats(agentUrl: string): Record<string, unknown>[] {
           requirements: { url_type: 'click_through' } },
       ],
     },
+
+    // ── Print ──────────────────────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'print_full_page' },
+      name: 'Print full page',
+      description: 'Full-page print ad. High-resolution image with bleed area. Delivered as print-ready PDF.',
+      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'in' } }],
+      assets: [
+        { item_type: 'individual', asset_id: 'artwork', asset_type: 'file', asset_role: 'print_creative', required: true,
+          requirements: { mime_types: ['application/pdf'], min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
+      ],
+    },
+
+    // ── Radio ──────────────────────────────────────────────
+    {
+      format_id: { agent_url: agentUrl, id: 'radio_spot' },
+      name: 'Radio spot',
+      description: 'Terrestrial radio ad spot. 15s, 30s, or 60s audio. Delivered as broadcast-quality audio file.',
+      accepts_parameters: ['duration_ms'],
+      renders: [{ role: 'primary', parameters_from_format_id: true }],
+      assets: [
+        { item_type: 'individual', asset_id: 'audio', asset_type: 'file', asset_role: 'radio_spot', required: true,
+          requirements: { mime_types: ['audio/wav', 'audio/mpeg'], max_file_size_bytes: 20000000 } },
+      ],
+    },
   ];
 }
 
@@ -404,4 +429,6 @@ export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
   search_shopping: ['search'],
   ai_sponsored_recommendation: ['display'],
   ai_sponsored_agent: ['display'],
+  print_full_page: ['print'],
+  radio_spot: ['radio'],
 };

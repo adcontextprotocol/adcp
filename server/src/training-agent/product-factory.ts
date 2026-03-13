@@ -36,6 +36,7 @@ function buildPricingOption(
   if (template.eventType) option.event_type = template.eventType;
   if (template.cppParameters) option.parameters = template.cppParameters;
   if (template.cpvParameters) option.parameters = template.cpvParameters;
+  if (template.timeParameters) option.parameters = template.timeParameters;
   return option;
 }
 
@@ -72,8 +73,8 @@ function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]):
 }
 
 function tierForProduct(pub: PublisherProfile, deliveryType: string, channels: string[]): 'basics' | 'practitioner' | 'specialist' {
-  const highComplexity = ['ctv', 'linear_tv', 'dooh', 'ooh', 'influencer', 'product_placement'];
-  const niche = ['gaming', 'cinema', 'affiliate'];
+  const highComplexity = ['ctv', 'linear_tv', 'dooh', 'ooh', 'influencer'];
+  const niche = ['gaming'];
 
   if (channels.includes('search')) return 'basics';
   if (channels.some(c => niche.includes(c))) return 'specialist';
@@ -129,8 +130,10 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
       const displayChannels = pub.channels.filter(c => ['display', 'email'].includes(c));
       const socialChannels = pub.channels.filter(c => ['social', 'influencer'].includes(c));
       const searchChannels = pub.channels.filter(c => ['search'].includes(c));
+      const audioChannels = pub.channels.filter(c => ['radio', 'streaming_audio', 'podcast'].includes(c));
+      const printChannels = pub.channels.filter(c => ['print'].includes(c));
       const otherChannels = pub.channels.filter(c =>
-        !['olv', 'ctv', 'linear_tv', 'display', 'email', 'social', 'influencer', 'search'].includes(c),
+        !['olv', 'ctv', 'linear_tv', 'display', 'email', 'social', 'influencer', 'search', 'radio', 'streaming_audio', 'podcast', 'print'].includes(c),
       );
 
       if (videoChannels.length > 0) {
@@ -178,6 +181,32 @@ function productTemplatesForPublisher(pub: PublisherProfile): ProductTemplate[] 
           name: `${pub.name} search${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
           description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} search inventory on ${pub.name}. Keyword-targeted text and shopping ads.`,
           channels: searchChannels,
+          deliveryType,
+          pricingFilter: deliveryType === 'guaranteed'
+            ? (t) => t.fixedPrice !== undefined
+            : (t) => t.fixedPrice === undefined,
+        });
+      }
+
+      if (audioChannels.length > 0) {
+        templates.push({
+          suffix: `audio_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
+          name: `${pub.name} audio${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
+          description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} audio inventory on ${pub.name}. Channels: ${audioChannels.join(', ')}.`,
+          channels: audioChannels,
+          deliveryType,
+          pricingFilter: deliveryType === 'guaranteed'
+            ? (t) => t.fixedPrice !== undefined
+            : (t) => t.fixedPrice === undefined,
+        });
+      }
+
+      if (printChannels.length > 0) {
+        templates.push({
+          suffix: `print_${deliveryType === 'guaranteed' ? 'premium' : 'standard'}`,
+          name: `${pub.name} print${deliveryType === 'guaranteed' ? ' guaranteed' : ''}`,
+          description: `${deliveryType === 'guaranteed' ? 'Guaranteed' : 'Auction-based'} print inventory across ${pub.name}. Premium magazine and newspaper placements.`,
+          channels: printChannels,
           deliveryType,
           pricingFilter: deliveryType === 'guaranteed'
             ? (t) => t.fixedPrice !== undefined
@@ -259,6 +288,33 @@ function buildProduct(
         supported_targets: ['cost_per'],
       };
     }
+  }
+
+  // Add forecast for non-guaranteed products
+  if (template.deliveryType === 'non_guaranteed') {
+    const baseCpm = effectivePricing[0]?.floorPrice || effectivePricing[0]?.fixedPrice || 10;
+    const impressionsPer1k = Math.round(1000 / baseCpm * 1000);
+
+    product.forecast = {
+      points: [
+        {
+          budget: 5000,
+          metrics: {
+            impressions: { low: impressionsPer1k * 4, mid: impressionsPer1k * 5, high: Math.round(impressionsPer1k * 5.5) },
+            reach: { low: Math.round(impressionsPer1k * 3), mid: Math.round(impressionsPer1k * 3.5), high: Math.round(impressionsPer1k * 4) },
+          },
+        },
+        {
+          budget: 25000,
+          metrics: {
+            impressions: { low: impressionsPer1k * 22, mid: impressionsPer1k * 25, high: impressionsPer1k * 27 },
+            reach: { low: Math.round(impressionsPer1k * 12), mid: Math.round(impressionsPer1k * 15), high: Math.round(impressionsPer1k * 17) },
+          },
+        },
+      ],
+      method: 'modeled',
+      currency: effectivePricing[0]?.currency || 'USD',
+    };
   }
 
   // Add conversion tracking for retail/social

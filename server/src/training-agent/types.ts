@@ -54,6 +54,8 @@ export interface PricingTemplate {
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
   cpvParameters?: { view_threshold: Record<string, unknown> };
+  /** For time: the time unit and duration constraints */
+  timeParameters?: { unit: string; min_duration: number; max_duration: number };
 }
 
 export interface CatalogProduct {

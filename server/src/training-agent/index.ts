@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../logger.js';
 import { createTrainingAgentServer } from './task-handlers.js';
@@ -28,13 +29,18 @@ function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Expose-Headers', 'Content-Type');
 }
 
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 function requireToken(req: Request, res: Response, next: NextFunction): void {
   if (!TRAINING_AGENT_TOKEN) {
     // No token configured = dev mode, allow all
     return next();
   }
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ') || auth.slice(7) !== TRAINING_AGENT_TOKEN) {
+  if (!auth || !auth.startsWith('Bearer ') || !constantTimeEqual(auth.slice(7), TRAINING_AGENT_TOKEN)) {
     res.status(401).json({
       jsonrpc: '2.0',
       id: null,
