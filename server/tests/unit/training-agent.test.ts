@@ -860,8 +860,41 @@ describe('create_media_buy handler', () => {
     expect(Array.isArray(result.packages)).toBe(true);
     expect((result.packages as unknown[]).length).toBe(1);
     expect(result.sandbox).toBe(true);
+    // Future dates → scheduled status
+    expect(result.status).toBe('scheduled');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('derives status from flight dates', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+
+    // Past dates → completed
+    const server1 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: past } = await simulateCallTool(server1, 'create_media_buy', {
+      buyer_ref: 'status-past',
+      account: { brand: { domain: 'status.example' } },
+      brand: { domain: 'status.example' },
+      start_time: '2020-01-01T00:00:00Z',
+      end_time: '2020-01-31T23:59:59Z',
+      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, buyer_ref: 'p' }],
+    });
+    expect(past.status).toBe('completed');
+
+    // Current dates → active
+    const now = new Date();
+    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const end = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: active } = await simulateCallTool(server2, 'create_media_buy', {
+      buyer_ref: 'status-active',
+      account: { brand: { domain: 'status.example' } },
+      brand: { domain: 'status.example' },
+      start_time: start,
+      end_time: end,
+      packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget: 50000, buyer_ref: 'p' }],
+    });
+    expect(active.status).toBe('active');
   });
 
   it('returns package with required fields', async () => {
@@ -1090,7 +1123,8 @@ describe('create_media_buy handler', () => {
         buyer_ref: 'pkg-status',
       }],
     });
-    expect(result.status).toBe('active');
+    // Future dates → scheduled (not active)
+    expect(result.status).toBe('scheduled');
   });
 });
 
@@ -1436,6 +1470,51 @@ describe('update_media_buy handler', () => {
   });
 });
 
+describe('update_media_buy end_time validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('rejects invalid end_time string', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'endtime.example' } };
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'endtime-buyer',
+      account,
+      brand: { domain: 'endtime.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-et',
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server2, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      end_time: 'banana',
+    });
+
+    expect(result.errors).toBeDefined();
+    expect((result.errors as Array<Record<string, unknown>>)[0].message).toContain('Invalid end_time');
+  });
+});
+
 // ── Paused package delivery ─────────────────────────────────────────
 
 describe('paused package delivery', () => {
@@ -1487,10 +1566,95 @@ describe('paused package delivery', () => {
       media_buy_id: mediaBuyId,
     });
 
+    // Schema-compliant structure: media_buy_deliveries[].by_package[]
     const deliveries = delivery.media_buy_deliveries as Array<Record<string, unknown>>;
-    expect(deliveries[0].paused).toBe(true);
-    expect(deliveries[0].spend).toBe(0);
-    expect(deliveries[0].impressions).toBe(0);
+    const buyDelivery = deliveries[0];
+    expect(buyDelivery.media_buy_id).toBe(mediaBuyId);
+    expect(buyDelivery.status).toBeDefined();
+    expect(buyDelivery.totals).toBeDefined();
+
+    const byPackage = buyDelivery.by_package as Array<Record<string, unknown>>;
+    expect(byPackage[0].paused).toBe(true);
+    expect(byPackage[0].spend).toBe(0);
+    expect(byPackage[0].impressions).toBe(0);
+    // Required per-package fields per schema
+    expect(byPackage[0].pricing_model).toBeDefined();
+    expect(byPackage[0].rate).toBeDefined();
+    expect(byPackage[0].currency).toBeDefined();
+  });
+});
+
+describe('delivery response schema compliance', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('matches the get-media-buy-delivery-response schema structure', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'schema.example' } };
+
+    // Create an active buy
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      buyer_ref: 'schema-buyer',
+      account,
+      brand: { domain: 'schema.example' },
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+        buyer_ref: 'pkg-schema',
+      }],
+    });
+
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    // Get delivery
+    const server2 = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: delivery } = await simulateCallTool(server2, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+
+    // Top-level required fields per schema
+    expect(delivery.reporting_period).toBeDefined();
+    const rp = delivery.reporting_period as Record<string, unknown>;
+    expect(rp.start).toBeDefined(); // schema uses 'start', not 'start_date'
+    expect(rp.end).toBeDefined();   // schema uses 'end', not 'end_date'
+    expect(delivery.currency).toBeDefined();
+    expect(delivery.media_buy_deliveries).toBeDefined();
+
+    // media_buy_deliveries item required fields
+    const deliveries = delivery.media_buy_deliveries as Array<Record<string, unknown>>;
+    expect(deliveries.length).toBe(1);
+    const item = deliveries[0];
+    expect(item.media_buy_id).toBe(mediaBuyId);
+    expect(item.status).toBeDefined();
+    expect(item.totals).toBeDefined();
+    expect(item.by_package).toBeDefined();
+
+    // totals required: spend
+    const totals = item.totals as Record<string, unknown>;
+    expect(typeof totals.spend).toBe('number');
+    expect(typeof totals.impressions).toBe('number');
+
+    // by_package item required: package_id, spend, pricing_model, rate, currency
+    const byPkg = item.by_package as Array<Record<string, unknown>>;
+    expect(byPkg.length).toBe(1);
+    expect(byPkg[0].package_id).toBeDefined();
+    expect(typeof byPkg[0].spend).toBe('number');
+    expect(byPkg[0].pricing_model).toBeDefined();
+    expect(typeof byPkg[0].rate).toBe('number');
+    expect(byPkg[0].currency).toBeDefined();
   });
 });
 

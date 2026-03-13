@@ -21,6 +21,16 @@ import { getAgentUrl } from './config.js';
 
 const logger = createLogger('training-agent');
 
+/** Derive lifecycle status from stored status and flight dates. */
+function deriveStatus(mb: MediaBuyState): string {
+  const now = new Date();
+  if (mb.status === 'active') {
+    if (new Date(mb.endTime) < now) return 'completed';
+    if (new Date(mb.startTime) > now) return 'scheduled';
+  }
+  return mb.status;
+}
+
 // ── Cached catalog and formats (built once at first use) ──────────
 let cachedCatalog: CatalogProduct[] | null = null;
 let cachedFormats: Record<string, unknown>[] | null = null;
@@ -420,7 +430,7 @@ function handleCreateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     media_buy_id: mediaBuyId,
     buyer_ref: buyerRef,
     buyer_campaign_ref: mediaBuy.buyerCampaignRef,
-    status: 'active',
+    status: deriveStatus(mediaBuy),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       buyer_ref: pkg.buyerRef,
@@ -448,23 +458,13 @@ function handleGetMediaBuys(args: Record<string, unknown>, ctx: TrainingContext)
     buys = buys.filter(b => filterIds.includes(b.mediaBuyId));
   }
 
-  const now = new Date();
   return {
     media_buys: buys.map(mb => {
-      // Derive lifecycle state from dates
-      let status = mb.status;
-      const endDate = new Date(mb.endTime);
-      const startDate = new Date(mb.startTime);
-      if (status === 'active' && endDate < now) {
-        status = 'completed';
-      } else if (status === 'active' && startDate > now) {
-        status = 'scheduled';
-      }
       return {
       media_buy_id: mb.mediaBuyId,
       buyer_ref: mb.buyerRef,
       buyer_campaign_ref: mb.buyerCampaignRef,
-      status,
+      status: deriveStatus(mb),
       currency: mb.currency,
       start_time: mb.startTime,
       end_time: mb.endTime,
@@ -506,63 +506,105 @@ function handleGetMediaBuyDelivery(args: Record<string, unknown>, ctx: TrainingC
     ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
     : 0;
 
-  return {
-    media_buy_id: mb.mediaBuyId,
-    buyer_ref: mb.buyerRef,
-    currency: mb.currency,
-    reporting_period: {
-      start_date: mb.startTime,
-      end_date: now.toISOString(),
-    },
-    media_buy_deliveries: mb.packages.map(pkg => {
-      // Paused packages stop accruing delivery
-      if (pkg.paused) {
-        return {
-          package_id: pkg.packageId,
-          product_id: pkg.productId,
-          impressions: 0,
-          spend: 0,
-          clicks: 0,
-          ctr: 0,
-          paused: true,
-        };
-      }
+  // Build per-package metrics
+  let totalImpressions = 0;
+  let totalSpend = 0;
+  let totalClicks = 0;
 
-      const budget = pkg.budget;
-      const spend = Math.round(budget * elapsed * 100) / 100;
-
-      // Derive CPM from the product's actual pricing
-      const product = productMap.get(pkg.productId);
-      const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
-      const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
-      const cpm = (pricing?.fixed_price as number)
-        || (pricing?.floor_price as number)
-        || 10;
-
-      // Channel-appropriate CTR
-      const channels = product?.channels as string[] | undefined;
-      let ctr: number;
-      if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
-      else if (channels?.some(c => ['search'].includes(c))) ctr = 0.035;
-      else if (channels?.some(c => ['retail_media'].includes(c))) ctr = 0.008;
-      else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) ctr = 0;
-      else if (channels?.some(c => ['streaming_audio', 'podcast', 'radio'].includes(c))) ctr = 0.003;
-      else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
-      else ctr = 0.001;
-
-      const impressions = cpm > 0 ? Math.round((spend / cpm) * 1000) : 0;
-      const clicks = Math.round(impressions * ctr);
+  const byPackage = mb.packages.map(pkg => {
+    // Paused packages stop accruing delivery
+    if (pkg.paused) {
       return {
         package_id: pkg.packageId,
-        product_id: pkg.productId,
-        impressions,
-        spend,
-        clicks,
-        ctr: impressions > 0 ? Math.round((clicks / impressions) * 10000) / 10000 : 0,
+        buyer_ref: pkg.buyerRef,
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        pricing_model: derivePricingModel(pkg, productMap),
+        rate: derivePricingRate(pkg, productMap),
+        currency: mb.currency,
+        paused: true,
+        delivery_status: 'delivering' as const,
       };
-    }),
+    }
+
+    const budget = pkg.budget;
+    const spend = Math.round(budget * elapsed * 100) / 100;
+
+    // Derive rate from the product's actual pricing
+    const product = productMap.get(pkg.productId);
+    const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
+    const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
+    const rate = (pricing?.fixed_price as number)
+      || (pricing?.floor_price as number)
+      || 10;
+    const pricingModel = (pricing?.pricing_model as string) || 'cpm';
+
+    // Channel-appropriate CTR
+    const channels = product?.channels as string[] | undefined;
+    let ctr: number;
+    if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
+    else if (channels?.some(c => ['search'].includes(c))) ctr = 0.035;
+    else if (channels?.some(c => ['retail_media'].includes(c))) ctr = 0.008;
+    else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) ctr = 0;
+    else if (channels?.some(c => ['streaming_audio', 'podcast', 'radio'].includes(c))) ctr = 0.003;
+    else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
+    else ctr = 0.001;
+
+    const impressions = rate > 0 ? Math.round((spend / rate) * 1000) : 0;
+    const clicks = Math.round(impressions * ctr);
+
+    totalImpressions += impressions;
+    totalSpend += spend;
+    totalClicks += clicks;
+
+    return {
+      package_id: pkg.packageId,
+      buyer_ref: pkg.buyerRef,
+      spend,
+      impressions,
+      clicks,
+      pricing_model: pricingModel,
+      rate,
+      currency: mb.currency,
+      paused: false,
+      delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
+    };
+  });
+
+  return {
+    reporting_period: {
+      start: mb.startTime,
+      end: now.toISOString(),
+    },
+    currency: mb.currency,
+    media_buy_deliveries: [{
+      media_buy_id: mb.mediaBuyId,
+      buyer_ref: mb.buyerRef,
+      status: deriveStatus(mb),
+      totals: {
+        impressions: totalImpressions,
+        spend: Math.round(totalSpend * 100) / 100,
+        clicks: totalClicks,
+      },
+      by_package: byPackage,
+    }],
     sandbox: true,
   };
+}
+
+function derivePricingModel(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): string {
+  const product = productMap.get(pkg.productId);
+  const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
+  const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
+  return (pricing?.pricing_model as string) || 'cpm';
+}
+
+function derivePricingRate(pkg: PackageState, productMap: Map<string, Record<string, unknown>>): number {
+  const product = productMap.get(pkg.productId);
+  const pricingOptions = product?.pricing_options as Array<Record<string, unknown>> | undefined;
+  const pricing = pricingOptions?.find(po => po.pricing_option_id === pkg.pricingOptionId);
+  return (pricing?.fixed_price as number) || (pricing?.floor_price as number) || 10;
 }
 
 function handleSyncCreatives(args: Record<string, unknown>, ctx: TrainingContext): Record<string, unknown> {
@@ -687,9 +729,13 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
     };
   }
 
-  // Update end_time
+  // Update end_time with validation
   if (args.end_time) {
-    mb.endTime = args.end_time as string;
+    const newEnd = args.end_time as string;
+    if (isNaN(new Date(newEnd).getTime())) {
+      return { errors: [{ code: 'validation_error', message: `Invalid end_time: "${newEnd}". Use ISO 8601 format.` }] };
+    }
+    mb.endTime = newEnd;
   }
 
   // Update packages
@@ -706,7 +752,14 @@ function handleUpdateMediaBuy(args: Record<string, unknown>, ctx: TrainingContex
       }
       if (update.budget !== undefined) pkg.budget = update.budget as number;
       if (update.paused !== undefined) pkg.paused = update.paused as boolean;
-      if (update.end_time) pkg.endTime = update.end_time as string;
+      if (update.end_time) {
+        const pkgEnd = update.end_time as string;
+        if (isNaN(new Date(pkgEnd).getTime())) {
+          warnings.push(`Invalid end_time for package ${pkgId}: "${pkgEnd}". Skipped.`);
+        } else {
+          pkg.endTime = pkgEnd;
+        }
+      }
     }
   }
 
