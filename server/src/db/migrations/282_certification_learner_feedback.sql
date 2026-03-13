@@ -6,9 +6,9 @@ CREATE TABLE IF NOT EXISTS certification_learner_feedback (
   workos_user_id TEXT NOT NULL REFERENCES users(workos_user_id),
   module_id VARCHAR(10) NOT NULL REFERENCES certification_modules(id),
   feedback TEXT NOT NULL,
-  sentiment VARCHAR(20) DEFAULT 'mixed',
+  sentiment VARCHAR(20) DEFAULT 'mixed' CHECK (sentiment IN ('positive', 'mixed', 'negative')),
   thread_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_cert_feedback_module ON certification_learner_feedback(module_id);
