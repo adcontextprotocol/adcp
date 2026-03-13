@@ -142,24 +142,34 @@ export async function runSocialPostIdeasJob(): Promise<SocialPostIdeasResult> {
     return result;
   }
 
+  // Claim article before posting to prevent duplicate Slack messages from concurrent runs
+  const claimed = await query(
+    `UPDATE addie_knowledge SET social_post_generated_at = NOW()
+     WHERE id = $1 AND social_post_generated_at IS NULL
+     RETURNING id`,
+    [article.id],
+  );
+  if (claimed.rows.length === 0) {
+    logger.warn({ articleId: article.id }, 'Article already claimed by concurrent run');
+    return result;
+  }
+
   // Post to Slack
   const posted = await postToChannel(article, ideas);
-  if (posted) {
-    // Atomically mark article as used; WHERE guard prevents duplicate posts
-    const claimed = await query(
-      `UPDATE addie_knowledge SET social_post_generated_at = NOW()
-       WHERE id = $1 AND social_post_generated_at IS NULL
-       RETURNING id`,
+  if (!posted) {
+    // Roll back claim on Slack failure so the article can be retried
+    await query(
+      `UPDATE addie_knowledge SET social_post_generated_at = NULL WHERE id = $1`,
       [article.id],
     );
-    if (claimed.rows.length === 0) {
-      logger.warn({ articleId: article.id }, 'Article already claimed by concurrent run');
-      return result;
-    }
-    result.posted = true;
-    result.articleId = article.id;
-    logger.info({ articleId: article.id, title: article.title }, 'Posted social post ideas');
+    result.skipped = true;
+    result.error = 'Failed to post to Slack';
+    return result;
   }
+
+  result.posted = true;
+  result.articleId = article.id;
+  logger.info({ articleId: article.id, title: article.title }, 'Posted social post ideas');
 
   return result;
 }

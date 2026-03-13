@@ -3,7 +3,7 @@ import type { SlackBlock, SlackBlockMessage } from '../../slack/types.js';
 import { FOUNDING_DEADLINE } from '../founding-deadline.js';
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
-const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticadvertising.slack.com';
+const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 
 function escapeHtml(text: string): string {
   return text

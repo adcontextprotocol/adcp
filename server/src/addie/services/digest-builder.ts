@@ -21,7 +21,7 @@ import { query } from '../../db/client.js';
 
 const logger = createLogger('digest-builder');
 
-const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticadvertising.slack.com';
+const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 
 /**
  * Build all content sections for the weekly digest.
