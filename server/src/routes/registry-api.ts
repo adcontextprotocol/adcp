@@ -2453,6 +2453,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   router.post("/policies/save", ...policySaveMiddleware, async (req, res) => {
     try {
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required to save policies" });
+      }
+
       const { policy_id, version, name, category, enforcement, policy: policyText } = req.body;
 
       if (!policy_id || typeof policy_id !== "string") {

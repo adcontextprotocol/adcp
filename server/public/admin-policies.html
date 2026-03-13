@@ -304,7 +304,7 @@
         renderPolicies(allPolicies);
       } catch (err) {
         document.getElementById('policies-list').innerHTML =
-          `<div class="loading">Failed to load policies: ${err.message}</div>`;
+          `<div class="loading">Failed to load policies: ${escapeHtml(err.message)}</div>`;
       }
     }
 
@@ -334,27 +334,27 @@
 
       const rows = policies.map(p => {
         const jurisdictions = (p.jurisdictions || []).map(j =>
-          `<span class="jurisdiction-tag">${j}</span>`
+          `<span class="jurisdiction-tag">${escapeHtml(j)}</span>`
         ).join('');
         const regionKeys = Object.keys(p.region_aliases || {});
         const regions = regionKeys.map(r =>
-          `<span class="jurisdiction-tag">${r}</span>`
+          `<span class="jurisdiction-tag">${escapeHtml(r)}</span>`
         ).join('');
         const verticals = (p.verticals || []).map(v =>
-          `<span class="jurisdiction-tag">${v}</span>`
+          `<span class="jurisdiction-tag">${escapeHtml(v)}</span>`
         ).join('');
         const domains = (p.governance_domains || []).map(d =>
-          `<span class="jurisdiction-tag">${d}</span>`
+          `<span class="jurisdiction-tag">${escapeHtml(d)}</span>`
         ).join('');
 
-        return `<tr onclick="showDetail('${p.policy_id}')">
-          <td><span class="policy-id">${p.policy_id}</span></td>
-          <td>${p.name}</td>
-          <td><span class="badge badge-${p.category}">${p.category}</span></td>
-          <td><span class="badge badge-${p.enforcement}">${p.enforcement}</span></td>
+        return `<tr onclick="showDetail('${escapeHtml(p.policy_id)}')">
+          <td><span class="policy-id">${escapeHtml(p.policy_id)}</span></td>
+          <td>${escapeHtml(p.name)}</td>
+          <td><span class="badge badge-${escapeHtml(p.category)}">${escapeHtml(p.category)}</span></td>
+          <td><span class="badge badge-${escapeHtml(p.enforcement)}">${escapeHtml(p.enforcement)}</span></td>
           <td>${jurisdictions || regions || '<span style="color: var(--color-text-secondary)">global</span>'}</td>
           <td>${domains || '<span style="color: var(--color-text-secondary)">all</span>'}</td>
-          <td><span class="badge badge-${p.source_type}">${p.source_type}</span></td>
+          <td><span class="badge badge-${escapeHtml(p.source_type)}">${escapeHtml(p.source_type)}</span></td>
         </tr>`;
       }).join('');
 

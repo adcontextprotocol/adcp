@@ -112,7 +112,8 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
 
   if (options.search) {
     conditions.push(`(to_tsvector('english', name || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', $${paramIndex}) OR policy_id ILIKE $${paramIndex + 1})`);
-    values.push(options.search, `%${options.search}%`);
+    const escapedSearch = options.search.replace(/[%_\\]/g, '\\$&');
+    values.push(options.search, `%${escapedSearch}%`);
     paramIndex += 2;
   }
   if (options.category) {
@@ -140,7 +141,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = Math.min(options.limit || 20, 100);
+  const limit = Math.min(options.limit || 20, 1000);
   const offset = options.offset || 0;
 
   const [dataResult, statsResult] = await Promise.all([

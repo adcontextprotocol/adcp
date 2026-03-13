@@ -313,7 +313,7 @@ Flavor restrictions: In jurisdictions where flavored products are restricted, ad
 -- Scope3 Common Sense Brand Safety (donated to AgenticAdvertising.org)
 ('scope3_brand_safety', '1.0.0', 'Scope3 Common Sense brand safety',
  'Brand safety baseline framework donated by Scope3 to AgenticAdvertising.org. Defines common-sense content adjacency standards for digital advertising.',
- 'standard', 'should',
+ 'standard', 'must',
  '[]'::jsonb, '{}'::jsonb,
  '[]'::jsonb, NULL,
  '2026-01-01',

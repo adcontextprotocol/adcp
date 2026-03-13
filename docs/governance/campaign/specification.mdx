@@ -46,6 +46,8 @@ The campaign plan is the source of truth for all validation. Plans are pushed to
     "end": "2026-06-15T00:00:00Z"
   },
   "countries": ["US"],
+  "policy_ids": ["us_coppa", "alcohol_advertising"],
+  "custom_policies": ["No competitor brand adjacency"],
   "approved_sellers": null,
   "ext": {}
 }
@@ -135,7 +137,7 @@ The governance agent validates member plan actions against both the member plan'
 When a portfolio plan references a `member_plan_id` that the governance agent does not yet recognize, the governance agent SHOULD accept the portfolio plan and begin enforcing portfolio constraints as member plans are synced. This allows portfolio plans to be synced before their member plans without requiring a specific ordering.
 
 <Note>
-**Concurrency**: An orchestrator may send `create_media_buy` requests to multiple sellers simultaneously, each triggering a `committed` check. The governance agent SHOULD use optimistic concurrency control or budget reservation to prevent concurrent approvals that together exceed the plan budget.
+**Concurrency**: An orchestrator may send `create_media_buy` requests to multiple sellers simultaneously, each triggering a `committed` check. Budget checks are point-in-time and do not reserve budget, so concurrent approvals may together exceed the plan budget. The governance agent detects overspend at outcome reporting time. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 </Note>
 
 ## Brand compliance configuration
@@ -212,7 +214,7 @@ Budget is committed based on **confirmed outcomes**, not validated actions. The 
 2. The orchestrator executes the action with the seller.
 3. `report_plan_outcome` reports the seller's confirmed amount. The governance agent commits this amount to the plan budget.
 
-This ensures budget tracking reflects reality. If a seller reduces the budget from $150K to $120K, the governance agent commits $120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits $0 and releases any reservation.
+This ensures budget tracking reflects reality. If a seller reduces the budget from $150K to $120K, the governance agent commits $120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits $0.
 
 A `committed` approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 

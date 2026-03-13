@@ -152,7 +152,7 @@ The governance agent still commits the seller's actual amount ($120K, not the re
 
 ## Failed actions
 
-If the seller rejected the request, report it so the governance agent can release the reserved budget:
+If the seller rejected the request, report it so the governance agent can update plan state:
 
 ```json
 {
@@ -189,7 +189,7 @@ If the seller rejected the request, report it so the governance agent can releas
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
-| `check_id` | string | No | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
+| `check_id` | string | Conditional | The `check_id` from `check_governance`. Links the outcome to the governance check that authorized it. Required for `completed` and `failed` outcomes. |
 | `buyer_campaign_ref` | string | Yes | Campaign identifier. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
 | `seller_response` | object | No | The seller's full response. Required when outcome is `completed`. |
