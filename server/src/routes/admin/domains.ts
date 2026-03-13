@@ -2386,6 +2386,7 @@ export function setupDomainRoutes(
           added: number;
           skipped: number;
           errors: number;
+          error_details?: Array<{ email: string; message: string }>;
         }> = [];
 
         for (const row of result.rows) {
@@ -2393,6 +2394,7 @@ export function setupDomainRoutes(
           let orgAdded = 0;
           let orgSkipped = 0;
           let orgErrors = 0;
+          const orgErrorDetails: Array<{ email: string; message: string }> = [];
 
           // Get existing members for this org (paginate through all)
           const existingMemberUserIds = new Set<string>();
@@ -2409,8 +2411,25 @@ export function setupDomainRoutes(
               }
               after = memberships.listMetadata?.after ?? undefined;
             } while (after);
-          } catch (err) {
+          } catch (err: any) {
+            const rawMessage = err?.message || err?.code || 'Unknown error';
+            const errorMessage = rawMessage.length > 200 ? rawMessage.slice(0, 200) + '...' : rawMessage;
             logger.warn({ err, orgId }, 'Failed to get memberships for org, skipping');
+            const userCount = (row.users as Array<unknown>).length;
+            orgErrors += userCount;
+            for (const user of row.users as Array<{ email: string }>) {
+              orgErrorDetails.push({ email: user.email, message: `Could not list org memberships: ${errorMessage}` });
+            }
+            details.push({
+              org_id: orgId,
+              org_name: row.org_name,
+              domain: row.domain,
+              added: 0,
+              skipped: 0,
+              errors: userCount,
+              error_details: orgErrorDetails,
+            });
+            totalErrors += userCount;
             continue;
           }
 
@@ -2442,8 +2461,11 @@ export function setupDomainRoutes(
                 // User is already a member or has a pending invitation
                 orgSkipped++;
               } else {
+                const rawMessage = err?.message || err?.code || 'Unknown error';
+                const errorMessage = rawMessage.length > 200 ? rawMessage.slice(0, 200) + '...' : rawMessage;
                 logger.warn({ err, orgId, email: user.email }, 'Failed to add domain user');
                 orgErrors++;
+                orgErrorDetails.push({ email: user.email, message: errorMessage });
               }
             }
           }
@@ -2456,6 +2478,7 @@ export function setupDomainRoutes(
               added: orgAdded,
               skipped: orgSkipped,
               errors: orgErrors,
+              ...(orgErrorDetails.length > 0 && { error_details: orgErrorDetails }),
             });
           }
 

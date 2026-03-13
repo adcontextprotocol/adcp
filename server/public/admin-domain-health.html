@@ -1998,6 +1998,40 @@
       }
     }
 
+    function renderErrorDetails(details) {
+      const errorOrgs = details.filter(d => d.error_details && d.error_details.length > 0);
+      if (errorOrgs.length === 0) return '';
+
+      // Group errors by message to find common patterns
+      const errorsByMessage = {};
+      for (const org of errorOrgs) {
+        for (const e of org.error_details) {
+          const key = e.message;
+          if (!errorsByMessage[key]) errorsByMessage[key] = [];
+          errorsByMessage[key].push({ org_name: org.org_name, email: e.email });
+        }
+      }
+
+      let html = `<details style="margin-top: var(--space-2);">
+        <summary style="cursor: pointer; font-size: var(--text-sm); color: var(--color-error-600); font-weight: var(--font-medium);">
+          View error details
+        </summary>
+        <div style="margin-top: var(--space-2); padding: var(--space-3); background: var(--color-error-50); border: 1px solid var(--color-error-200); border-radius: var(--radius-md); font-size: var(--text-sm);">`;
+
+      for (const [message, items] of Object.entries(errorsByMessage)) {
+        html += `<div style="margin-bottom: var(--space-3);">
+          <div style="font-weight: var(--font-medium); color: var(--color-error-700);">${escapeHtml(message)} (${items.length})</div>
+          <ul style="margin: var(--space-1) 0 0 var(--space-4); color: var(--color-text-secondary);">
+            ${items.slice(0, 10).map(i => `<li>${escapeHtml(i.email)} — ${escapeHtml(i.org_name)}</li>`).join('')}
+            ${items.length > 10 ? `<li>...and ${items.length - 10} more</li>` : ''}
+          </ul>
+        </div>`;
+      }
+
+      html += `</div></details>`;
+      return html;
+    }
+
     // Run member backfill
     async function runMemberBackfill() {
       const btn = document.getElementById('memberBackfillBtn');
@@ -2041,9 +2075,10 @@
               ${result.total_skipped > 0 ? `<div style="font-size: var(--text-sm); color: var(--color-text-secondary);">${result.total_skipped} already members (skipped)</div>` : ''}
               ${result.total_errors > 0 ? `<div style="font-size: var(--text-sm); color: var(--color-error-600);">${result.total_errors} errors</div>` : ''}
               <ul style="margin: var(--space-2) 0 0 var(--space-4); font-size: var(--text-sm); color: var(--color-text-secondary);">
-                ${result.details.slice(0, 5).map(d => `<li>${escapeHtml(d.org_name)} (${d.domain}): ${d.added} added${d.skipped > 0 ? `, ${d.skipped} skipped` : ''}</li>`).join('')}
+                ${result.details.slice(0, 5).map(d => `<li>${escapeHtml(d.org_name)} (${escapeHtml(d.domain)}): ${d.added} added${d.skipped > 0 ? `, ${d.skipped} skipped` : ''}${d.errors > 0 ? `, ${d.errors} failed` : ''}</li>`).join('')}
                 ${result.details.length > 5 ? `<li>...and ${result.details.length - 5} more</li>` : ''}
               </ul>
+              ${result.total_errors > 0 ? renderErrorDetails(result.details) : ''}
             </div>
           `;
         } else {
