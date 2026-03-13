@@ -70,6 +70,10 @@ Push campaign plans to the governance agent. A plan defines the authorized param
         { "category_id": "regulatory_compliance", "status": "active" },
         { "category_id": "seller_verification", "status": "active" },
         { "category_id": "brand_policy", "status": "active" }
+      ],
+      "resolved_policies": [
+        { "policy_id": "us_coppa", "source": "explicit", "enforcement": "must", "reason": "Referenced in plan policy_ids" },
+        { "policy_id": "alcohol_advertising", "source": "explicit", "enforcement": "should", "reason": "Referenced in plan policy_ids" }
       ]
     }
   ]
@@ -84,7 +88,7 @@ Syncing a plan that already exists (same `plan_id`) updates it. The governance a
 
 Multiple campaigns (identified by `buyer_campaign_ref` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
-The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. Compliance policies are not carried in the plan; they are resolved from the brand's compliance configuration. This ensures that the buying team operates within policies defined by the brand's policy team, regardless of which orchestrator or agency executes the campaign.
+The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. The governance agent resolves applicable policies from the brand's compliance configuration, but plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`. This supports both centralized policy management (brand-level) and campaign-specific overrides when the buying team needs additional requirements for a particular campaign.
 
 `countries` and `regions` serve two purposes:
 
@@ -113,6 +117,8 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].flight` | object | Yes | Authorized flight dates. Media buys with dates outside this window are rejected. |
 | `plans[].countries` | array | No | ISO 3166-1 alpha-2 country codes for authorized markets. The governance agent rejects buys targeting outside these countries and resolves applicable policies by matching against policy jurisdictions. |
 | `plans[].regions` | array | No | ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., `US-MA`). When present, restricts buys to these regions rather than the full country. |
+| `plans[].policy_ids` | array | No | Registry policy IDs to enforce for this plan. Intersected with the plan's countries/regions to activate only geographically relevant policies. |
+| `plans[].custom_policies` | array | No | Natural language policy statements specific to this campaign (e.g., "No advertising adjacent to competitor content"). |
 | `plans[].approved_sellers` | array/null | No | List of approved seller agent URLs. `null` means any seller. |
 | `plans[].delegations` | array | No | Agents authorized to execute against this plan. See [specification](/docs/governance/campaign/specification#delegations). |
 | `plans[].delegations[].agent_url` | string | Yes | URL of the delegated agent. |
@@ -138,6 +144,11 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 | `plans[].categories` | array | Validation categories active for this plan. Depends on the governance agent's declared capabilities. |
 | `plans[].categories[].category_id` | string | Validation category identifier. |
 | `plans[].categories[].status` | enum | `active` or `inactive`. |
+| `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
+| `plans[].resolved_policies[].policy_id` | string | Registry policy ID. |
+| `plans[].resolved_policies[].source` | enum | `explicit` (referenced in config or plan) or `auto_applied` (matched by jurisdiction/vertical). |
+| `plans[].resolved_policies[].enforcement` | enum | `must`, `should`, or `may`. |
+| `plans[].resolved_policies[].reason` | string | Why this policy was included. |
 
 ## Error codes
 

@@ -75,10 +75,10 @@ This creates a trust model where neither the buyer nor the seller can unilateral
 Campaign Governance enforces an automated separation between **who defines policies** and **who executes campaigns**:
 
 - The **policy team** selects applicable compliance policies from the [policy registry](#policy-resolution), configures brand-specific rules, and maintains the brand's compliance profile. This configuration lives at the brand level (in brand.json), not in individual campaign plans.
-- The **buying team** (or agency) operates the orchestrator, creates campaign plans, and executes media buys. Plans specify campaign context -- budget, channels, flight dates, authorized markets -- but never carry compliance policies.
+- The **buying team** (or agency) operates the orchestrator, creates campaign plans, and executes media buys. Plans specify campaign context -- budget, channels, flight dates, authorized markets -- and can reference additional registry policies or campaign-specific rules when needed.
 - The **governance agent** resolves applicable policies from the brand's compliance configuration and validates every orchestrator action against them.
 
-The orchestrator cannot bypass or modify compliance policies because it does not carry them. When a regulation changes, the policy team updates the brand configuration once and all active campaigns pick up the change automatically.
+The orchestrator cannot bypass or modify the brand's compliance policies -- those are resolved from the brand configuration by the governance agent. Plans can layer on additional policies via `policy_ids` and `custom_policies`, but the brand's baseline always applies. When a regulation changes, the policy team updates the brand configuration once and all active campaigns pick up the change automatically.
 
 ## Policy resolution
 
@@ -129,7 +129,7 @@ The webhook covers the full media buy lifecycle:
 
 The governance agent maintains all state. The seller just posts what's happening -- no chaining, no conversation history, no state to track across servers.
 
-Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-webhooks) for the full protocol.
+Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-checks) for the full protocol.
 
 Sellers that implement governance checks gain a competitive advantage: they can prove to buyers that purchases were independently verified before execution. This reduces dispute risk, automates compliance verification, and signals trust to buyers with strict oversight requirements.
 

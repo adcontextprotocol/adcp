@@ -15,7 +15,7 @@ This document defines the data models, validation logic, and integration pattern
 
 ## Campaign plan
 
-The campaign plan is the source of truth for all validation. Plans are pushed to the governance agent via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and define the plan parameters for a campaign -- budget limits, channels, flight dates, and plan markets. Compliance policies are resolved from the brand's configuration, not carried in the plan.
+The campaign plan is the source of truth for all validation. Plans are pushed to the governance agent via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and define the plan parameters for a campaign -- budget limits, channels, flight dates, and plan markets. The governance agent resolves applicable policies from the brand's compliance configuration. Plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`.
 
 ```json
 {
@@ -215,6 +215,8 @@ Budget is committed based on **confirmed outcomes**, not validated actions. The 
 This ensures budget tracking reflects reality. If a seller reduces the budget from $150K to $120K, the governance agent commits $120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits $0 and releases any reservation.
 
 A `committed` approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
+
+Budget checks are point-in-time: `check_governance` validates against the current committed total but does not reserve budget. If multiple agents execute concurrently against the same plan, two checks could both pass and the combined outcomes could exceed the authorized budget. The governance agent detects overspend at outcome reporting time and returns a `budget_authority` finding. To prevent concurrent overspend, use [delegations](#delegations) with per-agent `budget_limit` to partition the budget across executing agents.
 
 ### Drift detection
 
