@@ -1,7 +1,7 @@
 # fly.toml for AdCP Test Sales Agent
 # Deploy with: fly deploy -c fly.test-agent.toml
 #
-# This deploys the official AdCP test sales agent at testing.adcontextprotocol.org
+# This deploys the official AdCP test sales agent at test-agent.adcontextprotocol.org
 # using a published Docker image from the salesagent repository.
 
 app = "adcp-test-agent"
